@@ -127,5 +127,53 @@ def download(
     console.print("[yellow]Dataset download not yet implemented[/yellow]")
 
 
+@app.command()
+def health():
+    """Quick check — Neo4j connectivity, ChromaDB collections, question counts."""
+    import asyncio
+
+    from kb_arena.benchmark.questions import load_all_questions
+    from kb_arena.settings import settings
+
+    console.print("[bold]KB Arena Health Check[/bold]\n")
+
+    # Questions
+    try:
+        all_q = load_all_questions()
+        console.print(f"  Questions loaded: [green]{len(all_q)}[/green]")
+    except Exception as exc:
+        console.print(f"  Questions: [red]error — {exc}[/red]")
+
+    # ChromaDB
+    try:
+        import chromadb
+
+        chroma = chromadb.PersistentClient(path=settings.chroma_path)
+        collections = chroma.list_collections()
+        console.print(f"  ChromaDB collections: [green]{len(collections)}[/green]")
+    except Exception as exc:
+        console.print(f"  ChromaDB: [red]unavailable — {exc}[/red]")
+
+    # Neo4j
+    async def check_neo4j():
+        try:
+            import neo4j
+
+            driver = neo4j.AsyncGraphDatabase.driver(
+                settings.neo4j_uri,
+                auth=(settings.neo4j_user, settings.neo4j_password),
+            )
+            await driver.verify_connectivity()
+            await driver.close()
+            return True
+        except Exception:
+            return False
+
+    neo4j_ok = asyncio.run(check_neo4j())
+    status = "[green]connected[/green]" if neo4j_ok else "[yellow]unavailable[/yellow]"
+    console.print(f"  Neo4j: {status}")
+    console.print()
+
+
 if __name__ == "__main__":
     app()

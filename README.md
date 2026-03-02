@@ -6,38 +6,62 @@ KB Arena runs the same 200 questions against 5 retrieval strategies — naive ve
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-339-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue)
 
+```mermaid
+graph TD
+    Q["How do I expose a StatefulSet with persistent<br/>storage through an Ingress with TLS termination?"]
+
+    Q --> S1["Naive Vector<br/><small>ChromaDB · Embed→Rank</small>"]
+    Q --> S2["Contextual Vector<br/><small>ChromaDB · Chunk+Parent</small>"]
+    Q --> S3["Q&A Pairs<br/><small>ChromaDB · LLM-gen QA</small>"]
+    Q --> S4["Knowledge Graph<br/><small>Neo4j · Cypher queries</small>"]
+    Q --> S5["Hybrid<br/><small>Vector + KG · RRF fusion</small>"]
+
+    S1 --> E["4-Pass Evaluator"]
+    S2 --> E
+    S3 --> E
+    S4 --> E
+    S5 --> E
+
+    E --> P1["1. Structural<br/><small>must_mention · must_not_claim</small>"]
+    P1 --> P2["2. Entity Coverage<br/><small>required entities in answer</small>"]
+    P2 --> P3["3. Source Attribution<br/><small>returned vs expected refs</small>"]
+    P3 --> P4["4. LLM-as-Judge<br/><small>accuracy · completeness · faithfulness</small>"]
+
+    P4 --> R["Report<br/><small>accuracy by tier · latency p50/p95/p99<br/>reliability rates · cross-strategy ranking</small>"]
+
+    style Q fill:#1e293b,stroke:#3b82f6,color:#f1f5f9
+    style S1 fill:#1e293b,stroke:#64748b,color:#f1f5f9
+    style S2 fill:#1e293b,stroke:#3b82f6,color:#f1f5f9
+    style S3 fill:#1e293b,stroke:#8b5cf6,color:#f1f5f9
+    style S4 fill:#1e293b,stroke:#22c55e,color:#f1f5f9
+    style S5 fill:#1e293b,stroke:#f59e0b,color:#f1f5f9
+    style E fill:#1e293b,stroke:#3b82f6,color:#f1f5f9
+    style P1 fill:#0f172a,stroke:#334155,color:#94a3b8
+    style P2 fill:#0f172a,stroke:#334155,color:#94a3b8
+    style P3 fill:#0f172a,stroke:#334155,color:#94a3b8
+    style P4 fill:#0f172a,stroke:#334155,color:#94a3b8
+    style R fill:#1e293b,stroke:#22c55e,color:#f1f5f9
 ```
-"What exception does json.loads raise for invalid input?"
-    │
-    ▼
-┌──────────────────────────────────────────────────────────────┐
-│  Same question → 5 strategies in parallel                    │
-│                                                              │
-│  ┌─────────────┐ ┌──────────────┐ ┌────────────┐            │
-│  │ Naive Vector│ │  Contextual  │ │  Q&A Pairs │            │
-│  │   ChromaDB  │ │    Vector    │ │   ChromaDB │            │
-│  │ Embed→Rank  │ │ Chunk+Parent │ │ LLM-gen QA │            │
-│  └──────┬──────┘ └──────┬───────┘ └─────┬──────┘            │
-│         │               │               │                    │
-│  ┌──────┴──────┐ ┌──────┴───────┐                            │
-│  │  Knowledge  │ │    Hybrid    │                            │
-│  │    Graph    │ │ Vector + KG  │                            │
-│  │ Neo4j+Cypher│ │  RRF Fusion  │                            │
-│  └──────┬──────┘ └──────┬───────┘                            │
-│         │               │                                    │
-│         ▼               ▼                                    │
-│  ┌──────────────────────────────────────────────────┐        │
-│  │ 4-Pass Evaluator                                 │        │
-│  │ Structural → Entity Coverage → Source Attr → LLM │        │
-│  └──────────────────────────────────────────────────┘        │
-└──────────────────────────────────────────────────────────────┘
-    │
-    ▼
-┌──────────────────────────────────────────────────────────────┐
-│  Report: accuracy by tier, latency p50/p95/p99,              │
-│          reliability rates, cross-strategy ranking            │
-└──────────────────────────────────────────────────────────────┘
-```
+
+---
+
+## Screenshots
+
+**Benchmark results** — Sortable accuracy table by tier with grouped bar chart. Hybrid and knowledge graph strategies dominate on tier 3-5 questions where vector RAG breaks down.
+
+![Benchmark results](docs/screenshot-benchmark.png)
+
+**Strategy comparison** — Ask the same question to all 5 strategies simultaneously. Toggle strategies on/off, switch corpora, and compare answers side-by-side with SSE streaming.
+
+![Strategy comparison demo](docs/screenshot-demo.png)
+
+**Knowledge graph explorer** — Interactive force-directed graph visualization of extracted entities and relationships. Color-coded by type (Module, Class, Function, Exception), with search filtering and click-to-inspect.
+
+![Knowledge graph viewer](docs/screenshot-graph.png)
+
+**Home page** — Overview of the 5 strategies, 3 corpora, 5 difficulty tiers, and the evaluation methodology.
+
+![Home page](docs/screenshot-home.png)
 
 ---
 
@@ -629,13 +653,13 @@ Results are deduplicated by leading-token overlap, re-ranked by Sonnet (each pas
 
 Questions are organized into 5 difficulty tiers across 3 corpora:
 
-| Tier | Type | Hops | Description | Example |
-|------|------|------|-------------|---------|
-| 1 | Factoid | 1 | Single fact lookup | "What exception does `json.loads()` raise when given invalid JSON?" |
-| 2 | Multi-entity | 2 | Involves 2+ entities | "Which classes in `collections` implement `__len__`?" |
-| 3 | Comparative | 2-3 | Compare/contrast | "How does `json.dumps` differ from `pickle.dumps`?" |
-| 4 | Relational | 3-4 | Traverse relationships | "What is the chain of modules involved when `urllib.request.urlopen()` makes an HTTPS connection?" |
-| 5 | Temporal | 3-5 | Version/change tracking | "Which `asyncio` functions were deprecated between 3.8 and 3.12?" |
+| Tier | Type | Hops | Where vector RAG breaks | Example |
+|------|------|------|--------------------------|---------|
+| 1 | Factoid | 1 | All strategies competitive | "What is the default timeout for a Kubernetes liveness probe?" |
+| 2 | Multi-entity | 2 | Vector drops to ~60% | "Which services support both feature A and feature B?" |
+| 3 | Comparative | 2-3 | Vector drops to ~30%, graph dominates | "Compare the authentication methods of ConfigMap vs Secret vs ServiceAccount" |
+| 4 | Relational | 3-4 | Only graph answers correctly | "If I configure a PersistentVolumeClaim with ReadWriteMany, what downstream effects does that have on pod scheduling?" |
+| 5 | Multi-hop | 3-5 | Only graph + provenance answers | "What changed between K8s 1.25 and 1.28 that affects Ingress configurations using deprecated annotations?" |
 
 ### Corpora
 
@@ -652,27 +676,30 @@ Each question includes ground truth, required entities, source refs, `must_menti
 Questions are defined in YAML with full evaluation metadata:
 
 ```yaml
-- id: "py-t4-001"
+- id: "k8s-t4-003"
   tier: 4
   type: relational
   hops: 3
-  question: "If I use json.loads() with a custom object_hook, what exceptions could propagate?"
+  question: "How do I expose a StatefulSet with persistent storage through an Ingress with TLS termination?"
   ground_truth:
-    answer: "Any exception raised inside object_hook propagates through json.loads() unchanged..."
+    answer: "Create a headless Service targeting the StatefulSet, configure an Ingress resource with TLS..."
     source_refs:
-      - "json.html#json.loads"
+      - "concepts/services-networking/ingress.md"
+      - "concepts/workloads/controllers/statefulset.md"
     required_entities:
-      - "json.loads"
-      - "object_hook"
-      - "json.JSONDecodeError"
+      - "StatefulSet"
+      - "PersistentVolumeClaim"
+      - "Service"
+      - "Ingress"
+      - "TLS"
   constraints:
     must_mention:
-      - "object_hook"
-      - "propagate"
-      - "JSONDecodeError"
+      - "headless Service"
+      - "volumeClaimTemplates"
+      - "tls"
     must_not_claim:
-      - "json catches all exceptions"
-      - "only JSONDecodeError"
+      - "StatefulSets cannot be exposed via Ingress"
+      - "use a LoadBalancer instead"
 ```
 
 ---
@@ -728,7 +755,7 @@ web/                              # Next.js 14 frontend
 │   ├── ChatPanel.tsx             # Side-by-side strategy chat
 │   ├── BenchmarkTable.tsx        # Sortable results table
 │   ├── TierChart.tsx             # Recharts accuracy by tier
-│   ├── GraphViewer.tsx           # Sigma.js knowledge graph viz
+│   ├── GraphViewer.tsx           # Canvas force-directed graph viz
 │   ├── Nav.tsx                   # Navigation
 │   └── ThemeToggle.tsx           # Dark mode toggle
 └── lib/
@@ -1111,7 +1138,7 @@ Simple messages, no prefix format. Example: "Add SEC EDGAR benchmark questions"
 | Graph store | Neo4j 5 (Community) | Strategy 4 (APOC plugin for graph algorithms) |
 | Backend | FastAPI 0.115 + Uvicorn | Chatbot API with SSE streaming |
 | Frontend | Next.js 14 + Tailwind | Side-by-side demo, benchmark tables, graph viz |
-| Graph viz | Sigma.js | Interactive knowledge graph visualization |
+| Graph viz | Canvas (custom) | Force-directed graph with Fruchterman-Reingold layout |
 | Charts | Recharts | Accuracy by tier charts |
 | Models | Pydantic v2 | All data interchange — 15 models across 4 modules |
 | CLI | Typer 0.12 + Rich | 7 pipeline commands |

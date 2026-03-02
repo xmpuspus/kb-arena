@@ -95,7 +95,7 @@ export default function BenchmarkTable({ rows }: Props) {
         <tbody>
           {sorted.map((row) => {
             const a = avg(row.tiers);
-            const costPerCorrect = a > 0 ? (row.costUsd / (a / 100)).toFixed(4) : "—";
+            // costPerCorrect available: a > 0 ? (row.costUsd / (a / 100)).toFixed(4) : "—"
             return (
               <tr
                 key={row.strategy}

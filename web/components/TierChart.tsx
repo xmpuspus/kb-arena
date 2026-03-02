@@ -49,8 +49,8 @@ export default function TierChart({ rows }: Props) {
             borderRadius: 6,
             color: "var(--foreground)",
           }}
-          formatter={(val: number, key: string) => [
-            `${val}%`,
+          formatter={(val, key) => [
+            `${val ?? 0}%`,
             STRATEGY_LABELS[key as Strategy] ?? key,
           ]}
         />

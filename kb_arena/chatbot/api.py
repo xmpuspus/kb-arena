@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
+from kb_arena.chatbot.session import SessionMemory
 from kb_arena.models.api import ChatRequest, ChatResponse, ErrorDetail, ErrorResponse
 from kb_arena.settings import settings
 
@@ -27,6 +28,9 @@ logger = logging.getLogger(__name__)
 # Simple in-memory rate limiter (requests per minute per IP)
 _rate_store: dict[str, list[float]] = defaultdict(list)
 RATE_LIMIT_RPM = 60
+
+# Per-session memory for multi-turn conversations
+_session_store: dict[str, SessionMemory] = defaultdict(SessionMemory)
 
 
 def _check_rate_limit(client_ip: str) -> bool:
@@ -154,9 +158,16 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
     strategy = _resolve_strategy(body.strategy, request)
-    history = [{"role": m.role, "content": m.content} for m in body.history]
+
+    # Track conversation history per session (keyed by IP + strategy)
+    session_key = f"{client_ip}:{body.strategy}"
+    session = _session_store[session_key]
+    session.add_turn("user", body.query)
 
     result = await strategy.query(body.query, top_k=5)
+
+    session.add_turn("assistant", result.answer)
+
     return ChatResponse(
         answer=result.answer,
         strategy_used=result.strategy,
@@ -225,6 +236,30 @@ async def chat_stream(body: ChatRequest, request: Request) -> EventSourceRespons
 async def list_strategies(request: Request) -> dict:
     """List available strategy names."""
     return {"strategies": list(request.app.state.strategies.keys())}
+
+
+@app.get("/graph/stats")
+async def graph_stats(request: Request) -> dict:
+    """Graph statistics — node/edge counts, centrality hubs, communities."""
+    if request.app.state.neo4j is None:
+        return {"error": "Neo4j not connected", "stats": None}
+
+    from kb_arena.graph.analyzer import GraphAnalyzer
+    from kb_arena.graph.neo4j_store import Neo4jStore
+
+    store = Neo4jStore(request.app.state.neo4j)
+    analyzer = GraphAnalyzer(store)
+
+    centrality = await analyzer.calculate_centrality()
+    top_hubs = sorted(centrality.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    communities = await analyzer.analyze_communities()
+
+    return {
+        "node_count": sum(1 for _ in centrality),
+        "top_hubs": [{"fqn": fqn, "centrality": round(c, 4)} for fqn, c in top_hubs],
+        "community_count": len(communities),
+    }
 
 
 @app.get("/health")
