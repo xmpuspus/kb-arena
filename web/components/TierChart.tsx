@@ -1,0 +1,72 @@
+"use client";
+
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from "recharts";
+import { STRATEGY_LABELS, STRATEGY_COLORS, type Strategy } from "@/lib/api";
+
+interface Row {
+  strategy: Strategy;
+  tiers: number[];
+}
+
+interface Props {
+  rows: Row[];
+}
+
+export default function TierChart({ rows }: Props) {
+  const tierCount = rows[0]?.tiers.length ?? 5;
+
+  const data = Array.from({ length: tierCount }, (_, i) => {
+    const point: Record<string, string | number> = { tier: `Tier ${i + 1}` };
+    for (const row of rows) {
+      point[row.strategy] = row.tiers[i] ?? 0;
+    }
+    return point;
+  });
+
+  return (
+    <ResponsiveContainer width="100%" height={400}>
+      <BarChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+        <XAxis dataKey="tier" tick={{ fill: "var(--muted)", fontSize: 12 }} />
+        <YAxis
+          domain={[0, 100]}
+          tickFormatter={(v) => `${v}%`}
+          tick={{ fill: "var(--muted)", fontSize: 12 }}
+        />
+        <Tooltip
+          contentStyle={{
+            background: "var(--card)",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            color: "var(--foreground)",
+          }}
+          formatter={(val: number, key: string) => [
+            `${val}%`,
+            STRATEGY_LABELS[key as Strategy] ?? key,
+          ]}
+        />
+        <Legend
+          formatter={(key) => STRATEGY_LABELS[key as Strategy] ?? key}
+          wrapperStyle={{ color: "var(--muted)", fontSize: 12 }}
+        />
+        {rows.map((row) => (
+          <Bar
+            key={row.strategy}
+            dataKey={row.strategy}
+            fill={STRATEGY_COLORS[row.strategy]}
+            radius={[2, 2, 0, 0]}
+          />
+        ))}
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
