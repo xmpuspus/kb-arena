@@ -1,0 +1,317 @@
+- id: "sec-t5-001"
+  tier: 5
+  type: temporal
+  hops: 3
+  question: "How did the EDGAR XBRL filing requirement evolve from its initial introduction to the current Inline XBRL mandate?"
+  ground_truth:
+    answer: "XBRL requirements were phased in over time: In 2009, the SEC first required large accelerated filers to submit interactive data (XBRL) as a separate exhibit (EX-101) attached to 10-K and 10-Q filings. Accelerated filers followed in 2010 and all filers in 2011. For over a decade, XBRL was submitted as a separate viewer exhibit alongside the HTML filing. In 2018, the SEC adopted rules requiring Inline XBRL (iXBRL), which embeds tags directly in the HTML document eliminating the separate EX-101 exhibit. Large accelerated filers were required to use iXBRL starting with fiscal years ending on or after June 15, 2019; accelerated filers starting with fiscal years ending on or after June 15, 2020; and all other filers starting with fiscal years ending on or after June 15, 2021."
+    source_refs:
+      - "SEC Release No. 33-9002 (2009 XBRL adoption)"
+      - "SEC Release No. 33-10514 (2018 Inline XBRL adoption)"
+    required_entities:
+      - "XBRL"
+      - "Inline XBRL"
+      - "EX-101"
+      - "2009"
+      - "2018"
+      - "2019"
+  constraints:
+    must_mention:
+      - "Inline XBRL"
+      - "2009"
+      - "separate exhibit"
+    must_not_claim:
+      - "XBRL was always embedded in HTML"
+      - "all filers adopted Inline XBRL simultaneously"
+
+- id: "sec-t5-002"
+  tier: 5
+  type: temporal
+  hops: 3
+  question: "How did the SEC's rules on executive compensation disclosure change with the introduction of the say-on-pay requirement, and when did it take effect?"
+  ground_truth:
+    answer: "Before 2011, executive compensation disclosure was purely a narrative and tabular requirement with no shareholder vote. The Dodd-Frank Wall Street Reform and Consumer Protection Act of 2010 added Section 14A to the Securities Exchange Act, requiring companies to give shareholders at least every three years a non-binding advisory vote on named executive officer compensation (say-on-pay) and a separate vote on the frequency of say-on-pay votes (say-on-frequency). The SEC adopted rules implementing these requirements (Release No. 33-9178) in January 2011, effective for proxy statements filed on or after January 21, 2011, for large accelerated filers. Smaller reporting companies had a two-year delay and were required to hold first say-on-pay votes beginning in 2013. The say-on-pay vote result must be disclosed in the next Form 10-K or proxy statement."
+    source_refs:
+      - "Dodd-Frank Act Section 951 (2010)"
+      - "Exchange Act Section 14A"
+      - "SEC Release No. 33-9178 (January 2011)"
+    required_entities:
+      - "say-on-pay"
+      - "Dodd-Frank Act"
+      - "Section 14A"
+      - "2011"
+      - "non-binding advisory vote"
+  constraints:
+    must_mention:
+      - "Dodd-Frank"
+      - "2011"
+      - "non-binding"
+    must_not_claim:
+      - "say-on-pay vote is binding"
+      - "say-on-pay existed before Dodd-Frank"
+
+- id: "sec-t5-003"
+  tier: 5
+  type: temporal
+  hops: 4
+  question: "What was the sequence of regulatory changes that led to the current accelerated filer definition, and how did the 2020 amendment change the SRC/accelerated filer overlap?"
+  ground_truth:
+    answer: "The accelerated filer category was created by the SEC in 2002 (Release No. 33-8128) to impose faster 10-K filing deadlines (75 days vs. 90 days) on mid- and large-cap companies. Large accelerated filers (60 days) were separated out in 2003. At that time, a company could simultaneously be both a Smaller Reporting Company and an accelerated filer if it met the SRC revenue/float test but also had been reporting for 12 months with $75M+ float. In February 2020, the SEC amended Rule 12b-2 (Release No. 33-10762) to eliminate this overlap: companies that qualify as SRCs with a public float of less than $250 million are now explicitly excluded from the accelerated filer and large accelerated filer categories, meaning they retain the SRC's Section 404(b) exemption. This change became effective April 27, 2020."
+    source_refs:
+      - "SEC Release No. 33-8128 (2002)"
+      - "SEC Release No. 34-48494 (2003 large accelerated filer)"
+      - "SEC Release No. 33-10762 (2020 SRC/accelerated filer overlap)"
+    required_entities:
+      - "accelerated filer"
+      - "large accelerated filer"
+      - "Smaller Reporting Company"
+      - "2002"
+      - "2020"
+      - "Section 404(b)"
+  constraints:
+    must_mention:
+      - "2020"
+      - "Section 404(b)"
+      - "overlap"
+    must_not_claim:
+      - "SRCs were always excluded from accelerated filer category"
+      - "large accelerated filer category existed before 2003"
+
+- id: "sec-t5-004"
+  tier: 5
+  type: temporal
+  hops: 3
+  question: "How did EDGAR's electronic filing mandate evolve from its inception in 1993 to requiring all domestic filers to use EDGAR?"
+  ground_truth:
+    answer: "EDGAR (Electronic Data Gathering, Analysis, and Retrieval) began as a voluntary pilot program in 1993. The SEC phased in mandatory electronic filing over multiple years: the first wave (1993–1994) covered large domestic companies; subsequent phases added mid-size and small companies through 1996. By 1996, all domestic companies were required to file on EDGAR. Foreign private issuers were phased into EDGAR separately, with the SEC requiring their filings electronically beginning with a phased program in the late 1990s and early 2000s. The EDGAR system moved from accepting ASCII and HTML filings to requiring HTML for certain documents. The transition to electronic filing replaced paper submissions at SEC regional offices, which were discontinued as EDGAR became universal."
+    source_refs:
+      - "SEC Release No. 33-6977 (1993 EDGAR phase-in)"
+      - "17 CFR Part 232 (Regulation S-T)"
+    required_entities:
+      - "EDGAR"
+      - "1993"
+      - "1996"
+      - "Regulation S-T"
+      - "electronic filing"
+  constraints:
+    must_mention:
+      - "1993"
+      - "phased"
+      - "Regulation S-T"
+    must_not_claim:
+      - "EDGAR was mandatory from its start in 1993"
+      - "EDGAR began in the 1980s"
+
+- id: "sec-t5-005"
+  tier: 5
+  type: temporal
+  hops: 3
+  question: "How did the filing deadline for Form 4 insider trading reports change under Sarbanes-Oxley, and what was the prior deadline?"
+  ground_truth:
+    answer: "Before the Sarbanes-Oxley Act of 2002, corporate insiders had until the tenth day of the calendar month following the month in which a reportable transaction occurred to file Form 4. This meant up to approximately 40 days could pass between a transaction and its public disclosure. Section 403 of SOX, enacted in July 2002, shortened the deadline dramatically: Form 4 must now be filed within two business days of the transaction. SOX also required that Form 4 filings be submitted electronically through EDGAR (whereas paper filings were previously permitted), making them publicly accessible within the two-business-day window. This change took effect for transactions occurring on or after August 29, 2002."
+    source_refs:
+      - "Sarbanes-Oxley Act Section 403 (2002)"
+      - "SEC Release No. 34-46421"
+    required_entities:
+      - "Form 4"
+      - "Sarbanes-Oxley Section 403"
+      - "two business days"
+      - "10th day of the following month"
+      - "2002"
+  constraints:
+    must_mention:
+      - "two business days"
+      - "Sarbanes-Oxley"
+      - "2002"
+    must_not_claim:
+      - "Form 4 deadline was always two business days"
+      - "prior deadline was five days"
+
+- id: "sec-t5-006"
+  tier: 5
+  type: temporal
+  hops: 4
+  question: "What were the key milestones in the evolution of SEC rules on general solicitation in private placements from the original Securities Act to the JOBS Act reforms?"
+  ground_truth:
+    answer: "The Securities Act of 1933 Section 4(a)(2) exempted issuer transactions not involving a public offering, but courts interpreted 'public offering' broadly, making general solicitation risky. In 1982, the SEC adopted Regulation D, including Rule 502(c), which explicitly prohibited general solicitation or general advertising in Rule 504, 505, and 506 offerings, providing legal certainty but restricting reach. This ban remained in place for 30 years. The Jumpstart Our Business Startups (JOBS) Act of 2012 directed the SEC to remove the general solicitation ban for Rule 506 offerings to accredited investors. The SEC implemented this through new Rule 506(c) in September 2013, permitting general solicitation if all purchasers are verified accredited investors. Rule 502(c) remains in force for Rule 506(b) and Rule 504 offerings. As of 2024, the SEC's Regulation Crowdfunding (Rule 4(a)(6), adopted 2015, expanded 2021) permits general solicitation to all investors for small offerings via FINRA-registered portals."
+    source_refs:
+      - "Securities Act of 1933 Section 4(a)(2)"
+      - "17 CFR 230.502(c) (1982)"
+      - "JOBS Act Section 201(a) (2012)"
+      - "SEC Release No. 33-9415 (September 2013, Rule 506(c))"
+    required_entities:
+      - "Rule 506(c)"
+      - "Rule 502(c)"
+      - "JOBS Act"
+      - "1982"
+      - "2012"
+      - "2013"
+      - "general solicitation"
+  constraints:
+    must_mention:
+      - "1982"
+      - "JOBS Act"
+      - "2013"
+      - "general solicitation"
+    must_not_claim:
+      - "general solicitation ban was never lifted"
+      - "JOBS Act permitted solicitation to non-accredited investors under 506(c)"
+
+- id: "sec-t5-007"
+  tier: 5
+  type: temporal
+  hops: 3
+  question: "How did the SEC's requirement for cybersecurity incident disclosure evolve, and when did material cybersecurity incident reporting on Form 8-K become mandatory?"
+  ground_truth:
+    answer: "Before 2023, there was no specific SEC rule requiring cybersecurity incident disclosure; companies reported cyber events under general materiality standards via Form 8-K Item 8.01 (other events) or disclosed them in annual reports under risk factors and MD&A. In March 2022, the SEC proposed new cybersecurity rules. In July 2023, the SEC adopted final rules (Release No. 33-11216) creating Form 8-K Item 1.05, which requires public companies to disclose a material cybersecurity incident within four business days of determining materiality. Companies must also disclose their cybersecurity risk management, strategy, and governance annually in Form 10-K. The new Item 1.05 requirements became effective for large accelerated filers in December 2023 (with smaller filers following in June 2024). The determination of materiality — not discovery of the incident — starts the four-business-day clock."
+    source_refs:
+      - "SEC Release No. 33-11216 (July 2023)"
+      - "Form 8-K Item 1.05"
+    required_entities:
+      - "Form 8-K Item 1.05"
+      - "cybersecurity"
+      - "four business days"
+      - "2023"
+      - "materiality determination"
+  constraints:
+    must_mention:
+      - "Item 1.05"
+      - "four business days"
+      - "2023"
+      - "materiality"
+    must_not_claim:
+      - "cybersecurity incidents must be reported within 24 hours"
+      - "cybersecurity disclosure rules existed before 2023"
+
+- id: "sec-t5-008"
+  tier: 5
+  type: temporal
+  hops: 4
+  question: "How did the SEC's regulation of proxy advisory firms and the proxy voting process evolve from 2010 through 2022?"
+  ground_truth:
+    answer: "Proxy advisory firms (ISS, Glass Lewis) operated largely unregulated for decades. In 2010, the SEC issued a concept release on the proxy system (Release No. 34-62495) identifying concerns about proxy advisors. In 2014, the SEC issued guidance clarifying that proxy advisory firms are subject to federal proxy rules as proxy solicitors. In 2020, the SEC adopted sweeping amendments (Release No. 34-89372): proxy advisory firms must provide companies with their voting recommendations before or simultaneously with distribution to clients, give companies an opportunity to respond, and disclose conflicts of interest; these were codified in Rules 14a-1 and 14a-2. In July 2022, the SEC reversed course and rescinded the 2020 amendments' conflicts disclosure requirement and the mandatory pre-distribution review requirement (Release No. 34-95266), reverting proxy advisory firms to the pre-2020 regulatory framework while retaining their status as proxy solicitors subject to anti-fraud rules."
+    source_refs:
+      - "SEC Release No. 34-62495 (2010 concept release)"
+      - "SEC Release No. 34-89372 (2020 proxy advisory rules)"
+      - "SEC Release No. 34-95266 (2022 rescission)"
+    required_entities:
+      - "proxy advisory firms"
+      - "ISS"
+      - "2020"
+      - "2022"
+      - "Rules 14a-1 and 14a-2"
+  constraints:
+    must_mention:
+      - "2020"
+      - "2022"
+      - "rescinded"
+    must_not_claim:
+      - "proxy advisory firms are exempt from SEC rules"
+      - "2020 amendments remain fully in effect"
+
+- id: "sec-t5-009"
+  tier: 5
+  type: temporal
+  hops: 3
+  question: "How did the EDGAR Next initiative change the EDGAR filing access system beginning in 2024, and what replaced the legacy EDGAR filing credentials?"
+  ground_truth:
+    answer: "EDGAR Next was announced by the SEC in 2023 and rolled out beginning in March 2024. It replaced the legacy EDGAR filing system's CIK/CCC (Central Index Key/CIK Confirmation Code) credential system, which had been used since EDGAR's inception in the 1990s, with a modern identity management system. Under EDGAR Next, filers manage their filing agents and representatives through a dashboard at efts.sec.gov, using Login.gov (a US government identity service) for authentication. The transition required all existing filers to migrate their accounts and update filing agent authorizations. The legacy EDGAR credentials were to be phased out following a migration window. EDGAR Next also introduced account-level access controls allowing companies to designate multiple authorized users with different permission levels."
+    source_refs:
+      - "SEC Release No. 34-99371 (EDGAR Next proposal, 2023)"
+      - "https://www.sec.gov/info/edgar/edgar-next"
+    required_entities:
+      - "EDGAR Next"
+      - "CIK"
+      - "CCC"
+      - "Login.gov"
+      - "2024"
+  constraints:
+    must_mention:
+      - "EDGAR Next"
+      - "Login.gov"
+      - "CCC"
+    must_not_claim:
+      - "EDGAR Next changed what filings are required"
+      - "CIK numbers changed under EDGAR Next"
+
+- id: "sec-t5-010"
+  tier: 5
+  type: temporal
+  hops: 4
+  question: "How did SEC requirements for climate-related disclosure evolve from the 2010 guidance through the 2024 final rules, and what is the current status?"
+  ground_truth:
+    answer: "In February 2010, the SEC issued interpretive guidance (Release No. 33-9106) clarifying that existing disclosure requirements (Reg S-K risk factors, MD&A, business description) could require climate-related disclosures under existing materiality standards — no new rules were created. In March 2022, the SEC proposed comprehensive new climate disclosure rules. In March 2024, the SEC adopted final climate disclosure rules (Release No. 33-11275) requiring large accelerated filers to disclose Scope 1 and Scope 2 greenhouse gas emissions, material climate-related risks, governance, and strategy in annual reports. Scope 3 emissions disclosure, which was proposed, was dropped from the final rules. However, following legal challenges and a voluntary stay issued by the SEC in April 2024, the rules were not implemented and the SEC announced in February 2025 that it would not defend the rules and would repeal them."
+    source_refs:
+      - "SEC Release No. 33-9106 (2010 guidance)"
+      - "SEC Release No. 33-11275 (2024 final rules)"
+    required_entities:
+      - "climate disclosure"
+      - "2010 guidance"
+      - "2024 final rules"
+      - "Scope 1"
+      - "Scope 2"
+      - "Scope 3"
+  constraints:
+    must_mention:
+      - "2010"
+      - "Scope 3"
+      - "stayed"
+    must_not_claim:
+      - "Scope 3 is required in the final rules"
+      - "climate rules are fully in effect as of 2025"
+
+- id: "sec-t5-011"
+  tier: 5
+  type: temporal
+  hops: 3
+  question: "How did the threshold and filing requirements for Schedule 13G short-form beneficial ownership reports change under the SEC's October 2023 amendments?"
+  ground_truth:
+    answer: "Before October 2023, qualified institutional investors had 45 days after calendar year end to file initial Schedule 13G reports. The SEC's October 2023 amendments (Release No. 34-98704, effective February 5, 2024) accelerated these deadlines significantly: for qualified institutional investors, the initial Schedule 13G deadline changed from 45 days after year end to 45 days after the calendar quarter in which the 5% threshold was crossed. For passive investors (Rule 13d-1(c)), initial filing was shortened from 10 calendar days to 5 business days after crossing 5%. Amendment deadlines for material changes were similarly tightened — from promptly (interpreted as within 10 days of month end) to 5 business days after the triggering event. The amendments also shortened Schedule 13D initial filing deadlines from 10 calendar days to 5 business days after crossing 5%. These were the most significant changes to Section 13 reporting since 1977."
+    source_refs:
+      - "SEC Release No. 34-98704 (October 2023)"
+      - "17 CFR 240.13d-1 (as amended 2024)"
+    required_entities:
+      - "Schedule 13G"
+      - "Schedule 13D"
+      - "2023 amendments"
+      - "5 business days"
+      - "45 days after calendar quarter"
+  constraints:
+    must_mention:
+      - "5 business days"
+      - "2023"
+      - "calendar quarter"
+    must_not_claim:
+      - "13G deadlines were unchanged since 1977"
+      - "new deadlines took effect in 2023"
+
+- id: "sec-t5-012"
+  tier: 5
+  type: temporal
+  hops: 5
+  question: "What was the sequence of regulatory changes to SEC Form 10-K's risk factor disclosure requirements from the 2005 plain English initiative through the 2020 amendments?"
+  ground_truth:
+    answer: "The evolution of risk factor disclosure in Form 10-K: (1) Before 2005, Regulation S-K Item 503(c) required risk factors in prospectuses but not specifically in annual reports — companies included them voluntarily or under general materiality principles. (2) The 2005 SEC plain English initiative (Release No. 33-8591) and related guidance encouraged clearer risk factor disclosures but did not mandate annual report risk factors by rule. (3) In practice, companies began routinely including risk factors in 10-K filings under Item 1A (added formally to Form 10-K in 2005), with the SEC clarifying in the same release that Item 1A required disclosure of material risk factors specific to the company and the risks of investing in its securities. (4) In November 2020, the SEC adopted amendments to Regulation S-K (Release No. 33-10825) redesignating risk factors from Item 503(c) to new Item 105, requiring companies with risk factor sections exceeding 15 pages to add a summary section of no more than two pages at the beginning, and clarifying that boilerplate and generic risk factors are insufficient. The 2020 amendments took effect for filings on or after February 10, 2021."
+    source_refs:
+      - "SEC Release No. 33-8591 (2005)"
+      - "Regulation S-K Item 1A (Form 10-K)"
+      - "SEC Release No. 33-10825 (November 2020)"
+      - "Regulation S-K Item 105"
+    required_entities:
+      - "Item 1A"
+      - "Item 105"
+      - "Item 503(c)"
+      - "2005"
+      - "2020"
+      - "summary section"
+      - "15 pages"
+  constraints:
+    must_mention:
+      - "Item 1A"
+      - "Item 105"
+      - "2020"
+      - "summary"
+      - "15 pages"
+    must_not_claim:
+      - "risk factors were required in 10-K before 2005"
+      - "Item 105 applies to prospectuses only"

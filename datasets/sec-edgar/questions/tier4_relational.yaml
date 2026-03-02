@@ -1,0 +1,302 @@
+- id: "sec-t4-001"
+  tier: 4
+  type: relational
+  hops: 3
+  question: "What conditions must a company satisfy before it can rely on the safe harbor for forward-looking statements under the Private Securities Litigation Reform Act?"
+  ground_truth:
+    answer: "Under the PSLRA safe harbor, forward-looking statements are protected if they satisfy one of two conditions: (1) the statement is identified as forward-looking and accompanied by meaningful cautionary statements identifying important factors that could cause actual results to differ materially — this is the 'bespeaks caution' prong; or (2) the plaintiff fails to prove the statement was made with actual knowledge that it was false or misleading. The safe harbor applies to written statements in SEC filings and oral statements (if accompanied by a cautionary legend directing investors to written risk factors). It does not apply to statements made in connection with initial public offerings, tender offers, or financial statements prepared under GAAP."
+    source_refs:
+      - "Section 27A of the Securities Act of 1933"
+      - "Section 21E of the Securities Exchange Act of 1934"
+    required_entities:
+      - "PSLRA"
+      - "forward-looking statements"
+      - "meaningful cautionary statements"
+      - "safe harbor"
+  constraints:
+    must_mention:
+      - "cautionary statements"
+      - "actual knowledge"
+    must_not_claim:
+      - "applies to IPO prospectuses"
+      - "blanket protection for all forward-looking statements"
+
+- id: "sec-t4-002"
+  tier: 4
+  type: relational
+  hops: 3
+  question: "What is required for a company to qualify for the Smaller Reporting Company (SRC) status and what accommodations does that status provide in SEC filings?"
+  ground_truth:
+    answer: "A company qualifies as a Smaller Reporting Company if it has either (a) a public float of less than $250 million, or (b) annual revenues of less than $100 million and either no public float or a public float of less than $700 million. SRC status provides several accommodations: SRCs may provide two years of audited financial statements in Form 10-K instead of three; they use a scaled executive compensation disclosure (no CD&A required, only the simpler Summary Compensation Table for three NEOs instead of five); they are exempt from the auditor attestation on internal controls under SOX Section 404(b); and they may omit certain Regulation S-K items such as the ratio of earnings to fixed charges."
+    source_refs:
+      - "17 CFR 240.12b-2"
+      - "SEC Release No. 33-10513"
+    required_entities:
+      - "Smaller Reporting Company"
+      - "$250 million public float"
+      - "$100 million annual revenues"
+      - "Section 404(b)"
+      - "two years"
+  constraints:
+    must_mention:
+      - "$250 million"
+      - "Section 404(b)"
+      - "two years"
+    must_not_claim:
+      - "SRC threshold is $75 million"
+      - "SRCs must provide three years of financials"
+
+- id: "sec-t4-003"
+  tier: 4
+  type: relational
+  hops: 4
+  question: "What sequence of filings is required when a company discovers a material error in previously filed financial statements that requires restatement?"
+  ground_truth:
+    answer: "When a material error requiring restatement is identified, the sequence is: (1) the audit committee (not management) is responsible for the determination that a restatement is necessary; (2) the company must file a Form 8-K under Item 4.02 disclosing that previously issued financial statements should no longer be relied upon, identifying the periods affected and the nature of the error — due within four business days of the determination; (3) if the company's auditors withdraw their report, a separate 8-K Item 4.02(b) is required; (4) the company must file amended annual reports (Form 10-K/A) and/or amended quarterly reports (Form 10-Q/A) containing restated financial statements; (5) the auditor must audit or review the restated statements; (6) Section 304 of Sarbanes-Oxley requires CEOs and CFOs to reimburse the company for incentive-based compensation received during the 12-month period following a non-compliant filing."
+    source_refs:
+      - "Form 8-K Item 4.02"
+      - "Sarbanes-Oxley Act Section 304"
+      - "SEC Staff Accounting Bulletin (SAB) No. 99"
+    required_entities:
+      - "Form 8-K"
+      - "Item 4.02"
+      - "Form 10-K/A"
+      - "Form 10-Q/A"
+      - "Sarbanes-Oxley Section 304"
+      - "restatement"
+  constraints:
+    must_mention:
+      - "Item 4.02"
+      - "no longer be relied upon"
+      - "Section 304"
+    must_not_claim:
+      - "restatement requires only an 8-K"
+      - "management determines restatement necessity without audit committee"
+
+- id: "sec-t4-004"
+  tier: 4
+  type: relational
+  hops: 3
+  question: "What is required for a tender offer to comply with SEC regulations under the Williams Act, and what filings must the acquirer submit?"
+  ground_truth:
+    answer: "Under the Williams Act (Sections 13(d)-(e) and 14(d)-(e) of the Securities Exchange Act of 1934), a tender offer for more than 5% of a class of securities requires the bidder to file Schedule TO (Tender Offer Statement) on the day the offer is commenced. The offer must remain open for at least 20 business days. All shareholders must be offered the same price. If the bid is raised, shareholders who tendered at the lower price must receive the higher price. The target company's board must respond within 10 business days with a Schedule 14D-9 recommending acceptance, rejection, or stating it is unable to take a position. If the acquirer already owns 5%+ before commencing, a Schedule 13D was also required earlier. Third-party tender offers use Schedule TO; issuer self-tenders use a different form (Schedule TO-I)."
+    source_refs:
+      - "Williams Act, Sections 13(d)-(e) and 14(d)-(e)"
+      - "17 CFR 240.14d-1 through 240.14e-8"
+      - "Schedule TO"
+    required_entities:
+      - "Williams Act"
+      - "Schedule TO"
+      - "Schedule 14D-9"
+      - "20 business days"
+      - "best price rule"
+  constraints:
+    must_mention:
+      - "Schedule TO"
+      - "20 business days"
+      - "Schedule 14D-9"
+    must_not_claim:
+      - "tender offer can close in 5 days"
+      - "target company has no response obligation"
+
+- id: "sec-t4-005"
+  tier: 4
+  type: relational
+  hops: 3
+  question: "What internal control reporting requirements flow from Sarbanes-Oxley Sections 302 and 404 and how are they reflected in annual and quarterly SEC filings?"
+  ground_truth:
+    answer: "SOX Section 302 requires the CEO and CFO to personally certify in every Form 10-K and Form 10-Q that they have reviewed the report, it contains no material misstatements or omissions, the financial statements fairly present the financial condition, and they have disclosed to auditors all significant deficiencies in internal controls. The certification is filed as Exhibits 31.1 and 31.2. SOX Section 404(a) requires management to include an Internal Control over Financial Reporting (ICFR) report in the Form 10-K assessing the effectiveness of ICFR using a recognized framework (typically COSO). Section 404(b) requires the independent auditor to attest to management's ICFR assessment — this applies to accelerated and large accelerated filers but not to non-accelerated filers, SRCs, or EGCs."
+    source_refs:
+      - "Sarbanes-Oxley Act Sections 302 and 404"
+      - "17 CFR 240.13a-15"
+    required_entities:
+      - "SOX Section 302"
+      - "SOX Section 404"
+      - "ICFR"
+      - "CEO certification"
+      - "CFO certification"
+      - "COSO"
+  constraints:
+    must_mention:
+      - "Section 302"
+      - "Section 404"
+      - "ICFR"
+    must_not_claim:
+      - "Section 404(b) applies to all filers"
+      - "Section 302 certification only required annually"
+
+- id: "sec-t4-006"
+  tier: 4
+  type: relational
+  hops: 4
+  question: "What are the conditions and procedural requirements for a company to conduct a rights offering exempt from SEC registration under Securities Act Section 4(a)(2) or another exemption?"
+  ground_truth:
+    answer: "Rights offerings to existing shareholders most commonly rely on one of several paths: (1) Registration on Form S-3 is typically used by eligible seasoned issuers for speed; (2) Section 4(a)(2) private placement exemption applies if the offering is made only to a limited group of sophisticated investors — but rights offerings to all shareholders (including retail) usually cannot rely on this; (3) Regulation D Rule 506 requires all purchasers to be accredited or sophisticated investors, precluding broad shareholder bases; (4) Section 3(a)(9) exempts exchange of existing securities by the issuer without commission, but requires the existing security must be outstanding. The most practical registered route uses Form S-3 with a shelf registration or, for non-S-3 eligible companies, Form S-1. A full rights offering to all shareholders of a public company almost always requires a registration statement."
+    source_refs:
+      - "Securities Act Sections 3(a)(9) and 4(a)(2)"
+      - "17 CFR 230.506"
+      - "17 CFR 239.13 (Form S-3)"
+    required_entities:
+      - "rights offering"
+      - "Section 4(a)(2)"
+      - "Section 3(a)(9)"
+      - "Form S-3"
+      - "registration statement"
+  constraints:
+    must_mention:
+      - "registration statement"
+      - "Section 3(a)(9)"
+    must_not_claim:
+      - "all rights offerings are exempt from registration"
+      - "rights offerings to public shareholders need no filing"
+
+- id: "sec-t4-007"
+  tier: 4
+  type: relational
+  hops: 3
+  question: "What conditions must be met for a company to use the EDGAR filing system to request confidential treatment of exhibits under Rule 406?"
+  ground_truth:
+    answer: "Under Rule 406 of the Securities Act (and Rule 24b-2 of the Exchange Act), a company may request confidential treatment (CT) of portions of exhibits filed with the SEC if disclosure would cause competitive harm and the information qualifies for protection under the Freedom of Information Act Exemption 4 (trade secrets or privileged commercial or financial information). The procedure requires: (1) filing a complete unredacted copy of the exhibit marked CT with a cover page identifying redacted portions; (2) submitting a separate written CT application to the SEC's Office of the Secretary explaining why each redacted portion warrants protection; (3) the redacted public version is filed through EDGAR with brackets indicating omitted text. CT orders expire after a limited period and must be renewed. Since 2018, the SEC's Inline EDGAR redaction approach under Rule 83 allows registrants to omit immaterial, competitively sensitive information from material contracts without a formal CT request, using brackets to mark omissions."
+    source_refs:
+      - "17 CFR 230.406 (Rule 406)"
+      - "17 CFR 240.24b-2"
+      - "SEC Release No. 33-10618"
+    required_entities:
+      - "Rule 406"
+      - "confidential treatment"
+      - "FOIA Exemption 4"
+      - "Rule 83"
+  constraints:
+    must_mention:
+      - "FOIA Exemption 4"
+      - "redacted"
+    must_not_claim:
+      - "companies may simply omit sensitive contract terms"
+      - "confidential treatment is permanent"
+
+- id: "sec-t4-008"
+  tier: 4
+  type: relational
+  hops: 3
+  question: "What must happen between the filing of an S-1 registration statement and the company receiving proceeds from its IPO?"
+  ground_truth:
+    answer: "The process between S-1 filing and receipt of proceeds involves: (1) the SEC staff reviews the S-1 and issues comment letters, typically within 30 days of filing; (2) the company responds to comments and may file multiple S-1/A amendments; (3) the company conducts a road show (permitted via a free-writing prospectus after a registration statement is filed); (4) the company requests acceleration of effectiveness from the SEC; (5) the registration statement is declared effective by the SEC (or automatically effective under Rule 462(b)); (6) the company prices the offering and enters into the underwriting agreement; (7) the final prospectus (424B4) is filed within two business days of pricing; (8) the closing occurs (typically T+2 for settlement) and proceeds are received. The underwriters may exercise the greenshoe option within 30 days."
+    source_refs:
+      - "Securities Act of 1933 Sections 5, 6, and 8"
+      - "17 CFR 230.461 (acceleration)"
+      - "17 CFR 230.424"
+    required_entities:
+      - "Form S-1"
+      - "S-1/A"
+      - "comment letters"
+      - "424B4"
+      - "effectiveness"
+      - "road show"
+  constraints:
+    must_mention:
+      - "comment letters"
+      - "effectiveness"
+      - "424B4"
+    must_not_claim:
+      - "S-1 is immediately effective upon filing"
+      - "proceeds received before effectiveness"
+
+- id: "sec-t4-009"
+  tier: 4
+  type: relational
+  hops: 3
+  question: "What disclosure obligations arise under SEC Rule 10b-5 for corporate insiders trading in company securities and what systems must companies establish to comply?"
+  ground_truth:
+    answer: "SEC Rule 10b-5 prohibits trading in company securities on the basis of material nonpublic information. Corporate insiders (officers, directors, employees, and tippees) who possess MNPI may not buy or sell company securities until that information is publicly disclosed. To establish compliance programs, companies typically: (1) maintain insider trading policies that impose blackout periods around earnings announcements; (2) require pre-clearance of trades by legal counsel; (3) encourage or require use of Rule 10b5-1 plans — written plans established when the insider does not possess MNPI that specify in advance the amount, price, and timing of trades; (4) provide education and annual certifications. The SEC's 2023 amendments to Rule 10b5-1 added cooling-off periods (90 days or next quarterly earnings release for officers/directors, 30 days for others) before trades can begin under a new plan."
+    source_refs:
+      - "17 CFR 240.10b-5"
+      - "17 CFR 240.10b5-1"
+      - "SEC Release No. 34-96492"
+    required_entities:
+      - "Rule 10b-5"
+      - "Rule 10b5-1"
+      - "MNPI"
+      - "blackout periods"
+      - "cooling-off period"
+  constraints:
+    must_mention:
+      - "Rule 10b5-1"
+      - "blackout"
+      - "cooling-off"
+    must_not_claim:
+      - "10b5-1 plans provide absolute protection"
+      - "blackout periods are set by SEC rule"
+
+- id: "sec-t4-010"
+  tier: 4
+  type: relational
+  hops: 4
+  question: "What is the relationship between a company's EDGAR CIK number, its EDGAR filings, and how researchers can access structured filing data through the EDGAR API?"
+  ground_truth:
+    answer: "Every EDGAR filer is assigned a unique Central Index Key (CIK) — a 10-digit numeric identifier that persists across all filings. All submissions by that entity are indexed under its CIK. The EDGAR RESTful API (data.sec.gov) provides structured access: the submissions endpoint at https://data.sec.gov/submissions/CIK{XXXXXXXXXX}.json returns all filing metadata for a company including filing type, date, accession number, and primary document name. The EDGAR full-text search API at efts.sec.gov accepts CIK as a filter parameter. Individual filing documents are accessible at https://www.sec.gov/Archives/edgar/data/{CIK}/{accession-number}/ where the accession number (formatted as 18 digits without dashes in the URL path) uniquely identifies each submission. XBRL financial data is accessible via the company facts API at https://data.sec.gov/api/xbrl/companyfacts/CIK{XXXXXXXXXX}.json."
+    source_refs:
+      - "https://data.sec.gov/submissions/"
+      - "https://data.sec.gov/api/xbrl/companyfacts/"
+    required_entities:
+      - "CIK"
+      - "data.sec.gov"
+      - "accession number"
+      - "EDGAR API"
+      - "company facts API"
+  constraints:
+    must_mention:
+      - "CIK"
+      - "accession number"
+      - "data.sec.gov"
+    must_not_claim:
+      - "CIK changes with company name changes"
+      - "EDGAR has no programmatic API"
+
+- id: "sec-t4-011"
+  tier: 4
+  type: relational
+  hops: 3
+  question: "What obligations does a reporting company have under Exchange Act Section 13 when its public float drops below the threshold for mandatory reporting?"
+  ground_truth:
+    answer: "Under Exchange Act Section 12(g), a company registered under that section may suspend its reporting obligations by filing Form 15 if it has fewer than 300 shareholders of record (or fewer than 1,200 for banks). For companies registered under Section 12(b) (exchange-listed), delisting terminates the listing but reporting continues unless the company separately deregisters. After Form 15 is filed, the suspension of reporting is immediate for quarterly reports but the company must still file the current year's Form 10-K (if one is due within 60 days of Form 15 filing). Deregistration becomes effective 90 days after Form 15 filing unless the SEC denies it. A company that goes dark by filing Form 15 cannot rely on Section 4(a)(1) exemption for resales if it has been delinquent in reporting."
+    source_refs:
+      - "Exchange Act Section 12(g)(4)"
+      - "17 CFR 240.12g-4"
+      - "Form 15"
+    required_entities:
+      - "Form 15"
+      - "Section 12(g)"
+      - "300 shareholders"
+      - "deregistration"
+  constraints:
+    must_mention:
+      - "Form 15"
+      - "300 shareholders"
+      - "90 days"
+    must_not_claim:
+      - "reporting obligations terminate immediately on Form 15 filing"
+      - "exchange-listed companies use Form 15 to terminate listing"
+
+- id: "sec-t4-012"
+  tier: 4
+  type: relational
+  hops: 4
+  question: "What are the conditions under which the SEC can issue a stop order against an effective registration statement and what remedies does the issuer have?"
+  ground_truth:
+    answer: "Under Section 8(d) of the Securities Act, the SEC may issue a stop order suspending the effectiveness of a registration statement if it finds the statement includes an untrue statement of a material fact or omits a material fact required to make the statements not misleading. The SEC must first provide the issuer with notice and an opportunity for a hearing. Once a stop order is issued, no sales may be made under the registration statement. The issuer may challenge the stop order through an administrative hearing before an administrative law judge and appeal to the SEC commissioners, then to a federal court of appeals. The issuer may also amend the registration statement to cure the deficiency and request that the stop order be lifted. A separate remedy under Section 8(e) allows the SEC to conduct an examination of the registration statement before ordering a hearing."
+    source_refs:
+      - "Securities Act of 1933 Sections 8(d) and 8(e)"
+    required_entities:
+      - "stop order"
+      - "Section 8(d)"
+      - "Securities Act"
+      - "hearing"
+      - "amendment"
+  constraints:
+    must_mention:
+      - "stop order"
+      - "Section 8(d)"
+      - "hearing"
+    must_not_claim:
+      - "stop order requires no notice to issuer"
+      - "stop order is permanent and cannot be lifted"
