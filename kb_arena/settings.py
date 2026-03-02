@@ -6,10 +6,13 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     model_config = {"env_prefix": "KB_ARENA_", "env_file": ".env", "extra": "ignore"}
 
-    # LLM
+    # LLM — Anthropic (latest models)
     anthropic_api_key: str = ""
     generate_model: str = "claude-sonnet-4-6"
     fast_model: str = "claude-haiku-4-5-20251001"
+
+    # LLM — OpenAI (for embeddings)
+    openai_api_key: str = ""
 
     # Neo4j
     neo4j_uri: str = "bolt://localhost:7687"
@@ -19,9 +22,9 @@ class Settings(BaseSettings):
     # ChromaDB
     chroma_path: str = "./chroma_data"
 
-    # Embeddings
-    embedding_model: str = "text-embedding-3-small"
-    embedding_dimensions: int = 1536
+    # Embeddings — text-embedding-3-large is the latest/best OpenAI embedding model
+    embedding_model: str = "text-embedding-3-large"
+    embedding_dimensions: int = 3072
 
     # Server
     host: str = "0.0.0.0"
