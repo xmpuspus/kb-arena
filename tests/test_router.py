@@ -23,6 +23,7 @@ def router_with_llm():
 
 # --- Stage 1: keyword patterns ---
 
+
 @pytest.mark.asyncio
 async def test_keyword_comparison_compare(router):
     intent = await router.classify("compare json.loads vs yaml.safe_load")
@@ -73,6 +74,7 @@ async def test_keyword_procedural_setup(router):
 
 # --- Stage 3: fallback (no keyword match, no LLM) ---
 
+
 @pytest.mark.asyncio
 async def test_fallback_factoid_what_is(router):
     intent = await router.classify("what is the default encoding?")
@@ -100,6 +102,7 @@ async def test_fallback_gibberish(router):
 
 
 # --- Stage 2: LLM path ---
+
 
 @pytest.mark.asyncio
 async def test_llm_classify_called_when_no_keyword_match():
@@ -138,6 +141,7 @@ async def test_keyword_shortcircuits_llm():
 
 # --- Session memory integration ---
 
+
 @pytest.mark.asyncio
 async def test_router_passes_history_to_llm():
     mock_llm = AsyncMock()
@@ -153,6 +157,7 @@ async def test_router_passes_history_to_llm():
 
 
 # --- QueryIntent enum values ---
+
 
 def test_query_intent_values():
     assert QueryIntent.FACTOID == "factoid"

@@ -69,9 +69,11 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
         "qna_pairs": QnAPairStrategy(chroma_client=chroma),
     }
 
-    targets = buildable if strategy == "all" else {
-        name: inst for name, inst in buildable.items() if name == strategy
-    }
+    targets = (
+        buildable
+        if strategy == "all"
+        else {name: inst for name, inst in buildable.items() if name == strategy}
+    )
 
     for name, inst in targets.items():
         logger.info("Building index: %s (%d documents)", name, len(documents))

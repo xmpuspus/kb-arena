@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
 
-from kb_arena.graph.resolver import MERGE_THRESHOLD, REVIEW_THRESHOLD, normalize_name, resolve_entities
+from kb_arena.graph.resolver import (
+    normalize_name,
+    resolve_entities,
+)
 from kb_arena.graph.schema import (
     NodeType,
     RelType,
@@ -18,13 +19,12 @@ from kb_arena.graph.schema import (
     valid_node_type,
     valid_rel_type,
 )
-from kb_arena.models.document import Document, Section
 from kb_arena.models.graph import Entity, ExtractionResult, Relationship
-
 
 # ---------------------------------------------------------------------------
 # Schema enum validation
 # ---------------------------------------------------------------------------
+
 
 def test_node_types_match_enum():
     for value in node_type_values("python-stdlib"):
@@ -62,20 +62,41 @@ def test_get_schema_unknown_corpus_raises():
 
 
 def test_all_python_node_types_are_valid():
-    expected = {"Concept", "Module", "Class", "Function", "Parameter",
-                "ReturnType", "Exception", "Deprecation", "Version", "Example"}
+    expected = {
+        "Concept",
+        "Module",
+        "Class",
+        "Function",
+        "Parameter",
+        "ReturnType",
+        "Exception",
+        "Deprecation",
+        "Version",
+        "Example",
+    }
     assert set(node_type_values("python-stdlib")) == expected
 
 
 def test_all_python_rel_types_are_valid():
-    expected = {"CONTAINS", "REQUIRES", "RETURNS", "RAISES", "DEPRECATED_BY",
-                "ALTERNATIVE_TO", "REFERENCES", "INHERITS", "IMPLEMENTS", "EXAMPLE_OF"}
+    expected = {
+        "CONTAINS",
+        "REQUIRES",
+        "RETURNS",
+        "RAISES",
+        "DEPRECATED_BY",
+        "ALTERNATIVE_TO",
+        "REFERENCES",
+        "INHERITS",
+        "IMPLEMENTS",
+        "EXAMPLE_OF",
+    }
     assert set(rel_type_values("python-stdlib")) == expected
 
 
 # ---------------------------------------------------------------------------
 # Mock LLM extraction → entity validation
 # ---------------------------------------------------------------------------
+
 
 def _make_entity(name: str, type_str: str, eid: str | None = None) -> Entity:
     return Entity(
@@ -121,6 +142,7 @@ def test_extraction_result_schema():
 # ---------------------------------------------------------------------------
 # Entity resolver
 # ---------------------------------------------------------------------------
+
 
 def test_resolver_merges_near_identical_entities():
     entities = [
@@ -205,6 +227,7 @@ def test_normalize_name_uppercases():
 # ---------------------------------------------------------------------------
 # Mock Neo4j store — nodes before edges
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_neo4j_store_loads_nodes_before_edges(mock_neo4j_driver):

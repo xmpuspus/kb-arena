@@ -14,7 +14,6 @@ import json
 
 from kb_arena.models.document import Document
 from kb_arena.models.graph import GraphContext
-from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
 
 SYSTEM_PROMPT = """You are a documentation assistant with access to both a knowledge graph and a vector index.
@@ -88,18 +87,21 @@ class HybridStrategy(Strategy):
     def _get_llm(self):
         if self._llm is None:
             from kb_arena.llm.client import LLMClient
+
             self._llm = LLMClient()
         return self._llm
 
     def _get_vector(self):
         if self._vector_strategy is None:
             from kb_arena.strategies.contextual_vector import ContextualVectorStrategy
+
             self._vector_strategy = ContextualVectorStrategy(chroma_client=self._chroma)
         return self._vector_strategy
 
     def _get_graph(self):
         if self._graph_strategy is None:
             from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
+
             self._graph_strategy = KnowledgeGraphStrategy(neo4j_driver=self._neo4j)
         return self._graph_strategy
 
@@ -118,7 +120,10 @@ class HybridStrategy(Strategy):
             return "comparison"
         if any(kw in q for kw in ["depend", "require", "affect", "downstream"]):
             return "relational"
-        if any(kw in q for kw in ["how do", "how can", "how to", "steps", "setup", "configure", "implement"]):
+        if any(
+            kw in q
+            for kw in ["how do", "how can", "how to", "steps", "setup", "configure", "implement"]
+        ):
             return "procedural"
         return "factoid"
 

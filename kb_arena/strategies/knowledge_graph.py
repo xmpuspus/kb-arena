@@ -7,12 +7,10 @@ Tracks graph_context for Sigma.js visualization.
 
 from __future__ import annotations
 
-import json
 import re
 
 from kb_arena.models.document import Document
 from kb_arena.models.graph import GraphContext
-from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
 
 # --- Cypher templates (Pattern 6 from PLAN.md) ---
@@ -102,7 +100,12 @@ def _mock_graph_context() -> GraphContext:
     return GraphContext(
         nodes=[
             {"id": "json", "name": "json", "type": "Module", "description": "JSON encoder/decoder"},
-            {"id": "json.loads", "name": "json.loads", "type": "Function", "description": "Deserialize JSON string"},
+            {
+                "id": "json.loads",
+                "name": "json.loads",
+                "type": "Function",
+                "description": "Deserialize JSON string",
+            },
         ],
         edges=[
             {"source": "json", "target": "json.loads", "type": "CONTAINS"},
@@ -179,6 +182,7 @@ class KnowledgeGraphStrategy(Strategy):
     def _get_llm(self):
         if self._llm is None:
             from kb_arena.llm.client import LLMClient
+
             self._llm = LLMClient()
         return self._llm
 
@@ -215,9 +219,9 @@ class KnowledgeGraphStrategy(Strategy):
         # Quoted names
         entities.extend(re.findall(r'["\']([^"\']+)["\']', question))
         # Dotted module paths like json.loads, os.path.join
-        entities.extend(re.findall(r'\b([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+)\b', question))
+        entities.extend(re.findall(r"\b([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+)\b", question))
         # CamelCase class names
-        entities.extend(re.findall(r'\b([A-Z][a-zA-Z0-9]+)\b', question))
+        entities.extend(re.findall(r"\b([A-Z][a-zA-Z0-9]+)\b", question))
         return list(dict.fromkeys(entities))[:3]  # deduplicate, limit
 
     async def _template_query(self, question: str, intent: str) -> tuple[list[dict], str]:

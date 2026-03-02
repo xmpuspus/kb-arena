@@ -11,6 +11,7 @@ import pytest
 def live_settings():
     """Load real settings from .env."""
     from kb_arena.settings import Settings
+
     return Settings()
 
 
@@ -18,6 +19,7 @@ def live_settings():
 def live_llm_client(live_settings):
     """Real LLM client backed by actual Anthropic API key."""
     from kb_arena.llm.client import LLMClient
+
     if not live_settings.anthropic_api_key:
         pytest.skip("KB_ARENA_ANTHROPIC_API_KEY not set in .env")
     return LLMClient(api_key=live_settings.anthropic_api_key)

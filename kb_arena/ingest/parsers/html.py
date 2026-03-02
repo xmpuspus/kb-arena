@@ -76,7 +76,7 @@ def _extract_code_blocks(container: Tag) -> list[CodeBlock]:
         if code_tag:
             for cls in code_tag.get("class", []):
                 if cls.startswith("language-"):
-                    lang = cls[len("language-"):]
+                    lang = cls[len("language-") :]
                     break
         blocks.append(CodeBlock(language=lang, code=code_text.strip()))
     return blocks
@@ -95,8 +95,9 @@ def _extract_links(container: Tag) -> list[CrossRef]:
     return refs
 
 
-def _extract_dl_sections(container: Tag, corpus: str, source: str,
-                          heading_path: list[str], seen_ids: set[str]) -> list[Section]:
+def _extract_dl_sections(
+    container: Tag, corpus: str, source: str, heading_path: list[str], seen_ids: set[str]
+) -> list[Section]:
     """Extract <dl> entries as sub-sections (function/class/method signatures)."""
     sections = []
     py_types = {"function", "method", "class", "attribute", "exception", "data"}
@@ -132,14 +133,13 @@ def _extract_dl_sections(container: Tag, corpus: str, source: str,
         )
         # Recurse into nested dl entries
         if dd:
-            sections.extend(
-                _extract_dl_sections(dd, corpus, source, child_path, seen_ids)
-            )
+            sections.extend(_extract_dl_sections(dd, corpus, source, child_path, seen_ids))
     return sections
 
 
-def _walk_sections(container: Tag, corpus: str, source: str,
-                   heading_stack: list[str], seen_ids: set[str]) -> list[Section]:
+def _walk_sections(
+    container: Tag, corpus: str, source: str, heading_stack: list[str], seen_ids: set[str]
+) -> list[Section]:
     sections: list[Section] = []
 
     for child in container.children:
@@ -174,8 +174,9 @@ def _walk_sections(container: Tag, corpus: str, source: str,
                     heading_stack = heading_stack[: level - 1] + [title]
                     content = child.get_text(separator=" ", strip=True)
                     sid = _unique_id(_slugify(title), seen_ids)
-                    dl_sections = _extract_dl_sections(child, corpus, source,
-                                                       list(heading_stack), seen_ids)
+                    dl_sections = _extract_dl_sections(
+                        child, corpus, source, list(heading_stack), seen_ids
+                    )
                     sections.append(
                         Section(
                             id=sid,
@@ -191,16 +192,12 @@ def _walk_sections(container: Tag, corpus: str, source: str,
                     )
                     sections.extend(dl_sections)
                 else:
-                    sections.extend(
-                        _walk_sections(child, corpus, source, heading_stack, seen_ids)
-                    )
+                    sections.extend(_walk_sections(child, corpus, source, heading_stack, seen_ids))
                 continue
 
         # Recurse into any other container
         if child.name in ("article", "main", "body"):
-            sections.extend(
-                _walk_sections(child, corpus, source, heading_stack, seen_ids)
-            )
+            sections.extend(_walk_sections(child, corpus, source, heading_stack, seen_ids))
 
     return sections
 
@@ -218,7 +215,8 @@ class HtmlParser:
         title_tag = soup.find("title")
         h1 = soup.find("h1")
         doc_title = (
-            title_tag.get_text(strip=True) if title_tag
+            title_tag.get_text(strip=True)
+            if title_tag
             else (h1.get_text(strip=True) if h1 else path.stem)
         )
 

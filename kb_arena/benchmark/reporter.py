@@ -69,15 +69,18 @@ def _build_markdown(results: list[BenchmarkResult]) -> str:
         for r in corpus_results:
             overall_acc = (
                 sum(r.accuracy_by_tier.values()) / len(r.accuracy_by_tier)
-                if r.accuracy_by_tier else 0.0
+                if r.accuracy_by_tier
+                else 0.0
             )
             overall_comp = (
                 sum(r.completeness_by_tier.values()) / len(r.completeness_by_tier)
-                if r.completeness_by_tier else 0.0
+                if r.completeness_by_tier
+                else 0.0
             )
             overall_faith = (
                 sum(r.faithfulness_by_tier.values()) / len(r.faithfulness_by_tier)
-                if r.faithfulness_by_tier else 0.0
+                if r.faithfulness_by_tier
+                else 0.0
             )
             lines.append(
                 f"| {r.strategy} "
@@ -93,12 +96,8 @@ def _build_markdown(results: list[BenchmarkResult]) -> str:
         # 2. Latency Distribution by Strategy
         lines.append("### Latency Distribution by Strategy")
         lines.append("")
-        lines.append(
-            "| Strategy | Avg | p50 | p95 | p99 | Min | Max |"
-        )
-        lines.append(
-            "|----------|-----|-----|-----|-----|-----|-----|"
-        )
+        lines.append("| Strategy | Avg | p50 | p95 | p99 | Min | Max |")
+        lines.append("|----------|-----|-----|-----|-----|-----|-----|")
         for r in corpus_results:
             lat = r.latency
             lines.append(
@@ -141,7 +140,9 @@ def _build_markdown(results: list[BenchmarkResult]) -> str:
         if tiers:
             lines.append("### Accuracy by Tier")
             lines.append("")
-            header = "| Strategy | " + " | ".join(TIER_LABELS.get(t, f"Tier {t}") for t in tiers) + " |"
+            header = (
+                "| Strategy | " + " | ".join(TIER_LABELS.get(t, f"Tier {t}") for t in tiers) + " |"
+            )
             sep = "|----------|" + "|".join("----------" for _ in tiers) + "|"
             lines.append(header)
             lines.append(sep)
@@ -172,7 +173,9 @@ def _build_markdown(results: list[BenchmarkResult]) -> str:
         if tiers:
             lines.append("### Latency by Tier (p50 ms)")
             lines.append("")
-            header = "| Strategy | " + " | ".join(TIER_LABELS.get(t, f"Tier {t}") for t in tiers) + " |"
+            header = (
+                "| Strategy | " + " | ".join(TIER_LABELS.get(t, f"Tier {t}") for t in tiers) + " |"
+            )
             sep = "|----------|" + "|".join("----------" for _ in tiers) + "|"
             lines.append(header)
             lines.append(sep)
@@ -252,8 +255,12 @@ def _build_summary(results: list[BenchmarkResult]) -> dict:
             "accuracy_overall": round(overall, 4),
             "accuracy_by_tier": {str(k): round(v, 4) for k, v in r.accuracy_by_tier.items()},
             "accuracy_by_type": {str(k): round(v, 4) for k, v in r.accuracy_by_type.items()},
-            "completeness_by_tier": {str(k): round(v, 4) for k, v in r.completeness_by_tier.items()},
-            "faithfulness_by_tier": {str(k): round(v, 4) for k, v in r.faithfulness_by_tier.items()},
+            "completeness_by_tier": {
+                str(k): round(v, 4) for k, v in r.completeness_by_tier.items()
+            },
+            "faithfulness_by_tier": {
+                str(k): round(v, 4) for k, v in r.faithfulness_by_tier.items()
+            },
             "latency": {
                 "avg_ms": round(r.latency.avg_ms, 1),
                 "p50_ms": round(r.latency.p50_ms, 1),

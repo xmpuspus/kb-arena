@@ -83,6 +83,7 @@ class QnAPairStrategy(Strategy):
     def _get_llm(self):
         if self._llm is None:
             from kb_arena.llm.client import LLMClient
+
             self._llm = LLMClient()
         return self._llm
 
@@ -135,20 +136,22 @@ class QnAPairStrategy(Strategy):
                     pair_counter += 1
                     ids.append(pair_id)
                     questions.append(q)
-                    metadatas.append({
-                        "answer": a[:2000],  # ChromaDB metadata value limit
-                        "source_id": doc.id,
-                        "section_id": section.id,
-                        "section_ref": pair.get("section_ref", ""),
-                    })
+                    metadatas.append(
+                        {
+                            "answer": a[:2000],  # ChromaDB metadata value limit
+                            "source_id": doc.id,
+                            "section_id": section.id,
+                            "section_ref": pair.get("section_ref", ""),
+                        }
+                    )
 
         if ids:
             batch = 500
             for start in range(0, len(ids), batch):
                 collection.upsert(
-                    ids=ids[start:start + batch],
-                    documents=questions[start:start + batch],
-                    metadatas=metadatas[start:start + batch],
+                    ids=ids[start : start + batch],
+                    documents=questions[start : start + batch],
+                    metadatas=metadatas[start : start + batch],
                 )
 
     async def query(self, question: str, top_k: int = 5) -> AnswerResult:

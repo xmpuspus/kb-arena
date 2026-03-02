@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from kb_arena.models.document import CodeBlock, CrossRef, Document, Section
-from kb_arena.strategies.naive_vector import NaiveVectorStrategy
 from kb_arena.strategies.contextual_vector import ContextualVectorStrategy, _enrich_chunk
 from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
+from kb_arena.strategies.naive_vector import NaiveVectorStrategy
 
 pytestmark = pytest.mark.live
 
@@ -38,11 +36,15 @@ def _make_json_docs() -> list[Document]:
                     code_blocks=[
                         CodeBlock(
                             language="python",
-                            code='>>> json.loads(\'{"key": "value"}\')\n{\'key\': \'value\'}',
+                            code=">>> json.loads('{\"key\": \"value\"}')\n{'key': 'value'}",
                             description="Basic json.loads usage",
                         )
                     ],
-                    links=[CrossRef(target="json.JSONDecodeError", label="JSONDecodeError", ref_type="class")],
+                    links=[
+                        CrossRef(
+                            target="json.JSONDecodeError", label="JSONDecodeError", ref_type="class"
+                        )
+                    ],
                     level=2,
                 )
             ],
@@ -205,12 +207,15 @@ async def test_naive_vector_answers_exception_question(naive_strategy_with_index
     )
     assert result.answer
     # Should mention JSONDecodeError
-    assert "JSONDecodeError" in result.answer or "valueerror" in result.answer.lower() or "exception" in result.answer.lower()
+    assert (
+        "JSONDecodeError" in result.answer
+        or "valueerror" in result.answer.lower()
+        or "exception" in result.answer.lower()
+    )
 
 
 async def test_contextual_vector_chunks_have_heading(json_docs):
     """Contextual strategy prepends heading_path to each chunk."""
-    from kb_arena.strategies.contextual_vector import _enrich_chunk
 
     section = json_docs[0].sections[0]
     chunk = "some chunk text"
@@ -220,9 +225,7 @@ async def test_contextual_vector_chunks_have_heading(json_docs):
 
 
 async def test_contextual_vector_answers_question(contextual_strategy_with_index):
-    result = await contextual_strategy_with_index.query(
-        "What does json.loads do?", top_k=3
-    )
+    result = await contextual_strategy_with_index.query("What does json.loads do?", top_k=3)
     assert result.answer
     assert result.strategy == "contextual_vector"
     assert len(result.answer) > 20

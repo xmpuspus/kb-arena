@@ -25,7 +25,7 @@ class SessionMemory:
 
         # Keep only the last MAX_TURNS messages (pairs of user+assistant)
         if len(self._history) > MAX_TURNS * 2:
-            self._history = self._history[-(MAX_TURNS * 2):]
+            self._history = self._history[-(MAX_TURNS * 2) :]
 
     def get_history(self) -> list[dict]:
         """Return a copy of the current history."""

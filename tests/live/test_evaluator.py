@@ -74,6 +74,7 @@ def test_structural_empty_constraints():
 def test_structural_no_llm_needed():
     """Structural check is synchronous and has no LLM dependency."""
     import time
+
     constraints = Constraints(must_mention=["word"])
     t0 = time.perf_counter()
     for _ in range(100):
@@ -92,7 +93,9 @@ async def test_perfect_answer_high_score(live_llm_client, json_ground_truth, jso
     assert score.faithfulness >= 0.8
 
 
-async def test_partially_correct_answer_mid_score(live_llm_client, json_ground_truth, json_constraints):
+async def test_partially_correct_answer_mid_score(
+    live_llm_client, json_ground_truth, json_constraints
+):
     answer = "json.loads is used for deserializ data but I'm not sure about the details."
     score = await evaluate(answer, json_ground_truth, json_constraints, llm=live_llm_client)
     # Partial answer — expect middle range
@@ -130,9 +133,10 @@ async def test_missing_all_must_mention_low_score(live_llm_client):
 
 async def test_judge_parses_json_output(live_llm_client):
     """LLM judge must return parseable JSON with required fields."""
-    from kb_arena.benchmark.evaluator import JUDGE_SYSTEM_PROMPT
     import json
     import re
+
+    from kb_arena.benchmark.evaluator import JUDGE_SYSTEM_PROMPT
 
     raw = await live_llm_client.judge(
         answer="json.loads parses a JSON string.",
@@ -219,12 +223,16 @@ async def test_five_wrong_answers_all_caught(live_llm_client):
         },
         {
             "answer": "The os module handles JSON serialization.",
-            "ground_truth": GroundTruth(answer="The os module provides OS-dependent functionality."),
+            "ground_truth": GroundTruth(
+                answer="The os module provides OS-dependent functionality."
+            ),
             "constraints": Constraints(must_mention=["os"]),
         },
         {
             "answer": "json.dumps reads data from a file on disk.",
-            "ground_truth": GroundTruth(answer="json.dumps serializes Python objects to JSON strings."),
+            "ground_truth": GroundTruth(
+                answer="json.dumps serializes Python objects to JSON strings."
+            ),
             "constraints": Constraints(must_mention=["json.dumps", "serial"]),
         },
         {
@@ -243,6 +251,5 @@ async def test_five_wrong_answers_all_caught(live_llm_client):
             pair["answer"], pair["ground_truth"], pair["constraints"], llm=live_llm_client
         )
         assert score.accuracy <= 0.6, (
-            f"Wrong answer scored too high: {score.accuracy}\n"
-            f"Answer: {pair['answer']}"
+            f"Wrong answer scored too high: {score.accuracy}\nAnswer: {pair['answer']}"
         )

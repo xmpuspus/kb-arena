@@ -38,15 +38,19 @@ def _structural_check(answer: str, constraints: Constraints) -> Score:
     answer_lower = answer.lower()
 
     mentions_found = [
-        term for term in constraints.must_mention
+        term
+        for term in constraints.must_mention
         if re.search(re.escape(term.lower()), answer_lower)
     ]
     false_claims = [
-        term for term in constraints.must_not_claim
+        term
+        for term in constraints.must_not_claim
         if re.search(re.escape(term.lower()), answer_lower)
     ]
 
-    mention_ratio = len(mentions_found) / len(constraints.must_mention) if constraints.must_mention else 1.0
+    mention_ratio = (
+        len(mentions_found) / len(constraints.must_mention) if constraints.must_mention else 1.0
+    )
 
     if false_claims:
         return Score(
@@ -76,10 +80,7 @@ def _check_entity_coverage(
     if not required_entities:
         return 1.0, []
     answer_lower = answer.lower()
-    found = [
-        ent for ent in required_entities
-        if re.search(re.escape(ent.lower()), answer_lower)
-    ]
+    found = [ent for ent in required_entities if re.search(re.escape(ent.lower()), answer_lower)]
     ratio = len(found) / len(required_entities)
     return ratio, found
 
@@ -125,16 +126,12 @@ async def evaluate(
     score = _structural_check(answer, constraints)
 
     # Entity coverage
-    entity_ratio, entities_found = _check_entity_coverage(
-        answer, ground_truth.required_entities
-    )
+    entity_ratio, entities_found = _check_entity_coverage(answer, ground_truth.required_entities)
     score.entity_coverage = entity_ratio
     score.entities_found = entities_found
 
     # Source attribution
-    score.source_attribution = _check_source_attribution(
-        sources or [], ground_truth.source_refs
-    )
+    score.source_attribution = _check_source_attribution(sources or [], ground_truth.source_refs)
 
     if not score.structural_pass or llm is None:
         return score

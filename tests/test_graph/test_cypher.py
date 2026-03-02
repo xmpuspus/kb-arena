@@ -11,6 +11,7 @@ from kb_arena.graph.cypher_generator import CypherGenerator, _pick_template, _va
 
 # ── Template parameter coverage ────────────────────────────────────────────────
 
+
 def test_single_entity_lookup_has_fqn_param():
     assert "$fqn" in cypher_templates.SINGLE_ENTITY_LOOKUP
 
@@ -55,6 +56,7 @@ def test_fulltext_search_has_query_and_limit():
 
 # ── Template selection ─────────────────────────────────────────────────────────
 
+
 def test_pick_template_deprecation():
     assert _pick_template("what deprecated this function?") == "DEPRECATION_CHAIN"
 
@@ -81,6 +83,7 @@ def test_pick_template_returns_none_for_unknown():
 
 # ── Cypher validation ──────────────────────────────────────────────────────────
 
+
 def test_validate_cypher_accepts_match():
     assert _validate_cypher("MATCH (n) RETURN n") is True
 
@@ -95,6 +98,7 @@ def test_validate_cypher_rejects_plain_text():
 
 
 # ── CypherGenerator fallback ───────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_generator_uses_llm_when_valid():

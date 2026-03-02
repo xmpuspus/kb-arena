@@ -199,8 +199,13 @@ def _extract_rst_xrefs(text: str) -> list[CrossRef]:
     for m in _RST_ROLE.finditer(text):
         role, target = m.group(1), m.group(2)
         if role in _RST_XREF_TYPES:
-            ref_type = {"func": "function", "class": "class", "mod": "module",
-                        "meth": "method", "attr": "attribute"}.get(role, role)
+            ref_type = {
+                "func": "function",
+                "class": "class",
+                "mod": "module",
+                "meth": "method",
+                "attr": "attribute",
+            }.get(role, role)
             refs.append(CrossRef(target=target, label=target, ref_type=ref_type))
     return refs
 
@@ -232,7 +237,9 @@ def _extract_rst_code_blocks(lines: list[str]) -> list[CodeBlock]:
             while i < len(lines) and lines[i].strip() == "":
                 i += 1
             code_lines = []
-            while i < len(lines) and (lines[i].startswith("   ") or lines[i].startswith("\t") or lines[i].strip() == ""):
+            while i < len(lines) and (
+                lines[i].startswith("   ") or lines[i].startswith("\t") or lines[i].strip() == ""
+            ):
                 code_lines.append(lines[i].strip())
                 i += 1
             if code_lines:
@@ -311,8 +318,13 @@ def _parse_rst(text: str, source: str, corpus: str) -> list[Document]:
             continue
 
         # Overline+title+underline style (decorative heading)
-        if (line and len(set(line.strip())) == 1 and line[0] in _RST_UNDERLINE_CHARS
-                and i + 2 < len(lines) and _is_rst_underline(lines[i + 2], lines[i + 1])):
+        if (
+            line
+            and len(set(line.strip())) == 1
+            and line[0] in _RST_UNDERLINE_CHARS
+            and i + 2 < len(lines)
+            and _is_rst_underline(lines[i + 2], lines[i + 1])
+        ):
             ch = line[0]
             if ch not in level_map:
                 level_map[ch] = len(level_map) + 1
@@ -345,10 +357,7 @@ def _parse_rst(text: str, source: str, corpus: str) -> list[Document]:
         heading_path = list(heading_stack)
 
         # Strip directive lines from content text
-        content_lines = [
-            l for l in body_lines
-            if not _RST_DIRECTIVE.match(l)
-        ]
+        content_lines = [l for l in body_lines if not _RST_DIRECTIVE.match(l)]
         content = "\n".join(content_lines).strip()
 
         links = _extract_rst_xrefs("\n".join(body_lines))
@@ -385,6 +394,7 @@ def _parse_rst(text: str, source: str, corpus: str) -> list[Document]:
 # ---------------------------------------------------------------------------
 # Public interface
 # ---------------------------------------------------------------------------
+
 
 class MarkdownParser:
     def parse(self, path: Path, corpus: str) -> list[Document]:

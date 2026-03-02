@@ -140,9 +140,7 @@ async def _extract_section(
     return _validate_result(raw, corpus, section.id)
 
 
-async def extract_document(
-    doc: Document, llm: LLMClient, system_prompt: str
-) -> ExtractionResult:
+async def extract_document(doc: Document, llm: LLMClient, system_prompt: str) -> ExtractionResult:
     """Extract all entities/relationships from a document's sections."""
     all_entities: list[Entity] = []
     all_relationships: list[Relationship] = []
@@ -155,9 +153,7 @@ async def extract_document(
     # Entity resolution across the whole document
     merged_pairs, review_queue = resolve_entities(all_entities)
     if review_queue:
-        logger.info(
-            "Document %s: %d entity pairs queued for review", doc.id, len(review_queue)
-        )
+        logger.info("Document %s: %d entity pairs queued for review", doc.id, len(review_queue))
 
     # Remove absorbed entities
     absorbed_ids = {pair[1] for pair in merged_pairs if pair[1] != pair[2]}

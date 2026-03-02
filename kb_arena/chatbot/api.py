@@ -10,8 +10,8 @@ import json
 import logging
 import time
 from collections import defaultdict
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
@@ -45,13 +45,13 @@ def _check_rate_limit(client_ip: str) -> bool:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize all services. Store on app.state. (Pattern 11 from PLAN.md)"""
+    from kb_arena.chatbot.router import IntentRouter
     from kb_arena.llm.client import LLMClient
     from kb_arena.strategies.contextual_vector import ContextualVectorStrategy
     from kb_arena.strategies.hybrid import HybridStrategy
     from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
     from kb_arena.strategies.naive_vector import NaiveVectorStrategy
     from kb_arena.strategies.qna_pairs import QnAPairStrategy
-    from kb_arena.chatbot.router import IntentRouter
 
     # LLM client (shared across strategies)
     llm = LLMClient()
@@ -61,6 +61,7 @@ async def lifespan(app: FastAPI):
     app.state.neo4j = None
     try:
         import neo4j
+
         driver = neo4j.AsyncGraphDatabase.driver(
             settings.neo4j_uri,
             auth=(settings.neo4j_user, settings.neo4j_password),
@@ -73,6 +74,7 @@ async def lifespan(app: FastAPI):
 
     # ChromaDB (always available — local file)
     import chromadb
+
     chroma = chromadb.PersistentClient(path=settings.chroma_path)
     app.state.chroma = chroma
 
@@ -196,20 +198,24 @@ async def chat_stream(body: ChatRequest, request: Request) -> EventSourceRespons
         graph_ctx = strategy.last_graph_context
         yield {
             "event": "done",
-            "data": json.dumps({
-                "sources": strategy.last_sources,
-                "graph_context": graph_ctx.model_dump() if graph_ctx else None,
-                "strategy_used": strategy.name,
-            }),
+            "data": json.dumps(
+                {
+                    "sources": strategy.last_sources,
+                    "graph_context": graph_ctx.model_dump() if graph_ctx else None,
+                    "strategy_used": strategy.name,
+                }
+            ),
         }
 
         yield {
             "event": "meta",
-            "data": json.dumps({
-                "latency_ms": strategy.last_latency_ms,
-                "tokens_used": strategy.last_tokens_used,
-                "cost_usd": strategy.last_cost_usd,
-            }),
+            "data": json.dumps(
+                {
+                    "latency_ms": strategy.last_latency_ms,
+                    "tokens_used": strategy.last_tokens_used,
+                    "cost_usd": strategy.last_cost_usd,
+                }
+            ),
         }
 
     return EventSourceResponse(event_generator())

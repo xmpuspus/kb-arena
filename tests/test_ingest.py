@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
@@ -12,7 +11,6 @@ from kb_arena.ingest.parsers.markdown import MarkdownParser
 from kb_arena.ingest.parsers.sec_edgar import SecEdgarParser
 from kb_arena.ingest.pipeline import run_ingest
 from kb_arena.models.document import Document
-
 
 # ---------------------------------------------------------------------------
 # Sample fixtures
@@ -121,6 +119,7 @@ SAMPLE_SEC_HTML = """\
 # Markdown parser tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def md_parser(tmp_path):
     p = tmp_path / "json.md"
@@ -190,6 +189,7 @@ def test_markdown_token_count(md_parser):
 # RST parser tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def rst_parser(tmp_path):
     p = tmp_path / "json.rst"
@@ -232,6 +232,7 @@ def test_rst_code_block_extracted(rst_parser):
 # ---------------------------------------------------------------------------
 # HTML parser tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def html_parser(tmp_path):
@@ -295,6 +296,7 @@ def test_html_cross_ref_extracted(html_parser):
 # SEC EDGAR parser tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def sec_parser(tmp_path):
     p = tmp_path / "acme-10k.html"
@@ -344,6 +346,7 @@ def test_sec_heading_path(sec_parser):
 # Pipeline JSONL output tests
 # ---------------------------------------------------------------------------
 
+
 def test_pipeline_writes_jsonl(tmp_path):
     # Create a small markdown corpus
     raw_dir = tmp_path / "raw"
@@ -353,6 +356,7 @@ def test_pipeline_writes_jsonl(tmp_path):
 
     # Override datasets dir to tmp_path
     import os
+
     original_cwd = os.getcwd()
     os.chdir(tmp_path)
     try:
@@ -378,6 +382,7 @@ def test_pipeline_each_line_valid_document(tmp_path):
     (raw_dir / "test.md").write_text(SAMPLE_MARKDOWN, encoding="utf-8")
 
     import os
+
     original_cwd = os.getcwd()
     os.chdir(tmp_path)
     try:
@@ -401,6 +406,7 @@ def test_pipeline_auto_detects_html(tmp_path):
     (raw_dir / "page.html").write_text(SAMPLE_HTML, encoding="utf-8")
 
     import os
+
     original_cwd = os.getcwd()
     os.chdir(tmp_path)
     try:
@@ -421,6 +427,7 @@ def test_pipeline_single_file(tmp_path):
     md_file.write_text("# Solo Doc\n\nJust one file.\n", encoding="utf-8")
 
     import os
+
     original_cwd = os.getcwd()
     os.chdir(tmp_path)
     try:
@@ -437,6 +444,7 @@ def test_pipeline_single_file(tmp_path):
 # ---------------------------------------------------------------------------
 # Heading path depth tests
 # ---------------------------------------------------------------------------
+
 
 def test_heading_path_three_levels(tmp_path):
     content = "# Top\n\n## Middle\n\n### Deep\n\nContent here.\n"

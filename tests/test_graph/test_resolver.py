@@ -15,6 +15,7 @@ def _make_entity(name: str, fqn: str, type_: str = "Function") -> Entity:
 
 # ── normalize_name ─────────────────────────────────────────────────────────────
 
+
 def test_normalize_strips_parens():
     assert normalize_name("json.loads()") == "JSON.LOADS"
 
@@ -32,6 +33,7 @@ def test_normalize_uppercases():
 
 
 # ── resolve_entities ───────────────────────────────────────────────────────────
+
 
 def test_auto_merge_very_similar():
     """Score >= MERGE_THRESHOLD triggers auto-merge."""

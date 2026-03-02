@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import json
-import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
-from kb_arena.models.graph import GraphContext
 from kb_arena.strategies.base import AnswerResult
 
 
-def _make_mock_strategy(name: str, answer: str = "mock answer", sources: list | None = None) -> MagicMock:
+def _make_mock_strategy(
+    name: str, answer: str = "mock answer", sources: list | None = None
+) -> MagicMock:
     strategy = MagicMock()
     strategy.name = name
     strategy.last_sources = sources or ["doc1"]
@@ -35,6 +35,7 @@ def _make_mock_strategy(name: str, answer: str = "mock answer", sources: list | 
     async def _stream(question, history=None):
         for word in answer.split():
             yield word + " "
+
     strategy.stream_answer = _stream
     return strategy
 
@@ -60,6 +61,7 @@ def app_client():
 # ---------------------------------------------------------------------------
 # GET /health
 # ---------------------------------------------------------------------------
+
 
 def test_health_returns_200(app_client):
     r = app_client.get("/health")
@@ -89,6 +91,7 @@ def test_health_lists_strategies(app_client):
 # GET /strategies
 # ---------------------------------------------------------------------------
 
+
 def test_strategies_returns_200(app_client):
     r = app_client.get("/strategies")
     assert r.status_code == 200
@@ -110,46 +113,61 @@ def test_strategies_returns_all_five(app_client):
 # POST /chat — happy path
 # ---------------------------------------------------------------------------
 
+
 def test_chat_returns_200(app_client):
-    r = app_client.post("/chat", json={"query": "What does json.loads do?", "strategy": "naive_vector"})
+    r = app_client.post(
+        "/chat", json={"query": "What does json.loads do?", "strategy": "naive_vector"}
+    )
     assert r.status_code == 200
 
 
 def test_chat_response_has_answer(app_client):
-    r = app_client.post("/chat", json={"query": "What does json.loads do?", "strategy": "naive_vector"})
+    r = app_client.post(
+        "/chat", json={"query": "What does json.loads do?", "strategy": "naive_vector"}
+    )
     data = r.json()
     assert "answer" in data
     assert data["answer"]
 
 
 def test_chat_response_has_strategy_used(app_client):
-    r = app_client.post("/chat", json={"query": "What does json.loads do?", "strategy": "naive_vector"})
+    r = app_client.post(
+        "/chat", json={"query": "What does json.loads do?", "strategy": "naive_vector"}
+    )
     data = r.json()
     assert data["strategy_used"] == "naive_vector"
 
 
 def test_chat_response_has_sources(app_client):
-    r = app_client.post("/chat", json={"query": "What does json.loads do?", "strategy": "naive_vector"})
+    r = app_client.post(
+        "/chat", json={"query": "What does json.loads do?", "strategy": "naive_vector"}
+    )
     data = r.json()
     assert "sources" in data
     assert isinstance(data["sources"], list)
 
 
 def test_chat_response_has_latency_ms(app_client):
-    r = app_client.post("/chat", json={"query": "What does json.loads do?", "strategy": "naive_vector"})
+    r = app_client.post(
+        "/chat", json={"query": "What does json.loads do?", "strategy": "naive_vector"}
+    )
     data = r.json()
     assert "latency_ms" in data
     assert isinstance(data["latency_ms"], (int, float))
 
 
 def test_chat_response_has_tokens_used(app_client):
-    r = app_client.post("/chat", json={"query": "What does json.loads do?", "strategy": "naive_vector"})
+    r = app_client.post(
+        "/chat", json={"query": "What does json.loads do?", "strategy": "naive_vector"}
+    )
     data = r.json()
     assert "tokens_used" in data
 
 
 def test_chat_response_has_cost_usd(app_client):
-    r = app_client.post("/chat", json={"query": "What does json.loads do?", "strategy": "naive_vector"})
+    r = app_client.post(
+        "/chat", json={"query": "What does json.loads do?", "strategy": "naive_vector"}
+    )
     data = r.json()
     assert "cost_usd" in data
 
@@ -165,13 +183,17 @@ def test_chat_default_strategy_is_hybrid(app_client):
 # POST /chat — each strategy
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("strategy", [
-    "naive_vector",
-    "contextual_vector",
-    "qna_pairs",
-    "knowledge_graph",
-    "hybrid",
-])
+
+@pytest.mark.parametrize(
+    "strategy",
+    [
+        "naive_vector",
+        "contextual_vector",
+        "qna_pairs",
+        "knowledge_graph",
+        "hybrid",
+    ],
+)
 def test_chat_each_strategy(app_client, strategy):
     r = app_client.post("/chat", json={"query": "What is X?", "strategy": strategy})
     assert r.status_code == 200
@@ -182,6 +204,7 @@ def test_chat_each_strategy(app_client, strategy):
 # ---------------------------------------------------------------------------
 # POST /chat — error cases
 # ---------------------------------------------------------------------------
+
 
 def test_chat_invalid_strategy_returns_error(app_client):
     r = app_client.post("/chat", json={"query": "What is X?", "strategy": "nonexistent"})
@@ -211,33 +234,43 @@ def test_chat_wrong_content_type_returns_422(app_client):
 # POST /chat — history handling
 # ---------------------------------------------------------------------------
 
+
 def test_chat_with_empty_history(app_client):
-    r = app_client.post("/chat", json={
-        "query": "What is X?",
-        "strategy": "naive_vector",
-        "history": [],
-    })
+    r = app_client.post(
+        "/chat",
+        json={
+            "query": "What is X?",
+            "strategy": "naive_vector",
+            "history": [],
+        },
+    )
     assert r.status_code == 200
 
 
 def test_chat_with_history(app_client):
-    r = app_client.post("/chat", json={
-        "query": "Follow-up question.",
-        "strategy": "naive_vector",
-        "history": [
-            {"role": "user", "content": "What is json.loads?"},
-            {"role": "assistant", "content": "It parses JSON strings."},
-        ],
-    })
+    r = app_client.post(
+        "/chat",
+        json={
+            "query": "Follow-up question.",
+            "strategy": "naive_vector",
+            "history": [
+                {"role": "user", "content": "What is json.loads?"},
+                {"role": "assistant", "content": "It parses JSON strings."},
+            ],
+        },
+    )
     assert r.status_code == 200
 
 
 def test_chat_with_extra_fields_ignored(app_client):
-    r = app_client.post("/chat", json={
-        "query": "What is X?",
-        "strategy": "naive_vector",
-        "unknown_field": "ignored",
-    })
+    r = app_client.post(
+        "/chat",
+        json={
+            "query": "What is X?",
+            "strategy": "naive_vector",
+            "unknown_field": "ignored",
+        },
+    )
     assert r.status_code == 200
 
 
@@ -245,13 +278,18 @@ def test_chat_with_extra_fields_ignored(app_client):
 # POST /chat/stream — SSE events
 # ---------------------------------------------------------------------------
 
+
 def test_chat_stream_returns_200(app_client):
-    with app_client.stream("POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}) as r:
+    with app_client.stream(
+        "POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}
+    ) as r:
         assert r.status_code == 200
 
 
 def test_chat_stream_content_type_is_sse(app_client):
-    with app_client.stream("POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}) as r:
+    with app_client.stream(
+        "POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}
+    ) as r:
         ct = r.headers.get("content-type", "")
         assert "text/event-stream" in ct
 
@@ -261,9 +299,9 @@ def _parse_sse_events(body: str) -> list[dict]:
     current = {}
     for line in body.splitlines():
         if line.startswith("event:"):
-            current["event"] = line[len("event:"):].strip()
+            current["event"] = line[len("event:") :].strip()
         elif line.startswith("data:"):
-            current["data"] = line[len("data:"):].strip()
+            current["data"] = line[len("data:") :].strip()
         elif line == "" and current:
             events.append(current)
             current = {}
@@ -273,7 +311,9 @@ def _parse_sse_events(body: str) -> list[dict]:
 
 
 def test_chat_stream_has_message_id_event(app_client):
-    with app_client.stream("POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}) as r:
+    with app_client.stream(
+        "POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}
+    ) as r:
         body = r.read().decode()
 
     events = _parse_sse_events(body)
@@ -283,7 +323,10 @@ def test_chat_stream_has_message_id_event(app_client):
 
 def test_chat_stream_message_id_is_uuid(app_client):
     import re
-    with app_client.stream("POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}) as r:
+
+    with app_client.stream(
+        "POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}
+    ) as r:
         body = r.read().decode()
 
     events = _parse_sse_events(body)
@@ -295,7 +338,9 @@ def test_chat_stream_message_id_is_uuid(app_client):
 
 
 def test_chat_stream_has_done_event(app_client):
-    with app_client.stream("POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}) as r:
+    with app_client.stream(
+        "POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}
+    ) as r:
         body = r.read().decode()
 
     events = _parse_sse_events(body)
@@ -304,7 +349,9 @@ def test_chat_stream_has_done_event(app_client):
 
 
 def test_chat_stream_done_event_has_sources(app_client):
-    with app_client.stream("POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}) as r:
+    with app_client.stream(
+        "POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}
+    ) as r:
         body = r.read().decode()
 
     events = _parse_sse_events(body)
@@ -316,7 +363,9 @@ def test_chat_stream_done_event_has_sources(app_client):
 
 
 def test_chat_stream_has_meta_event(app_client):
-    with app_client.stream("POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}) as r:
+    with app_client.stream(
+        "POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}
+    ) as r:
         body = r.read().decode()
 
     events = _parse_sse_events(body)
@@ -325,7 +374,9 @@ def test_chat_stream_has_meta_event(app_client):
 
 
 def test_chat_stream_meta_has_latency(app_client):
-    with app_client.stream("POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}) as r:
+    with app_client.stream(
+        "POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}
+    ) as r:
         body = r.read().decode()
 
     events = _parse_sse_events(body)
@@ -339,7 +390,9 @@ def test_chat_stream_meta_has_latency(app_client):
 
 def test_chat_stream_event_order(app_client):
     """message_id must come before token events, done comes before meta."""
-    with app_client.stream("POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}) as r:
+    with app_client.stream(
+        "POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}
+    ) as r:
         body = r.read().decode()
 
     events = _parse_sse_events(body)
@@ -355,13 +408,16 @@ def test_chat_stream_event_order(app_client):
 
 
 def test_chat_stream_invalid_strategy_returns_error(app_client):
-    with app_client.stream("POST", "/chat/stream", json={"query": "X?", "strategy": "nonexistent"}) as r:
+    with app_client.stream(
+        "POST", "/chat/stream", json={"query": "X?", "strategy": "nonexistent"}
+    ) as r:
         assert r.status_code in (400, 422)
 
 
 # ---------------------------------------------------------------------------
 # CORS headers
 # ---------------------------------------------------------------------------
+
 
 def test_cors_headers_present(app_client):
     r = app_client.options(
@@ -379,19 +435,26 @@ def test_cors_headers_present(app_client):
 # Special input handling
 # ---------------------------------------------------------------------------
 
+
 def test_chat_unicode_query(app_client):
-    r = app_client.post("/chat", json={
-        "query": "什么是 json.loads？ مرحبا 🐍",
-        "strategy": "naive_vector",
-    })
+    r = app_client.post(
+        "/chat",
+        json={
+            "query": "什么是 json.loads？ مرحبا 🐍",
+            "strategy": "naive_vector",
+        },
+    )
     assert r.status_code == 200
 
 
 def test_chat_special_characters(app_client):
-    r = app_client.post("/chat", json={
-        "query": 'What about <script> tags & "quotes" and \'apostrophes\'?',
-        "strategy": "naive_vector",
-    })
+    r = app_client.post(
+        "/chat",
+        json={
+            "query": "What about <script> tags & \"quotes\" and 'apostrophes'?",
+            "strategy": "naive_vector",
+        },
+    )
     assert r.status_code == 200
 
 
@@ -410,14 +473,18 @@ def test_chat_very_long_query(app_client):
 # Concurrent requests
 # ---------------------------------------------------------------------------
 
+
 def test_concurrent_chat_requests(app_client):
     import concurrent.futures
 
     def make_request(n):
-        return app_client.post("/chat", json={
-            "query": f"Question number {n}?",
-            "strategy": "naive_vector",
-        })
+        return app_client.post(
+            "/chat",
+            json={
+                "query": f"Question number {n}?",
+                "strategy": "naive_vector",
+            },
+        )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
         futures = [pool.submit(make_request, i) for i in range(10)]

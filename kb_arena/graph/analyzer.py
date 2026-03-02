@@ -101,9 +101,7 @@ class GraphAnalyzer:
         )
         return [set(c) for c in communities]
 
-    async def find_dependency_chains(
-        self, start_fqn: str, max_depth: int = 4
-    ) -> list[list[str]]:
+    async def find_dependency_chains(self, start_fqn: str, max_depth: int = 4) -> list[list[str]]:
         """Find all simple paths from start_fqn up to max_depth hops.
 
         Caps at 100 paths to avoid combinatorial explosion (climate-money-ph lesson).

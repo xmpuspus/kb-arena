@@ -33,6 +33,7 @@ def _make_strategy(name: str, answer: str = "A helpful answer.", sources: list |
     async def _stream(question, history=None):
         for word in answer.split():
             yield word + " "
+
     strategy.stream_answer = _stream
     return strategy
 
@@ -112,5 +113,6 @@ def live_client():
         pytest.skip("Live tests require KB_ARENA_ANTHROPIC_API_KEY")
 
     from kb_arena.chatbot.api import app
+
     with TestClient(app) as c:
         yield c

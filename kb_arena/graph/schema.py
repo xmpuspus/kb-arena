@@ -6,6 +6,7 @@ from enum import Enum
 
 # ── Python stdlib schema ──────────────────────────────────────────────────────
 
+
 class NodeType(str, Enum):
     CONCEPT = "Concept"
     MODULE = "Module"
@@ -20,19 +21,20 @@ class NodeType(str, Enum):
 
 
 class RelType(str, Enum):
-    CONTAINS = "CONTAINS"           # Module -> Class, Class -> Function
-    REQUIRES = "REQUIRES"           # Function -> Parameter
-    RETURNS = "RETURNS"             # Function -> ReturnType
-    RAISES = "RAISES"               # Function -> Exception
+    CONTAINS = "CONTAINS"  # Module -> Class, Class -> Function
+    REQUIRES = "REQUIRES"  # Function -> Parameter
+    RETURNS = "RETURNS"  # Function -> ReturnType
+    RAISES = "RAISES"  # Function -> Exception
     DEPRECATED_BY = "DEPRECATED_BY"  # old -> new
     ALTERNATIVE_TO = "ALTERNATIVE_TO"
-    REFERENCES = "REFERENCES"       # cross-module reference
-    INHERITS = "INHERITS"           # Class -> Class
-    IMPLEMENTS = "IMPLEMENTS"       # Class -> Concept (e.g., "iterator protocol")
-    EXAMPLE_OF = "EXAMPLE_OF"       # Example -> Function/Class
+    REFERENCES = "REFERENCES"  # cross-module reference
+    INHERITS = "INHERITS"  # Class -> Class
+    IMPLEMENTS = "IMPLEMENTS"  # Class -> Concept (e.g., "iterator protocol")
+    EXAMPLE_OF = "EXAMPLE_OF"  # Example -> Function/Class
 
 
 # ── Kubernetes schema ─────────────────────────────────────────────────────────
+
 
 class K8sNodeType(str, Enum):
     RESOURCE = "Resource"
@@ -46,16 +48,17 @@ class K8sNodeType(str, Enum):
 
 class K8sRelType(str, Enum):
     CONTAINS = "CONTAINS"
-    BELONGS_TO = "BELONGS_TO"       # Resource -> APIGroup
-    MANAGES = "MANAGES"             # Controller -> Resource
+    BELONGS_TO = "BELONGS_TO"  # Resource -> APIGroup
+    MANAGES = "MANAGES"  # Controller -> Resource
     REFERENCES = "REFERENCES"
     REQUIRES = "REQUIRES"
     EXAMPLE_OF = "EXAMPLE_OF"
-    SUPERSEDES = "SUPERSEDES"       # newer Version -> older Version
+    SUPERSEDES = "SUPERSEDES"  # newer Version -> older Version
     RELATED_TO = "RELATED_TO"
 
 
 # ── SEC EDGAR schema ──────────────────────────────────────────────────────────
+
 
 class SecNodeType(str, Enum):
     COMPANY = "Company"
@@ -69,12 +72,12 @@ class SecNodeType(str, Enum):
 
 
 class SecRelType(str, Enum):
-    EMPLOYS = "EMPLOYS"             # Company -> Executive
+    EMPLOYS = "EMPLOYS"  # Company -> Executive
     HAS_BOARD_MEMBER = "HAS_BOARD_MEMBER"
-    OWNS = "OWNS"                   # Company -> Subsidiary
+    OWNS = "OWNS"  # Company -> Subsidiary
     HAS_RISK = "HAS_RISK"
     REPORTS_METRIC = "REPORTS_METRIC"
-    INVOLVED_IN = "INVOLVED_IN"     # Company -> LegalProceeding
+    INVOLVED_IN = "INVOLVED_IN"  # Company -> LegalProceeding
     OPERATES_SEGMENT = "OPERATES_SEGMENT"
     REFERENCES = "REFERENCES"
 

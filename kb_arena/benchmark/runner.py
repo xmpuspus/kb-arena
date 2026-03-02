@@ -82,8 +82,11 @@ async def _run_one(
                 is_error = answer.startswith("[ERROR]") if answer else True
 
                 score = await evaluate(
-                    answer, ground_truth, constraints,
-                    sources=sources, llm=llm,
+                    answer,
+                    ground_truth,
+                    constraints,
+                    sources=sources,
+                    llm=llm,
                 )
 
                 return AnswerRecord(
@@ -103,7 +106,7 @@ async def _run_one(
                     response_length=len(answer) if answer else 0,
                 )
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 latency_ms = (time.perf_counter() - t0) * 1000
                 last_error = f"Timeout after {query_timeout}s"
                 if attempt <= max_retries:
@@ -119,6 +122,7 @@ async def _run_one(
 
         # All retries exhausted
         from kb_arena.models.benchmark import Score
+
         error_score = Score(accuracy=0.0, completeness=0.0, faithfulness=0.0)
 
         return AnswerRecord(
@@ -212,25 +216,15 @@ def _aggregate(
     successful = n - error_count
 
     # Accuracy by tier
-    bench.accuracy_by_tier = {
-        t: sum(v) / len(v) for t, v in accuracy_by_tier.items()
-    }
-    bench.completeness_by_tier = {
-        t: sum(v) / len(v) for t, v in completeness_by_tier.items()
-    }
-    bench.faithfulness_by_tier = {
-        t: sum(v) / len(v) for t, v in faithfulness_by_tier.items()
-    }
-    bench.accuracy_by_type = {
-        t: sum(v) / len(v) for t, v in accuracy_by_type.items()
-    }
+    bench.accuracy_by_tier = {t: sum(v) / len(v) for t, v in accuracy_by_tier.items()}
+    bench.completeness_by_tier = {t: sum(v) / len(v) for t, v in completeness_by_tier.items()}
+    bench.faithfulness_by_tier = {t: sum(v) / len(v) for t, v in faithfulness_by_tier.items()}
+    bench.accuracy_by_type = {t: sum(v) / len(v) for t, v in accuracy_by_type.items()}
 
     # Latency
     bench.latency = LatencyStats.from_values(all_latencies)
     bench.avg_latency_ms = bench.latency.avg_ms
-    bench.latency_by_tier = {
-        t: LatencyStats.from_values(v) for t, v in latency_by_tier.items()
-    }
+    bench.latency_by_tier = {t: LatencyStats.from_values(v) for t, v in latency_by_tier.items()}
 
     # Reliability
     bench.reliability = ReliabilityStats(
@@ -307,9 +301,7 @@ async def run_benchmark(
                 bench = BenchmarkResult(corpus=corp, strategy=strat.name)
 
                 coros = [
-                    _run_one(
-                        strat, q.id, q.question, q.ground_truth, q.constraints, llm, semaphore
-                    )
+                    _run_one(strat, q.id, q.question, q.ground_truth, q.constraints, llm, semaphore)
                     for q in questions
                 ]
 

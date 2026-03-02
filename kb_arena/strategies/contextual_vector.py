@@ -78,6 +78,7 @@ class ContextualVectorStrategy(Strategy):
     def _get_llm(self):
         if self._llm is None:
             from kb_arena.llm.client import LLMClient
+
             self._llm = LLMClient()
         return self._llm
 
@@ -101,9 +102,9 @@ class ContextualVectorStrategy(Strategy):
             batch = 500
             for start in range(0, len(ids), batch):
                 collection.upsert(
-                    ids=ids[start:start + batch],
-                    documents=texts[start:start + batch],
-                    metadatas=metadatas[start:start + batch],
+                    ids=ids[start : start + batch],
+                    documents=texts[start : start + batch],
+                    metadatas=metadatas[start : start + batch],
                 )
 
     async def query(self, question: str, top_k: int = 5, where: dict | None = None) -> AnswerResult:

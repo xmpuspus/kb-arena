@@ -8,7 +8,7 @@ import jellyfish
 
 from kb_arena.models.graph import Entity
 
-MERGE_THRESHOLD = 0.92   # auto-merge — proven in paper-trail-ph
+MERGE_THRESHOLD = 0.92  # auto-merge — proven in paper-trail-ph
 REVIEW_THRESHOLD = 0.85  # queue for manual inspection
 
 _NOISE_SUFFIXES = re.compile(

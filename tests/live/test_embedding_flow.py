@@ -13,6 +13,7 @@ pytestmark = pytest.mark.live
 @pytest.fixture(scope="module")
 def openai_client(live_openai_key):
     import openai
+
     return openai.OpenAI(api_key=live_openai_key)
 
 
@@ -75,9 +76,15 @@ def test_embedding_batch_dimensions(openai_client, embedding_model, expected_dim
 
 def test_similar_texts_closer_than_dissimilar(openai_client, embedding_model):
     """json.loads should be semantically closer to json.dumps than to os.path.join."""
-    v_loads = _embed(openai_client, "json.loads: deserialize JSON string to Python object", embedding_model)
-    v_dumps = _embed(openai_client, "json.dumps: serialize Python object to JSON string", embedding_model)
-    v_path = _embed(openai_client, "os.path.join: join file system path components", embedding_model)
+    v_loads = _embed(
+        openai_client, "json.loads: deserialize JSON string to Python object", embedding_model
+    )
+    v_dumps = _embed(
+        openai_client, "json.dumps: serialize Python object to JSON string", embedding_model
+    )
+    v_path = _embed(
+        openai_client, "os.path.join: join file system path components", embedding_model
+    )
 
     sim_related = _cosine_sim(v_loads, v_dumps)
     sim_unrelated = _cosine_sim(v_loads, v_path)

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
-from kb_arena.models.document import Document, Section
+from kb_arena.models.document import Section
 from kb_arena.strategies.base import AnswerResult
 from kb_arena.strategies.contextual_vector import (
     ContextualVectorStrategy,
@@ -18,8 +18,8 @@ from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy, _mock_gr
 from kb_arena.strategies.naive_vector import NaiveVectorStrategy, _chunk_text
 from kb_arena.strategies.qna_pairs import QnAPairStrategy, _parse_qna_json
 
-
 # --- Chunking helpers ---
+
 
 def test_chunk_text_basic():
     text = " ".join(str(i) for i in range(1000))
@@ -50,6 +50,7 @@ def test_chunk_text_empty():
 
 
 # --- NaiveVectorStrategy ---
+
 
 @pytest.mark.asyncio
 async def test_naive_build_index(mock_chroma_client, sample_documents):
@@ -95,6 +96,7 @@ async def test_naive_query_uses_top_k(mock_chroma_client, mock_llm_client):
 
 # --- ContextualVectorStrategy ---
 
+
 def test_heading_prefix_with_path(sample_section):
     prefix = _heading_prefix(sample_section)
     assert "json" in prefix
@@ -132,7 +134,9 @@ async def test_contextual_build_adds_heading(mock_chroma_client, sample_document
 
     # Verify enriched chunks contain the heading prefix
     call_args = collection.upsert.call_args_list[0]
-    documents = call_args.kwargs.get("documents") or call_args[1].get("documents") or call_args[0][1]
+    documents = (
+        call_args.kwargs.get("documents") or call_args[1].get("documents") or call_args[0][1]
+    )
     # At least one chunk should start with "##"
     assert any(doc.startswith("##") for doc in documents)
 
@@ -153,6 +157,7 @@ async def test_contextual_query_with_where_filter(mock_chroma_client, mock_llm_c
 
 
 # --- QnAPairStrategy ---
+
 
 def test_parse_qna_json_valid():
     raw = '[{"question": "What is X?", "answer": "X is Y."}]'
@@ -178,11 +183,15 @@ async def test_qna_query_returns_pregenerated_answer(mock_chroma_client, mock_ll
     collection.query.return_value = {
         "ids": [["qna::doc1::sec1::0"]],
         "documents": [["What does json.loads do?"]],
-        "metadatas": [[{
-            "answer": "json.loads deserializes a JSON string to Python.",
-            "source_id": "python-stdlib-json",
-            "section_id": "json-loads",
-        }]],
+        "metadatas": [
+            [
+                {
+                    "answer": "json.loads deserializes a JSON string to Python.",
+                    "source_id": "python-stdlib-json",
+                    "section_id": "json-loads",
+                }
+            ]
+        ],
         "distances": [[0.05]],
     }
 
@@ -210,6 +219,7 @@ async def test_qna_query_empty_collection(mock_chroma_client, mock_llm_client):
 
 
 # --- KnowledgeGraphStrategy ---
+
 
 def test_mock_graph_context():
     ctx = _mock_graph_context()
@@ -246,8 +256,11 @@ async def test_knowledge_graph_with_driver(mock_neo4j_driver, mock_llm_client):
 
 # --- HybridStrategy ---
 
+
 @pytest.mark.asyncio
-async def test_hybrid_routes_comparison_to_graph(mock_chroma_client, mock_neo4j_driver, mock_llm_client):
+async def test_hybrid_routes_comparison_to_graph(
+    mock_chroma_client, mock_neo4j_driver, mock_llm_client
+):
     from kb_arena.strategies.hybrid import HybridStrategy
 
     strategy = HybridStrategy(
@@ -262,9 +275,9 @@ async def test_hybrid_routes_comparison_to_graph(mock_chroma_client, mock_neo4j_
     mock_graph.last_sources = []
     mock_graph.last_graph_context = None
     mock_graph.last_latency_ms = 0.0
-    mock_graph.query = AsyncMock(return_value=AnswerResult(
-        answer="graph answer", sources=["g1"], strategy="knowledge_graph"
-    ))
+    mock_graph.query = AsyncMock(
+        return_value=AnswerResult(answer="graph answer", sources=["g1"], strategy="knowledge_graph")
+    )
     strategy._graph_strategy = mock_graph
 
     result = await strategy.query("compare json.loads vs yaml.safe_load")
@@ -284,9 +297,11 @@ async def test_hybrid_routes_factoid_to_vector(mock_chroma_client, mock_llm_clie
     mock_vector.name = "contextual_vector"
     mock_vector.last_sources = []
     mock_vector.last_latency_ms = 0.0
-    mock_vector.query = AsyncMock(return_value=AnswerResult(
-        answer="vector answer", sources=["v1"], strategy="contextual_vector"
-    ))
+    mock_vector.query = AsyncMock(
+        return_value=AnswerResult(
+            answer="vector answer", sources=["v1"], strategy="contextual_vector"
+        )
+    )
     strategy._vector_strategy = mock_vector
 
     result = await strategy.query("what is json.loads?")
@@ -297,8 +312,8 @@ async def test_hybrid_routes_factoid_to_vector(mock_chroma_client, mock_llm_clie
 
 @pytest.mark.asyncio
 async def test_hybrid_procedural_fuses_both(mock_chroma_client, mock_neo4j_driver, mock_llm_client):
-    from kb_arena.strategies.hybrid import HybridStrategy
     from kb_arena.models.graph import GraphContext
+    from kb_arena.strategies.hybrid import HybridStrategy
 
     strategy = HybridStrategy(
         neo4j_driver=mock_neo4j_driver,
@@ -307,18 +322,22 @@ async def test_hybrid_procedural_fuses_both(mock_chroma_client, mock_neo4j_drive
     strategy._llm = mock_llm_client
 
     mock_vector = AsyncMock()
-    mock_vector.query = AsyncMock(return_value=AnswerResult(
-        answer="vector answer for procedure", sources=["v1"], strategy="contextual_vector"
-    ))
+    mock_vector.query = AsyncMock(
+        return_value=AnswerResult(
+            answer="vector answer for procedure", sources=["v1"], strategy="contextual_vector"
+        )
+    )
     strategy._vector_strategy = mock_vector
 
     mock_graph = AsyncMock()
-    mock_graph.query = AsyncMock(return_value=AnswerResult(
-        answer="graph answer for procedure",
-        sources=["g1"],
-        strategy="knowledge_graph",
-        graph_context=GraphContext(nodes=[], edges=[]),
-    ))
+    mock_graph.query = AsyncMock(
+        return_value=AnswerResult(
+            answer="graph answer for procedure",
+            sources=["g1"],
+            strategy="knowledge_graph",
+            graph_context=GraphContext(nodes=[], edges=[]),
+        )
+    )
     strategy._graph_strategy = mock_graph
 
     result = await strategy.query("how do I configure json encoder?")

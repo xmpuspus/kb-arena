@@ -20,13 +20,11 @@ def sample_section():
         code_blocks=[
             CodeBlock(
                 language="python",
-                code='>>> import json\n>>> json.loads(\'{"key": "value"}\')\n{\'key\': \'value\'}',
+                code=">>> import json\n>>> json.loads('{\"key\": \"value\"}')\n{'key': 'value'}",
                 description="Basic usage of json.loads",
             )
         ],
-        links=[
-            CrossRef(target="json.JSONDecodeError", label="JSONDecodeError", ref_type="class")
-        ],
+        links=[CrossRef(target="json.JSONDecodeError", label="JSONDecodeError", ref_type="class")],
         level=2,
     )
 

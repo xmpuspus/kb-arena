@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -19,7 +18,6 @@ from kb_arena.models.benchmark import (
     Question,
     Score,
 )
-
 
 # ---------------------------------------------------------------------------
 # Sample questions for testing
@@ -123,12 +121,8 @@ def questions():
 def questions_yaml_dir(tmp_path):
     q_dir = tmp_path / "datasets" / "python-stdlib" / "questions"
     q_dir.mkdir(parents=True)
-    (q_dir / "tier1.yaml").write_text(
-        yaml.dump(SAMPLE_QUESTIONS_YAML[:2]), encoding="utf-8"
-    )
-    (q_dir / "tier2_3_4.yaml").write_text(
-        yaml.dump(SAMPLE_QUESTIONS_YAML[2:]), encoding="utf-8"
-    )
+    (q_dir / "tier1.yaml").write_text(yaml.dump(SAMPLE_QUESTIONS_YAML[:2]), encoding="utf-8")
+    (q_dir / "tier2_3_4.yaml").write_text(yaml.dump(SAMPLE_QUESTIONS_YAML[2:]), encoding="utf-8")
     return tmp_path
 
 
@@ -136,10 +130,13 @@ def questions_yaml_dir(tmp_path):
 # Question loading
 # ---------------------------------------------------------------------------
 
+
 def test_questions_load_from_yaml(questions_yaml_dir, monkeypatch):
     from kb_arena.benchmark.questions import load_questions
 
-    monkeypatch.setattr("kb_arena.benchmark.questions.settings.datasets_path", str(questions_yaml_dir / "datasets"))
+    monkeypatch.setattr(
+        "kb_arena.benchmark.questions.settings.datasets_path", str(questions_yaml_dir / "datasets")
+    )
     qs = load_questions("python-stdlib")
     assert len(qs) == 5
 
@@ -147,7 +144,9 @@ def test_questions_load_from_yaml(questions_yaml_dir, monkeypatch):
 def test_questions_tier_filter(questions_yaml_dir, monkeypatch):
     from kb_arena.benchmark.questions import load_questions
 
-    monkeypatch.setattr("kb_arena.benchmark.questions.settings.datasets_path", str(questions_yaml_dir / "datasets"))
+    monkeypatch.setattr(
+        "kb_arena.benchmark.questions.settings.datasets_path", str(questions_yaml_dir / "datasets")
+    )
     qs = load_questions("python-stdlib", tier=1)
     assert all(q.tier == 1 for q in qs)
     assert len(qs) == 2
@@ -156,7 +155,9 @@ def test_questions_tier_filter(questions_yaml_dir, monkeypatch):
 def test_questions_type_filter(questions_yaml_dir, monkeypatch):
     from kb_arena.benchmark.questions import load_questions
 
-    monkeypatch.setattr("kb_arena.benchmark.questions.settings.datasets_path", str(questions_yaml_dir / "datasets"))
+    monkeypatch.setattr(
+        "kb_arena.benchmark.questions.settings.datasets_path", str(questions_yaml_dir / "datasets")
+    )
     qs = load_questions("python-stdlib", question_type="factoid")
     assert all(q.type == "factoid" for q in qs)
     assert len(qs) == 2
@@ -165,7 +166,9 @@ def test_questions_type_filter(questions_yaml_dir, monkeypatch):
 def test_missing_corpus_raises(tmp_path, monkeypatch):
     from kb_arena.benchmark.questions import load_questions
 
-    monkeypatch.setattr("kb_arena.benchmark.questions.settings.datasets_path", str(tmp_path / "datasets"))
+    monkeypatch.setattr(
+        "kb_arena.benchmark.questions.settings.datasets_path", str(tmp_path / "datasets")
+    )
     with pytest.raises(FileNotFoundError):
         load_questions("nonexistent-corpus")
 
@@ -173,6 +176,7 @@ def test_missing_corpus_raises(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # Structural evaluator
 # ---------------------------------------------------------------------------
+
 
 def test_structural_check_all_mentions_present():
     constraints = Constraints(must_mention=["json.loads", "deserializ"], must_not_claim=[])
@@ -234,7 +238,12 @@ async def test_evaluate_calls_llm_on_structural_pass():
     mock_llm = AsyncMock()
     mock_llm.judge.return_value = '{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}'
 
-    score = await evaluate("json.loads parses JSON strings into Python objects.", ground_truth, constraints, llm=mock_llm)
+    score = await evaluate(
+        "json.loads parses JSON strings into Python objects.",
+        ground_truth,
+        constraints,
+        llm=mock_llm,
+    )
 
     assert score.structural_pass is True
     mock_llm.judge.assert_called_once()
@@ -272,7 +281,10 @@ async def test_evaluate_without_llm():
 # Accuracy by tier calculation
 # ---------------------------------------------------------------------------
 
-def _make_record(question_id: str, score_val: float, strategy: str = "naive_vector") -> AnswerRecord:
+
+def _make_record(
+    question_id: str, score_val: float, strategy: str = "naive_vector"
+) -> AnswerRecord:
     return AnswerRecord(
         question_id=question_id,
         strategy=strategy,
@@ -350,6 +362,7 @@ def test_aggregate_question_id_without_tier():
 # ---------------------------------------------------------------------------
 # Reporter: markdown and summary
 # ---------------------------------------------------------------------------
+
 
 def _make_bench_result(corpus: str, strategy: str, tier_accuracy: dict) -> BenchmarkResult:
     records = []

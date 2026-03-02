@@ -27,7 +27,9 @@ def _tokenize(text: str) -> list[str]:
     return text.split()
 
 
-def _chunk_text(text: str, chunk_tokens: int = CHUNK_TOKENS, overlap_tokens: int = OVERLAP_TOKENS) -> list[str]:
+def _chunk_text(
+    text: str, chunk_tokens: int = CHUNK_TOKENS, overlap_tokens: int = OVERLAP_TOKENS
+) -> list[str]:
     """Split text into overlapping chunks by token count."""
     tokens = _tokenize(text)
     if not tokens:
@@ -77,6 +79,7 @@ class NaiveVectorStrategy(Strategy):
     def _get_llm(self):
         if self._llm is None:
             from kb_arena.llm.client import LLMClient
+
             self._llm = LLMClient()
         return self._llm
 
@@ -99,9 +102,9 @@ class NaiveVectorStrategy(Strategy):
             batch = 500
             for start in range(0, len(ids), batch):
                 collection.upsert(
-                    ids=ids[start:start + batch],
-                    documents=texts[start:start + batch],
-                    metadatas=metadatas[start:start + batch],
+                    ids=ids[start : start + batch],
+                    documents=texts[start : start + batch],
+                    metadatas=metadatas[start : start + batch],
                 )
 
     async def query(self, question: str, top_k: int = 5) -> AnswerResult:

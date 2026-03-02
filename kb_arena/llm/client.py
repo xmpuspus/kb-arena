@@ -35,9 +35,7 @@ class LLMClient:
             ctx = "\n".join(f"{t['role']}: {t['content'][:500]}" for t in turns)
             user_content = f"Conversation:\n{ctx}\n\nCurrent query: {query}"
 
-        result = await self._call(
-            FAST_MODEL, system_prompt, user_content, max_tokens=100, **kwargs
-        )
+        result = await self._call(FAST_MODEL, system_prompt, user_content, max_tokens=100, **kwargs)
         result = result.strip().lower()
 
         if allowed_values:

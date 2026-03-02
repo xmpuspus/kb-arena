@@ -8,7 +8,6 @@ one Document JSON object per line to datasets/{corpus}/processed/documents.jsonl
 from __future__ import annotations
 
 import logging
-import warnings
 from pathlib import Path
 
 from rich.console import Console
@@ -51,7 +50,8 @@ def run_ingest(path: str, corpus: str = "custom", format: str = "auto") -> None:
         files = [src]
     else:
         files = [
-            f for f in src.rglob("*")
+            f
+            for f in src.rglob("*")
             if f.is_file() and f.suffix.lower() in {".md", ".markdown", ".rst", ".html", ".htm"}
         ]
 

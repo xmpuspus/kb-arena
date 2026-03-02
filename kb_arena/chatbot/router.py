@@ -77,7 +77,9 @@ class IntentRouter:
                 return intent
         return None
 
-    async def _llm_classify(self, query: str, history: list[dict] | None = None) -> QueryIntent | None:
+    async def _llm_classify(
+        self, query: str, history: list[dict] | None = None
+    ) -> QueryIntent | None:
         """Stage 2: Haiku call. Returns None on any failure."""
         if self._llm is None:
             return None

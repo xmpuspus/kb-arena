@@ -5,8 +5,6 @@ Each command is independently runnable and re-runnable.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import typer
 from rich.console import Console
 
@@ -21,7 +19,9 @@ console = Console()
 @app.command()
 def ingest(
     path: str = typer.Argument(..., help="Path to raw documents directory"),
-    corpus: str = typer.Option("custom", help="Corpus name: python-stdlib, kubernetes, sec-edgar, custom"),
+    corpus: str = typer.Option(
+        "custom", help="Corpus name: python-stdlib, kubernetes, sec-edgar, custom"
+    ),
     format: str = typer.Option("auto", help="Parser format: auto, markdown, html, sec-edgar"),
 ):
     """Stage 1: Parse raw documents into unified Document model.
@@ -68,7 +68,10 @@ def build_vectors(
 @app.command()
 def benchmark(
     corpus: str = typer.Option("all", help="Corpus: all, python-stdlib, kubernetes, sec-edgar"),
-    strategy: str = typer.Option("all", help="Strategy: all, naive_vector, contextual_vector, qna_pairs, knowledge_graph, hybrid"),
+    strategy: str = typer.Option(
+        "all",
+        help="Strategy: all, naive_vector, contextual_vector, qna_pairs, knowledge_graph, hybrid",
+    ),
     tier: int = typer.Option(0, help="Tier filter (0 = all tiers)"),
 ):
     """Stage 4: Run benchmark questions against specified strategies.
@@ -85,7 +88,7 @@ def benchmark(
 @app.command()
 def report(
     corpus: str = typer.Option("all", help="Corpus to generate report for"),
-    output: Optional[str] = typer.Option(None, help="Output file path"),
+    output: str | None = typer.Option(None, help="Output file path"),
 ):
     """Generate benchmark report from results JSON."""
     from kb_arena.benchmark.reporter import generate_report
@@ -115,7 +118,9 @@ def serve(
 
 @app.command()
 def download(
-    corpus: str = typer.Argument(..., help="Corpus to download: python-stdlib, kubernetes, sec-edgar"),
+    corpus: str = typer.Argument(
+        ..., help="Corpus to download: python-stdlib, kubernetes, sec-edgar"
+    ),
 ):
     """Download raw dataset files for a corpus."""
     console.print(f"[bold]Downloading {corpus} dataset...[/bold]")

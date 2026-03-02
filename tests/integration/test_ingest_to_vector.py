@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -108,7 +107,9 @@ def test_ingest_sections_have_content(md_corpus):
         os.chdir(old_cwd)
 
     out = tmp_path / "datasets" / "test-sections" / "processed" / "documents.jsonl"
-    docs = [Document.model_validate(json.loads(l)) for l in out.read_text().splitlines() if l.strip()]
+    docs = [
+        Document.model_validate(json.loads(l)) for l in out.read_text().splitlines() if l.strip()
+    ]
     all_sections = [s for doc in docs for s in doc.sections]
     assert all(s.content for s in all_sections)
     assert all(s.id for s in all_sections)
@@ -124,7 +125,9 @@ def test_ingest_preserves_headings(md_corpus):
         os.chdir(old_cwd)
 
     out = tmp_path / "datasets" / "test-headings" / "processed" / "documents.jsonl"
-    docs = [Document.model_validate(json.loads(l)) for l in out.read_text().splitlines() if l.strip()]
+    docs = [
+        Document.model_validate(json.loads(l)) for l in out.read_text().splitlines() if l.strip()
+    ]
     all_titles = {s.title for doc in docs for s in doc.sections}
     assert "json.loads" in all_titles
     assert "os.path.join" in all_titles
@@ -212,7 +215,11 @@ async def test_naive_vector_query_uses_context_from_retrieval(md_corpus):
     await strategy.query("How do I read a file with pathlib?")
 
     generate_call = mock_llm.generate.call_args
-    context_arg = generate_call.kwargs.get("context") or generate_call[1].get("context") or generate_call[0][1]
+    context_arg = (
+        generate_call.kwargs.get("context")
+        or generate_call[1].get("context")
+        or generate_call[0][1]
+    )
     assert "Path.read_text" in context_arg
 
 
@@ -224,11 +231,13 @@ async def test_naive_vector_deduplicates_sources():
     collection.query.return_value = {
         "ids": [["json::s1::0", "json::s1::1", "json::s2::0"]],
         "documents": [["chunk1", "chunk2", "chunk3"]],
-        "metadatas": [[
-            {"source_id": "json"},
-            {"source_id": "json"},
-            {"source_id": "json"},
-        ]],
+        "metadatas": [
+            [
+                {"source_id": "json"},
+                {"source_id": "json"},
+                {"source_id": "json"},
+            ]
+        ],
         "distances": [[0.1, 0.2, 0.3]],
     }
     mock_chroma.get_or_create_collection.return_value = collection

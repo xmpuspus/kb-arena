@@ -25,21 +25,24 @@ def router_with_llm(live_llm_client):
 # --- Keyword-stage tests (no LLM needed) ---
 
 
-@pytest.mark.parametrize("query,expected", [
-    ("Compare Deployment vs StatefulSet", QueryIntent.COMPARISON),
-    ("What is the difference between Pods and Containers?", QueryIntent.COMPARISON),
-    ("A vs B, which is better?", QueryIntent.COMPARISON),
-    ("X versus Y", QueryIntent.COMPARISON),
-    ("What depends on kube-proxy?", QueryIntent.RELATIONAL),
-    ("What does json.loads require?", QueryIntent.RELATIONAL),
-    ("How does X affect Y?", QueryIntent.RELATIONAL),
-    ("How do I configure TLS for an Ingress?", QueryIntent.PROCEDURAL),
-    ("How can I install Python?", QueryIntent.PROCEDURAL),
-    ("Steps to configure RBAC", QueryIntent.PROCEDURAL),
-    ("Setup a new project", QueryIntent.PROCEDURAL),
-    ("Implement a retry mechanism", QueryIntent.PROCEDURAL),
-    ("Create a Kubernetes cluster", QueryIntent.PROCEDURAL),
-])
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        ("Compare Deployment vs StatefulSet", QueryIntent.COMPARISON),
+        ("What is the difference between Pods and Containers?", QueryIntent.COMPARISON),
+        ("A vs B, which is better?", QueryIntent.COMPARISON),
+        ("X versus Y", QueryIntent.COMPARISON),
+        ("What depends on kube-proxy?", QueryIntent.RELATIONAL),
+        ("What does json.loads require?", QueryIntent.RELATIONAL),
+        ("How does X affect Y?", QueryIntent.RELATIONAL),
+        ("How do I configure TLS for an Ingress?", QueryIntent.PROCEDURAL),
+        ("How can I install Python?", QueryIntent.PROCEDURAL),
+        ("Steps to configure RBAC", QueryIntent.PROCEDURAL),
+        ("Setup a new project", QueryIntent.PROCEDURAL),
+        ("Implement a retry mechanism", QueryIntent.PROCEDURAL),
+        ("Create a Kubernetes cluster", QueryIntent.PROCEDURAL),
+    ],
+)
 async def test_keyword_stage_catches_pattern(router_no_llm, query, expected):
     result = await router_no_llm.classify(query)
     assert result == expected, f"Query: {query!r} → expected {expected}, got {result}"
@@ -58,13 +61,16 @@ async def test_keyword_stage_is_fast(router_no_llm):
 # --- LLM-stage tests ---
 
 
-@pytest.mark.parametrize("query,expected", [
-    ("What is a Pod?", QueryIntent.FACTOID),
-    ("Tell me about Python's asyncio", QueryIntent.EXPLORATORY),
-    ("What is json.loads?", QueryIntent.FACTOID),
-    ("Explain the GIL", QueryIntent.EXPLORATORY),
-    ("What does the os module do?", QueryIntent.FACTOID),
-])
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        ("What is a Pod?", QueryIntent.FACTOID),
+        ("Tell me about Python's asyncio", QueryIntent.EXPLORATORY),
+        ("What is json.loads?", QueryIntent.FACTOID),
+        ("Explain the GIL", QueryIntent.EXPLORATORY),
+        ("What does the os module do?", QueryIntent.FACTOID),
+    ],
+)
 async def test_llm_stage_classifies_correctly(router_with_llm, query, expected):
     result = await router_with_llm.classify(query)
     assert result == expected, f"Query: {query!r} → expected {expected}, got {result}"

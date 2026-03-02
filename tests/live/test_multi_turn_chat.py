@@ -157,19 +157,17 @@ async def test_multi_turn_turn1_json_loads(json_strategy_with_index):
 
 async def test_multi_turn_turn2_exceptions(json_strategy_with_index):
     """Second turn: exceptions question should retrieve JSONDecodeError info."""
-    result = await json_strategy_with_index.query(
-        "What exceptions can json.loads raise?"
-    )
+    result = await json_strategy_with_index.query("What exceptions can json.loads raise?")
     assert result.answer
     # Should reference JSONDecodeError
-    assert any(kw in result.answer for kw in ["JSONDecodeError", "ValueError", "exception", "invalid"])
+    assert any(
+        kw in result.answer for kw in ["JSONDecodeError", "ValueError", "exception", "invalid"]
+    )
 
 
 async def test_multi_turn_turn3_example(json_strategy_with_index):
     """Third turn: ask for example — should produce code-like response."""
-    result = await json_strategy_with_index.query(
-        "Show me an example of json.loads"
-    )
+    result = await json_strategy_with_index.query("Show me an example of json.loads")
     assert result.answer
     assert len(result.answer) > 10
 
@@ -199,7 +197,7 @@ async def test_session_memory_10_turns_no_degradation(json_strategy_with_index):
 
     for i, q in enumerate(questions):
         result = await json_strategy_with_index.query(q)
-        assert result.answer, f"Turn {i+1} returned empty answer"
+        assert result.answer, f"Turn {i + 1} returned empty answer"
         mem.add_turn("user", q)
         mem.add_turn("assistant", result.answer)
 
@@ -227,11 +225,11 @@ async def test_conversation_all_5_intents(live_llm_client):
 
     router = IntentRouter(llm=live_llm_client)
     intent_queries = [
-        "What is json.loads?",                          # factoid
-        "Compare json.loads vs pickle.loads",           # comparison
-        "What depends on json.JSONDecodeError?",        # relational
-        "How do I configure JSON pretty-printing?",     # procedural
-        "Tell me about the Python json module",         # exploratory
+        "What is json.loads?",  # factoid
+        "Compare json.loads vs pickle.loads",  # comparison
+        "What depends on json.JSONDecodeError?",  # relational
+        "How do I configure JSON pretty-printing?",  # procedural
+        "Tell me about the Python json module",  # exploratory
     ]
     expected_intents = [
         QueryIntent.FACTOID,
@@ -243,6 +241,8 @@ async def test_conversation_all_5_intents(live_llm_client):
     history = []
     for query, expected in zip(intent_queries, expected_intents):
         result = await router.classify(query, history=history)
-        assert result == expected, f"Query: {query!r} → expected {expected.value}, got {result.value}"
+        assert result == expected, (
+            f"Query: {query!r} → expected {expected.value}, got {result.value}"
+        )
         history.append({"role": "user", "content": query})
         history.append({"role": "assistant", "content": f"Answer about {query}"})

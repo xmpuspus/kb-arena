@@ -14,7 +14,6 @@ from kb_arena.models.benchmark import (
     Score,
 )
 
-
 # --- LatencyStats ---
 
 
@@ -154,9 +153,7 @@ class TestEvaluator:
         from kb_arena.benchmark.evaluator import _check_entity_coverage
 
         answer = "json.loads raises json.JSONDecodeError for invalid input."
-        ratio, found = _check_entity_coverage(
-            answer, sample_ground_truth.required_entities
-        )
+        ratio, found = _check_entity_coverage(answer, sample_ground_truth.required_entities)
         assert ratio == 1.0
         assert len(found) == 2
 
@@ -164,9 +161,7 @@ class TestEvaluator:
         from kb_arena.benchmark.evaluator import _check_entity_coverage
 
         answer = "The json.loads function throws an error."
-        ratio, found = _check_entity_coverage(
-            answer, sample_ground_truth.required_entities
-        )
+        ratio, found = _check_entity_coverage(answer, sample_ground_truth.required_entities)
         assert ratio == 0.5
         assert "json.loads" in found
 
@@ -211,7 +206,9 @@ class TestEvaluator:
 
         answer = "json.loads raises json.JSONDecodeError, a subclass of ValueError."
         score = await evaluate(
-            answer, sample_ground_truth, sample_constraints,
+            answer,
+            sample_ground_truth,
+            sample_constraints,
             sources=["json.html#json.JSONDecodeError"],
             llm=None,
         )
@@ -225,8 +222,12 @@ class TestEvaluator:
 
 class TestAggregation:
     def _make_record(
-        self, qid: str, accuracy: float, latency: float,
-        cost: float = 0.01, is_error: bool = False,
+        self,
+        qid: str,
+        accuracy: float,
+        latency: float,
+        cost: float = 0.01,
+        is_error: bool = False,
     ) -> AnswerRecord:
         return AnswerRecord(
             question_id=qid,
@@ -343,13 +344,19 @@ class TestQuestionLoading:
     def test_question_tier_validation(self):
         with pytest.raises(Exception):
             Question(
-                id="bad", tier=0, type="factoid", hops=1,
+                id="bad",
+                tier=0,
+                type="factoid",
+                hops=1,
                 question="?",
                 ground_truth=GroundTruth(answer="a"),
             )
         with pytest.raises(Exception):
             Question(
-                id="bad", tier=6, type="factoid", hops=1,
+                id="bad",
+                tier=6,
+                type="factoid",
+                hops=1,
                 question="?",
                 ground_truth=GroundTruth(answer="a"),
             )

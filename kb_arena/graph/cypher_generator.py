@@ -72,9 +72,7 @@ class CypherGenerator:
             rel_types=", ".join(self._rel_types),
         )
 
-    async def generate(
-        self, query: str, params: dict | None = None
-    ) -> tuple[str, dict]:
+    async def generate(self, query: str, params: dict | None = None) -> tuple[str, dict]:
         """Return (cypher, params) for executing against Neo4j.
 
         Tries LLM first. Falls back to template matching if LLM output

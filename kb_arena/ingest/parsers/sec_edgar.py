@@ -23,7 +23,7 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup, Tag
 
-from kb_arena.models.document import CodeBlock, CrossRef, Document, Section, Table
+from kb_arena.models.document import Document, Section, Table
 
 
 def _slugify(text: str) -> str:
@@ -52,7 +52,9 @@ _ITEM_HEADER = re.compile(
 )
 
 # Named-entity extraction patterns
-_DOLLAR_AMOUNT = re.compile(r"\$[\d,]+(?:\.\d+)?(?:\s*(?:million|billion|trillion))?", re.IGNORECASE)
+_DOLLAR_AMOUNT = re.compile(
+    r"\$[\d,]+(?:\.\d+)?(?:\s*(?:million|billion|trillion))?", re.IGNORECASE
+)
 _COMPANY_NAME = re.compile(r"\b[A-Z][A-Za-z0-9&,.\s]{2,40}(?:Inc\.|Corp\.|LLC|Ltd\.|L\.P\.|Co\.)")
 _EXECUTIVE_TITLE = re.compile(
     r"(?:Chief\s+\w+\s+Officer|President|Chairman|CEO|CFO|COO|CTO|Director)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})"
@@ -128,7 +130,9 @@ class SecEdgarParser:
         # Include "table" so whole table elements are captured as body content.
         # Exclude "td"/"tr" to avoid double-counting individual cells when the parent
         # table is already in the list.
-        all_blocks = body.find_all(["p", "div", "span", "h1", "h2", "h3", "h4", "table"], recursive=True)
+        all_blocks = body.find_all(
+            ["p", "div", "span", "h1", "h2", "h3", "h4", "table"], recursive=True
+        )
 
         current_item_num = ""
         current_title = ""
