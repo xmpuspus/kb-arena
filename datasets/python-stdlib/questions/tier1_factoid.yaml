@@ -1,0 +1,393 @@
+- id: "py-t1-001"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What exception does json.loads() raise when given invalid JSON?"
+  ground_truth:
+    answer: "json.loads() raises json.JSONDecodeError when the input string is not valid JSON. JSONDecodeError is a subclass of ValueError."
+    source_refs:
+      - "json.html#json.JSONDecodeError"
+    required_entities:
+      - "json.loads"
+      - "json.JSONDecodeError"
+  constraints:
+    must_mention:
+      - "JSONDecodeError"
+      - "ValueError"
+    must_not_claim:
+      - "TypeError"
+      - "SyntaxError"
+
+- id: "py-t1-002"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is the default value of the indent parameter in json.dumps()?"
+  ground_truth:
+    answer: "The default value of the indent parameter in json.dumps() is None. When indent is None, the output is compact with no extra whitespace. Setting indent to an integer or string causes pretty-printed output."
+    source_refs:
+      - "json.html#json.dumps"
+    required_entities:
+      - "json.dumps"
+      - "indent"
+  constraints:
+    must_mention:
+      - "None"
+    must_not_claim:
+      - "0"
+      - "4"
+      - "2"
+
+- id: "py-t1-003"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What does os.getcwd() return?"
+  ground_truth:
+    answer: "os.getcwd() returns a string representing the current working directory as an absolute pathname."
+    source_refs:
+      - "os.html#os.getcwd"
+    required_entities:
+      - "os.getcwd"
+  constraints:
+    must_mention:
+      - "current working directory"
+    must_not_claim:
+      - "home directory"
+      - "script directory"
+
+- id: "py-t1-004"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is the difference between sys.argv[0] and __file__?"
+  ground_truth:
+    answer: "sys.argv[0] is the script name as passed on the command line (may be empty string, '-', or a path). __file__ is the pathname of the file from which the module was loaded, and is set to an absolute path in Python 3.11+. When running interactively, __file__ may not be defined."
+    source_refs:
+      - "sys.html#sys.argv"
+    required_entities:
+      - "sys.argv"
+      - "__file__"
+  constraints:
+    must_mention:
+      - "sys.argv"
+      - "script"
+    must_not_claim:
+      - "identical"
+      - "always the same"
+
+- id: "py-t1-005"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What does pathlib.Path.mkdir() do when the directory already exists and exist_ok=True?"
+  ground_truth:
+    answer: "When exist_ok=True, pathlib.Path.mkdir() does not raise an exception if the target directory already exists. Without exist_ok=True (the default), it raises FileExistsError if the directory exists."
+    source_refs:
+      - "pathlib.html#pathlib.Path.mkdir"
+    required_entities:
+      - "pathlib.Path.mkdir"
+      - "exist_ok"
+  constraints:
+    must_mention:
+      - "exist_ok"
+      - "FileExistsError"
+    must_not_claim:
+      - "overwrites"
+      - "replaces"
+
+- id: "py-t1-006"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is the maximum size of a collections.deque when created with maxlen?"
+  ground_truth:
+    answer: "A collections.deque created with maxlen limits the deque to at most maxlen items. When new items are added and the deque is full, items are discarded from the opposite end. There is no fixed system maximum — maxlen can be any non-negative integer."
+    source_refs:
+      - "collections.html#collections.deque"
+    required_entities:
+      - "collections.deque"
+      - "maxlen"
+  constraints:
+    must_mention:
+      - "maxlen"
+      - "discarded"
+    must_not_claim:
+      - "raises an exception"
+      - "unlimited"
+
+- id: "py-t1-007"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What does itertools.chain() do?"
+  ground_truth:
+    answer: "itertools.chain() takes multiple iterables as arguments and returns a single iterator that yields elements from the first iterable until exhausted, then from the next, and so on. It is equivalent to a sequence of for loops over the iterables."
+    source_refs:
+      - "itertools.html#itertools.chain"
+    required_entities:
+      - "itertools.chain"
+  constraints:
+    must_mention:
+      - "iterator"
+      - "iterables"
+    must_not_claim:
+      - "concatenates lists"
+      - "sorts"
+
+- id: "py-t1-008"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What does functools.lru_cache() do when maxsize=None?"
+  ground_truth:
+    answer: "When maxsize=None, functools.lru_cache() caches all calls without any limit on cache size — equivalent to functools.cache(). The cache grows without bound. The LRU eviction policy is disabled because there is nothing to evict."
+    source_refs:
+      - "functools.html#functools.lru_cache"
+    required_entities:
+      - "functools.lru_cache"
+      - "maxsize"
+  constraints:
+    must_mention:
+      - "unlimited"
+      - "grows"
+    must_not_claim:
+      - "disables caching"
+      - "raises"
+      - "clears"
+
+- id: "py-t1-009"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is the return type of re.findall() when the pattern has no groups?"
+  ground_truth:
+    answer: "When the pattern has no groups, re.findall() returns a list of strings, where each string is a non-overlapping match of the pattern in the string."
+    source_refs:
+      - "re.html#re.findall"
+    required_entities:
+      - "re.findall"
+  constraints:
+    must_mention:
+      - "list"
+      - "strings"
+    must_not_claim:
+      - "match objects"
+      - "iterator"
+      - "tuple"
+
+- id: "py-t1-010"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What does datetime.datetime.utcnow() return in Python 3.12?"
+  ground_truth:
+    answer: "datetime.datetime.utcnow() returns the current UTC date and time as a naive datetime object (without timezone info). In Python 3.12, it is deprecated. The recommended replacement is datetime.datetime.now(datetime.timezone.utc), which returns a timezone-aware datetime."
+    source_refs:
+      - "datetime.html#datetime.datetime.utcnow"
+    required_entities:
+      - "datetime.datetime.utcnow"
+      - "datetime.timezone.utc"
+  constraints:
+    must_mention:
+      - "deprecated"
+      - "UTC"
+    must_not_claim:
+      - "timezone-aware"
+      - "raises"
+
+- id: "py-t1-011"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What does collections.Counter.most_common() return when called with no argument?"
+  ground_truth:
+    answer: "collections.Counter.most_common() with no argument returns a list of all (element, count) pairs ordered from most common to least. If called with n, it returns the n most common elements."
+    source_refs:
+      - "collections.html#collections.Counter.most_common"
+    required_entities:
+      - "collections.Counter"
+      - "most_common"
+  constraints:
+    must_mention:
+      - "list"
+      - "count"
+    must_not_claim:
+      - "sorted alphabetically"
+      - "set"
+
+- id: "py-t1-012"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What exception does open() raise if the file does not exist and mode is 'r'?"
+  ground_truth:
+    answer: "open() raises FileNotFoundError (a subclass of OSError) when the file does not exist and the mode is 'r' (read mode)."
+    source_refs:
+      - "functions.html#open"
+    required_entities:
+      - "open"
+      - "FileNotFoundError"
+  constraints:
+    must_mention:
+      - "FileNotFoundError"
+    must_not_claim:
+      - "IOError"
+      - "ValueError"
+
+- id: "py-t1-013"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What does pathlib.Path.suffix return for a file with no extension?"
+  ground_truth:
+    answer: "pathlib.Path.suffix returns an empty string '' when the path has no extension (no dot in the final component, or the name starts with a dot and has no other dots)."
+    source_refs:
+      - "pathlib.html#pathlib.PurePath.suffix"
+    required_entities:
+      - "pathlib.Path.suffix"
+  constraints:
+    must_mention:
+      - "empty string"
+    must_not_claim:
+      - "None"
+      - "raises"
+
+- id: "py-t1-014"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is the default separator used by str.join()?"
+  ground_truth:
+    answer: "str.join() does not have a default separator. The separator is the string on which join() is called. For example, ','.join(['a','b']) uses comma as the separator. An empty string can be used as the separator with ''.join(iterable)."
+    source_refs:
+      - "stdtypes.html#str.join"
+    required_entities:
+      - "str.join"
+  constraints:
+    must_mention:
+      - "separator"
+      - "string"
+    must_not_claim:
+      - "space"
+      - "comma"
+      - "default"
+
+- id: "py-t1-015"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What does sys.exit() do when called with a non-zero integer argument?"
+  ground_truth:
+    answer: "sys.exit() raises SystemExit with the given integer as the exit status. A non-zero exit status conventionally indicates an error. The integer is passed as the exit code to the operating system process exit."
+    source_refs:
+      - "sys.html#sys.exit"
+    required_entities:
+      - "sys.exit"
+      - "SystemExit"
+  constraints:
+    must_mention:
+      - "SystemExit"
+      - "exit status"
+    must_not_claim:
+      - "immediately terminates"
+      - "os._exit"
+
+- id: "py-t1-016"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What does hashlib.sha256().hexdigest() return?"
+  ground_truth:
+    answer: "hashlib.sha256().hexdigest() returns a string containing the hexadecimal (lowercase) representation of the SHA-256 digest — a 64-character string representing the 32-byte hash."
+    source_refs:
+      - "hashlib.html#hashlib.hash.hexdigest"
+    required_entities:
+      - "hashlib.sha256"
+      - "hexdigest"
+  constraints:
+    must_mention:
+      - "hexadecimal"
+      - "string"
+    must_not_claim:
+      - "bytes"
+      - "base64"
+
+- id: "py-t1-017"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is the purpose of the __slots__ attribute in a Python class?"
+  ground_truth:
+    answer: "__slots__ is a class variable that declares a fixed set of instance attributes. It prevents the creation of a __dict__ for each instance, reducing memory usage. Only the declared slots can be assigned as instance attributes."
+    source_refs:
+      - "reference/datamodel.html#slots"
+    required_entities:
+      - "__slots__"
+      - "__dict__"
+  constraints:
+    must_mention:
+      - "memory"
+      - "__dict__"
+    must_not_claim:
+      - "class attributes"
+      - "inheritance"
+
+- id: "py-t1-018"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What does collections.defaultdict do when a missing key is accessed?"
+  ground_truth:
+    answer: "collections.defaultdict calls the default_factory callable to provide a default value when a missing key is accessed via __getitem__. The generated value is inserted into the dictionary and returned. If default_factory is None, a KeyError is raised just like a regular dict."
+    source_refs:
+      - "collections.html#collections.defaultdict"
+    required_entities:
+      - "collections.defaultdict"
+      - "default_factory"
+  constraints:
+    must_mention:
+      - "default_factory"
+      - "KeyError"
+    must_not_claim:
+      - "returns None"
+      - "ignores"
+
+- id: "py-t1-019"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is the return value of list.sort() in Python?"
+  ground_truth:
+    answer: "list.sort() returns None. It sorts the list in-place and modifies the original list. To get a new sorted list without modifying the original, use the built-in sorted() function."
+    source_refs:
+      - "stdtypes.html#list.sort"
+    required_entities:
+      - "list.sort"
+      - "sorted"
+  constraints:
+    must_mention:
+      - "None"
+      - "in-place"
+    must_not_claim:
+      - "returns the sorted list"
+      - "new list"
+
+- id: "py-t1-020"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What does os.environ.get() return when the environment variable does not exist?"
+  ground_truth:
+    answer: "os.environ.get(key) returns None when the environment variable does not exist, following the standard dict.get() behavior. An optional default can be provided as the second argument: os.environ.get(key, default)."
+    source_refs:
+      - "os.html#os.environ"
+    required_entities:
+      - "os.environ"
+      - "os.environ.get"
+  constraints:
+    must_mention:
+      - "None"
+    must_not_claim:
+      - "raises KeyError"
+      - "empty string"

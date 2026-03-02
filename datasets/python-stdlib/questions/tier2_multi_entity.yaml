@@ -1,0 +1,449 @@
+- id: "py-t2-001"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "Which stdlib modules provide thread-safe data structures for producer-consumer patterns?"
+  ground_truth:
+    answer: "The queue module provides thread-safe Queue, LifoQueue, and PriorityQueue classes designed explicitly for producer-consumer patterns. collections.deque is also thread-safe for appends and pops from either end but lacks blocking operations. asyncio.Queue provides an async-native queue for coroutines."
+    source_refs:
+      - "queue.html"
+      - "collections.html#collections.deque"
+      - "asyncio-queue.html"
+    required_entities:
+      - "queue.Queue"
+      - "collections.deque"
+      - "asyncio.Queue"
+  constraints:
+    must_mention:
+      - "queue"
+      - "thread-safe"
+    must_not_claim:
+      - "list is thread-safe"
+      - "dict is thread-safe"
+
+- id: "py-t2-002"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "Which stdlib modules can handle both file I/O and network I/O through a common interface?"
+  ground_truth:
+    answer: "The io module provides the base classes (RawIOBase, BufferedIOBase, TextIOBase) that underpin both file and network I/O. socket objects can be wrapped in io.FileIO via socket.makefile(). The selectors and select modules handle multiplexed I/O across both files and sockets."
+    source_refs:
+      - "io.html"
+      - "socket.html#socket.socket.makefile"
+      - "selectors.html"
+    required_entities:
+      - "io"
+      - "socket"
+      - "selectors"
+  constraints:
+    must_mention:
+      - "io"
+      - "socket"
+    must_not_claim:
+      - "os module handles network"
+
+- id: "py-t2-003"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "What modules are involved when using urllib.request.urlopen() to make an HTTPS request?"
+  ground_truth:
+    answer: "urllib.request.urlopen() for HTTPS uses ssl to wrap the socket in a TLS context, socket for the underlying TCP connection, http.client.HTTPSConnection to manage the HTTP protocol, and certifi or the system cert store for certificate verification. The ssl module defaults to ssl.create_default_context() which enables hostname verification."
+    source_refs:
+      - "urllib.request.html"
+      - "ssl.html"
+      - "http.client.html"
+    required_entities:
+      - "urllib.request"
+      - "ssl"
+      - "http.client"
+  constraints:
+    must_mention:
+      - "ssl"
+      - "https"
+    must_not_claim:
+      - "requests library"
+      - "no encryption"
+
+- id: "py-t2-004"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "How do functools.partial and functools.wraps work together when decorating functions?"
+  ground_truth:
+    answer: "functools.partial creates a new callable with some arguments pre-filled. functools.wraps is a decorator that copies the wrapped function's metadata (__name__, __doc__, etc.) to the wrapper. When creating decorators that use partial internally, wraps ensures the wrapper looks like the original function to introspection tools like inspect and help()."
+    source_refs:
+      - "functools.html#functools.partial"
+      - "functools.html#functools.wraps"
+    required_entities:
+      - "functools.partial"
+      - "functools.wraps"
+  constraints:
+    must_mention:
+      - "functools.partial"
+      - "functools.wraps"
+      - "metadata"
+    must_not_claim:
+      - "same function"
+
+- id: "py-t2-005"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "What is the relationship between os.path, pathlib.Path, and the underlying os module?"
+  ground_truth:
+    answer: "os.path is a module (actually posixpath or ntpath depending on OS) providing path manipulation functions. pathlib.Path is an object-oriented wrapper that internally calls os.stat, os.listdir, and os functions. pathlib.Path.as_posix() and os.fspath() provide interoperability. pathlib was introduced in Python 3.4 as a higher-level alternative."
+    source_refs:
+      - "os.path.html"
+      - "pathlib.html"
+      - "os.html#os.fspath"
+    required_entities:
+      - "os.path"
+      - "pathlib.Path"
+      - "os.fspath"
+  constraints:
+    must_mention:
+      - "os.path"
+      - "pathlib"
+    must_not_claim:
+      - "identical"
+      - "os.path is deprecated"
+
+- id: "py-t2-006"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "Which stdlib modules support context managers via the 'with' statement?"
+  ground_truth:
+    answer: "Many stdlib modules support context managers: open() (file I/O), threading.Lock, socket.socket, subprocess.Popen, zipfile.ZipFile, tarfile.TarFile, sqlite3.Connection, decimal.localcontext, and unittest.mock.patch. The contextlib module provides utilities to create context managers including contextmanager decorator and suppress, nullcontext."
+    source_refs:
+      - "contextlib.html"
+      - "threading.html"
+      - "functions.html#open"
+    required_entities:
+      - "contextlib"
+      - "threading.Lock"
+      - "open"
+  constraints:
+    must_mention:
+      - "contextlib"
+      - "with"
+    must_not_claim:
+      - "only file I/O"
+
+- id: "py-t2-007"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "How do threading.Event and threading.Condition differ in coordinating threads?"
+  ground_truth:
+    answer: "threading.Event is a simple flag — threads wait via event.wait() until event.set() is called. threading.Condition is more powerful: it wraps a Lock and allows threads to wait for an arbitrary condition via condition.wait(), which releases the lock and waits for condition.notify() or condition.notify_all(). Condition supports spurious wakeup handling with while-loop predicates, which Event does not require."
+    source_refs:
+      - "threading.html#threading.Event"
+      - "threading.html#threading.Condition"
+    required_entities:
+      - "threading.Event"
+      - "threading.Condition"
+  constraints:
+    must_mention:
+      - "threading.Event"
+      - "threading.Condition"
+      - "notify"
+    must_not_claim:
+      - "identical"
+      - "same purpose"
+
+- id: "py-t2-008"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "What is the difference between pickle.dumps() and json.dumps() for object serialization?"
+  ground_truth:
+    answer: "pickle.dumps() serializes arbitrary Python objects to bytes using Python-specific binary format — supports nearly any Python object including classes and functions. json.dumps() serializes to a UTF-8 text string in JSON format — only supports strings, numbers, lists, dicts, booleans, and None. pickle output is not human-readable and not portable across languages. JSON is human-readable and language-agnostic. pickle is a security risk with untrusted input."
+    source_refs:
+      - "pickle.html"
+      - "json.html"
+    required_entities:
+      - "pickle"
+      - "json"
+  constraints:
+    must_mention:
+      - "pickle"
+      - "JSON"
+      - "security"
+    must_not_claim:
+      - "interchangeable"
+      - "same format"
+
+- id: "py-t2-009"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "What modules does the logging module integrate with for structured output?"
+  ground_truth:
+    answer: "The logging module integrates with: json (via custom Formatter for JSON logs), sys (for stderr output via StreamHandler), io (via IOBase streams), socket (via SocketHandler and DatagramHandler for remote logging), http.server (via HTTPHandler), queue (via QueueHandler for async logging). The structlog third-party library is the common extension point."
+    source_refs:
+      - "logging.html"
+      - "logging.handlers.html"
+    required_entities:
+      - "logging"
+      - "logging.handlers"
+    required_entities:
+      - "logging.StreamHandler"
+      - "logging.handlers.SocketHandler"
+  constraints:
+    must_mention:
+      - "logging"
+      - "handler"
+    must_not_claim:
+      - "print is the same"
+
+- id: "py-t2-010"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "How do abc.ABC and typing.Protocol differ for defining interfaces in Python?"
+  ground_truth:
+    answer: "abc.ABC uses nominal subtyping — classes must explicitly inherit from the ABC or register with it. Unimplemented abstractmethods raise TypeError at instantiation. typing.Protocol uses structural subtyping (duck typing) — any class implementing the required methods is considered compatible at type-check time without explicit inheritance. Protocol is checked statically by mypy, abc.ABC is enforced at runtime."
+    source_refs:
+      - "abc.html"
+      - "typing.html#typing.Protocol"
+    required_entities:
+      - "abc.ABC"
+      - "typing.Protocol"
+  constraints:
+    must_mention:
+      - "abc.ABC"
+      - "Protocol"
+      - "structural"
+    must_not_claim:
+      - "identical"
+      - "same mechanism"
+
+- id: "py-t2-011"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "Which stdlib modules work together to implement async HTTP clients without third-party packages?"
+  ground_truth:
+    answer: "asyncio provides the event loop and coroutine framework. For HTTP, http.client.HTTPConnection / HTTPSConnection can be used synchronously but not natively async. For async HTTP without third-party packages, you combine asyncio.open_connection() (for TCP), ssl for TLS wrapping, and manually implement HTTP/1.1 protocol. urllib does not support async. In practice, asyncio alone cannot do async HTTP without httpx or aiohttp."
+    source_refs:
+      - "asyncio-stream.html"
+      - "http.client.html"
+      - "ssl.html"
+    required_entities:
+      - "asyncio"
+      - "asyncio.open_connection"
+      - "ssl"
+  constraints:
+    must_mention:
+      - "asyncio"
+      - "ssl"
+    must_not_claim:
+      - "urllib is async"
+      - "http.client is async"
+
+- id: "py-t2-012"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "What is the relationship between datetime.date, datetime.datetime, and datetime.timezone?"
+  ground_truth:
+    answer: "datetime.date represents a date without time (year, month, day). datetime.datetime is a subclass of datetime.date that adds time components (hour, minute, second, microsecond). datetime.timezone is a concrete implementation of datetime.tzinfo for fixed-offset time zones. A datetime is 'aware' if it has a tzinfo attribute set (e.g., timezone.utc), otherwise 'naive'."
+    source_refs:
+      - "datetime.html#datetime.date"
+      - "datetime.html#datetime.datetime"
+      - "datetime.html#datetime.timezone"
+    required_entities:
+      - "datetime.date"
+      - "datetime.datetime"
+      - "datetime.timezone"
+  constraints:
+    must_mention:
+      - "datetime.date"
+      - "datetime.datetime"
+      - "aware"
+    must_not_claim:
+      - "datetime.date includes time"
+      - "same class"
+
+- id: "py-t2-013"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "How do concurrent.futures.ThreadPoolExecutor and multiprocessing.Pool differ in Python's execution model?"
+  ground_truth:
+    answer: "ThreadPoolExecutor uses threads sharing a single process's memory. Due to the GIL, CPU-bound work does not parallelize. I/O-bound work benefits because threads can run while others wait on I/O. multiprocessing.Pool spawns separate processes with separate memory spaces, bypassing the GIL. CPU-bound work parallelizes, but inter-process communication has serialization overhead via pickle."
+    source_refs:
+      - "concurrent.futures.html"
+      - "multiprocessing.html"
+    required_entities:
+      - "concurrent.futures.ThreadPoolExecutor"
+      - "multiprocessing.Pool"
+      - "GIL"
+  constraints:
+    must_mention:
+      - "GIL"
+      - "processes"
+      - "threads"
+    must_not_claim:
+      - "identical performance"
+      - "GIL affects multiprocessing"
+
+- id: "py-t2-014"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "What stdlib modules are used together to parse and validate command-line arguments with type checking?"
+  ground_truth:
+    answer: "argparse is the primary module for CLI argument parsing. It provides type= parameter accepting any callable (int, float, pathlib.Path, custom validators). For more complex validation, argparse is combined with typing for type hints and custom action classes. The shlex module helps parse strings as shell tokens. sys.argv provides the raw argument list."
+    source_refs:
+      - "argparse.html"
+      - "sys.html#sys.argv"
+      - "shlex.html"
+    required_entities:
+      - "argparse"
+      - "sys.argv"
+  constraints:
+    must_mention:
+      - "argparse"
+      - "type"
+    must_not_claim:
+      - "click"
+      - "typer"
+
+- id: "py-t2-015"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "How do io.StringIO and io.BytesIO interact with the csv module?"
+  ground_truth:
+    answer: "csv.reader and csv.writer work with any file-like object. io.StringIO provides an in-memory text stream that csv can read/write without touching disk. io.BytesIO provides a binary stream; to use with csv you must decode bytes or use TextIOWrapper. A common pattern is to write CSV to io.StringIO, then call getvalue() to get the CSV string."
+    source_refs:
+      - "io.html#io.StringIO"
+      - "csv.html"
+    required_entities:
+      - "io.StringIO"
+      - "io.BytesIO"
+      - "csv"
+  constraints:
+    must_mention:
+      - "StringIO"
+      - "csv"
+      - "in-memory"
+    must_not_claim:
+      - "requires a file"
+      - "cannot be combined"
+
+- id: "py-t2-016"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "Which modules provide cryptographic hashing and how do they relate to the hashlib module?"
+  ground_truth:
+    answer: "hashlib is the primary stdlib module for cryptographic hashing, providing SHA-256, SHA-512, MD5, BLAKE2, SHA-3, and others via hashlib.new(). The hmac module builds on hashlib to provide keyed-hash message authentication codes. secrets uses os.urandom() and hashlib for secure token generation. ssl uses hashlib algorithms internally for certificate fingerprints."
+    source_refs:
+      - "hashlib.html"
+      - "hmac.html"
+      - "secrets.html"
+    required_entities:
+      - "hashlib"
+      - "hmac"
+      - "secrets"
+  constraints:
+    must_mention:
+      - "hashlib"
+      - "hmac"
+    must_not_claim:
+      - "hashlib includes HMAC"
+      - "secrets is deprecated"
+
+- id: "py-t2-017"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "What modules work together to implement a simple TCP echo server in Python's stdlib?"
+  ground_truth:
+    answer: "A TCP echo server requires: socket (for socket creation, bind, listen, accept), socketserver.TCPServer (higher-level, handles accept/fork loop), or asyncio.start_server (async). socketserver.StreamRequestHandler provides handle() method pattern. For threading, socketserver.ThreadingTCPServer adds per-request threads."
+    source_refs:
+      - "socket.html"
+      - "socketserver.html"
+      - "asyncio-stream.html"
+    required_entities:
+      - "socket"
+      - "socketserver"
+      - "asyncio.start_server"
+  constraints:
+    must_mention:
+      - "socket"
+      - "socketserver"
+    must_not_claim:
+      - "http.server for TCP"
+      - "only asyncio"
+
+- id: "py-t2-018"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "How do textwrap and shutil interact for terminal output formatting?"
+  ground_truth:
+    answer: "textwrap.fill() and textwrap.wrap() format text to fit a given column width. shutil.get_terminal_size() returns the terminal's (columns, lines) — commonly used to get the column count dynamically. Combined: textwrap.fill(text, width=shutil.get_terminal_size().columns) produces text that fits the current terminal."
+    source_refs:
+      - "textwrap.html"
+      - "shutil.html#shutil.get_terminal_size"
+    required_entities:
+      - "textwrap"
+      - "shutil.get_terminal_size"
+  constraints:
+    must_mention:
+      - "textwrap"
+      - "terminal"
+    must_not_claim:
+      - "os.get_terminal_size does not exist"
+
+- id: "py-t2-019"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "What is the relationship between time.time(), time.monotonic(), and time.perf_counter()?"
+  ground_truth:
+    answer: "time.time() returns the current wall-clock time as a float (seconds since epoch) — can go backward with NTP adjustments. time.monotonic() always moves forward, suitable for measuring elapsed time, not affected by wall-clock changes. time.perf_counter() has the highest resolution timer available, suitable for benchmarking short durations. perf_counter is not guaranteed monotonic across process boundary."
+    source_refs:
+      - "time.html#time.time"
+      - "time.html#time.monotonic"
+      - "time.html#time.perf_counter"
+    required_entities:
+      - "time.time"
+      - "time.monotonic"
+      - "time.perf_counter"
+  constraints:
+    must_mention:
+      - "time.monotonic"
+      - "time.perf_counter"
+      - "wall-clock"
+    must_not_claim:
+      - "identical"
+      - "time.time is monotonic"
+
+- id: "py-t2-020"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "How do dataclasses.dataclass and typing.NamedTuple differ for defining data structures?"
+  ground_truth:
+    answer: "dataclasses.dataclass generates __init__, __repr__, __eq__ for mutable classes. Fields can have defaults, default_factory, and post_init hooks. typing.NamedTuple creates immutable tuple subclasses with named fields — instances are tuples and can be unpacked. dataclasses support inheritance cleanly; NamedTuple inheritance is limited. dataclasses can be made immutable with frozen=True."
+    source_refs:
+      - "dataclasses.html"
+      - "typing.html#typing.NamedTuple"
+    required_entities:
+      - "dataclasses.dataclass"
+      - "typing.NamedTuple"
+  constraints:
+    must_mention:
+      - "dataclass"
+      - "NamedTuple"
+      - "immutable"
+    must_not_claim:
+      - "identical"
+      - "NamedTuple is mutable"
