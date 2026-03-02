@@ -1,4 +1,7 @@
-"""Two-pass evaluator: structural checks (no LLM) then LLM-as-judge."""
+"""Two-pass evaluator: structural checks (no LLM) then LLM-as-judge.
+
+Enhanced with entity coverage and source attribution scoring.
+"""
 
 from __future__ import annotations
 
@@ -65,23 +68,78 @@ def _structural_check(answer: str, constraints: Constraints) -> Score:
     )
 
 
+def _check_entity_coverage(
+    answer: str,
+    required_entities: list[str],
+) -> tuple[float, list[str]]:
+    """Check how many required entities appear in the answer."""
+    if not required_entities:
+        return 1.0, []
+    answer_lower = answer.lower()
+    found = [
+        ent for ent in required_entities
+        if re.search(re.escape(ent.lower()), answer_lower)
+    ]
+    ratio = len(found) / len(required_entities)
+    return ratio, found
+
+
+def _check_source_attribution(
+    returned_sources: list[str],
+    expected_refs: list[str],
+) -> float:
+    """Score how well the returned sources match expected source refs.
+
+    Uses substring matching — a returned source "json.html#json.JSONDecodeError"
+    matches expected ref "json.html#json.JSONDecodeError".
+    """
+    if not expected_refs:
+        return 1.0  # no expected refs = pass
+    if not returned_sources:
+        return 0.0  # expected refs but nothing returned
+
+    matched = 0
+    returned_lower = [s.lower() for s in returned_sources]
+    for ref in expected_refs:
+        ref_lower = ref.lower()
+        if any(ref_lower in src or src in ref_lower for src in returned_lower):
+            matched += 1
+
+    return matched / len(expected_refs)
+
+
 async def evaluate(
     answer: str,
     ground_truth: GroundTruth,
     constraints: Constraints,
+    sources: list[str] | None = None,
     llm: LLMClient | None = None,
 ) -> Score:
-    """Two-pass evaluation.
+    """Multi-pass evaluation.
 
-    Pass 1 is always run (structural, <1ms).
-    Pass 2 (LLM judge) only runs if structural_pass=True and llm is provided.
+    Pass 1: structural check (must_mention, must_not_claim) — <1ms
+    Pass 2: entity coverage (required_entities) — <1ms
+    Pass 3: source attribution (source_refs vs returned sources) — <1ms
+    Pass 4: LLM-as-judge (accuracy, completeness, faithfulness) — ~500ms
     """
     score = _structural_check(answer, constraints)
+
+    # Entity coverage
+    entity_ratio, entities_found = _check_entity_coverage(
+        answer, ground_truth.required_entities
+    )
+    score.entity_coverage = entity_ratio
+    score.entities_found = entities_found
+
+    # Source attribution
+    score.source_attribution = _check_source_attribution(
+        sources or [], ground_truth.source_refs
+    )
 
     if not score.structural_pass or llm is None:
         return score
 
-    # Pass 2: LLM-as-judge
+    # Pass 4: LLM-as-judge
     try:
         raw = await llm.judge(
             answer=answer,

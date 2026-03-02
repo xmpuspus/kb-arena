@@ -79,8 +79,25 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
         logger.info("Done: %s", name)
 
 
+def get_strategy(name: str):
+    """Instantiate a strategy by name. Used by the benchmark runner."""
+    import chromadb
+
+    cls = STRATEGY_REGISTRY.get(name)
+    if cls is None:
+        raise ValueError(f"Unknown strategy: {name}. Available: {list(STRATEGY_REGISTRY)}")
+
+    # Vector-backed strategies need a ChromaDB client
+    if name in ("naive_vector", "contextual_vector", "qna_pairs", "hybrid"):
+        chroma = chromadb.PersistentClient(path=settings.chroma_path)
+        return cls(chroma_client=chroma)
+
+    return cls()
+
+
 __all__ = [
     "STRATEGY_REGISTRY",
+    "get_strategy",
     "NaiveVectorStrategy",
     "ContextualVectorStrategy",
     "QnAPairStrategy",

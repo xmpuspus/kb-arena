@@ -23,6 +23,8 @@ class AnswerResult(BaseModel):
     graph_context: GraphContext | None = None
     strategy: str = ""
     latency_ms: float = 0.0
+    retrieval_latency_ms: float = 0.0
+    generation_latency_ms: float = 0.0
     tokens_used: int = 0
     cost_usd: float = 0.0
     mock: bool = False

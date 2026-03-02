@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     # Benchmark
     benchmark_temperature: float = 0.0
     benchmark_max_concurrent: int = 5
+    benchmark_query_timeout_s: int = 120
+    benchmark_max_retries: int = 2
 
     # Paths
     datasets_path: str = "./datasets"
