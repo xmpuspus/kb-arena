@@ -1,0 +1,58 @@
+# Codebase intelligence (auto-generated)
+.planning/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+
+# Data stores
+neo4j_data/
+chroma_data/
+
+# Node / Frontend
+node_modules/
+.next/
+web/.next/
+web/node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test / Coverage
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Ruff
+.ruff_cache/
+
+# Raw datasets (downloaded, not committed)
+datasets/*/raw/*.html
+datasets/*/raw/*.rst
+datasets/*/raw/*.json
+datasets/*/raw/*.txt
+!datasets/*/raw/.gitkeep
+
+# Processed data (generated, not committed)
+datasets/*/processed/*.jsonl
+!datasets/*/processed/.gitkeep
