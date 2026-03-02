@@ -102,7 +102,7 @@ def sample_documents(sample_document):
 @pytest.fixture
 def mock_neo4j_driver():
     """Mock Neo4j async driver."""
-    driver = AsyncMock()
+    driver = MagicMock()
     session = AsyncMock()
     result = AsyncMock()
     summary = MagicMock()
@@ -111,8 +111,11 @@ def mock_neo4j_driver():
     result.consume.return_value = summary
     result.data.return_value = []
     session.run.return_value = result
-    driver.session.return_value.__aenter__ = AsyncMock(return_value=session)
-    driver.session.return_value.__aexit__ = AsyncMock(return_value=False)
+    # session() returns an async context manager
+    ctx = AsyncMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+    driver.session.return_value = ctx
     return driver
 
 
