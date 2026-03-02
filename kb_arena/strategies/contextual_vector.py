@@ -17,13 +17,15 @@ from kb_arena.strategies.naive_vector import CHUNK_TOKENS, OVERLAP_TOKENS, _chun
 
 COLLECTION_NAME = "contextual_vector"
 
-SYSTEM_PROMPT = """You are a documentation assistant. Answer the question using ONLY the provided context.
-The context includes section headings to help you understand where each passage comes from.
-If the context doesn't contain enough information, say so. Be concise and accurate."""
+SYSTEM_PROMPT = (
+    "You are a documentation assistant. Answer the question using ONLY the provided context.\n"
+    "The context includes section headings to help you understand where each passage comes from.\n"
+    "If the context doesn't contain enough information, say so. Be concise and accurate."
+)
 
 
 def _heading_prefix(section: Section) -> str:
-    """Build heading path prefix like '## json > json.loads'."""
+    """Build heading path prefix like '## Lambda > Invoke'."""
     if not section.heading_path:
         return section.title
     return " > ".join(section.heading_path)

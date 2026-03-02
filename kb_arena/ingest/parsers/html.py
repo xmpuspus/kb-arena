@@ -1,13 +1,12 @@
-"""HTML parser for Python documentation and generic HTML files.
+"""HTML parser for AWS documentation and generic HTML files.
 
 Handles:
 - Nested <div class="section"> structure
 - h1-h6 heading hierarchy
-- <dl> blocks for function/class/method/attribute signatures
+- <dl> blocks for definition/signature entries
 - <table> for parameter tables
 - <pre>/<code> for code blocks
 - <a class="reference"> for cross-references
-- Python docs specific: classes "function", "method", "class", "attribute"
 """
 
 from __future__ import annotations
@@ -104,7 +103,7 @@ def _extract_dl_sections(
 
     for dl in container.find_all("dl", recursive=False):
         dl_class = set(dl.get("class", []))
-        obj_type = next((c for c in dl_class if c in py_types), "")
+        next((c for c in dl_class if c in py_types), "")  # classify dl type
 
         dt = dl.find("dt")
         dd = dl.find("dd")

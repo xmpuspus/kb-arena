@@ -1,0 +1,394 @@
+- id: "storage-t4-001"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do S3 bucket policies, IAM identity policies, and S3 Block Public Access
+    interact to determine whether an unauthenticated request can read an object?
+  ground_truth:
+    answer: >
+      Access evaluation for an unauthenticated (anonymous) S3 GET request goes through
+      three layers: (1) S3 Block Public Access — evaluated first at the account and bucket
+      level. If BlockPublicPolicy or RestrictPublicBuckets is enabled, any bucket policy
+      granting public access is ignored; the request is denied regardless of the policy.
+      (2) If BPA allows the request, S3 evaluates the bucket policy. For anonymous access,
+      there is no identity policy (no IAM principal). An anonymous request can only succeed
+      if the bucket policy explicitly grants s3:GetObject to Principal "*" (public read).
+      If no bucket policy exists or the policy does not grant public access, the request
+      is denied. (3) Object ACLs: if ACL-based access control is disabled (bucket owner
+      enforced setting, recommended), object ACLs are ignored. If ACLs are enabled, a
+      public-read ACL on the object can grant access even without a bucket policy. Bottom
+      line: BPA blocks → always deny. BPA allows + bucket policy grants Principal "*" →
+      allow. BPA allows + no public grant → deny. IAM policies are only evaluated for
+      authenticated requests.
+    source_refs:
+      - "AmazonS3/latest/userguide/access-control-overview.html"
+      - "AmazonS3/latest/userguide/access-control-block-public-access.html"
+    required_entities:
+      - "S3 Block Public Access"
+      - "bucket policy"
+      - "IAM policy"
+      - "anonymous"
+  constraints:
+    must_mention:
+      - "Block Public Access"
+      - "Principal"
+    must_not_claim:
+      - "IAM policy evaluated for anonymous requests"
+      - "bucket policy overrides Block Public Access"
+    max_tokens: 300
+
+- id: "storage-t4-002"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do S3 VPC endpoints (Gateway type), S3 bucket policies, and VPC route
+    tables work together to restrict S3 access to traffic originating inside a VPC?
+  ground_truth:
+    answer: >
+      Three components interact to enforce VPC-only S3 access: (1) VPC Route Table — add a
+      route for S3 prefix list (pl-xxxxxxxx for the region) pointing to the VPC Gateway
+      Endpoint. This ensures S3-bound traffic from instances in that subnet routes through
+      the endpoint instead of the internet or NAT Gateway. (2) S3 Gateway Endpoint policy —
+      controls what S3 actions can be performed through the endpoint (e.g., restrict to a
+      specific bucket or require specific conditions). By default, allows all S3 access. (3)
+      S3 Bucket policy — add a condition to deny s3:GetObject (and other actions) unless the
+      request comes through a specific VPC endpoint: `"Condition": {"StringNotEquals":
+      {"aws:sourceVpce": "vpce-xxxxxxxx"}}`. This bucket policy condition means requests
+      from outside the VPC (even from other AWS services with valid IAM credentials) are
+      denied. Combined: the route table sends traffic to the endpoint, the endpoint policy
+      allows or restricts further, and the bucket policy enforces that only requests via the
+      endpoint are accepted. This works without an Internet Gateway or NAT Gateway in the
+      traffic path for S3.
+    source_refs:
+      - "vpc/latest/privatelink/vpc-endpoints-s3.html"
+      - "AmazonS3/latest/userguide/example-bucket-policies-vpc-endpoint.html"
+    required_entities:
+      - "VPC Gateway Endpoint"
+      - "S3 bucket policy"
+      - "aws:sourceVpce"
+      - "route table"
+  constraints:
+    must_mention:
+      - "aws:sourceVpce"
+      - "route table"
+    must_not_claim:
+      - "VPC endpoint encrypts data by default"
+      - "no bucket policy needed for VPC restriction"
+    max_tokens: 300
+
+- id: "storage-t4-003"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do AWS KMS CMKs, IAM key policies, and S3 SSE-KMS interact to control
+    who can read SSE-KMS encrypted S3 objects across accounts?
+  ground_truth:
+    answer: >
+      Cross-account SSE-KMS S3 access requires three policy layers: (1) KMS key policy —
+      the CMK lives in the source account. The key policy must explicitly grant the destination
+      account's IAM principal (or the destination account itself) kms:Decrypt permission.
+      Without this, no cross-account decryption is possible — KMS key policy is the root
+      authorization for the key. (2) IAM policy in the destination account — the IAM user or
+      role in the destination account must have permission to call kms:Decrypt on the specific
+      CMK ARN. Both the key policy (resource-based) and the IAM policy (identity-based) must
+      allow the action. (3) S3 bucket policy in the source account — the bucket policy must
+      grant the destination account's principal s3:GetObject permission on the encrypted
+      objects. On a GET, S3 calls KMS Decrypt to retrieve the data key; if the principal cannot
+      decrypt, the GET fails with an access denied. Summary: S3 bucket policy grants object
+      access → KMS key policy grants key use → IAM policy in destination account allows KMS
+      call. All three must allow the action.
+    source_refs:
+      - "kms/latest/developerguide/key-policy-overview.html"
+      - "AmazonS3/latest/userguide/UsingKMSEncryption.html"
+    required_entities:
+      - "KMS key policy"
+      - "IAM policy"
+      - "SSE-KMS"
+      - "cross-account"
+  constraints:
+    must_mention:
+      - "key policy"
+      - "kms:Decrypt"
+    must_not_claim:
+      - "IAM policy alone grants KMS cross-account access"
+      - "S3 bucket policy alone is sufficient for encrypted objects"
+    max_tokens: 300
+
+- id: "storage-t4-004"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do EFS access points, IAM authorization, and POSIX permissions work
+    together to enforce per-application file system isolation on a shared EFS?
+  ground_truth:
+    answer: >
+      EFS access isolation uses three mechanisms: (1) EFS Access Points — an access point
+      is an application-specific entry point into an EFS file system. Each access point can
+      enforce a root directory (restricting the application to a subtree), a POSIX user
+      identity (UID/GID) that is applied to all file operations regardless of the NFS
+      client's UID, and an ownership for the root directory. This prevents application A
+      from accessing application B's subtree even when mounted on the same EFS. (2) IAM
+      authorization for NFS (requires EFS to have IAM authorization enabled) — the mounting
+      entity's IAM role must have elasticfilesystem:ClientMount and optionally
+      elasticfilesystem:ClientWrite permissions on the specific access point ARN. Without
+      the IAM permission to the access point, the mount is denied. (3) POSIX permissions —
+      standard Unix file permissions (owner/group/other rwx, 0755 etc.) on directories and
+      files control fine-grained read/write within the mounted subtree. Combined: IAM controls
+      which access point a client can mount; the access point enforces POSIX UID/GID and
+      root directory; POSIX permissions provide file-level control within that directory.
+    source_refs:
+      - "efs/latest/ug/efs-access-points.html"
+      - "efs/latest/ug/access-control-overview.html"
+    required_entities:
+      - "EFS access point"
+      - "IAM authorization"
+      - "POSIX UID/GID"
+      - "root directory"
+  constraints:
+    must_mention:
+      - "access point"
+      - "POSIX"
+    must_not_claim:
+      - "EFS access points require no IAM"
+      - "POSIX permissions alone isolate applications"
+    max_tokens: 300
+
+- id: "storage-t4-005"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do S3 Object Lock, S3 Versioning, and IAM permissions interact when an
+    admin attempts to delete an object under Compliance mode retention?
+  ground_truth:
+    answer: >
+      When an object has an active Object Lock Compliance retention period: (1) S3
+      Versioning is required and must be enabled — Object Lock operates on object versions.
+      (2) Any attempt to delete (or overwrite) the object version before the retain-until
+      date is rejected with a 403 error, regardless of IAM permissions. The s3:DeleteObject
+      action adds a delete marker on the current version but does NOT delete the locked
+      version. The locked version persists. (3) Even the AWS account root user cannot delete
+      a locked object in Compliance mode — there is no IAM permission that bypasses
+      Compliance mode retention. The s3:BypassGovernanceRetention permission only applies
+      to Governance mode, not Compliance mode. (4) The only way to remove an object under
+      active Compliance retention is to wait for the retain-until date to pass. (5) Legal
+      Hold (a separate Object Lock feature) can be placed or removed independently of the
+      retention period, and also blocks deletion; it can be removed by a user with
+      s3:PutObjectLegalHold permission. Summary: Compliance mode retention is an absolute
+      constraint that overrides all IAM permissions for the duration of the retention period.
+    source_refs:
+      - "AmazonS3/latest/userguide/object-lock-overview.html"
+    required_entities:
+      - "Object Lock"
+      - "Compliance mode"
+      - "S3 Versioning"
+      - "IAM"
+  constraints:
+    must_mention:
+      - "root user"
+      - "delete marker"
+    must_not_claim:
+      - "root account can delete in Compliance mode"
+      - "s3:BypassGovernanceRetention works for Compliance mode"
+    max_tokens: 300
+
+- id: "storage-t4-006"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How does the relationship between EBS snapshots, AMIs, and EC2 Auto Scaling
+    enable automated fleet recovery to a known-good application state?
+  ground_truth:
+    answer: >
+      The recovery chain works through three connected entities: (1) EBS Snapshot — a
+      point-in-time backup of an EBS volume stored durably in S3 (regional). Snapshots
+      capture the root volume and any data volumes. (2) AMI (Amazon Machine Image) — an
+      AMI is registered from one or more EBS snapshots. The AMI references the snapshot
+      IDs; when an EC2 instance launches from the AMI, AWS creates new EBS volumes from
+      those snapshots. AMIs encode the known-good application state (OS, runtime, app
+      binaries). (3) Auto Scaling Launch Template — references the AMI ID. When Auto
+      Scaling replaces unhealthy instances or scales out, it launches new instances from
+      the same AMI, ensuring all fleet instances start from the identical baseline. Workflow:
+      after validating a deployment, create an EBS snapshot of the running instance, register
+      a new AMI, update the Launch Template to use the new AMI version, and Auto Scaling
+      gradually replaces instances. Rollback: update Launch Template to the previous AMI
+      version — ASG replaces unhealthy or cycled instances with the old baseline.
+    source_refs:
+      - "ec2/latest/userguide/creating-an-ami-ebs.html"
+      - "autoscaling/ec2/userguide/launch-templates.html"
+    required_entities:
+      - "EBS snapshot"
+      - "AMI"
+      - "Auto Scaling"
+      - "Launch Template"
+  constraints:
+    must_mention:
+      - "AMI"
+      - "Launch Template"
+    must_not_claim:
+      - "AMI is stored in EFS"
+      - "Auto Scaling stores snapshots directly"
+    max_tokens: 300
+
+- id: "storage-t4-007"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do S3 Event Notifications, SQS, and Lambda work together to build a
+    reliable fan-out processing pipeline for S3 object uploads?
+  ground_truth:
+    answer: >
+      For reliable fan-out processing of S3 uploads: (1) S3 Event Notification → SQS queue.
+      S3 delivers an at-least-once notification to an SQS queue when an object is uploaded
+      (s3:ObjectCreated:*). SQS provides durability and decoupling — messages are retained
+      for up to 14 days if not processed. (2) Lambda event source mapping on SQS — Lambda
+      polls the SQS queue and invokes the function with batches of SQS messages (each
+      message contains the S3 event JSON with bucket name and object key). Lambda scales
+      concurrently with the number of messages. (3) On success, Lambda deletes messages from
+      the queue. On failure, messages return to the queue for retry (visibility timeout);
+      after maxReceiveCount retries, messages go to a Dead Letter Queue (DLQ) for inspection.
+      This is more reliable than direct S3 → Lambda because: SQS absorbs burst traffic,
+      messages are not lost if Lambda is throttled, and DLQ captures failed events. For
+      fan-out to multiple processors, use S3 → SNS → multiple SQS queues (each subscribed
+      by a different Lambda function).
+    source_refs:
+      - "AmazonS3/latest/userguide/NotificationHowTo.html"
+      - "lambda/latest/dg/with-sqs.html"
+    required_entities:
+      - "S3 Event Notification"
+      - "SQS"
+      - "Lambda"
+      - "Dead Letter Queue"
+  constraints:
+    must_mention:
+      - "Dead Letter Queue"
+      - "fan-out"
+    must_not_claim:
+      - "exactly-once delivery from S3 to SQS"
+      - "Lambda directly processes S3 events without SQS for reliability"
+    max_tokens: 300
+
+- id: "storage-t4-008"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do AWS Backup vault lock, AWS Organizations SCPs, and IAM permission
+    boundaries work together to prevent backup deletion by a compromised admin?
+  ground_truth:
+    answer: >
+      Defense-in-depth for backup protection requires three layers: (1) Backup Vault Lock
+      (WORM) — when vault lock is applied in Compliance mode, no user including the root
+      account and AWS support can delete backup recovery points or change vault settings
+      during the lock period. This is the strongest protection layer — operates at the
+      Backup service level, independent of IAM. (2) AWS Organizations Service Control
+      Policies (SCPs) — applied to the backup account at the organizational unit level,
+      an SCP can deny backup:DeleteBackupVault, backup:DeleteRecoveryPoint, and
+      backup:DeleteBackupVaultLockConfiguration for all principals in the account
+      (including local admins). SCPs cannot be overridden by IAM policies in member
+      accounts. (3) IAM Permission Boundaries — limit the maximum permissions of IAM roles
+      in the backup account, ensuring even if an admin role is compromised, the role cannot
+      exceed the boundary's permissions. Combined: SCP prevents deleting backups at the
+      organizational level, vault lock provides service-level WORM regardless of IAM, and
+      permission boundaries limit the blast radius of a compromised IAM entity.
+    source_refs:
+      - "aws-backup/latest/devguide/vault-lock.html"
+      - "organizations/latest/userguide/orgs_manage_policies_scps.html"
+    required_entities:
+      - "Backup vault lock"
+      - "SCP"
+      - "IAM permission boundary"
+      - "Compliance mode"
+  constraints:
+    must_mention:
+      - "SCP"
+      - "vault lock"
+    must_not_claim:
+      - "IAM admin can delete vault-locked backups"
+      - "SCPs alone prevent all deletion scenarios"
+    max_tokens: 300
+
+- id: "storage-t4-009"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do FSx for Lustre's S3 data repository association, EC2 Spot Instances,
+    and S3 lifecycle policies interact for cost-optimized ML training?
+  ground_truth:
+    answer: >
+      Cost-optimized ML training connects three services: (1) FSx for Lustre S3 Data
+      Repository Association (DRA) — link the Lustre file system to an S3 bucket. Training
+      data in S3 appears as files in the Lustre file system (lazy loading — data is imported
+      on first access, not all upfront). After training, FSx Lustre auto-exports output files
+      back to S3. This avoids copying the full dataset before training. (2) EC2 Spot Instances
+      — run ML training jobs on Spot Instances (up to 90% cost savings vs On-Demand). Spot
+      can be interrupted; checkpointing to FSx Lustre (or S3 via DRA) preserves training
+      state so a replacement Spot instance can resume from the last checkpoint rather than
+      restarting. (3) S3 Lifecycle policies — after training completes, lifecycle rules
+      transition output artifacts and model checkpoints from S3 Standard to S3 Intelligent-
+      Tiering or Glacier for cost reduction. Combined: Spot handles compute cost, Lustre DRA
+      handles fast parallel data access from S3 without full dataset copy, and lifecycle
+      policies manage output storage cost automatically.
+    source_refs:
+      - "fsx/latest/LustreGuide/fsx-data-repositories.html"
+      - "ec2/latest/userguide/using-spot-instances.html"
+    required_entities:
+      - "FSx for Lustre"
+      - "S3 data repository"
+      - "Spot Instances"
+      - "S3 Lifecycle"
+  constraints:
+    must_mention:
+      - "data repository"
+      - "Spot"
+    must_not_claim:
+      - "FSx Lustre requires full dataset copy from S3 upfront"
+      - "Spot interruptions destroy all training progress"
+    max_tokens: 300
+
+- id: "storage-t4-010"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do S3 Replication Time Control (RTC), S3 replication metrics, and
+    CloudWatch alarms interact to meet a 15-minute RPO SLA?
+  ground_truth:
+    answer: >
+      Meeting a 15-minute RPO for S3 cross-region replication uses three integrated
+      components: (1) S3 Replication Time Control (RTC) — when enabled on a CRR rule,
+      AWS provides an SLA that 99.99% of new objects will be replicated within 15 minutes.
+      Without RTC, replication is best-effort with no timing guarantee. RTC adds an
+      additional cost per GB replicated. (2) S3 Replication metrics — when RTC is enabled,
+      S3 publishes replication metrics to CloudWatch: ReplicationLatency (time in seconds
+      for replicated objects), BytesPendingReplication (bytes not yet replicated),
+      OperationsPendingReplication (number of objects pending). These are emitted at
+      1-minute granularity. (3) CloudWatch Alarms on replication metrics — create alarms
+      on ReplicationLatency exceeding 900 seconds (15 minutes) or BytesPendingReplication
+      exceeding a threshold. Alarm actions can notify SNS (PagerDuty/OpsGenie), trigger
+      Lambda, or invoke Auto Scaling. Together: RTC enforces the SLA, metrics make
+      replication observable, and alarms detect breaches. Without RTC, there is no SLA
+      guarantee and metrics are not published.
+    source_refs:
+      - "AmazonS3/latest/userguide/replication-time-control.html"
+      - "AmazonS3/latest/userguide/replication-metrics.html"
+    required_entities:
+      - "S3 Replication Time Control"
+      - "replication metrics"
+      - "CloudWatch alarm"
+      - "15 minutes"
+  constraints:
+    must_mention:
+      - "15 minutes"
+      - "CloudWatch"
+    must_not_claim:
+      - "standard replication has a 15-minute SLA"
+      - "RTC metrics are free"
+    max_tokens: 300

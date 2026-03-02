@@ -1,0 +1,595 @@
+- id: "storage-t2-001"
+  tier: 2
+  type: procedural
+  hops: 1
+  question: "How do you set up an S3 Lifecycle policy to transition objects to Glacier?"
+  ground_truth:
+    answer: >
+      To transition S3 objects to Glacier: (1) Open the S3 console, navigate to the bucket,
+      and choose the Management tab. (2) Create a Lifecycle rule — give it a name, choose
+      scope (all objects or filter by prefix/tag). (3) Add a Transition action: select the
+      source storage class (Standard), enter the number of days after object creation (e.g.,
+      90 days), and choose the target storage class (S3 Glacier Instant Retrieval, S3 Glacier
+      Flexible Retrieval, or S3 Glacier Deep Archive). (4) Optionally add an Expiration action
+      to delete objects after a further period. Minimum transition age: 30 days for S3
+      Standard to Standard-IA/One Zone-IA; no minimum for transitions to Glacier classes
+      directly from Standard. Apply rule and review. Objects already in the bucket are
+      transitioned when they meet the age criteria.
+    source_refs:
+      - "AmazonS3/latest/userguide/object-lifecycle-mgmt.html"
+      - "AmazonS3/latest/userguide/lifecycle-transition-general-considerations.html"
+    required_entities:
+      - "S3 Lifecycle rule"
+      - "Transition action"
+      - "Glacier"
+  constraints:
+    must_mention:
+      - "Lifecycle rule"
+      - "Transition"
+    must_not_claim:
+      - "objects are immediately moved"
+      - "lifecycle rules are instant"
+    max_tokens: 200
+
+- id: "storage-t2-002"
+  tier: 2
+  type: procedural
+  hops: 1
+  question: "How do you enable S3 Versioning and protect a bucket from accidental deletion?"
+  ground_truth:
+    answer: >
+      Enable Versioning: (1) Navigate to the bucket's Properties tab in the S3 console.
+      (2) Under Bucket Versioning, click Edit and select Enable. (3) Save. Once enabled,
+      every object upload creates a new version; deletes add a delete marker. To protect
+      from accidental deletion: (a) Enable MFA Delete — requires MFA authentication to
+      permanently delete an object version or change versioning state; configured via CLI
+      with root credentials. (b) Enable S3 Object Lock with Governance or Compliance mode
+      to prevent deletion for the retention period. (c) Use an S3 bucket policy to deny
+      s3:DeleteObject and s3:DeleteBucket for non-admin roles. (d) Enable S3 Replication
+      to a separate account for an off-site copy. Note: versioning once enabled cannot be
+      fully disabled, only suspended.
+    source_refs:
+      - "AmazonS3/latest/userguide/manage-versioning-examples.html"
+      - "AmazonS3/latest/userguide/MultiFactorAuthenticationDelete.html"
+    required_entities:
+      - "S3 Versioning"
+      - "MFA Delete"
+      - "delete marker"
+  constraints:
+    must_mention:
+      - "MFA Delete"
+      - "delete marker"
+    must_not_claim:
+      - "versioning prevents all deletions"
+      - "versioning can be fully disabled"
+    max_tokens: 200
+
+- id: "storage-t2-003"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you configure an EBS gp3 volume for a database workload requiring
+    higher IOPS without increasing volume size?
+  ground_truth:
+    answer: >
+      EBS gp3 decouples IOPS and throughput from volume size. Steps: (1) Create or modify
+      an existing EBS volume — in the EC2 console, select the volume and choose Modify
+      Volume. (2) Change volume type to gp3 if not already. (3) Increase IOPS independently:
+      gp3 baseline is 3,000 IOPS; increase up to 16,000 IOPS without changing storage size
+      (additional charge per IOPS above 3,000). (4) Increase throughput if needed: baseline
+      125 MB/s, maximum 1,000 MB/s independently. (5) Apply changes — modification is live
+      with no downtime for the EC2 instance. The OS may need to run resize2fs (Linux) after
+      a size increase, but IOPS/throughput changes take effect automatically. Compare: with
+      gp2, achieving 16,000 IOPS required a 5,333 GB volume (3 IOPS/GB), needlessly
+      expensive; gp3 makes the right size the right choice.
+    source_refs:
+      - "ec2/latest/userguide/requesting-ebs-volume-modifications.html"
+      - "ec2/latest/userguide/ebs-volume-types.html"
+    required_entities:
+      - "gp3"
+      - "IOPS"
+      - "Modify Volume"
+  constraints:
+    must_mention:
+      - "3,000 IOPS"
+      - "16,000 IOPS"
+    must_not_claim:
+      - "requires instance restart"
+      - "IOPS linked to volume size on gp3"
+    max_tokens: 200
+
+- id: "storage-t2-004"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you mount an EFS file system on an EC2 Linux instance using the
+    EFS mount helper?
+  ground_truth:
+    answer: >
+      Steps to mount EFS: (1) Ensure EFS and EC2 are in the same VPC; create a security
+      group on the EFS mount target allowing inbound NFS (TCP 2049) from the EC2's security
+      group. (2) Install the amazon-efs-utils package on the EC2 instance:
+      `sudo yum install -y amazon-efs-utils` (Amazon Linux) or
+      `sudo apt-get install amazon-efs-utils` (Ubuntu). (3) Create a mount point:
+      `sudo mkdir /mnt/efs`. (4) Mount using the EFS mount helper:
+      `sudo mount -t efs <file-system-id>:/ /mnt/efs` (this uses TLS by default).
+      (5) For persistent mount across reboots, add to /etc/fstab:
+      `<fs-id>:/ /mnt/efs efs defaults,_netdev 0 0`. The EFS mount helper handles
+      DNS resolution of the mount target, TLS encryption in transit, and automatic
+      retries. For General Purpose throughput, no DNS suffix change needed; for
+      Provisioned or Elastic, specify `tls` in mount options.
+    source_refs:
+      - "efs/latest/ug/mounting-fs-mount-helper.html"
+    required_entities:
+      - "EFS mount helper"
+      - "amazon-efs-utils"
+      - "mount target"
+      - "NFS"
+  constraints:
+    must_mention:
+      - "amazon-efs-utils"
+      - "TLS"
+    must_not_claim:
+      - "NFS client directly works without mount helper"
+      - "EFS can be mounted on Windows natively"
+    max_tokens: 200
+
+- id: "storage-t2-005"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: "How do you configure S3 Cross-Region Replication between two AWS accounts?"
+  ground_truth:
+    answer: >
+      Cross-account S3 CRR steps: (1) Enable Versioning on both source and destination
+      buckets. (2) In the destination account, add a bucket policy allowing the source
+      account's IAM replication role to perform s3:ReplicateObject, s3:ReplicateDelete,
+      and s3:ObjectOwnerOverrideToBucketOwner on the destination bucket. (3) In the source
+      account, create an IAM role with a trust policy allowing S3 to assume it, and grant
+      permissions: s3:GetReplicationConfiguration and s3:ListBucket on the source bucket;
+      s3:GetObjectVersionForReplication, s3:GetObjectVersionAcl, s3:GetObjectVersionTagging
+      on source objects; s3:ReplicateObject, s3:ReplicateDelete, s3:ReplicateTags on the
+      destination bucket. (4) Create a replication rule on the source bucket specifying
+      destination bucket ARN, the IAM role, and (optionally) destination storage class,
+      KMS key for SSE-KMS. (5) Set owner override to ensure destination account owns
+      replicated objects (OwnerOverride in the rule).
+    source_refs:
+      - "AmazonS3/latest/userguide/replication-walkthrough-2.html"
+    required_entities:
+      - "CRR"
+      - "IAM replication role"
+      - "bucket policy"
+      - "Versioning"
+  constraints:
+    must_mention:
+      - "bucket policy"
+      - "IAM role"
+    must_not_claim:
+      - "no IAM configuration needed"
+      - "automatic cross-account replication"
+    max_tokens: 200
+
+- id: "storage-t2-006"
+  tier: 2
+  type: procedural
+  hops: 1
+  question: >
+    How do you restore a file from S3 Glacier Flexible Retrieval and what are
+    the steps to make it accessible?
+  ground_truth:
+    answer: >
+      Steps to restore a Glacier Flexible Retrieval object: (1) In the S3 console, locate
+      the archived object (it shows storage class as S3 Glacier Flexible Retrieval).
+      (2) Select the object and choose Actions > Restore. (3) Specify the number of days
+      you want the restored copy to be available (e.g., 7 days). (4) Choose retrieval tier:
+      Expedited (1-5 minutes, higher cost), Standard (3-5 hours), or Bulk (5-12 hours,
+      lowest cost). (5) Initiate restore. S3 creates a temporary copy in S3 Standard;
+      the original Glacier object remains in Glacier. Once the retrieval period elapses,
+      the temporary copy is deleted. To access the restored copy, GET the object within
+      the specified days. Use s3:RestoreObject permission in IAM. For programmatic restore,
+      use aws s3api restore-object CLI command with --restore-request parameter. The restore
+      does not change the object's storage class permanently.
+    source_refs:
+      - "AmazonS3/latest/userguide/restoring-objects.html"
+    required_entities:
+      - "S3 Glacier Flexible Retrieval"
+      - "restore"
+      - "retrieval tier"
+  constraints:
+    must_mention:
+      - "temporary copy"
+      - "retrieval tier"
+    must_not_claim:
+      - "permanently changes storage class"
+      - "immediate access"
+    max_tokens: 200
+
+- id: "storage-t2-007"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you configure AWS DataSync to transfer data from an on-premises NFS
+    server to Amazon S3?
+  ground_truth:
+    answer: >
+      DataSync NFS-to-S3 transfer steps: (1) Deploy the DataSync agent as a VM or EC2
+      instance on-premises (VMware, KVM, or Hyper-V OVA, or AMI). Activate it via the
+      DataSync console by entering an activation key. (2) Create a source location:
+      choose NFS, provide the NFS server hostname/IP and mount path, and associate with
+      the deployed agent. (3) Create a destination location: choose Amazon S3, select the
+      target bucket and prefix, choose the target storage class, and provide an IAM role
+      that allows DataSync to write to S3 (s3:PutObject, s3:ListBucket). (4) Create a
+      transfer task: connect source to destination, configure data verification settings
+      (verify after transfer), bandwidth limit (optional), and schedule or run on-demand.
+      (5) Start the task; monitor progress in the DataSync console. Data is encrypted in
+      transit via TLS. Use CloudWatch Logs integration for detailed logs.
+    source_refs:
+      - "datasync/latest/userguide/create-nfs-location.html"
+      - "datasync/latest/userguide/create-s3-location.html"
+    required_entities:
+      - "DataSync agent"
+      - "source location"
+      - "destination location"
+      - "transfer task"
+  constraints:
+    must_mention:
+      - "agent"
+      - "IAM role"
+    must_not_claim:
+      - "no agent required for on-premises NFS"
+      - "plaintext transfer"
+    max_tokens: 200
+
+- id: "storage-t2-008"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: "How do you create an automated backup plan in AWS Backup for EBS volumes?"
+  ground_truth:
+    answer: >
+      AWS Backup EBS plan steps: (1) In the AWS Backup console, choose Backup plans > Create
+      backup plan. (2) Select Start with a template or Build a new plan. (3) Name the plan
+      and define backup rules: set backup frequency (cron or rate expression), backup window
+      (when backup can start), retention period (e.g., 30 days), and optionally copy to
+      another region and lifecycle to cold storage. (4) Choose a backup vault (create one or
+      use default; vault is encrypted with KMS key). (5) Assign resources: Add resource
+      assignment with a resource type of EBS or EC2, or use tag-based assignment (e.g., tag
+      key=Backup, value=Daily). (6) Save the plan. AWS Backup will snapshot EBS volumes on
+      schedule; snapshots appear in both the backup vault and EC2 EBS Snapshots console.
+      Cross-account backup requires AWS Organizations integration.
+    source_refs:
+      - "aws-backup/latest/devguide/creating-a-backup-plan.html"
+    required_entities:
+      - "backup plan"
+      - "backup vault"
+      - "resource assignment"
+      - "EBS"
+  constraints:
+    must_mention:
+      - "backup vault"
+      - "retention"
+    must_not_claim:
+      - "AWS Backup and EBS snapshots are unrelated"
+      - "no cross-region support"
+    max_tokens: 200
+
+- id: "storage-t2-009"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you set up an S3 File Gateway to provide NFS access to an S3 bucket
+    from an on-premises application?
+  ground_truth:
+    answer: >
+      S3 File Gateway NFS setup: (1) Deploy the Storage Gateway appliance: download the
+      VM image (VMware/Hyper-V/KVM) or deploy as an EC2 instance for cloud-based gateway.
+      (2) Activate the gateway via the AWS Storage Gateway console — provide the gateway IP
+      and activation key. (3) Configure local disks for the gateway: allocate a cache disk
+      (minimum 150 GB; caches recently read/written data to reduce latency) and an optional
+      upload buffer disk. (4) Create an NFS file share: choose S3 as the storage backend,
+      select the target S3 bucket, choose the target storage class (Standard, Standard-IA,
+      Glacier Instant Retrieval), configure allowed NFS clients (CIDR ranges), and assign an
+      IAM role for S3 access. (5) Mount the NFS share on the Linux client:
+      `mount -t nfs <gateway-ip>:/<bucket-name> /mnt/s3`. Files written appear as S3 objects.
+    source_refs:
+      - "storagegateway/latest/userguide/GettingStartedCreateFileShare.html"
+    required_entities:
+      - "S3 File Gateway"
+      - "NFS file share"
+      - "cache disk"
+      - "S3"
+  constraints:
+    must_mention:
+      - "cache"
+      - "NFS"
+    must_not_claim:
+      - "no appliance required"
+      - "real-time sync with no cache"
+    max_tokens: 200
+
+- id: "storage-t2-010"
+  tier: 2
+  type: procedural
+  hops: 1
+  question: "How do you enable S3 Block Public Access at the account level and why is it recommended?"
+  ground_truth:
+    answer: >
+      S3 Block Public Access at the account level prevents any bucket or object in the
+      account from being made public, overriding individual bucket settings. Steps: (1) Open
+      S3 console, choose Block Public Access settings for this account (under Account
+      settings, not a specific bucket). (2) Click Edit and enable all four settings:
+      BlockPublicAcls (rejects PUT requests that include public ACLs), IgnorePublicAcls
+      (ignores any existing public ACLs), BlockPublicPolicy (rejects bucket policies that
+      grant public access), and RestrictPublicBuckets (restricts access to buckets with
+      public policies to AWS services and authorized users only). (3) Save. This is
+      recommended because publicly readable S3 buckets have caused major data breaches;
+      the account-level setting provides a safety net even if individual bucket settings
+      are misconfigured. Existing public buckets are not automatically made private, but
+      new public access is blocked.
+    source_refs:
+      - "AmazonS3/latest/userguide/access-control-block-public-access.html"
+    required_entities:
+      - "Block Public Access"
+      - "BlockPublicAcls"
+      - "RestrictPublicBuckets"
+  constraints:
+    must_mention:
+      - "BlockPublicAcls"
+      - "account level"
+    must_not_claim:
+      - "makes existing public buckets private"
+      - "only applies to new buckets"
+    max_tokens: 200
+
+- id: "storage-t2-011"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: "How do you configure S3 Event Notifications to trigger a Lambda function on object upload?"
+  ground_truth:
+    answer: >
+      S3 Event Notification to Lambda steps: (1) In the Lambda console, create (or use
+      existing) a function. Add a resource-based policy allowing S3 to invoke it:
+      `aws lambda add-permission --function-name my-fn --action lambda:InvokeFunction
+      --principal s3.amazonaws.com --source-arn arn:aws:s3:::my-bucket`.
+      (2) In the S3 console, navigate to the bucket's Properties tab > Event notifications
+      > Create event notification. (3) Name the notification, choose event types (e.g.,
+      s3:ObjectCreated:Put, s3:ObjectCreated:*), optionally filter by prefix or suffix
+      (e.g., .jpg). (4) Choose destination: Lambda function and select the function ARN.
+      (5) Save. S3 delivers event records to Lambda with the bucket name, object key, size,
+      and ETag. Note: S3 Event Notifications are at-least-once delivery — Lambda must be
+      idempotent. For guaranteed exactly-once or fanout, use S3 Event Notifications to SQS
+      or SNS instead.
+    source_refs:
+      - "AmazonS3/latest/userguide/notification-how-to-event-types-and-destinations.html"
+    required_entities:
+      - "S3 Event Notification"
+      - "Lambda"
+      - "resource-based policy"
+  constraints:
+    must_mention:
+      - "resource-based policy"
+      - "at-least-once"
+    must_not_claim:
+      - "exactly-once delivery"
+      - "no IAM permission needed"
+    max_tokens: 200
+
+- id: "storage-t2-012"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you create an EBS snapshot and restore it to a new volume in a
+    different Availability Zone?
+  ground_truth:
+    answer: >
+      EBS Snapshot and cross-AZ restore steps: (1) Create snapshot: in EC2 console, select
+      the EBS volume, choose Actions > Create Snapshot, add a description, and confirm.
+      Snapshots are stored in S3 (regionally, not AZ-specific) and are incremental after
+      the first full snapshot. (2) Wait for snapshot state to be "completed". (3) Create
+      new volume from snapshot: in Snapshots, select the snapshot, choose Actions > Create
+      Volume. (4) Specify the target AZ (any AZ in the same region), volume type (can change
+      from original, e.g., gp2 to gp3), and size (can only increase). (5) Attach the new
+      volume to an EC2 instance in the target AZ: Volumes > Actions > Attach Volume, select
+      the instance. (6) On the Linux instance, identify the new block device (lsblk), run
+      file system check (e2fsck for ext4) if needed, and mount it. Cross-region: copy the
+      snapshot to another region first, then create volume from copied snapshot.
+    source_refs:
+      - "ec2/latest/userguide/ebs-creating-snapshot.html"
+      - "ec2/latest/userguide/ebs-restoring-volume.html"
+    required_entities:
+      - "EBS snapshot"
+      - "incremental"
+      - "cross-AZ"
+  constraints:
+    must_mention:
+      - "incremental"
+      - "different Availability Zone"
+    must_not_claim:
+      - "snapshots are AZ-specific"
+      - "cannot change volume type during restore"
+    max_tokens: 200
+
+- id: "storage-t2-013"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you configure AWS Transfer Family to accept SFTP uploads directly
+    into an S3 bucket with per-user home directories?
+  ground_truth:
+    answer: >
+      Transfer Family SFTP with per-user S3 home directories: (1) Create a Transfer Family
+      server: choose SFTP protocol, choose VPC for endpoint (or public endpoint), select
+      identity provider (Service Managed for built-in user management). (2) Create an IAM
+      role that grants s3:PutObject, s3:GetObject, s3:DeleteObject, s3:ListBucket on the
+      target S3 bucket. (3) Add users: in the server console, create a user, assign SSH
+      public key, assign the IAM role, and set the home directory to a logical path —
+      use Logical directory mappings to map / to s3://my-bucket/<username>/ for user
+      isolation. (4) Restrict users to their home directory: use the restricted home
+      directory option (user cannot navigate above their mapped path). (5) Test: connect
+      with an SFTP client using the server endpoint, username, and SSH private key.
+      Files appear at s3://my-bucket/<username>/ in S3.
+    source_refs:
+      - "transfer/latest/userguide/create-user.html"
+      - "transfer/latest/userguide/logical-dir-mappings.html"
+    required_entities:
+      - "Transfer Family"
+      - "SFTP"
+      - "logical directory mapping"
+      - "IAM role"
+  constraints:
+    must_mention:
+      - "logical directory"
+      - "IAM role"
+    must_not_claim:
+      - "users can access all S3 buckets"
+      - "no SSH key support"
+    max_tokens: 200
+
+- id: "storage-t2-014"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you configure S3 Intelligent-Tiering to automatically move objects to
+    archive tiers and what monitoring cost applies?
+  ground_truth:
+    answer: >
+      S3 Intelligent-Tiering setup: (1) Upload objects directly to S3 Intelligent-Tiering
+      storage class, or create a Lifecycle rule to transition objects from Standard to
+      Intelligent-Tiering after N days. (2) S3 automatically monitors access patterns per
+      object at no additional storage cost charge per GET/PUT (monitoring fee applies for
+      objects >= 128 KB: $0.0025 per 1,000 objects/month). (3) Objects not accessed for
+      30 days move to Infrequent Access tier; not accessed for 90 days move to Archive
+      Instant Access tier (millisecond retrieval). (4) To enable the optional deep archive
+      tiers, configure the Intelligent-Tiering Archive configuration on the bucket — objects
+      not accessed for 90 days move to Archive Access, 180 days to Deep Archive Access
+      (3-5 hour and 12-hour retrieval respectively). (5) Accessing an object from any tier
+      automatically moves it back to Frequent Access with no retrieval charge.
+    source_refs:
+      - "AmazonS3/latest/userguide/intelligent-tiering-overview.html"
+    required_entities:
+      - "S3 Intelligent-Tiering"
+      - "Frequent Access"
+      - "Infrequent Access"
+      - "Archive Access"
+  constraints:
+    must_mention:
+      - "30 days"
+      - "monitoring fee"
+    must_not_claim:
+      - "no monitoring charge"
+      - "manual tier selection required"
+    max_tokens: 200
+
+- id: "storage-t2-015"
+  tier: 2
+  type: procedural
+  hops: 1
+  question: "How do you encrypt an existing unencrypted EBS volume?"
+  ground_truth:
+    answer: >
+      EBS does not support in-place encryption of an existing unencrypted volume. Steps to
+      encrypt: (1) Create a snapshot of the unencrypted volume: EC2 console > Volumes >
+      Actions > Create Snapshot. (2) Copy the snapshot with encryption enabled: Snapshots >
+      Actions > Copy Snapshot, check Encrypt this snapshot, and select a KMS key (AWS
+      managed key or customer CMK). This creates an encrypted copy of the snapshot. (3)
+      Create a new EBS volume from the encrypted snapshot: Snapshots > Actions > Create
+      Volume. The new volume is encrypted. (4) Detach the original unencrypted volume from
+      the EC2 instance. (5) Attach the new encrypted volume to the instance at the same
+      device name (e.g., /dev/xvda for root). (6) Start the instance and verify it boots.
+      (7) Delete the unencrypted volume and original snapshot when confirmed. To enable
+      encryption by default for all new EBS volumes in a region, enable EBS encryption by
+      default in EC2 settings.
+    source_refs:
+      - "ec2/latest/userguide/EBSEncryption.html"
+    required_entities:
+      - "EBS encryption"
+      - "snapshot copy"
+      - "KMS key"
+  constraints:
+    must_mention:
+      - "snapshot"
+      - "KMS"
+    must_not_claim:
+      - "can encrypt existing volume in-place"
+      - "no KMS key required"
+    max_tokens: 200
+
+- id: "storage-t2-016"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you order and use an AWS Snowball Edge Storage Optimized device for
+    a large data migration to S3?
+  ground_truth:
+    answer: >
+      Snowball Edge Storage Optimized migration steps: (1) In the AWS Snow Family console,
+      create a job: choose Import into Amazon S3, select Snowball Edge Storage Optimized
+      (80 TB usable), specify target S3 bucket, IAM role, KMS key for data-at-rest
+      encryption, and shipping address. (2) AWS ships the device to your location (2-5
+      business days typically). (3) Connect the device to your network, power on, and unlock
+      using the Snowball Edge client with credentials from the console. (4) Use the Snowball
+      Edge client (`snowballEdge`) or AWS OpsHub GUI to list and copy data: run
+      `aws s3 cp --endpoint http://<device-ip>:8080` or use the Snowball Edge S3 adapter.
+      (5) Ship the device back to AWS. AWS ingests the data to S3 (typically 1-5 days after
+      receipt). Data is erased from the device per NIST 800-88 after ingestion. Monitor
+      import status in the console.
+    source_refs:
+      - "snowball/latest/ug/getting-started-transfer-data-client.html"
+    required_entities:
+      - "Snowball Edge"
+      - "Snowball Edge client"
+      - "S3"
+      - "KMS"
+  constraints:
+    must_mention:
+      - "KMS"
+      - "shipping"
+    must_not_claim:
+      - "data transfer via internet"
+      - "Snowball stores data permanently"
+    max_tokens: 200
+
+- id: "storage-t2-017"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: "How do you configure S3 Object Lock to meet SEC 17a-4 compliance requirements?"
+  ground_truth:
+    answer: >
+      S3 Object Lock for SEC 17a-4 compliance: (1) Create a new S3 bucket with Object Lock
+      enabled (cannot be added to an existing bucket); also enable Versioning (required by
+      Object Lock). (2) Set a default retention period in Compliance mode on the bucket:
+      in bucket Properties > Object Lock, configure default retention of Compliance mode
+      with retention period matching regulatory requirements (e.g., 6 years for SEC 17a-4).
+      (3) Upload objects — S3 applies the retention period automatically based on the bucket
+      default. (4) Confirm no user (including root) can delete objects during the retention
+      period. (5) Optionally apply Legal Hold to individual objects for additional protection
+      during legal proceedings. (6) Validate by obtaining Cohasset Associates assessment
+      (AWS has published assessments confirming S3 Object Lock Compliance mode meets SEC
+      17a-4). Use S3 Glacier Flexible Retrieval or Deep Archive storage class for cost
+      efficiency on archived records, in combination with Object Lock.
+    source_refs:
+      - "AmazonS3/latest/userguide/object-lock.html"
+      - "AmazonS3/latest/userguide/object-lock-overview.html"
+    required_entities:
+      - "Object Lock"
+      - "Compliance mode"
+      - "SEC 17a-4"
+      - "Legal Hold"
+  constraints:
+    must_mention:
+      - "Compliance mode"
+      - "retention period"
+    must_not_claim:
+      - "Governance mode meets SEC 17a-4"
+      - "Object Lock can be added to existing bucket"
+    max_tokens: 200

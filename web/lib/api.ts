@@ -27,9 +27,9 @@ export const STRATEGY_COLORS: Record<Strategy, string> = {
 };
 
 export const CORPORA = [
-  { value: "python-stdlib", label: "Python stdlib" },
-  { value: "kubernetes", label: "Kubernetes" },
-  { value: "sec-edgar", label: "SEC EDGAR" },
+  { value: "aws-compute", label: "AWS Compute" },
+  { value: "aws-storage", label: "AWS Storage" },
+  { value: "aws-networking", label: "AWS Networking" },
 ];
 
 export interface Source {

@@ -1,0 +1,537 @@
+- id: "compute-t3-001"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "How do Lambda, ECS Fargate, and EKS Fargate compare for running containerized microservices?"
+  ground_truth:
+    answer: >
+      Lambda runs containers (up to 10 GB image) but has a 15-minute execution limit, no
+      persistent TCP connections, and cold starts — best for event-driven, short-lived tasks.
+      ECS Fargate runs long-running containers with no time limit, persistent connections, and
+      predictable latency since you control the desired count. No cluster management, but you
+      define ECS task definitions. EKS Fargate provides Kubernetes semantics (Deployments,
+      Services, ConfigMaps) with Fargate's serverless nodes — no EC2 management. Better for
+      teams already using Kubernetes tooling (Helm, kubectl, GitOps). EKS Fargate has
+      limitations: no DaemonSets, no privileged containers, no GPU support. ECS Fargate is
+      simpler operationally if you do not need Kubernetes. Lambda is cheapest at low/bursty
+      traffic; Fargate (ECS or EKS) is more cost-efficient at sustained high throughput.
+    source_refs:
+      - "lambda/latest/dg/welcome.html"
+      - "AmazonECS/latest/developerguide/AWS_Fargate.html"
+      - "eks/latest/userguide/fargate.html"
+    required_entities:
+      - "Lambda"
+      - "ECS Fargate"
+      - "EKS Fargate"
+  constraints:
+    must_mention:
+      - "cold start"
+      - "15-minute limit"
+    must_not_claim:
+      - "Lambda and Fargate are identical"
+      - "EKS Fargate supports DaemonSets"
+    max_tokens: 300
+
+- id: "compute-t3-002"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "What are the differences between EC2 Reserved Instances, Savings Plans, and Spot Instances for cost optimization?"
+  ground_truth:
+    answer: >
+      Reserved Instances (RI): 1- or 3-year commitment to a specific instance family, size,
+      region, and OS. Standard RIs offer up to 72% discount but cannot be changed. Convertible
+      RIs allow attribute changes (family, size, OS) for ~54% discount. RIs can be purchased in
+      the RI Marketplace (Standard only). Savings Plans: more flexible — Compute Savings Plans
+      cover any instance family, region, OS across EC2, Lambda, and Fargate for ~66% discount.
+      EC2 Instance Savings Plans apply to a specific family in a region (~72%). No instance-type
+      lock-in with Compute Savings Plans. Spot Instances: up to 90% discount but can be
+      interrupted with 2-minute notice. No commitment. Best for fault-tolerant, stateless, or
+      checkpointable workloads. Key differences: RIs and Savings Plans reduce cost for
+      predictable baseline; Spot handles variable burst at maximum savings with interruption
+      risk. Mixing all three (On-Demand baseline + Savings Plan + Spot burst) is the optimal
+      cost architecture.
+    source_refs:
+      - "ec2/latest/userguide/ec2-reserved-instances.html"
+      - "savingsplans/latest/userguide/what-is-savings-plans.html"
+      - "ec2/latest/userguide/using-spot-instances.html"
+    required_entities:
+      - "Reserved Instance"
+      - "Savings Plans"
+      - "Spot Instance"
+  constraints:
+    must_mention:
+      - "Savings Plans"
+      - "interruption"
+    must_not_claim:
+      - "Spot Instances have 1-year commitment"
+      - "Savings Plans only cover EC2"
+    max_tokens: 300
+
+- id: "compute-t3-003"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "How do ALB, NLB, and Gateway Load Balancer (GWLB) differ in use case and architecture?"
+  ground_truth:
+    answer: >
+      ALB (Application Load Balancer) operates at Layer 7 (HTTP/HTTPS/gRPC), supports
+      content-based routing (path, host, headers), Lambda targets, WebSocket, sticky sessions,
+      WAF integration, and Cognito/OIDC authentication. Best for HTTP microservices and web apps.
+      NLB (Network Load Balancer) operates at Layer 4 (TCP/UDP/TLS), handles millions of
+      requests/second with ultra-low latency, preserves source IP, supports static Elastic IPs
+      per AZ, and is required for AWS PrivateLink endpoints. Best for non-HTTP protocols, gaming,
+      real-time, and services requiring fixed IPs. Gateway Load Balancer (GWLB) operates at
+      Layer 3 using GENEVE protocol (port 6081) and is specifically designed for deploying,
+      scaling, and managing third-party network appliances (firewalls, IDS/IPS, deep packet
+      inspection). GWLB distributes traffic to appliance instances and returns inspected traffic
+      to the source. Not a general-purpose load balancer — purpose-built for inline security
+      appliance insertion.
+    source_refs:
+      - "elasticloadbalancing/latest/application/introduction.html"
+      - "elasticloadbalancing/latest/network/introduction.html"
+      - "elasticloadbalancing/latest/gateway/introduction.html"
+    required_entities:
+      - "ALB"
+      - "NLB"
+      - "Gateway Load Balancer"
+  constraints:
+    must_mention:
+      - "Layer 7"
+      - "GENEVE"
+    must_not_claim:
+      - "NLB supports path-based routing"
+      - "GWLB is for web applications"
+    max_tokens: 300
+
+- id: "compute-t3-004"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "How do ECS and EKS compare for container orchestration in a greenfield microservices project?"
+  ground_truth:
+    answer: >
+      ECS is AWS-native, simpler to get started, and deeply integrated with IAM, ALB, CloudWatch,
+      and CloudFormation. No Kubernetes knowledge required. Task definitions are simpler than
+      Kubernetes manifests. Service discovery via Cloud Map or internal ALB. ECS has no control
+      plane cost. EKS uses Kubernetes — industry standard with portability (run the same
+      manifests on-premises or other clouds), larger ecosystem (Helm charts, operators,
+      GitOps tooling), and richer abstractions (CRDs, admission controllers). EKS control plane
+      costs ~$0.10/hour per cluster. EKS requires more Kubernetes expertise. For a greenfield
+      project with an AWS-focused team: ECS is faster to production with less operational
+      overhead. Choose EKS when: team has Kubernetes expertise, portability matters, you need
+      Kubernetes-specific operators (Istio, Argo CD, Keda), or you plan multi-cloud. Both
+      support Fargate and EC2 launch types. Neither is strictly better — team expertise and
+      ecosystem requirements drive the choice.
+    source_refs:
+      - "AmazonECS/latest/developerguide/Welcome.html"
+      - "eks/latest/userguide/what-is-eks.html"
+    required_entities:
+      - "ECS"
+      - "EKS"
+      - "Kubernetes"
+  constraints:
+    must_mention:
+      - "Kubernetes"
+      - "control plane cost"
+    must_not_claim:
+      - "ECS runs Kubernetes"
+      - "EKS has no cost"
+    max_tokens: 300
+
+- id: "compute-t3-005"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "How does Lambda Standard Workflow in Step Functions compare to Express Workflow?"
+  ground_truth:
+    answer: >
+      Standard Workflows: exactly-once execution semantics, up to 1-year duration, full
+      execution history stored and viewable in the console for 90 days, priced per state
+      transition (~$0.025 per 1,000 transitions). Best for long-running business processes,
+      human approval workflows, idempotency-critical operations. Express Workflows: at-least-once
+      execution (possible duplicate executions on failure), maximum 5-minute duration, no
+      execution history in console (must send to CloudWatch Logs for observability), priced per
+      execution duration (GB-seconds of memory × duration). Best for high-volume, short-duration
+      event processing (IoT, streaming). Key tradeoff: Standard provides durability and
+      debuggability at higher cost; Express provides high throughput at lower cost with
+      less guaranteed execution semantics. Express Workflows can process millions of executions
+      per second vs Standard's lower throughput.
+    source_refs:
+      - "step-functions/latest/dg/concepts-standard-vs-express.html"
+    required_entities:
+      - "Standard Workflows"
+      - "Express Workflows"
+      - "exactly-once"
+  constraints:
+    must_mention:
+      - "exactly-once"
+      - "at-least-once"
+    must_not_claim:
+      - "Standard Workflows are cheaper"
+      - "Express Workflows run for 1 year"
+    max_tokens: 300
+
+- id: "compute-t3-006"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    How do EC2 Auto Scaling target tracking, step scaling, and predictive scaling
+    policies compare in their approach to scaling?
+  ground_truth:
+    answer: >
+      Target Tracking creates and manages its own CloudWatch alarms automatically. You specify
+      a target metric value (e.g., CPU at 60%) and the ASG continuously adjusts capacity to
+      maintain that target. Simplest to configure, handles both scale-out and scale-in
+      automatically. Does not support custom scaling logic. Step Scaling lets you define
+      multiple scaling steps based on alarm breach magnitude — e.g., add 2 instances when
+      CPU is 60-80%, add 4 instances when CPU > 80%. More control over scaling aggressiveness.
+      You manage alarms manually. Requires careful calibration but allows nuanced responses.
+      Predictive Scaling uses ML to analyze CloudWatch metric history and forecast future
+      demand, pre-scaling capacity before traffic spikes (proactive rather than reactive).
+      Works well for workloads with predictable daily/weekly patterns (e.g., business hours
+      traffic). Can combine with reactive policies: predictive handles planned patterns,
+      target tracking handles unexpected spikes.
+    source_refs:
+      - "autoscaling/ec2/userguide/as-scaling-target-tracking.html"
+      - "autoscaling/ec2/userguide/as-scaling-simple-step.html"
+      - "autoscaling/ec2/userguide/ec2-auto-scaling-predictive-scaling.html"
+    required_entities:
+      - "Target Tracking"
+      - "Step Scaling"
+      - "Predictive Scaling"
+  constraints:
+    must_mention:
+      - "Target Tracking"
+      - "Predictive Scaling"
+    must_not_claim:
+      - "all scaling policies work the same way"
+      - "predictive scaling cannot combine with reactive"
+    max_tokens: 300
+
+- id: "compute-t3-007"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "How do Lambda container images compare to ZIP deployment packages in terms of size limits and cold start behavior?"
+  ground_truth:
+    answer: >
+      ZIP packages: maximum 50 MB compressed (250 MB unzipped), uploaded to S3 or directly
+      to Lambda. Fast cold starts because the small package downloads quickly. Good for
+      lightweight functions with small dependencies. Container images: up to 10 GB image size,
+      stored in ECR. Enables use of arbitrary OS packages and large ML models. Container images
+      use a lazy loading mechanism — Lambda downloads layers as needed rather than the full
+      image, significantly reducing cold start impact even for large images. Lambda caches
+      container layers in the execution environment pool. Provisioned Concurrency eliminates
+      cold starts for both ZIP and container. Lambda SnapStart (Java) works with ZIP packages
+      only (not containers as of 2024). Trade-off: containers offer flexibility and larger
+      footprint; ZIP packages offer simpler CI/CD and lower cold start overhead for equivalent
+      dependency sizes. Both support the same Lambda features (VPC, layers for ZIP, environment
+      variables, etc.).
+    source_refs:
+      - "lambda/latest/dg/images-create.html"
+      - "lambda/latest/dg/gettingstarted-package.html"
+    required_entities:
+      - "ZIP deployment"
+      - "container image"
+      - "ECR"
+      - "cold start"
+  constraints:
+    must_mention:
+      - "10 GB"
+      - "250 MB"
+    must_not_claim:
+      - "container images have worse cold starts for large images"
+      - "containers cannot use Lambda layers"
+    max_tokens: 300
+
+- id: "compute-t3-008"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "How do Elastic Beanstalk, App Runner, and Lightsail compare for deploying a web application with minimal operational overhead?"
+  ground_truth:
+    answer: >
+      Lightsail: best for simple VPS-style deployments with predictable low cost. Fixed-price
+      bundles ($3.50–$160/month) include compute, storage, and data transfer. Minimal AWS
+      knowledge needed. Limited to single-instance or basic load balancer setups. No deep
+      AWS service integrations. Best for: WordPress, small web apps, developers new to cloud.
+      Elastic Beanstalk: PaaS that provisions full EC2 + ALB + ASG stack. Access to underlying
+      resources. Supports Docker, multiple language platforms. Customizable via .ebextensions.
+      More control, more complexity. Best for: teams needing EC2-level control but wanting
+      automated provisioning. App Runner: fully abstracted — deploys from source code or ECR
+      image, auto-scales including scale-to-zero, no infrastructure concepts. Least operational
+      overhead of the three. Best for: stateless HTTP services, APIs, small teams that want
+      zero-ops deployment. App Runner costs more than Lightsail at idle (minimum charge per vCPU
+      even at scale-to-zero for active instances) but automatically handles traffic spikes.
+    source_refs:
+      - "lightsail/latest/userguide/what-is-amazon-lightsail.html"
+      - "elasticbeanstalk/latest/dg/Welcome.html"
+      - "apprunner/latest/dg/what-is-apprunner.html"
+    required_entities:
+      - "Lightsail"
+      - "Elastic Beanstalk"
+      - "App Runner"
+  constraints:
+    must_mention:
+      - "scale-to-zero"
+      - "EC2 access"
+    must_not_claim:
+      - "all three services offer the same features"
+      - "Elastic Beanstalk has no EC2 access"
+    max_tokens: 300
+
+- id: "compute-t3-009"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "How do EC2 instance store (ephemeral storage) and EBS volumes differ for EC2 data persistence?"
+  ground_truth:
+    answer: >
+      Instance store (ephemeral storage) is physically attached NVMe SSD storage that is part
+      of the host hardware. It provides the highest IOPS and lowest latency of any EC2 storage
+      option. However, data is lost when the instance stops, terminates, or fails — it does not
+      persist across instance lifecycle events. Cannot be detached and reattached. Available only
+      on specific instance types (i3, i4, d, h, f, x). Best for: scratch space, temporary
+      buffers, distributed caches (where data is replicated elsewhere), and high-IOPS databases
+      with replication. EBS (Elastic Block Store) is a network-attached persistent block device.
+      Data persists independently of instance lifecycle — an EBS volume survives instance stop,
+      terminate (if DeleteOnTermination=false), or failure. EBS volumes can be detached and
+      reattached to other instances. Supports snapshots (S3 backed) for backup. EBS has slightly
+      higher latency than instance store. For production databases requiring durability, always
+      use EBS.
+    source_refs:
+      - "ec2/latest/userguide/InstanceStorage.html"
+      - "ec2/latest/userguide/AmazonEBS.html"
+    required_entities:
+      - "instance store"
+      - "EBS"
+      - "ephemeral"
+  constraints:
+    must_mention:
+      - "ephemeral"
+      - "persists"
+    must_not_claim:
+      - "instance store persists across stop"
+      - "EBS is faster than instance store"
+    max_tokens: 300
+
+- id: "compute-t3-010"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    How do Lambda@Edge and CloudFront Functions compare for executing logic
+    at CloudFront edge locations?
+  ground_truth:
+    answer: >
+      CloudFront Functions: run at all 400+ CloudFront PoPs, sub-millisecond execution,
+      JavaScript only (ES5.1), maximum 10 ms CPU time and 2 MB code size, no network calls
+      allowed, no file system access. Triggered at viewer request and viewer response events
+      only. Free tier available; very low cost (~$0.10 per million invocations). Best for:
+      URL rewrites, header manipulation, simple A/B redirects, basic auth. Lambda@Edge: runs
+      on a subset of AWS regional edge caches (~13 locations), supports Node.js and Python,
+      up to 30 seconds execution (origin request/response events), 128 MB–10 GB memory,
+      can make network calls (fetch external APIs), access file system via /tmp. Triggered at
+      all 4 event types: viewer request, viewer response, origin request, origin response.
+      Higher cost and latency than CloudFront Functions. Best for: complex auth (JWT validation),
+      API calls during request processing, image transformation at edge, database lookups.
+      Key rule: if logic is simple and fast, CloudFront Functions; if it needs network I/O
+      or complex compute, Lambda@Edge.
+    source_refs:
+      - "AmazonCloudFront/latest/DeveloperGuide/cloudfront-functions.html"
+      - "AmazonCloudFront/latest/DeveloperGuide/lambda-at-the-edge.html"
+    required_entities:
+      - "CloudFront Functions"
+      - "Lambda@Edge"
+      - "edge locations"
+  constraints:
+    must_mention:
+      - "sub-millisecond"
+      - "network calls"
+    must_not_claim:
+      - "CloudFront Functions can make network calls"
+      - "Lambda@Edge runs at all 400+ PoPs"
+    max_tokens: 300
+
+- id: "compute-t3-011"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    How do ECS rolling deployments and AWS CodeDeploy Blue/Green deployments
+    for ECS differ in risk and rollback capabilities?
+  ground_truth:
+    answer: >
+      ECS Rolling Deployment: default deployment strategy. ECS replaces tasks incrementally
+      based on minimumHealthyPercent and maximumPercent settings. For example, 50/200 means
+      ECS stops 50% of old tasks and starts 50% new tasks, then continues. If new tasks fail
+      health checks, deployment stops but already-replaced tasks remain on the new version —
+      rollback requires a new deployment of the previous task definition. No automatic rollback
+      to 100% old version possible mid-deployment. Fast and simple. Blue/Green with CodeDeploy:
+      deploys 100% of new tasks alongside old tasks, validates with health checks, then shifts
+      traffic via ALB listener rules. During the bake period both versions coexist. Automatic
+      rollback repoints ALB listener rule back to Blue (old) target group instantly — old tasks
+      are still running and ready. Full rollback in seconds. Blue/Green is safer for
+      production critical services where a problematic new version must be fully reverted.
+      Trade-off: Blue/Green requires 2x task capacity during deployment.
+    source_refs:
+      - "AmazonECS/latest/developerguide/deployment-type-rolling.html"
+      - "AmazonECS/latest/developerguide/deployment-type-bluegreen.html"
+    required_entities:
+      - "rolling deployment"
+      - "Blue/Green deployment"
+      - "CodeDeploy"
+  constraints:
+    must_mention:
+      - "minimumHealthyPercent"
+      - "automatic rollback"
+    must_not_claim:
+      - "rolling deployment supports instant rollback"
+      - "Blue/Green requires no extra capacity"
+    max_tokens: 300
+
+- id: "compute-t3-012"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "How do AWS Batch and Step Functions compare for orchestrating complex multi-step data processing pipelines?"
+  ground_truth:
+    answer: >
+      AWS Batch: focused on large-scale job execution. Manages compute (EC2/Fargate/Spot), job
+      queues, and job scheduling. Job arrays run thousands of parallel jobs. No native workflow
+      logic (branching, retries per-job with conditions, human approval). Best for: embarrassingly
+      parallel workloads where each job is independent (genomics, rendering, ETL sharding).
+      Step Functions: workflow orchestration engine. Supports branching (Choice), parallelism
+      (Parallel, Map), retries with exponential backoff, error catching, human approval (Wait
+      for task token), and 200+ AWS service integrations. No native compute management.
+      Best for: multi-step pipelines with conditional logic, mixed service invocations (Lambda +
+      ECS + SageMaker), and where visibility into each step matters. Common architecture:
+      Step Functions orchestrates the pipeline, submits jobs to Batch for the heavy compute
+      steps (using the Step Functions→Batch SDK integration), and uses Lambda for pre/post
+      processing steps. Using Step Functions alone for large job arrays is inefficient;
+      using Batch alone loses workflow visibility.
+    source_refs:
+      - "batch/latest/userguide/what-is-batch.html"
+      - "step-functions/latest/dg/welcome.html"
+    required_entities:
+      - "AWS Batch"
+      - "Step Functions"
+      - "job array"
+  constraints:
+    must_mention:
+      - "job array"
+      - "Choice state"
+    must_not_claim:
+      - "Step Functions manages EC2 compute"
+      - "Batch handles workflow branching natively"
+    max_tokens: 300
+
+- id: "compute-t3-013"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    How do EC2 placement groups (Cluster, Spread, and Partition) differ in their
+    hardware distribution and use case suitability?
+  ground_truth:
+    answer: >
+      Cluster placement groups: pack instances physically close together on the same underlying
+      hardware within a single AZ. Provides the lowest inter-instance latency and highest
+      bandwidth (up to 25 Gbps instance network bandwidth within the group, 100 Gbps with
+      Elastic Fabric Adapter). Risk: all instances on nearby hardware — a rack failure could
+      affect the entire group. Best for: HPC, MPI applications, low-latency trading, tightly
+      coupled distributed computing. Spread placement groups: place each instance on distinct
+      underlying hardware (different racks with separate power and networking). Maximum 7
+      instances per AZ. Best for: critical instances that must survive individual hardware
+      failures (primary DB + replica, multi-master setup). Partition placement groups:
+      divide instances into logical partitions (up to 7 per AZ), each on separate hardware.
+      Unlike Spread, multiple instances per partition allowed. Best for: distributed and
+      replicated workloads (Hadoop, HBase, Cassandra) where partition isolation matters but
+      intra-partition co-location is acceptable. Instances can query their partition metadata.
+    source_refs:
+      - "ec2/latest/userguide/placement-groups.html"
+    required_entities:
+      - "Cluster placement group"
+      - "Spread placement group"
+      - "Partition placement group"
+  constraints:
+    must_mention:
+      - "Cluster"
+      - "Spread"
+    must_not_claim:
+      - "Spread placement groups span multiple AZs"
+      - "Cluster groups span multiple racks"
+    max_tokens: 300
+
+- id: "compute-t3-014"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    How do Lambda Provisioned Concurrency and Lambda SnapStart differ as
+    strategies for eliminating cold start latency?
+  ground_truth:
+    answer: >
+      Provisioned Concurrency: pre-initializes a fixed number of Lambda execution environments
+      so they are always warm. Works for all Lambda runtimes and languages. Eliminates cold
+      starts for the provisioned count. Cost: hourly charge per provisioned execution environment
+      + standard invocation cost. Can be auto-scaled with Application Auto Scaling on a schedule
+      or via Target Tracking. Scales down when not needed (to reduce cost) but scaling up takes
+      several minutes — use scheduled scaling to anticipate traffic. Lambda SnapStart (Java
+      only, as of 2024): takes a snapshot of the initialized execution environment after the
+      init phase completes. On cold start, Lambda restores from the snapshot instead of
+      re-initializing — reducing Java cold starts from several seconds to under 1 second
+      typically. No per-snapshot cost; only standard invocation pricing applies. Works per
+      published version (not $LATEST). Key difference: Provisioned Concurrency is language-
+      agnostic, always warm, costs extra. SnapStart is Java-specific, reactive (still a cold
+      start but much faster), no additional cost.
+    source_refs:
+      - "lambda/latest/dg/provisioned-concurrency.html"
+      - "lambda/latest/dg/snapstart.html"
+    required_entities:
+      - "Provisioned Concurrency"
+      - "SnapStart"
+      - "cold start"
+  constraints:
+    must_mention:
+      - "Provisioned Concurrency"
+      - "SnapStart"
+    must_not_claim:
+      - "SnapStart works for all runtimes"
+      - "Provisioned Concurrency is free"
+    max_tokens: 300
+
+- id: "compute-t3-015"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "How do EC2 Classic Load Balancer, ALB, and NLB differ and when was Classic Load Balancer deprecated?"
+  ground_truth:
+    answer: >
+      Classic Load Balancer (CLB): the original AWS load balancer, operated at both Layer 4 and
+      Layer 7. Supported EC2-Classic network (now retired) and basic VPC deployments. Limited
+      to basic round-robin routing with no content-based routing. AWS retired EC2-Classic on
+      August 15, 2022, and Classic Load Balancers remain available for VPC but are not
+      recommended for new deployments — AWS strongly recommends migrating to ALB or NLB.
+      CLB lacked: host/path-based routing, Lambda targets, WebSocket, SNI support, fixed IPs.
+      ALB (2016): Layer 7, content-based routing, Lambda targets, auth integration, WAF support.
+      NLB (2017): Layer 4, ultra-low latency, static IPs, PrivateLink support. For any new
+      deployment, choose ALB for HTTP/S workloads or NLB for TCP/UDP/high-performance workloads.
+      Migration from CLB to ALB or NLB is supported via the Migration Wizard in the console.
+    source_refs:
+      - "elasticloadbalancing/latest/classic/introduction.html"
+      - "elasticloadbalancing/latest/application/introduction.html"
+    required_entities:
+      - "Classic Load Balancer"
+      - "ALB"
+      - "NLB"
+  constraints:
+    must_mention:
+      - "EC2-Classic"
+      - "deprecated"
+    must_not_claim:
+      - "Classic Load Balancer supports Lambda targets"
+      - "CLB is recommended for new deployments"
+    max_tokens: 300

@@ -28,7 +28,7 @@ from kb_arena.strategies.base import Strategy
 console = Console()
 
 STRATEGY_NAMES = ["naive_vector", "contextual_vector", "qna_pairs", "knowledge_graph", "hybrid"]
-CORPUS_NAMES = ["python-stdlib", "kubernetes", "sec-edgar"]
+CORPUS_NAMES = ["aws-compute", "aws-storage", "aws-networking"]
 
 RETRY_BACKOFF_S = 1.0
 
@@ -140,7 +140,7 @@ async def _run_one(
 
 
 def _parse_tier(question_id: str) -> int:
-    """Parse tier from question_id like 'py-t1-001' or 'k8s-t3-012'."""
+    """Parse tier from question_id like 'aws-compute-t1-001' or 'aws-networking-t3-012'."""
     try:
         return int(question_id.split("-t")[1].split("-")[0])
     except (IndexError, ValueError):

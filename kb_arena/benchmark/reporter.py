@@ -12,7 +12,7 @@ from pathlib import Path
 from kb_arena.models.benchmark import BenchmarkResult
 from kb_arena.settings import settings
 
-CORPUS_NAMES = ["python-stdlib", "kubernetes", "sec-edgar"]
+CORPUS_NAMES = ["aws-compute", "aws-storage", "aws-networking"]
 STRATEGY_NAMES = ["naive_vector", "contextual_vector", "qna_pairs", "knowledge_graph", "hybrid"]
 TIER_LABELS = {
     1: "Tier 1 - Factoid",

@@ -1,0 +1,450 @@
+- id: "storage-t5-001"
+  tier: 5
+  type: multihop
+  hops: 5
+  question: >
+    A financial services company must archive trade records to AWS storage for 7
+    years, ensure records cannot be tampered with even by AWS admins, allow
+    auditors to verify retention compliance, minimize retrieval cost for the rare
+    case of legal hold access, and automatically enforce retention without manual
+    operation. Which combination of AWS services satisfies all requirements and
+    how do they connect?
+  ground_truth:
+    answer: >
+      The five-service chain satisfying all requirements: (1) S3 Glacier Deep Archive as
+      the storage class — lowest cost ($0.00099/GB/month) for 7-year retention with very
+      rare access, meeting the cost minimization requirement. (2) S3 Object Lock in
+      Compliance mode with 7-year retain-until date — provides tamper-proof WORM storage
+      that even the AWS root account cannot delete or modify. This directly addresses the
+      "cannot be tampered with even by AWS admins" requirement (AWS support also cannot
+      bypass Compliance mode). (3) AWS Backup with a backup plan and Backup Vault Lock in
+      Compliance mode — adds a secondary WORM enforcement layer, cross-account copy, and
+      centralized compliance reporting. AWS Backup Audit Manager generates compliance reports
+      (HIPAA, SOC) that auditors can review, satisfying the "auditors verify compliance"
+      requirement. (4) S3 Lifecycle policy — automatically transitions objects from S3
+      Standard to S3 Glacier Deep Archive after 90 days (the minimum for deep archive) and
+      tags them with the Object Lock Compliance retain-until date matching the 7-year
+      requirement. This eliminates manual operation. (5) AWS CloudTrail + S3 data events —
+      enables audit logging of all s3:GetObject, s3:PutObject, and s3:DeleteObject API
+      calls; CloudTrail logs are themselves stored in a separate S3 bucket with Object Lock
+      to prevent tampering with the audit trail. For legal hold access, S3 Glacier Deep
+      Archive Standard retrieval (12 hours) or Bulk (48 hours) provides cost-effective
+      access. Connection: Records → S3 Standard → (Lifecycle) → Glacier Deep Archive
+      (Object Lock Compliance) → (AWS Backup plan) → Backup Vault Lock. Auditors access
+      Backup Audit Manager reports. CloudTrail provides immutable API logs.
+    source_refs:
+      - "AmazonS3/latest/userguide/object-lock.html"
+      - "aws-backup/latest/devguide/vault-lock.html"
+      - "AmazonS3/latest/userguide/storage-class-intro.html"
+      - "awscloudtrail/latest/userguide/cloudtrail-log-file-validation-intro.html"
+    required_entities:
+      - "S3 Glacier Deep Archive"
+      - "S3 Object Lock"
+      - "Compliance mode"
+      - "AWS Backup Vault Lock"
+      - "CloudTrail"
+      - "S3 Lifecycle policy"
+  constraints:
+    must_mention:
+      - "Compliance mode"
+      - "CloudTrail"
+      - "Lifecycle"
+    must_not_claim:
+      - "Governance mode satisfies the requirement"
+      - "manual intervention required for retention enforcement"
+    max_tokens: 400
+
+- id: "storage-t5-002"
+  tier: 5
+  type: multihop
+  hops: 5
+  question: >
+    A media company needs to ingest 500 TB of raw video from remote production
+    sites with limited internet connectivity, process it with GPU-accelerated
+    transcoding in AWS, distribute processed files globally with low-latency
+    delivery, automatically reduce storage costs as content ages, and purge
+    content on a legal deadline. Describe the end-to-end architecture linking
+    the relevant AWS Storage services.
+  ground_truth:
+    answer: >
+      End-to-end architecture across five service hops: (1) Ingestion from remote sites —
+      AWS Snowball Edge Compute Optimized devices shipped to production sites handle
+      local data collection. The Snowball Edge Compute Optimized model includes an optional
+      GPU for local pre-processing (format verification, proxy generation) before shipping.
+      After shipping, AWS ingests raw footage to an S3 bucket in the primary region. (2)
+      S3 Event Notification → SQS → Lambda initiates transcoding — S3 ObjectCreated event
+      triggers an SQS message, Lambda starts an AWS Elemental MediaConvert (or EC2 GPU
+      Spot Instance) transcoding job, reading source from S3 and writing outputs (HLS,
+      DASH, MP4) back to an output S3 bucket. FSx for Lustre linked to the input S3 bucket
+      via a data repository association provides Lustre's parallel throughput to GPU
+      instances for large file access. (3) CloudFront distribution with S3 origin — processed
+      video files are served via CloudFront's 400+ edge locations for global low-latency
+      delivery. CloudFront signed URLs or signed cookies enforce access control. (4) S3
+      Lifecycle policies on the output bucket — transition processed files from S3 Standard
+      to S3 Standard-IA after 30 days, to S3 Glacier Flexible Retrieval after 1 year (older
+      catalog), to S3 Glacier Deep Archive after 5 years for archival. (5) S3 Object
+      Expiration action in the Lifecycle policy — set an expiration rule matching the legal
+      deadline (e.g., 7 years from ingestion date based on object tagging). AWS automatically
+      deletes objects after the specified period, satisfying the purge requirement without
+      manual operation. Connection: Snowball → S3 → FSx Lustre (transcode) → S3 Output →
+      CloudFront (delivery) + Lifecycle (aging) + Expiration (purge).
+    source_refs:
+      - "snowball/latest/ug/whatissnowball.html"
+      - "fsx/latest/LustreGuide/fsx-data-repositories.html"
+      - "AmazonCloudFront/latest/DeveloperGuide/Introduction.html"
+      - "AmazonS3/latest/userguide/object-lifecycle-mgmt.html"
+    required_entities:
+      - "Snowball Edge"
+      - "FSx for Lustre"
+      - "S3 Lifecycle"
+      - "CloudFront"
+      - "S3 Expiration"
+  constraints:
+    must_mention:
+      - "Snowball Edge"
+      - "CloudFront"
+      - "Lifecycle"
+    must_not_claim:
+      - "internet upload is the only ingestion option"
+      - "manual deletion required on legal deadline"
+    max_tokens: 400
+
+- id: "storage-t5-003"
+  tier: 5
+  type: multihop
+  hops: 4
+  question: >
+    An enterprise running Windows workloads on-premises is migrating to AWS.
+    They need to: keep on-premises applications accessing file shares during
+    migration without code changes, replicate file data to AWS with AD
+    authentication, establish a permanent hybrid access model post-migration
+    where some workloads remain on-premises, and protect cloud file data from
+    ransomware with point-in-time recovery. Trace the four-service path that
+    satisfies all requirements.
+  ground_truth:
+    answer: >
+      Four-service chain for Windows hybrid file migration: (1) AWS Storage Gateway FSx
+      File Gateway — deploy on-premises as a VM appliance. On-premises Windows applications
+      use existing SMB UNC paths (\\gateway-ip\share) to access files without code changes.
+      The gateway caches recently accessed files locally for low latency; files are stored
+      in Amazon FSx for Windows File Server in the cloud. This provides the zero-code-change
+      requirement and the hybrid access model post-migration. (2) Amazon FSx for Windows
+      File Server — fully managed Windows native SMB file system with Active Directory
+      integration (joins your AD domain), NTFS ACLs, and DFS Namespace support. AWS-based
+      Windows EC2 instances access the same FSx file system over SMB with AD authentication.
+      FSx provides the AD-authenticated cloud file storage. Replication from on-premises
+      through the FSx File Gateway ensures data is replicated to AWS during migration.
+      (3) FSx for Windows File Server Shadow Copies (Windows VSS) — FSx natively supports
+      Windows Shadow Copies (volume shadow copy service) allowing end-users and administrators
+      to restore previous versions of files from the Windows client (right-click → Previous
+      Versions) without administrator intervention. Shadow copies are taken on a configurable
+      schedule. (4) AWS Backup with backup plan covering FSx for Windows File Server — creates
+      daily FSx backups (file-system consistent), stores them in a separate backup vault with
+      vault lock enabled, and cross-region copy for ransomware resilience. Combined: FSx File
+      Gateway (hybrid access + migration) → FSx for Windows (cloud-native SMB + AD) →
+      Shadow Copies (user-level file recovery) → AWS Backup + Vault Lock (ransomware-
+      resistant point-in-time recovery).
+    source_refs:
+      - "storagegateway/latest/userguide/CreatingAnFSxFileGateway.html"
+      - "fsx/latest/WindowsGuide/shadow-copies-fsxW.html"
+      - "aws-backup/latest/devguide/whatisbackup.html"
+    required_entities:
+      - "FSx File Gateway"
+      - "FSx for Windows File Server"
+      - "Shadow Copies"
+      - "AWS Backup"
+      - "Active Directory"
+  constraints:
+    must_mention:
+      - "Active Directory"
+      - "Shadow Copies"
+      - "vault lock"
+    must_not_claim:
+      - "code changes required for on-premises access"
+      - "FSx File Gateway stores data locally permanently"
+    max_tokens: 400
+
+- id: "storage-t5-004"
+  tier: 5
+  type: multihop
+  hops: 4
+  question: >
+    A healthcare organization must ensure S3-stored patient data is encrypted at
+    rest with customer-controlled keys, all key usage is auditable for HIPAA,
+    access is restricted to specific VPCs only, and encryption keys are
+    automatically rotated annually. Trace the complete policy and service
+    interaction chain that satisfies HIPAA encryption requirements.
+  ground_truth:
+    answer: >
+      HIPAA S3 encryption chain (four policy layers interacting): (1) AWS KMS Customer
+      Managed Key (CMK) with automatic rotation enabled — create a CMK in KMS with annual
+      automatic rotation enabled (new key material generated yearly; AWS retains old material
+      to decrypt existing data). The KMS key policy grants kms:Encrypt/kms:Decrypt/
+      kms:GenerateDataKey only to the specific IAM roles that need S3 access and denies all
+      others. Customer-managed CMK satisfies the "customer-controlled key" HIPAA requirement.
+      (2) S3 bucket with SSE-KMS using the CMK — default encryption configured with the CMK
+      ARN. All objects written to the bucket are encrypted with unique data keys derived from
+      the CMK. The S3 Bucket Key feature reduces KMS API calls at scale. (3) S3 bucket policy
+      with VPC endpoint condition — enforces that s3:GetObject and s3:PutObject are denied
+      unless the request originates from the specific VPC endpoint (aws:sourceVpce condition).
+      VPC Gateway Endpoints for S3 route traffic through AWS private network, never over
+      internet. (4) AWS CloudTrail with S3 data events enabled — logs all KMS API calls
+      (Encrypt, Decrypt, GenerateDataKey) with requestor ARN, timestamp, and object key in
+      CloudTrail. These logs are stored in a separate HIPAA-eligible S3 bucket (also
+      encrypted with CMK) with Object Lock to prevent tampering. HIPAA auditors can review
+      CloudTrail logs to verify every access to patient data. Connection: S3 → (SSE-KMS
+      with CMK) → KMS key policy → (automatic rotation) → CloudTrail audit. Bucket policy
+      enforces VPC-only access. All four layers are required — removing any one creates a
+      compliance gap.
+    source_refs:
+      - "kms/latest/developerguide/rotate-keys.html"
+      - "AmazonS3/latest/userguide/UsingKMSEncryption.html"
+      - "AmazonS3/latest/userguide/example-bucket-policies-vpc-endpoint.html"
+      - "awscloudtrail/latest/userguide/logging-data-events-with-cloudtrail.html"
+    required_entities:
+      - "CMK"
+      - "SSE-KMS"
+      - "VPC endpoint"
+      - "CloudTrail"
+      - "automatic key rotation"
+  constraints:
+    must_mention:
+      - "key rotation"
+      - "CloudTrail"
+      - "VPC endpoint"
+    must_not_claim:
+      - "AWS-managed key satisfies customer-controlled requirement"
+      - "SSE-S3 meets HIPAA customer key control requirement"
+    max_tokens: 400
+
+- id: "storage-t5-005"
+  tier: 5
+  type: multihop
+  hops: 4
+  question: >
+    A global e-commerce company needs to replicate product images across three
+    AWS regions for latency-optimized delivery, ensure the same images are
+    globally consistent within 15 minutes of upload, serve images to browsers
+    via HTTPS with low latency worldwide, and automatically reduce storage costs
+    for images not accessed in 90 days. Describe the multi-region architecture
+    connecting S3 replication, CloudFront, and storage tiering.
+  ground_truth:
+    answer: >
+      Four-component multi-region architecture: (1) S3 Multi-Region Replication with
+      Replication Time Control (RTC) — create a primary S3 bucket (e.g., us-east-1) and
+      replica buckets in eu-west-1 and ap-southeast-1. Configure CRR rules to both regions
+      with RTC enabled. RTC guarantees 99.99% of objects are replicated within 15 minutes
+      with an SLA, satisfying the consistency requirement. S3 Replication metrics published
+      to CloudWatch allow monitoring of replication latency. Versioning must be enabled on
+      all three buckets. (2) CloudFront distribution with multiple S3 origins — configure
+      a CloudFront distribution with the primary S3 bucket as the default origin and the
+      replica buckets as origins for geographic origin groups or failover. CloudFront caches
+      image responses at 400+ edge locations globally. Use Origin Access Control (OAC) on
+      S3 origins so buckets are private (block public access enabled); only CloudFront can
+      read objects via OAC-signed requests. HTTPS enforced via HSTS. (3) S3 Intelligent-
+      Tiering on all three replica buckets — enable Intelligent-Tiering storage class or
+      apply a Lifecycle rule transitioning objects from Standard to Intelligent-Tiering
+      after 30 days. Intelligent-Tiering automatically moves objects not accessed in 30
+      days to Infrequent Access and 90 days to Archive Instant Access, reducing storage
+      costs with no retrieval penalty for CloudFront cache misses. (4) CloudFront cache
+      TTL policies — configure long TTLs (86400s or more) for immutable product images
+      (versioned by filename). Cache-Control: max-age headers from S3 allow CloudFront to
+      serve from edge cache without hitting S3, further reducing storage API costs. Combined:
+      Upload to primary S3 → RTC replicates to replicas in 15 min → CloudFront serves from
+      nearest origin → Intelligent-Tiering reduces storage cost for aging images.
+    source_refs:
+      - "AmazonS3/latest/userguide/replication-time-control.html"
+      - "AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html"
+      - "AmazonS3/latest/userguide/intelligent-tiering-overview.html"
+    required_entities:
+      - "Replication Time Control"
+      - "CloudFront"
+      - "Origin Access Control"
+      - "S3 Intelligent-Tiering"
+      - "multi-region"
+  constraints:
+    must_mention:
+      - "Replication Time Control"
+      - "Origin Access Control"
+      - "Intelligent-Tiering"
+    must_not_claim:
+      - "standard CRR provides 15-minute SLA"
+      - "CloudFront can serve public S3 buckets without OAC"
+    max_tokens: 400
+
+- id: "storage-t5-006"
+  tier: 5
+  type: multihop
+  hops: 5
+  question: >
+    An organization wants to implement a fully automated tiered backup strategy
+    for an AWS-native stack (EC2 with EBS, RDS Aurora, EFS, and DynamoDB) with:
+    4-hour RPO, 1-hour RTO for tier-1 systems, cross-account isolation to
+    prevent ransomware from deleting backups, immutable audit trail for SOC 2
+    compliance, and automated restore testing. Trace the complete AWS Backup
+    architecture satisfying all five requirements.
+  ground_truth:
+    answer: >
+      Full AWS Backup architecture across five requirements: (1) Backup plans meeting 4-hour
+      RPO — create AWS Backup plans with backup rules every 4 hours (cron: 0/4 * * * *)
+      for tier-1 resources (EC2 EBS, Aurora, EFS, DynamoDB). Backup window set to 1 hour.
+      Tag-based resource assignment selects all resources tagged Tier=1. Retention set per
+      service (daily for 30 days, weekly for 90 days, monthly for 1 year). (2) Cross-account
+      backup isolation — enable cross-account backup in AWS Organizations. Create a dedicated
+      backup account. Copy backup rules copy recovery points from the production account
+      backup vault to the isolated backup account's vault. An SCP on the backup account
+      denies backup:DeleteRecoveryPoint and backup:DeleteBackupVault for all principals
+      except the backup service role. This ensures a ransomware attack on the production
+      account cannot delete the isolated copies. (3) Backup vault lock in Compliance mode —
+      apply vault lock to the isolated account's backup vault with a 30-day minimum retention.
+      This prevents even root from deleting locked recovery points, providing the immutable
+      WORM layer. (4) CloudTrail with AWS Backup data events — enable CloudTrail in the
+      backup account logging all backup:StartBackupJob, backup:DeleteRecoveryPoint, and
+      restore operations. CloudTrail logs are delivered to S3 with Object Lock (Compliance
+      mode) for the SOC 2 audit trail. AWS Backup Audit Manager generates automated SOC 2-
+      relevant compliance reports (backup completion, recovery point age, cross-region copy
+      status). (5) AWS Backup restore testing — create restore testing plans that automatically
+      initiate restore jobs on a weekly schedule, validate that restored resources are
+      accessible (Lambda validates the restored RDS cluster by running a test query),
+      and generate restore testing reports. Combined: Backup plans (4-hour RPO) →
+      cross-account copy (ransomware isolation) → vault lock (WORM) → CloudTrail +
+      Audit Manager (SOC 2) → restore testing (RTO validation).
+    source_refs:
+      - "aws-backup/latest/devguide/creating-a-backup-plan.html"
+      - "aws-backup/latest/devguide/cross-account-backup.html"
+      - "aws-backup/latest/devguide/vault-lock.html"
+      - "aws-backup/latest/devguide/audit-manager.html"
+      - "aws-backup/latest/devguide/restore-testing.html"
+    required_entities:
+      - "AWS Backup"
+      - "cross-account backup"
+      - "backup vault lock"
+      - "Backup Audit Manager"
+      - "restore testing"
+      - "SCP"
+  constraints:
+    must_mention:
+      - "cross-account"
+      - "vault lock"
+      - "restore testing"
+    must_not_claim:
+      - "same-account backup satisfies ransomware isolation"
+      - "RTO validation requires manual testing"
+    max_tokens: 400
+
+- id: "storage-t5-007"
+  tier: 5
+  type: multihop
+  hops: 4
+  question: >
+    A company is designing a data lake on AWS. Raw data arrives in S3 via Kinesis
+    Data Firehose, must be queryable within seconds by analysts using Athena,
+    partitioned automatically for query performance, costs must be minimized for
+    data older than 30 days, and analysts must never access raw PII fields.
+    Trace the four-service chain that satisfies all requirements.
+  ground_truth:
+    answer: >
+      Data lake architecture chain: (1) Kinesis Data Firehose → S3 with partitioning —
+      Firehose delivers data to S3 with dynamic partitioning enabled, using record-level
+      metadata (e.g., year/month/day/hour from event timestamp) to write to S3 prefixes like
+      s3://datalake/events/year=2025/month=06/day=01/. Dynamic partitioning uses Firehose's
+      JQ extraction to parse the timestamp from each record and build the prefix. This Hive-
+      compatible partition structure allows Athena to prune partitions and scan only relevant
+      data, reducing query cost and time. (2) AWS Glue Data Catalog + Glue Crawler — a Glue
+      crawler scheduled to run hourly discovers new S3 partitions and updates the Glue
+      catalog table schema. Athena queries reference the catalog. This makes new Firehose
+      partitions queryable within minutes of arrival at no additional ETL cost. Alternatively,
+      use Athena partition projection to avoid crawlers entirely for predictable partition
+      patterns. (3) Amazon Athena with S3 output encryption — analysts run SQL queries
+      against Glue catalog tables. Athena column-level access control via Lake Formation
+      denies SELECT on PII columns (e.g., ssn, email) to analyst IAM roles. Lake Formation
+      column filters are applied at query time — analysts see NULL or masked values for PII
+      columns without any code change. (4) S3 Lifecycle policy on the data lake bucket —
+      transition Parquet/ORC objects to S3 Intelligent-Tiering (or Standard-IA) after 30
+      days. Intelligent-Tiering auto-moves to Infrequent Access for cold partitions. Athena
+      can still query cold objects in any S3 storage class, so analysts are unaffected.
+      Combined: Firehose (partitioned ingest) → Glue (catalog) → Athena + Lake Formation
+      (query + PII masking) → S3 Lifecycle (cost tiering).
+    source_refs:
+      - "firehose/latest/dev/dynamic-partitioning.html"
+      - "glue/latest/dg/aws-glue-programming-crawlers.html"
+      - "lake-formation/latest/dg/column-level-security.html"
+      - "AmazonS3/latest/userguide/object-lifecycle-mgmt.html"
+    required_entities:
+      - "Kinesis Data Firehose"
+      - "AWS Glue"
+      - "Amazon Athena"
+      - "Lake Formation"
+      - "S3 Lifecycle"
+      - "dynamic partitioning"
+  constraints:
+    must_mention:
+      - "dynamic partitioning"
+      - "Lake Formation"
+      - "Lifecycle"
+    must_not_claim:
+      - "Athena cannot query Glacier storage classes"
+      - "partitioning requires manual S3 folder creation"
+    max_tokens: 400
+
+- id: "storage-t5-008"
+  tier: 5
+  type: multihop
+  hops: 5
+  question: >
+    A SaaS company stores customer data in S3, each customer must be cryptographically
+    isolated (one key per tenant), keys must be automatically rotated, customer data must
+    be deleted completely (including all versions and backups) upon contract termination
+    within 24 hours, the deletion must be auditable, and the system must scale to 10,000
+    tenants without manual key management. Describe the complete key management and
+    data lifecycle architecture.
+  ground_truth:
+    answer: >
+      Ten-thousand-tenant cryptographic isolation architecture (five hops): (1) AWS KMS with
+      per-tenant CMKs via automation — do not create CMKs manually for 10,000 tenants.
+      Instead, use AWS KMS CreateKey API called from a provisioning Lambda at tenant onboard
+      time, programmatically creating one CMK per tenant with aliases like alias/tenant-{id}.
+      Enable automatic annual key rotation on each CMK. Store the CMK ARN in a tenant
+      metadata table (DynamoDB). This scales to 10,000 CMKs without manual operation.
+      (2) Per-tenant S3 bucket or S3 prefix with SSE-KMS — two options: one S3 bucket per
+      tenant (stronger isolation, but harder to manage at 10K scale); OR shared bucket with
+      per-tenant prefix and bucket key per-tenant CMK. A bucket policy condition
+      (s3:x-amz-server-side-encryption-aws-kms-key-id) enforces that only the tenant's CMK
+      ARN can be used to encrypt/decrypt objects for that prefix. Tenant application IAM roles
+      have kms:Decrypt permission only on their own CMK. (3) S3 Versioning + Object expiration
+      for contract termination — when a contract is terminated: (a) Schedule all current
+      object versions and delete markers for immediate expiration using S3 Batch Operations
+      DeleteObject with --version-id for all versions listed from S3 Inventory. (b) AWS KMS
+      DisableKey → ScheduleKeyDeletion with minimum 7-day waiting period. After key deletion,
+      all tenant objects are cryptographically erased (even retained S3 bytes are undecryptable)
+      within the 24-hour window. (4) AWS CloudTrail + KMS data events — CloudTrail logs every
+      kms:Decrypt, kms:ScheduleKeyDeletion, and s3:DeleteObject call with the tenant CMK ARN,
+      timestamps, and requesting IAM principal. This creates an auditable deletion record. A
+      Lambda function generates a deletion certificate (signed hash of the CloudTrail events)
+      stored in a compliance S3 bucket with Object Lock. (5) AWS Config rule + Lambda
+      compliance check — an AWS Config rule verifies that every active tenant bucket/prefix
+      has SSE-KMS enabled with the correct CMK (checks s3:GetBucketEncryption). Non-compliant
+      resources trigger an SNS alert. Connection: Onboard → CreateKey → SSE-KMS (per-tenant
+      CMK) → S3 Batch + KMS ScheduleKeyDeletion (termination) → CloudTrail (audit).
+    source_refs:
+      - "kms/latest/developerguide/create-keys.html"
+      - "kms/latest/developerguide/rotate-keys.html"
+      - "AmazonS3/latest/userguide/batch-ops-operations.html"
+      - "awscloudtrail/latest/userguide/logging-management-events-with-cloudtrail.html"
+      - "config/latest/developerguide/evaluate-config.html"
+    required_entities:
+      - "CMK per tenant"
+      - "KMS ScheduleKeyDeletion"
+      - "S3 Batch Operations"
+      - "CloudTrail"
+      - "AWS Config"
+      - "cryptographic erasure"
+  constraints:
+    must_mention:
+      - "ScheduleKeyDeletion"
+      - "cryptographic erasure"
+      - "S3 Batch Operations"
+    must_not_claim:
+      - "manual key creation scales to 10,000 tenants"
+      - "deleting S3 objects without key deletion satisfies the requirement"
+    max_tokens: 400

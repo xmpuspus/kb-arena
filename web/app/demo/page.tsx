@@ -4,40 +4,40 @@ import { useState, useRef } from "react";
 import ChatPanel, { type DemoResult } from "@/components/ChatPanel";
 import { STRATEGIES, STRATEGY_LABELS, CORPORA, type Strategy, type Message } from "@/lib/api";
 
-const DEMO_QUESTION = "How do I expose a StatefulSet through an Ingress with TLS?";
+const DEMO_QUESTION = "How do I set up a Lambda function behind API Gateway with VPC access to an RDS database?";
 
 const DEMO_RESULTS: Partial<Record<Strategy, DemoResult>> = {
   naive_vector: {
-    answer: "To expose a StatefulSet, you can create a Service and then configure an Ingress resource. The Ingress should have TLS configured with a certificate stored in a Kubernetes Secret.\n\nHere's the general approach:\n1. Create a Service targeting your StatefulSet pods\n2. Create a TLS Secret with your certificate\n3. Create an Ingress with the TLS section referencing the Secret\n\nNote: StatefulSets use stable network identities, so each pod gets a predictable hostname.",
-    sources: ["concepts/services-networking/ingress.md", "concepts/services-networking/service.md"],
+    answer: "To connect Lambda to API Gateway and RDS, you need to:\n1. Create a Lambda function with your application code\n2. Create an API Gateway REST API and connect it to Lambda\n3. Configure VPC settings on the Lambda function to access RDS\n4. Set up the RDS database in a private subnet\n\nMake sure the Lambda function has the right IAM permissions and that the security groups allow traffic between Lambda and RDS.",
+    sources: ["lambda/latest/dg/configuration-vpc.html", "apigateway/latest/developerguide/getting-started.html"],
     latencyMs: 420,
     tokensUsed: 134,
     costUsd: 0.0012,
   },
   contextual_vector: {
-    answer: "Exposing a StatefulSet through an Ingress with TLS involves several Kubernetes resources working together.\n\nFirst, create a headless Service (clusterIP: None) for stable DNS entries per pod. Then create a regular ClusterIP Service for the Ingress to route to. The Ingress resource needs a TLS section with:\n- A Secret containing tls.crt and tls.key\n- The host matching your certificate's CN/SAN\n\nStatefulSets with volumeClaimTemplates get stable persistent storage per pod. The Ingress controller handles TLS termination at the edge.",
-    sources: ["concepts/services-networking/ingress.md", "concepts/workloads/controllers/statefulset.md", "concepts/services-networking/service.md"],
+    answer: "Setting up Lambda behind API Gateway with VPC access to RDS involves configuring several AWS services together.\n\nFirst, deploy your RDS instance in private subnets within a VPC. Then configure your Lambda function with VPC settings — attach it to the same VPC's private subnets and assign a security group. The Lambda security group must allow outbound traffic to the RDS security group on port 3306 (MySQL) or 5432 (PostgreSQL).\n\nFor API Gateway, create a REST API with a Lambda proxy integration. The API Gateway invokes Lambda via the AWS service network, so it doesn't need VPC access itself.\n\nKey consideration: Lambda functions in a VPC need a NAT Gateway to access the internet (e.g., for calling other AWS APIs). Use VPC endpoints for services like S3 and DynamoDB to avoid NAT costs.",
+    sources: ["lambda/latest/dg/configuration-vpc.html", "AmazonRDS/latest/UserGuide/USER_VPC.html", "apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html"],
     latencyMs: 510,
     tokensUsed: 167,
     costUsd: 0.0018,
   },
   knowledge_graph: {
-    answer: "Exposing a StatefulSet through an Ingress with TLS requires connecting 5 Kubernetes resources in a specific dependency chain:\n\nStatefulSet → headless Service (clusterIP: None) → provides stable DNS (pod-0.svc.cluster.local)\nStatefulSet → volumeClaimTemplates → PersistentVolumeClaim (one per pod)\nService (ClusterIP) → targets StatefulSet pods via selector\nIngress → references Service as backend\nIngress → references TLS Secret (tls.crt + tls.key)\n\nThe headless Service is required for StatefulSet pod identity. A separate ClusterIP Service is needed because Ingress controllers cannot route to headless Services. The TLS Secret must contain a valid certificate matching the Ingress host.\n\nKey constraint: volumeClaimTemplates in the StatefulSet spec are immutable after creation — plan storage before deploying.",
-    sources: ["concepts/workloads/controllers/statefulset.md", "concepts/services-networking/ingress.md", "concepts/services-networking/service.md", "concepts/storage/persistent-volumes.md"],
+    answer: "This requires connecting 6 AWS resources in a specific dependency chain:\n\nAPI Gateway (REST API) → Lambda Function (proxy integration)\nLambda Function → IAM Execution Role (AssumeRole: lambda.amazonaws.com)\nLambda Function → VPC Configuration (SubnetIds + SecurityGroupIds)\nVPC → Private Subnets (where both Lambda ENIs and RDS reside)\nSecurity Group (Lambda) → Security Group (RDS) on port 5432\nRDS Instance → Subnet Group (private subnets across 2+ AZs)\n\nThe IAM execution role needs: AWSLambdaVPCAccessExecutionRole (for ENI creation in VPC), plus any RDS-specific permissions if using IAM database authentication.\n\nCritical constraint: Lambda in a VPC loses direct internet access. If your function needs to call external APIs or other AWS services, you need either a NAT Gateway ($0.045/hr + data) or VPC endpoints for specific services.\n\nCold start impact: VPC-attached Lambda adds 1-10s cold start for ENI attachment. Use Provisioned Concurrency to mitigate this for latency-sensitive APIs.",
+    sources: ["lambda/latest/dg/configuration-vpc.html", "AmazonRDS/latest/UserGuide/USER_VPC.html", "apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html", "lambda/latest/dg/lambda-intro-execution-role.html"],
     latencyMs: 890,
     tokensUsed: 203,
     costUsd: 0.0031,
   },
   hybrid: {
-    answer: "This is a relational question requiring graph traversal (5 interconnected resources). Routing to knowledge graph path.\n\nThe dependency chain for StatefulSet → Ingress with TLS:\n\n1. StatefulSet defines pods with volumeClaimTemplates for persistent storage (creates one PVC per replica)\n2. Headless Service (clusterIP: None) provides stable DNS: {pod-name}.{service}.{namespace}.svc.cluster.local\n3. ClusterIP Service routes traffic to StatefulSet pods (Ingress cannot target headless Services)\n4. TLS Secret stores the certificate (tls.crt) and private key (tls.key)\n5. Ingress references the ClusterIP Service as backend and the TLS Secret for termination\n\nCommon pitfall: using the headless Service directly in the Ingress backend — this fails silently. You need both a headless Service (for pod identity) and a regular Service (for Ingress routing).\n\nDownstream effects of StatefulSet + PVC: pod scheduling is constrained to nodes where the PV is accessible. With ReadWriteOnce access mode, pods cannot be rescheduled to a different availability zone.",
-    sources: ["concepts/workloads/controllers/statefulset.md", "concepts/services-networking/ingress.md", "concepts/services-networking/service.md", "concepts/storage/persistent-volumes.md", "concepts/scheduling-eviction/assign-pod-node.md"],
+    answer: "This is a relational question requiring graph traversal (6 interconnected AWS resources). Routing to knowledge graph path.\n\nThe dependency chain for API Gateway → Lambda → RDS:\n\n1. API Gateway REST API with Lambda proxy integration handles HTTP routing and invokes Lambda\n2. Lambda Execution Role (IAM) grants lambda.amazonaws.com AssumeRole + AWSLambdaVPCAccessExecutionRole managed policy\n3. Lambda VPC Configuration attaches the function to private subnets via Elastic Network Interfaces (ENIs)\n4. Security Group chain: Lambda SG allows outbound to RDS SG on port 5432/3306; RDS SG allows inbound from Lambda SG\n5. RDS Subnet Group spans 2+ AZs in the same VPC private subnets\n6. Optional: NAT Gateway or VPC Endpoints if Lambda needs internet or AWS API access\n\nCommon pitfall: forgetting AWSLambdaVPCAccessExecutionRole on the execution role — Lambda silently fails to create ENIs and times out. Another: placing Lambda in public subnets thinking it will have internet access — it won't without a NAT Gateway.\n\nCost implications: NAT Gateway adds ~$32/month base + $0.045/GB processed. For high-throughput APIs, consider VPC endpoints ($0.01/hr each) for frequently accessed AWS services like S3, DynamoDB, and Secrets Manager.",
+    sources: ["lambda/latest/dg/configuration-vpc.html", "AmazonRDS/latest/UserGuide/USER_VPC.html", "apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html", "lambda/latest/dg/lambda-intro-execution-role.html", "vpc/latest/userguide/vpc-nat-gateway.html"],
     latencyMs: 1050,
     tokensUsed: 248,
     costUsd: 0.0038,
   },
   qna_pairs: {
-    answer: "To expose a StatefulSet via Ingress with TLS:\n\n1. Create a headless Service for pod DNS identity\n2. Create a ClusterIP Service for Ingress routing\n3. Store your TLS certificate in a Secret\n4. Configure Ingress with TLS termination pointing to the ClusterIP Service\n\nMake sure your volumeClaimTemplates are configured before deployment since they can't be changed later.",
-    sources: ["concepts/services-networking/ingress.md", "concepts/workloads/controllers/statefulset.md"],
+    answer: "To set up Lambda behind API Gateway with VPC access to RDS:\n\n1. Deploy RDS in private subnets with a DB subnet group\n2. Create a Lambda function and attach it to the same VPC private subnets\n3. Configure security groups: Lambda SG → RDS SG on the database port\n4. Attach AWSLambdaVPCAccessExecutionRole to the Lambda execution role\n5. Create an API Gateway REST API with Lambda proxy integration\n\nRemember that VPC-attached Lambda needs a NAT Gateway for internet access and adds cold start latency.",
+    sources: ["lambda/latest/dg/configuration-vpc.html", "AmazonRDS/latest/UserGuide/USER_VPC.html"],
     latencyMs: 680,
     tokensUsed: 112,
     costUsd: 0.0024,
@@ -46,7 +46,7 @@ const DEMO_RESULTS: Partial<Record<Strategy, DemoResult>> = {
 
 export default function DemoPage() {
   const [query, setQuery] = useState(DEMO_QUESTION);
-  const [corpus, setCorpus] = useState("kubernetes");
+  const [corpus, setCorpus] = useState("aws-compute");
   const [selectedStrategies, setSelectedStrategies] = useState<Strategy[]>([...STRATEGIES]);
   const [trigger, setTrigger] = useState(0);
   const [history, setHistory] = useState<Message[]>([]);
@@ -88,7 +88,7 @@ export default function DemoPage() {
           Strategy comparison
         </h1>
         <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
-          Ask a question and see how each retrieval strategy responds side-by-side.
+          Ask a question about AWS documentation and see how each retrieval strategy responds side-by-side.
         </p>
       </div>
 
@@ -132,7 +132,7 @@ export default function DemoPage() {
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Ask a question about the documentation..."
+            placeholder="Ask a question about AWS documentation..."
             className="flex-1 px-4 py-2 rounded-lg border text-sm outline-none"
             style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
           />
@@ -158,10 +158,10 @@ export default function DemoPage() {
         <div className="flex flex-wrap gap-2">
           <span className="text-xs" style={{ color: "var(--muted)" }}>Try:</span>
           {[
-            "How do I expose a StatefulSet through an Ingress with TLS?",
-            "Compare ConfigMap vs Secret vs ServiceAccount in Kubernetes",
-            "Which executives serve on boards of companies with material litigation?",
-            "What's the chain of modules when urllib makes an HTTPS connection?",
+            "How do I set up a Lambda function behind API Gateway with VPC access to RDS?",
+            "Compare S3 Standard vs Glacier vs Glacier Deep Archive storage classes",
+            "What IAM policies does an ECS task need to pull from ECR and write to CloudWatch?",
+            "How does CloudFront route to an ALB origin with WAF and ACM certificate?",
           ].map((q) => (
             <button
               key={q}

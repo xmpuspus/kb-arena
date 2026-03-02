@@ -12,19 +12,27 @@ from kb_arena.models.document import CodeBlock, CrossRef, Document, Section, Tab
 @pytest.fixture
 def sample_section():
     return Section(
-        id="json-loads",
-        title="json.loads",
-        content="Deserialize s (a str, bytes or bytearray instance containing a JSON document) to a Python object.",
-        heading_path=["json", "json.loads"],
+        id="lambda-configuration",
+        title="Lambda Function Configuration",
+        content=(
+            "You can configure your Lambda function's memory, timeout, and runtime"
+            " settings using the AWS Management Console or AWS CLI."
+        ),
+        heading_path=["AWS Lambda", "Configuration"],
         tables=[],
         code_blocks=[
             CodeBlock(
-                language="python",
-                code=">>> import json\n>>> json.loads('{\"key\": \"value\"}')\n{'key': 'value'}",
-                description="Basic usage of json.loads",
+                language="bash",
+                code=(
+                    "aws lambda update-function-configuration \\\n"
+                    "  --function-name my-function \\\n"
+                    "  --timeout 300 \\\n"
+                    "  --memory-size 512"
+                ),
+                description="Configure Lambda function timeout and memory",
             )
         ],
-        links=[CrossRef(target="json.JSONDecodeError", label="JSONDecodeError", ref_type="class")],
+        links=[CrossRef(target="lambda-permissions", label="Execution Role", ref_type="concept")],
         level=2,
     )
 
@@ -32,38 +40,41 @@ def sample_section():
 @pytest.fixture
 def sample_document(sample_section):
     return Document(
-        id="python-stdlib-json",
-        source="https://docs.python.org/3/library/json.html",
-        corpus="python-stdlib",
-        title="json — JSON encoder and decoder",
+        id="aws-compute-lambda",
+        source="https://docs.aws.amazon.com/lambda/latest/dg/configuration-function-common.html",
+        corpus="aws-compute",
+        title="Configuring AWS Lambda Functions",
         sections=[
             Section(
-                id="json-module",
-                title="json — JSON encoder and decoder",
-                content="JSON (JavaScript Object Notation) is a lightweight data interchange format.",
-                heading_path=["json"],
+                id="lambda-overview",
+                title="Configuring AWS Lambda Functions",
+                content="AWS Lambda lets you run code without provisioning or managing servers.",
+                heading_path=["AWS Lambda"],
                 level=1,
-                children=["json-loads", "json-dumps"],
+                children=["lambda-configuration", "lambda-permissions"],
             ),
             sample_section,
             Section(
-                id="json-dumps",
-                title="json.dumps",
-                content="Serialize obj to a JSON formatted str.",
-                heading_path=["json", "json.dumps"],
+                id="lambda-permissions",
+                title="Lambda Execution Role",
+                content=(
+                    "A Lambda function's execution role grants it"
+                    " permission to access AWS services and resources."
+                ),
+                heading_path=["AWS Lambda", "Execution Role"],
                 tables=[
                     Table(
-                        headers=["Parameter", "Type", "Description"],
+                        headers=["Setting", "Type", "Description"],
                         rows=[
-                            ["obj", "Any", "Object to serialize"],
-                            ["indent", "int | None", "Number of spaces for indentation"],
+                            ["Timeout", "int", "Maximum execution time in seconds (1-900)"],
+                            ["MemorySize", "int", "Memory allocation in MB (128-10240)"],
                         ],
                     )
                 ],
                 level=2,
             ),
         ],
-        metadata={"version": "3.12", "module_type": "standard_library"},
+        metadata={"service": "lambda", "doc_type": "developer_guide"},
         raw_token_count=1500,
     )
 
@@ -71,30 +82,33 @@ def sample_document(sample_section):
 @pytest.fixture
 def sample_documents(sample_document):
     """Multiple documents for batch testing."""
-    os_doc = Document(
-        id="python-stdlib-os",
-        source="https://docs.python.org/3/library/os.html",
-        corpus="python-stdlib",
-        title="os — Miscellaneous operating system interfaces",
+    s3_doc = Document(
+        id="aws-storage-s3",
+        source="https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html",
+        corpus="aws-storage",
+        title="Amazon S3 User Guide",
         sections=[
             Section(
-                id="os-module",
-                title="os — Miscellaneous operating system interfaces",
-                content="This module provides a portable way of using operating system dependent functionality.",
-                heading_path=["os"],
+                id="s3-overview",
+                title="Amazon S3 User Guide",
+                content=(
+                    "Amazon Simple Storage Service (Amazon S3) is an object storage service"
+                    " offering industry-leading scalability, data availability, and security."
+                ),
+                heading_path=["Amazon S3"],
                 level=1,
             ),
             Section(
-                id="os-path-join",
-                title="os.path.join",
-                content="Join one or more path components intelligently.",
-                heading_path=["os", "os.path", "os.path.join"],
+                id="s3-bucket-policies",
+                title="Bucket Policies",
+                content="You use bucket policies to grant permissions to your Amazon S3 resources.",
+                heading_path=["Amazon S3", "Security", "Bucket Policies"],
                 level=3,
             ),
         ],
         raw_token_count=5000,
     )
-    return [sample_document, os_doc]
+    return [sample_document, s3_doc]
 
 
 @pytest.fixture
@@ -125,7 +139,7 @@ def mock_chroma_client():
     collection.query.return_value = {
         "ids": [["doc1-s1", "doc1-s2"]],
         "documents": [["Content chunk 1", "Content chunk 2"]],
-        "metadatas": [[{"source": "json.html"}, {"source": "json.html"}]],
+        "metadatas": [[{"source": "lambda-dg.html"}, {"source": "lambda-dg.html"}]],
         "distances": [[0.1, 0.3]],
     }
     client.get_or_create_collection.return_value = collection

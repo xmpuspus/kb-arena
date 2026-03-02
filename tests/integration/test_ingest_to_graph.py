@@ -11,8 +11,6 @@ from kb_arena.graph.resolver import (
 from kb_arena.graph.schema import (
     NodeType,
     RelType,
-    SecNodeType,
-    SecRelType,
     get_schema,
     node_type_values,
     rel_type_values,
@@ -27,33 +25,33 @@ from kb_arena.models.graph import Entity, ExtractionResult, Relationship
 
 
 def test_node_types_match_enum():
-    for value in node_type_values("python-stdlib"):
-        assert valid_node_type("python-stdlib", value)
+    for value in node_type_values("aws-compute"):
+        assert valid_node_type("aws-compute", value)
 
 
 def test_rel_types_match_enum():
-    for value in rel_type_values("python-stdlib"):
-        assert valid_rel_type("python-stdlib", value)
+    for value in rel_type_values("aws-compute"):
+        assert valid_rel_type("aws-compute", value)
 
 
 def test_invalid_node_type_rejected():
-    assert not valid_node_type("python-stdlib", "NotARealType")
+    assert not valid_node_type("aws-compute", "NotARealType")
 
 
 def test_invalid_rel_type_rejected():
-    assert not valid_rel_type("python-stdlib", "NOT_A_REL")
+    assert not valid_rel_type("aws-compute", "NOT_A_REL")
 
 
-def test_get_schema_python():
-    node_enum, rel_enum = get_schema("python-stdlib")
+def test_get_schema_aws_compute():
+    node_enum, rel_enum = get_schema("aws-compute")
     assert node_enum is NodeType
     assert rel_enum is RelType
 
 
-def test_get_schema_sec():
-    node_enum, rel_enum = get_schema("sec-edgar")
-    assert node_enum is SecNodeType
-    assert rel_enum is SecRelType
+def test_get_schema_aws_storage():
+    node_enum, rel_enum = get_schema("aws-storage")
+    assert node_enum is NodeType
+    assert rel_enum is RelType
 
 
 def test_get_schema_unknown_corpus_raises():
@@ -61,36 +59,37 @@ def test_get_schema_unknown_corpus_raises():
         get_schema("nonexistent-corpus")
 
 
-def test_all_python_node_types_are_valid():
+def test_all_aws_node_types_are_valid():
     expected = {
-        "Concept",
-        "Module",
-        "Class",
-        "Function",
-        "Parameter",
-        "ReturnType",
-        "Exception",
-        "Deprecation",
-        "Version",
-        "Example",
+        "Service",
+        "Resource",
+        "Policy",
+        "Feature",
+        "Configuration",
+        "Limit",
+        "APIAction",
+        "ARNPattern",
     }
-    assert set(node_type_values("python-stdlib")) == expected
+    assert set(node_type_values("aws-compute")) == expected
 
 
-def test_all_python_rel_types_are_valid():
+def test_all_aws_rel_types_are_valid():
     expected = {
+        "DEPENDS_ON",
+        "INVOKES",
+        "CONNECTS_TO",
+        "ASSUMES",
         "CONTAINS",
-        "REQUIRES",
-        "RETURNS",
-        "RAISES",
-        "DEPRECATED_BY",
-        "ALTERNATIVE_TO",
-        "REFERENCES",
-        "INHERITS",
-        "IMPLEMENTS",
-        "EXAMPLE_OF",
+        "PROTECTS",
+        "ROUTES_TO",
+        "LOGS_TO",
+        "TRIGGERS",
+        "DEPLOYED_IN",
+        "MANAGES",
+        "READS_FROM",
+        "WRITES_TO",
     }
-    assert set(rel_type_values("python-stdlib")) == expected
+    assert set(rel_type_values("aws-compute")) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -109,34 +108,39 @@ def _make_entity(name: str, type_str: str, eid: str | None = None) -> Entity:
 
 def test_extracted_entities_match_node_schema():
     entities = [
-        _make_entity("json", "Module"),
-        _make_entity("json.loads", "Function"),
-        _make_entity("JSONDecodeError", "Exception"),
+        _make_entity("Lambda", "Service"),
+        _make_entity("InvokeFunction", "APIAction"),
+        _make_entity("ExecutionRole", "Policy"),
     ]
     for entity in entities:
-        assert valid_node_type("python-stdlib", entity.type)
+        assert valid_node_type("aws-compute", entity.type)
 
 
 def test_extracted_relationships_match_rel_schema():
     relationships = [
-        Relationship(source_fqn="json", target_fqn="json.loads", type="CONTAINS"),
-        Relationship(source_fqn="json.loads", target_fqn="str", type="REQUIRES"),
-        Relationship(source_fqn="json.loads", target_fqn="JSONDecodeError", type="RAISES"),
+        Relationship(source_fqn="lambda", target_fqn="s3", type="READS_FROM"),
+        Relationship(source_fqn="lambda", target_fqn="cloudwatch", type="LOGS_TO"),
+        Relationship(source_fqn="lambda", target_fqn="execution-role", type="ASSUMES"),
     ]
     for rel in relationships:
-        assert valid_rel_type("python-stdlib", rel.type)
+        assert valid_rel_type("aws-compute", rel.type)
 
 
 def test_extraction_result_schema():
     result = ExtractionResult(
-        entities=[_make_entity("os", "Module"), _make_entity("os.path.join", "Function")],
-        relationships=[Relationship(source_fqn="os", target_fqn="os.path.join", type="CONTAINS")],
-        document_id="python-stdlib-os",
-        section_id="os-module",
+        entities=[
+            _make_entity("Lambda", "Service"),
+            _make_entity("InvokeFunction", "APIAction"),
+        ],
+        relationships=[
+            Relationship(source_fqn="lambda", target_fqn="invoke-function", type="INVOKES")
+        ],
+        document_id="aws-compute-lambda",
+        section_id="lambda-configuration",
     )
     assert len(result.entities) == 2
     assert len(result.relationships) == 1
-    assert result.document_id == "python-stdlib-os"
+    assert result.document_id == "aws-compute-lambda"
 
 
 # ---------------------------------------------------------------------------
@@ -146,8 +150,8 @@ def test_extraction_result_schema():
 
 def test_resolver_merges_near_identical_entities():
     entities = [
-        _make_entity("JSONDecodeError", "Exception", "e1"),
-        _make_entity("JSONDecodeError()", "Exception", "e2"),  # trailing ()
+        _make_entity("SecurityGroup", "Resource", "e1"),
+        _make_entity("SecurityGroup()", "Resource", "e2"),  # trailing ()
     ]
     merged, review = resolve_entities(entities)
     # The pair should merge — jaro-winkler of normalized forms is high
@@ -156,8 +160,8 @@ def test_resolver_merges_near_identical_entities():
 
 def test_resolver_does_not_merge_different_types():
     entities = [
-        _make_entity("loads", "Function", "e1"),
-        _make_entity("loads", "Module", "e2"),
+        _make_entity("invoke", "APIAction", "e1"),
+        _make_entity("invoke", "Feature", "e2"),
     ]
     merged, _ = resolve_entities(entities)
     assert len(merged) == 0
@@ -165,8 +169,8 @@ def test_resolver_does_not_merge_different_types():
 
 def test_resolver_longer_name_is_canonical():
     entities = [
-        _make_entity("JSONDecoder", "Class", "e1"),
-        _make_entity("JSONDecoderClass", "Class", "e2"),
+        _make_entity("LambdaFunction", "Service", "e1"),
+        _make_entity("LambdaFunctionConfig", "Service", "e2"),
     ]
     merged, _ = resolve_entities(entities)
     if merged:
@@ -178,8 +182,8 @@ def test_resolver_longer_name_is_canonical():
 def test_resolver_returns_review_queue_for_borderline():
     # Two similar but not identical names — should go to review queue
     entities = [
-        _make_entity("HTTPError", "Exception", "e1"),
-        _make_entity("HttpError", "Exception", "e2"),
+        _make_entity("InvokeFunction", "APIAction", "e1"),
+        _make_entity("InvokeAsync", "APIAction", "e2"),
     ]
     merged, review = resolve_entities(entities)
     # These should at least appear somewhere (merged or review)
@@ -189,30 +193,29 @@ def test_resolver_returns_review_queue_for_borderline():
 
 def test_resolver_skips_short_names():
     entities = [
-        _make_entity("os", "Module", "e1"),
-        _make_entity("io", "Module", "e2"),
+        _make_entity("S3", "Service", "e1"),
+        _make_entity("EC", "Service", "e2"),
     ]
-    # Normalized "OS" < 3 chars — should be skipped, no merge
+    # Normalized "S3" < 3 chars — should be skipped, no merge
     merged, review = resolve_entities(entities)
     assert len(merged) == 0
 
 
 def test_resolver_absorbed_entity_not_reprocessed():
     entities = [
-        _make_entity("JSONDecodeError", "Exception", "e1"),
-        _make_entity("JSONDecodeError()", "Exception", "e2"),
-        _make_entity("json.JSONDecodeError", "Exception", "e3"),
+        _make_entity("SecurityGroup", "Resource", "e1"),
+        _make_entity("SecurityGroup()", "Resource", "e2"),
+        _make_entity("NATGateway", "Resource", "e3"),
     ]
     merged, _ = resolve_entities(entities)
-    # e2 absorbed into e1 should not also appear as e3's merge source
+    # Only e1/e2 should merge; e3 is distinct and unaffected
     absorbed_ids = {b for _, b, _ in merged}
     canonical_ids = {c for _, _, c in merged}
-    # No entity should appear as both absorbed and canonical of different merges
     assert absorbed_ids.isdisjoint(canonical_ids) or len(merged) <= 2
 
 
 def test_normalize_name_strips_parens():
-    assert normalize_name("json.loads()") == "JSON.LOADS"
+    assert normalize_name("InvokeFunction()") == "INVOKEFUNCTION"
 
 
 def test_normalize_name_strips_type_suffixes():
@@ -221,7 +224,7 @@ def test_normalize_name_strips_type_suffixes():
 
 
 def test_normalize_name_uppercases():
-    assert normalize_name("json") == "JSON"
+    assert normalize_name("lambda") == "LAMBDA"
 
 
 # ---------------------------------------------------------------------------
@@ -235,15 +238,15 @@ async def test_neo4j_store_loads_nodes_before_edges(mock_neo4j_driver):
 
     store = Neo4jStore(driver=mock_neo4j_driver)
     nodes = [
-        {"fqn": "json", "name": "json", "description": ""},
-        {"fqn": "json.loads", "name": "json.loads", "description": ""},
+        {"fqn": "lambda", "name": "Lambda", "description": ""},
+        {"fqn": "invoke-function", "name": "InvokeFunction", "description": ""},
     ]
     edges = [
-        {"source_fqn": "json", "target_fqn": "json.loads", "properties": {}},
+        {"source_fqn": "lambda", "target_fqn": "invoke-function", "properties": {}},
     ]
 
-    await store.load_nodes(nodes, NodeType.MODULE)
-    await store.load_edges(edges, RelType.CONTAINS)
+    await store.load_nodes(nodes, NodeType.SERVICE)
+    await store.load_edges(edges, RelType.INVOKES)
 
     session = mock_neo4j_driver.session.return_value.__aenter__.return_value
     calls = session.run.call_args_list
@@ -261,9 +264,9 @@ async def test_neo4j_store_consumes_results(mock_neo4j_driver):
     from kb_arena.graph.neo4j_store import Neo4jStore
 
     store = Neo4jStore(driver=mock_neo4j_driver)
-    nodes = [{"fqn": "pathlib", "name": "pathlib", "description": ""}]
+    nodes = [{"fqn": "s3", "name": "Amazon S3", "description": ""}]
 
-    await store.load_nodes(nodes, NodeType.MODULE)
+    await store.load_nodes(nodes, NodeType.SERVICE)
 
     session = mock_neo4j_driver.session.return_value.__aenter__.return_value
     result = session.run.return_value
@@ -276,9 +279,9 @@ async def test_neo4j_store_batches_large_node_list(mock_neo4j_driver):
 
     store = Neo4jStore(driver=mock_neo4j_driver)
     # More than batch_size=1000 nodes → multiple UNWIND calls
-    nodes = [{"fqn": f"func.{i}", "name": f"func_{i}", "description": ""} for i in range(1200)]
+    nodes = [{"fqn": f"api.{i}", "name": f"API_{i}", "description": ""} for i in range(1200)]
 
-    await store.load_nodes(nodes, NodeType.FUNCTION)
+    await store.load_nodes(nodes, NodeType.API_ACTION)
 
     session = mock_neo4j_driver.session.return_value.__aenter__.return_value
     # Should have at least 2 batch calls for 1200 nodes
@@ -290,7 +293,7 @@ async def test_neo4j_store_empty_nodes_skipped(mock_neo4j_driver):
     from kb_arena.graph.neo4j_store import Neo4jStore
 
     store = Neo4jStore(driver=mock_neo4j_driver)
-    result = await store.load_nodes([], NodeType.FUNCTION)
+    result = await store.load_nodes([], NodeType.SERVICE)
     assert result == 0
     session = mock_neo4j_driver.session.return_value.__aenter__.return_value
     assert not session.run.called
@@ -302,7 +305,7 @@ async def test_neo4j_store_execute_query(mock_neo4j_driver):
 
     store = Neo4jStore(driver=mock_neo4j_driver)
     session = mock_neo4j_driver.session.return_value.__aenter__.return_value
-    session.run.return_value.data.return_value = [{"fqn": "json", "label": "Module"}]
+    session.run.return_value.data.return_value = [{"fqn": "lambda", "label": "Service"}]
 
     rows = await store.execute_query("MATCH (n) RETURN n.fqn AS fqn, labels(n)[0] AS label")
     assert isinstance(rows, list)

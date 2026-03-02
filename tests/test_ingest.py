@@ -17,72 +17,77 @@ from kb_arena.models.document import Document
 # ---------------------------------------------------------------------------
 
 SAMPLE_MARKDOWN = """\
-# json — JSON encoder and decoder
+# AWS Lambda
 
-JSON (JavaScript Object Notation) is a lightweight data interchange format.
+AWS Lambda lets you run code without provisioning or managing servers.
 
-## json.loads
+## Lambda Configuration
 
-Deserialize `s` to a Python object using :func:`json.JSONDecodeError` on failure.
+Configure your Lambda function's memory, timeout, and runtime settings.
 
-```python
->>> import json
->>> json.loads('{"key": "value"}')
-{'key': 'value'}
+```bash
+aws lambda update-function-configuration \\
+  --function-name my-function \\
+  --timeout 300 \\
+  --memory-size 512
 ```
 
-| Parameter | Type   | Description           |
-|-----------|--------|-----------------------|
-| s         | str    | JSON string to parse  |
-| cls       | type   | Custom decoder class  |
+| Setting    | Type | Description                              |
+|------------|------|------------------------------------------|
+| Timeout    | int  | Maximum execution time in seconds (1-900)|
+| MemorySize | int  | Memory allocation in MB (128-10240)      |
 
-## json.dumps
+## Lambda Execution Role
 
-Serialize *obj* to a JSON formatted string.
+A Lambda function's execution role grants it permission to access AWS services.
 """
 
 SAMPLE_RST = """\
-json module
-===========
+AWS Lambda
+==========
 
-JSON (JavaScript Object Notation), specified by :rfc:`7159`.
+AWS Lambda lets you run code without provisioning or managing servers.
 
-json.loads
-----------
+Lambda Configuration
+--------------------
 
-Deserialize ``s`` using :func:`json.loads`. Raises :class:`json.JSONDecodeError`.
+Configure your Lambda function using
+:func:`update-function-configuration`.
+Raises :class:`ClientError`.
 
 Example::
 
-    import json
-    json.loads('{"x": 1}')
+    aws lambda update-function-configuration \\
+      --function-name my-function --timeout 300
 
-json.dumps
-----------
+Lambda Execution Role
+---------------------
 
-Serialize *obj* using :meth:`json.JSONEncoder.encode`.
+Configure :meth:`execution role` permissions using :func:`IAM`.
 """
 
 SAMPLE_HTML = """\
 <!DOCTYPE html>
 <html>
-<head><title>json — JSON encoder and decoder</title></head>
+<head><title>AWS Lambda — Configuration</title></head>
 <body>
-  <div class="section" id="json-module">
-    <h1>json — JSON encoder and decoder</h1>
-    <p>JSON is a lightweight data interchange format.</p>
+  <div class="section" id="lambda-configuration">
+    <h1>AWS Lambda — Configuration</h1>
+    <p>AWS Lambda lets you run code without provisioning or managing servers.</p>
     <dl class="function">
-      <dt id="json.loads">json.loads(s, *, cls=None)</dt>
+      <dt id="lambda.update-function-configuration">update-function-configuration</dt>
       <dd>
-        <p>Deserialize s to a Python object.</p>
+        <p>Updates a Lambda function's configuration.</p>
         <table>
           <thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead>
           <tbody>
-            <tr><td>s</td><td>str</td><td>JSON string</td></tr>
+            <tr><td>Timeout</td><td>int</td><td>Maximum execution time (seconds)</td></tr>
           </tbody>
         </table>
-        <pre><code class="language-python">>>> json.loads('{"x": 1}')</code></pre>
-        <a class="reference internal" href="exceptions.html#json.JSONDecodeError">JSONDecodeError</a>
+        <pre><code class="language-bash">aws lambda update-function-configuration \
+--timeout 300</code></pre>
+        <a class="reference internal"
+           href="errors.html#ClientError">ClientError</a>
       </dd>
     </dl>
   </div>
@@ -122,66 +127,66 @@ SAMPLE_SEC_HTML = """\
 
 @pytest.fixture
 def md_parser(tmp_path):
-    p = tmp_path / "json.md"
+    p = tmp_path / "lambda.md"
     p.write_text(SAMPLE_MARKDOWN, encoding="utf-8")
     return MarkdownParser(), p
 
 
 def test_markdown_returns_one_document(md_parser):
     parser, path = md_parser
-    docs = parser.parse(path, "python-stdlib")
+    docs = parser.parse(path, "aws-compute")
     assert len(docs) == 1
     doc = docs[0]
     assert isinstance(doc, Document)
-    assert doc.corpus == "python-stdlib"
+    assert doc.corpus == "aws-compute"
 
 
 def test_markdown_title_from_h1(md_parser):
     parser, path = md_parser
-    doc = parser.parse(path, "python-stdlib")[0]
-    assert "json" in doc.title.lower()
+    doc = parser.parse(path, "aws-compute")[0]
+    assert "lambda" in doc.title.lower()
 
 
 def test_markdown_sections_extracted(md_parser):
     parser, path = md_parser
-    doc = parser.parse(path, "python-stdlib")[0]
+    doc = parser.parse(path, "aws-compute")[0]
     assert len(doc.sections) == 3  # h1 + two h2s
     titles = [s.title for s in doc.sections]
-    assert any("loads" in t for t in titles)
-    assert any("dumps" in t for t in titles)
+    assert any("Configuration" in t for t in titles)
+    assert any("Execution Role" in t for t in titles)
 
 
 def test_markdown_heading_path(md_parser):
     parser, path = md_parser
-    doc = parser.parse(path, "python-stdlib")[0]
-    loads_section = next(s for s in doc.sections if "loads" in s.title)
-    assert loads_section.heading_path[-1] == "json.loads"
+    doc = parser.parse(path, "aws-compute")[0]
+    config_section = next(s for s in doc.sections if "Configuration" in s.title)
+    assert "Lambda Configuration" in config_section.heading_path[-1]
     # heading_path should include parent heading
-    assert len(loads_section.heading_path) == 2
+    assert len(config_section.heading_path) == 2
 
 
 def test_markdown_code_block_extracted(md_parser):
     parser, path = md_parser
-    doc = parser.parse(path, "python-stdlib")[0]
-    loads_section = next(s for s in doc.sections if "loads" in s.title)
-    assert len(loads_section.code_blocks) == 1
-    assert loads_section.code_blocks[0].language == "python"
-    assert "json.loads" in loads_section.code_blocks[0].code
+    doc = parser.parse(path, "aws-compute")[0]
+    config_section = next(s for s in doc.sections if "Configuration" in s.title)
+    assert len(config_section.code_blocks) == 1
+    assert config_section.code_blocks[0].language == "bash"
+    assert "lambda" in config_section.code_blocks[0].code
 
 
 def test_markdown_table_extracted(md_parser):
     parser, path = md_parser
-    doc = parser.parse(path, "python-stdlib")[0]
-    loads_section = next(s for s in doc.sections if "loads" in s.title)
-    assert len(loads_section.tables) == 1
-    tbl = loads_section.tables[0]
-    assert "Parameter" in tbl.headers
+    doc = parser.parse(path, "aws-compute")[0]
+    config_section = next(s for s in doc.sections if "Configuration" in s.title)
+    assert len(config_section.tables) == 1
+    tbl = config_section.tables[0]
+    assert "Setting" in tbl.headers
     assert len(tbl.rows) == 2
 
 
 def test_markdown_token_count(md_parser):
     parser, path = md_parser
-    doc = parser.parse(path, "python-stdlib")[0]
+    doc = parser.parse(path, "aws-compute")[0]
     assert doc.raw_token_count > 0
 
 
@@ -192,41 +197,41 @@ def test_markdown_token_count(md_parser):
 
 @pytest.fixture
 def rst_parser(tmp_path):
-    p = tmp_path / "json.rst"
+    p = tmp_path / "lambda.rst"
     p.write_text(SAMPLE_RST, encoding="utf-8")
     return MarkdownParser(), p
 
 
 def test_rst_sections_extracted(rst_parser):
     parser, path = rst_parser
-    doc = parser.parse(path, "python-stdlib")[0]
+    doc = parser.parse(path, "aws-compute")[0]
     assert len(doc.sections) >= 2
     titles = [s.title for s in doc.sections]
-    assert any("loads" in t for t in titles)
+    assert any("Configuration" in t for t in titles)
 
 
 def test_rst_cross_references(rst_parser):
     parser, path = rst_parser
-    doc = parser.parse(path, "python-stdlib")[0]
+    doc = parser.parse(path, "aws-compute")[0]
     all_links = [link for s in doc.sections for link in s.links]
-    targets = {l.target for l in all_links}
-    assert "json.loads" in targets or "json.JSONDecodeError" in targets
+    targets = {lk.target for lk in all_links}
+    assert "update-function-configuration" in targets or "ClientError" in targets
 
 
 def test_rst_heading_path(rst_parser):
     parser, path = rst_parser
-    doc = parser.parse(path, "python-stdlib")[0]
-    loads_section = next(s for s in doc.sections if "loads" in s.title)
-    assert len(loads_section.heading_path) >= 1
-    assert "loads" in loads_section.heading_path[-1]
+    doc = parser.parse(path, "aws-compute")[0]
+    config_section = next(s for s in doc.sections if "Configuration" in s.title)
+    assert len(config_section.heading_path) >= 1
+    assert "Configuration" in config_section.heading_path[-1]
 
 
 def test_rst_code_block_extracted(rst_parser):
     parser, path = rst_parser
-    doc = parser.parse(path, "python-stdlib")[0]
+    doc = parser.parse(path, "aws-compute")[0]
     all_code = [cb for s in doc.sections for cb in s.code_blocks]
     assert len(all_code) >= 1
-    assert "json.loads" in all_code[0].code or "json" in all_code[0].code
+    assert "lambda" in all_code[0].code or "aws" in all_code[0].code
 
 
 # ---------------------------------------------------------------------------
@@ -236,41 +241,41 @@ def test_rst_code_block_extracted(rst_parser):
 
 @pytest.fixture
 def html_parser(tmp_path):
-    p = tmp_path / "json.html"
+    p = tmp_path / "lambda.html"
     p.write_text(SAMPLE_HTML, encoding="utf-8")
     return HtmlParser(), p
 
 
 def test_html_returns_one_document(html_parser):
     parser, path = html_parser
-    docs = parser.parse(path, "python-stdlib")
+    docs = parser.parse(path, "aws-compute")
     assert len(docs) == 1
 
 
 def test_html_title_from_title_tag(html_parser):
     parser, path = html_parser
-    doc = parser.parse(path, "python-stdlib")[0]
-    assert "json" in doc.title.lower()
+    doc = parser.parse(path, "aws-compute")[0]
+    assert "lambda" in doc.title.lower()
 
 
 def test_html_section_from_div(html_parser):
     parser, path = html_parser
-    doc = parser.parse(path, "python-stdlib")[0]
+    doc = parser.parse(path, "aws-compute")[0]
     assert len(doc.sections) >= 1
     titles = [s.title for s in doc.sections]
-    assert any("json" in t.lower() for t in titles)
+    assert any("lambda" in t.lower() for t in titles)
 
 
 def test_html_dl_section_extracted(html_parser):
     parser, path = html_parser
-    doc = parser.parse(path, "python-stdlib")[0]
+    doc = parser.parse(path, "aws-compute")[0]
     titles = [s.title for s in doc.sections]
-    assert any("loads" in t for t in titles)
+    assert any("configuration" in t.lower() for t in titles)
 
 
 def test_html_table_extracted(html_parser):
     parser, path = html_parser
-    doc = parser.parse(path, "python-stdlib")[0]
+    doc = parser.parse(path, "aws-compute")[0]
     all_tables = [t for s in doc.sections for t in s.tables]
     assert len(all_tables) >= 1
     tbl = all_tables[0]
@@ -279,17 +284,17 @@ def test_html_table_extracted(html_parser):
 
 def test_html_code_block_extracted(html_parser):
     parser, path = html_parser
-    doc = parser.parse(path, "python-stdlib")[0]
+    doc = parser.parse(path, "aws-compute")[0]
     all_code = [cb for s in doc.sections for cb in s.code_blocks]
     assert len(all_code) >= 1
 
 
 def test_html_cross_ref_extracted(html_parser):
     parser, path = html_parser
-    doc = parser.parse(path, "python-stdlib")[0]
+    doc = parser.parse(path, "aws-compute")[0]
     all_links = [link for s in doc.sections for link in s.links]
     assert len(all_links) >= 1
-    assert any("JSONDecodeError" in l.label for l in all_links)
+    assert any("ClientError" in lk.label for lk in all_links)
 
 
 # ---------------------------------------------------------------------------
@@ -306,13 +311,13 @@ def sec_parser(tmp_path):
 
 def test_sec_returns_one_document(sec_parser):
     parser, path = sec_parser
-    docs = parser.parse(path, "sec-edgar")
+    docs = parser.parse(path, "aws-storage")
     assert len(docs) == 1
 
 
 def test_sec_item_sections_extracted(sec_parser):
     parser, path = sec_parser
-    doc = parser.parse(path, "sec-edgar")[0]
+    doc = parser.parse(path, "aws-storage")[0]
     assert len(doc.sections) >= 2
     titles = [s.title for s in doc.sections]
     assert any("Business" in t or "1" in t for t in titles)
@@ -321,14 +326,14 @@ def test_sec_item_sections_extracted(sec_parser):
 
 def test_sec_table_extracted(sec_parser):
     parser, path = sec_parser
-    doc = parser.parse(path, "sec-edgar")[0]
+    doc = parser.parse(path, "aws-storage")[0]
     all_tables = [t for s in doc.sections for t in s.tables]
     assert len(all_tables) >= 1
 
 
 def test_sec_named_entities_in_metadata(sec_parser):
     parser, path = sec_parser
-    doc = parser.parse(path, "sec-edgar")[0]
+    doc = parser.parse(path, "aws-storage")[0]
     assert "named_entities" in doc.metadata
     entities = doc.metadata["named_entities"]
     assert len(entities.get("dollar_amounts", [])) >= 1
@@ -336,7 +341,7 @@ def test_sec_named_entities_in_metadata(sec_parser):
 
 def test_sec_heading_path(sec_parser):
     parser, path = sec_parser
-    doc = parser.parse(path, "sec-edgar")[0]
+    doc = parser.parse(path, "aws-storage")[0]
     for section in doc.sections:
         assert len(section.heading_path) >= 1
         assert "10-K" in section.heading_path or any(section.heading_path)
@@ -366,7 +371,7 @@ def test_pipeline_writes_jsonl(tmp_path):
 
     out = tmp_path / "datasets" / "test-corpus" / "processed" / "documents.jsonl"
     assert out.exists()
-    lines = [l for l in out.read_text().splitlines() if l.strip()]
+    lines = [ln for ln in out.read_text().splitlines() if ln.strip()]
     assert len(lines) == 2
 
     for line in lines:
@@ -416,7 +421,7 @@ def test_pipeline_auto_detects_html(tmp_path):
 
     out = tmp_path / "datasets" / "html-corpus" / "processed" / "documents.jsonl"
     assert out.exists()
-    lines = [l for l in out.read_text().splitlines() if l.strip()]
+    lines = [ln for ln in out.read_text().splitlines() if ln.strip()]
     assert len(lines) == 1
     doc = Document(**json.loads(lines[0]))
     assert doc.corpus == "html-corpus"
@@ -437,7 +442,7 @@ def test_pipeline_single_file(tmp_path):
 
     out = tmp_path / "datasets" / "single-corpus" / "processed" / "documents.jsonl"
     assert out.exists()
-    lines = [l for l in out.read_text().splitlines() if l.strip()]
+    lines = [ln for ln in out.read_text().splitlines() if ln.strip()]
     assert len(lines) == 1
 
 

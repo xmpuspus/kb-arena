@@ -1,0 +1,489 @@
+- id: "storage-t3-001"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "What are the key differences between Amazon EBS and Amazon EFS for EC2 storage?"
+  ground_truth:
+    answer: >
+      EBS is block storage — it presents as a raw device to one EC2 instance at a time
+      (except io1/io2 Multi-Attach for up to 16 instances in the same AZ). EBS volumes are
+      AZ-specific; to use across AZs you must snapshot and re-create. EBS supports all file
+      systems (ext4, XFS, NTFS). EFS is a fully managed NFS file system that can be mounted
+      simultaneously on hundreds of EC2 instances across multiple AZs in a region. EFS scales
+      automatically with no capacity to provision. EFS is Linux-only (NFS). Cost: EBS gp3 is
+      cheaper per GB (~$0.08/GB-month) than EFS Standard (~$0.30/GB-month), but EFS charges
+      only for data stored while EBS charges for provisioned capacity. Use EBS for single-
+      instance databases, boot volumes, and high-IOPS workloads. Use EFS for shared content,
+      home directories, and CMS platforms that need concurrent access from multiple instances.
+    source_refs:
+      - "ec2/latest/userguide/AmazonEBS.html"
+      - "efs/latest/ug/whatisefs.html"
+    required_entities:
+      - "EBS"
+      - "EFS"
+      - "NFS"
+      - "Multi-Attach"
+  constraints:
+    must_mention:
+      - "single instance"
+      - "NFS"
+    must_not_claim:
+      - "EFS is block storage"
+      - "EBS supports multiple instances by default"
+    max_tokens: 300
+
+- id: "storage-t3-002"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    How does S3 Standard-IA compare to S3 One Zone-IA in terms of cost,
+    durability, and appropriate use cases?
+  ground_truth:
+    answer: >
+      S3 Standard-IA and S3 One Zone-IA both have lower storage costs than S3 Standard with
+      a per-GB retrieval fee. Key differences: Durability — Standard-IA stores data across
+      at least 3 AZs (11 nines durability, same as Standard); One Zone-IA stores data in a
+      single AZ (also 99.999999999% durability within that AZ, but loses data if the AZ is
+      destroyed or unavailable). Availability — Standard-IA offers 99.9% availability SLA;
+      One Zone-IA offers 99.5%. Cost — One Zone-IA is approximately 20% cheaper per GB
+      (~$0.01 vs ~$0.0125 per GB-month). Use Standard-IA for: backups of primary data,
+      disaster recovery copies, compliance archives that must survive AZ failure. Use One
+      Zone-IA for: secondary backups of data already stored elsewhere, easily re-creatable
+      data, thumbnails, or transcoded media where AZ loss is acceptable.
+    source_refs:
+      - "AmazonS3/latest/userguide/storage-class-intro.html"
+    required_entities:
+      - "S3 Standard-IA"
+      - "S3 One Zone-IA"
+      - "durability"
+      - "availability"
+  constraints:
+    must_mention:
+      - "single AZ"
+      - "retrieval fee"
+    must_not_claim:
+      - "One Zone-IA has same durability as Standard-IA across AZs"
+      - "no retrieval fee for Standard-IA"
+    max_tokens: 300
+
+- id: "storage-t3-003"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    What are the differences between AWS DataSync and AWS Storage Gateway S3 File
+    Gateway for transferring data from on-premises to S3?
+  ground_truth:
+    answer: >
+      DataSync is a one-time or scheduled data migration and sync service — optimized for
+      bulk transfer of large datasets with acceleration, checksums, and scheduling. It is
+      agent-based, transfers at up to 10 Gbps, verifies data integrity, and is ideal for
+      initial migrations, ongoing sync between on-premises NFS/SMB and S3, and
+      decommissioning on-premises storage. S3 File Gateway is a persistent hybrid storage
+      gateway — it presents an NFS/SMB mount point to on-premises applications that read
+      and write files continuously; files are stored as S3 objects transparently. File
+      Gateway provides a local cache for low-latency access to recently used data. Key
+      distinction: DataSync is for moving data (migration focus); File Gateway is for
+      extending on-premises file access to S3 (long-running hybrid architecture). Use
+      DataSync to migrate 100 TB of historical archives; use File Gateway for on-premises
+      apps that need ongoing S3 access as if it were a local file server.
+    source_refs:
+      - "datasync/latest/userguide/what-is-datasync.html"
+      - "storagegateway/latest/userguide/WhatIsStorageGateway.html"
+    required_entities:
+      - "DataSync"
+      - "S3 File Gateway"
+      - "migration"
+      - "hybrid"
+  constraints:
+    must_mention:
+      - "migration"
+      - "hybrid"
+    must_not_claim:
+      - "DataSync and File Gateway are equivalent"
+      - "File Gateway is better for bulk migration"
+    max_tokens: 300
+
+- id: "storage-t3-004"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    How do S3 Glacier Flexible Retrieval, S3 Glacier Instant Retrieval, and S3
+    Glacier Deep Archive differ in retrieval time and cost?
+  ground_truth:
+    answer: >
+      Three Glacier-tier classes compared: S3 Glacier Instant Retrieval offers millisecond
+      retrieval (same latency as S3 Standard-IA), with higher storage cost (~$0.004/GB-month)
+      than the other Glacier classes, a 90-day minimum storage duration. Best for archive
+      data accessed occasionally (quarterly) but requiring immediate access when needed.
+      S3 Glacier Flexible Retrieval (~$0.0036/GB-month) has three retrieval tiers: Expedited
+      (1-5 min, $0.03/GB retrieval), Standard (3-5 hours, $0.01/GB), Bulk (5-12 hours,
+      free). Minimum 90 days. Best for backups and archives accessed 1-2 times per year.
+      S3 Glacier Deep Archive (~$0.00099/GB-month, cheapest storage in AWS) has Standard
+      retrieval of 12 hours and Bulk of 48 hours. Minimum 180 days. Best for regulatory
+      data retained 7-10 years with very rare access. Use Instant Retrieval when you cannot
+      tolerate hours of wait time; use Deep Archive for maximum cost savings on rarely
+      accessed long-term retention data.
+    source_refs:
+      - "AmazonS3/latest/userguide/storage-class-intro.html"
+    required_entities:
+      - "Glacier Instant Retrieval"
+      - "Glacier Flexible Retrieval"
+      - "Glacier Deep Archive"
+      - "retrieval time"
+  constraints:
+    must_mention:
+      - "millisecond"
+      - "12 hours"
+    must_not_claim:
+      - "Deep Archive has instant retrieval"
+      - "all Glacier tiers have same cost"
+    max_tokens: 300
+
+- id: "storage-t3-005"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    What are the differences between FSx for Lustre and FSx for Windows File
+    Server in terms of use cases, protocols, and integration?
+  ground_truth:
+    answer: >
+      FSx for Lustre is a POSIX-compliant parallel file system designed for high-performance
+      computing (HPC), machine learning, and media processing. It uses the Lustre protocol
+      (not NFS/SMB), achieves millions of IOPS and hundreds of GB/s throughput, and integrates
+      natively with S3 (S3 data repository — a Lustre file system can be linked to an S3
+      bucket so data appears as files and results are written back to S3). Clients must run
+      Lustre client software. Windows clients are not supported. FSx for Windows File Server
+      is a fully managed Windows native file system using SMB protocol with Active Directory
+      (AD) integration, NTFS permissions, Windows shadow copies, and DFS namespace support.
+      It supports Windows, Linux (via SMB), and macOS clients. Use Lustre for ML training
+      jobs (integrating S3 training data), seismic processing, genomics pipelines. Use FSx
+      for Windows for Windows app lift-and-shift, home directories for AD users, and
+      file shares migrated from on-premises Windows servers.
+    source_refs:
+      - "fsx/latest/LustreGuide/what-is.html"
+      - "fsx/latest/WindowsGuide/what-is.html"
+    required_entities:
+      - "FSx for Lustre"
+      - "FSx for Windows File Server"
+      - "SMB"
+      - "S3 data repository"
+  constraints:
+    must_mention:
+      - "SMB"
+      - "S3 data repository"
+    must_not_claim:
+      - "Lustre supports SMB"
+      - "Windows File Server supports Lustre protocol"
+    max_tokens: 300
+
+- id: "storage-t3-006"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    How does AWS Backup compare to native EBS snapshots for managing backup
+    and recovery of EC2 instances?
+  ground_truth:
+    answer: >
+      Native EBS snapshots: crash-consistent snapshots of individual EBS volumes, stored in
+      S3 (regional), incremental, accessible via EC2 console/API. Manual or scripted with
+      CloudWatch Events. No centralized policy management; no cross-service coverage; no
+      compliance reporting; no vault isolation. AWS Backup: policy-driven backup service that
+      manages EBS snapshots as part of backup plans, adds centralized visibility across
+      accounts and regions via AWS Organizations, cross-region copy, cross-account copy,
+      backup vaults (with vault lock for WORM), compliance reports (HIPAA, SOC, FedRAMP
+      audit reports), and restore testing automation. Key addition of Backup over native
+      snapshots: centralized tagging-based discovery, single audit pane across services (EBS,
+      RDS, DynamoDB, EFS, FSx, etc.), retention lifecycle management, and vault lock. Native
+      snapshots remain visible in EC2 console; Backup manages them as backup jobs. For
+      simple single-account EBS, native snapshots may suffice. For enterprise multi-account
+      compliance scenarios, AWS Backup is the right choice.
+    source_refs:
+      - "aws-backup/latest/devguide/whatisbackup.html"
+      - "ec2/latest/userguide/EBSSnapshots.html"
+    required_entities:
+      - "AWS Backup"
+      - "EBS snapshot"
+      - "backup vault"
+      - "cross-account"
+  constraints:
+    must_mention:
+      - "cross-account"
+      - "compliance"
+    must_not_claim:
+      - "AWS Backup replaces EBS snapshots entirely"
+      - "native snapshots support cross-account natively"
+    max_tokens: 300
+
+- id: "storage-t3-007"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    What are the differences between EBS gp3, io2 Block Express, and st1 volume
+    types for selecting the right EBS volume for a workload?
+  ground_truth:
+    answer: >
+      EBS volume type comparison: gp3 (General Purpose SSD) — 3,000 IOPS and 125 MB/s
+      baseline, scalable to 16,000 IOPS and 1,000 MB/s independently of size, $0.08/GB/month.
+      Best for: most workloads, boot volumes, development, databases up to moderate IOPS.
+      io2 Block Express (Provisioned IOPS SSD) — up to 256,000 IOPS and 4,000 MB/s, sub-
+      millisecond latency, 99.999% durability (vs 99.8-99.9% for gp3), supports Multi-Attach.
+      Much higher cost. Best for: mission-critical databases (Oracle, SAP HANA), latency-
+      sensitive applications that need guaranteed IOPS. st1 (Throughput Optimized HDD) —
+      magnetic, up to 500 MB/s throughput, low IOPS (~500), $0.045/GB/month. Best for: big
+      data (EMR, data warehouses), log processing, sequential read-heavy workloads where
+      throughput matters more than IOPS. Cannot be used as boot volume. Summary: gp3 for
+      most, io2 Block Express for guaranteed high IOPS and durability, st1 for sequential
+      high-throughput at lower cost.
+    source_refs:
+      - "ec2/latest/userguide/ebs-volume-types.html"
+    required_entities:
+      - "gp3"
+      - "io2 Block Express"
+      - "st1"
+      - "IOPS"
+  constraints:
+    must_mention:
+      - "256,000 IOPS"
+      - "throughput"
+    must_not_claim:
+      - "st1 can be a boot volume"
+      - "io2 and gp3 same cost"
+    max_tokens: 300
+
+- id: "storage-t3-008"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    How does Amazon S3 compare to Amazon EFS for storing shared application
+    assets accessed by a containerized workload running on ECS Fargate?
+  ground_truth:
+    answer: >
+      S3 and EFS provide different access patterns for ECS Fargate containers. EFS can be
+      mounted as a persistent volume directly into ECS Fargate tasks via EFS volume
+      configurations — containers read/write files as a POSIX file system (ls, cat, read/write
+      syscalls work naturally). EFS supports concurrent access from multiple Fargate tasks
+      across AZs. Latency is typically single-digit milliseconds. Best for: CMS assets,
+      shared configuration files, writable application state. S3 requires AWS SDK or HTTP
+      API calls (s3.GetObject, s3.PutObject) — not POSIX, but highly scalable and cheaper
+      per GB. S3 is eventual-consistency-free (strongly consistent since 2020). Best for:
+      media assets, ML models, static content, large binary files where the app already
+      uses the AWS SDK. Use EFS when you need to lift-and-shift an application that reads/
+      writes files via file paths without code changes. Use S3 when the application can
+      use the SDK and needs scale and cost efficiency.
+    source_refs:
+      - "AmazonECS/latest/developerguide/efs-volumes.html"
+      - "AmazonS3/latest/userguide/Welcome.html"
+    required_entities:
+      - "EFS"
+      - "S3"
+      - "ECS Fargate"
+      - "POSIX"
+  constraints:
+    must_mention:
+      - "POSIX"
+      - "SDK"
+    must_not_claim:
+      - "EFS and S3 have the same access pattern"
+      - "Fargate cannot mount EFS"
+    max_tokens: 300
+
+- id: "storage-t3-009"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    What are the trade-offs between using AWS Snowball Edge and AWS DataSync
+    for migrating 50 TB of data from on-premises to AWS?
+  ground_truth:
+    answer: >
+      Snowball Edge is a physical device migration path: no internet bandwidth consumed,
+      consistent transfer time (~1 week round-trip for device shipping + ingestion), best
+      when available upload bandwidth is less than ~10 Mbps or would take >2 weeks over
+      internet. 50 TB at 100 Mbps = ~46 days; Snowball Edge is faster. No ongoing cost
+      after the job (device rental fee + shipping). DataSync requires internet or Direct
+      Connect/VPN connectivity, but is software-only (no hardware logistics), supports
+      ongoing sync after initial transfer, provides checksums and integrity verification,
+      and can throttle bandwidth. At 1 Gbps dedicated bandwidth, DataSync transfers 50 TB
+      in ~4 days. DataSync agent can also be deployed on a Snowball Edge device for edge
+      scenarios. Decision rule: if network bandwidth is limited (<100 Mbps), Snowball is
+      faster. If bandwidth is >=1 Gbps or ongoing sync is needed after migration, DataSync
+      wins. Snowball Edge also handles edge compute; DataSync is transfer-only.
+    source_refs:
+      - "snowball/latest/ug/whatissnowball.html"
+      - "datasync/latest/userguide/what-is-datasync.html"
+    required_entities:
+      - "Snowball Edge"
+      - "DataSync"
+      - "bandwidth"
+      - "migration"
+  constraints:
+    must_mention:
+      - "bandwidth"
+      - "physical device"
+    must_not_claim:
+      - "Snowball is always faster"
+      - "DataSync requires no connectivity"
+    max_tokens: 300
+
+- id: "storage-t3-010"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    How does S3 SSE-KMS compare to S3 SSE-S3 for encryption, focusing on key
+    management and audit capabilities?
+  ground_truth:
+    answer: >
+      SSE-S3 uses AES-256, managed entirely by AWS. The encryption keys are managed,
+      rotated, and stored by AWS; you have no visibility or control over the key material.
+      No additional cost. CloudTrail does not log S3 data events by default with SSE-S3
+      key usage. SSE-KMS uses AWS KMS keys (either AWS-managed key aws/s3 or customer-
+      managed CMK). Key differences: with customer CMK, you control key policy (who can
+      use the key, enable/disable key, set key rotation). KMS API calls are logged in
+      CloudTrail — every Decrypt call for S3 object access is auditable. SSE-KMS has per-
+      request KMS API costs ($0.03 per 10,000 requests) and KMS request rate quotas (5,500
+      requests/sec default for decrypt in most regions). Bucket Key feature reduces KMS API
+      calls by generating a short-lived per-bucket encryption key from the CMK, improving
+      performance and reducing KMS costs. Use SSE-KMS when: regulatory requirements demand
+      key audit trails, cross-account key access control is needed, or you need BYOK
+      (customer-provided key material via CMK). Use SSE-S3 for simplicity with no
+      compliance requirement for key control.
+    source_refs:
+      - "AmazonS3/latest/userguide/UsingKMSEncryption.html"
+      - "AmazonS3/latest/userguide/serv-side-encryption.html"
+    required_entities:
+      - "SSE-S3"
+      - "SSE-KMS"
+      - "CloudTrail"
+      - "customer CMK"
+  constraints:
+    must_mention:
+      - "CloudTrail"
+      - "customer CMK"
+    must_not_claim:
+      - "SSE-S3 provides audit logs"
+      - "SSE-KMS has no cost"
+    max_tokens: 300
+
+- id: "storage-t3-011"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    What is the difference between Amazon FSx for NetApp ONTAP and Amazon EFS
+    for enterprise file storage workloads?
+  ground_truth:
+    answer: >
+      EFS is a simple, fully managed NFS-only file system — elastic scaling, multi-AZ
+      durability, suitable for Linux workloads needing shared POSIX file access. It offers
+      limited features compared to enterprise storage: no SMB, no deduplication, no
+      compression, no block-level iSCSI, no SnapMirror, limited snapshot management.
+      FSx for NetApp ONTAP provides the full NetApp ONTAP feature set: NFS, SMB, and iSCSI
+      protocols from a single file system; deduplication and compression (reducing storage
+      costs 30-70% for typical enterprise data); SnapMirror replication to another FSx ONTAP
+      or on-premises NetApp; FlexClone (instant zero-cost writable clones for dev/test);
+      tiering to S3 automatically for cold data; multi-protocol access; Active Directory
+      integration. ONTAP is more complex to manage, higher minimum cost, and suited for
+      enterprise applications migrating from on-premises NetApp. Use EFS for new cloud-native
+      Linux workloads needing simple NFS. Use FSx for ONTAP when migrating NetApp on-premises
+      storage to AWS or needing enterprise protocols (iSCSI, SMB+NFS from same volume).
+    source_refs:
+      - "fsx/latest/ONTAPGuide/what-is-fsx-ontap.html"
+      - "efs/latest/ug/whatisefs.html"
+    required_entities:
+      - "FSx for NetApp ONTAP"
+      - "EFS"
+      - "iSCSI"
+      - "SnapMirror"
+  constraints:
+    must_mention:
+      - "iSCSI"
+      - "deduplication"
+    must_not_claim:
+      - "EFS supports iSCSI"
+      - "ONTAP is simpler than EFS"
+    max_tokens: 300
+
+- id: "storage-t3-012"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    How does S3 Replication (CRR/SRR) compare to an S3 Batch Operations copy
+    job for duplicating S3 objects?
+  ground_truth:
+    answer: >
+      S3 Replication (CRR/SRR) is ongoing, automatic, and event-driven — new objects
+      uploaded to the source bucket are asynchronously replicated to the destination within
+      minutes. Existing objects are NOT replicated (requires S3 Batch Replication to backfill).
+      Replication maintains object metadata, ACLs, and optionally delete markers.
+      Configuration is a bucket-level rule. S3 Batch Operations is a one-time or on-demand
+      job that processes millions of existing S3 objects using a manifest (S3 inventory CSV
+      or explicit list). Batch copy operation copies objects to another bucket (same or
+      different region/account), supports transforming storage class, replicating tags.
+      Key distinction: Replication for continuous, real-time sync of new objects; Batch
+      Operations for bulk processing of existing objects. You typically use both: enable
+      Replication for ongoing new objects, run S3 Batch Replication (a Batch Operations
+      Copy job that respects replication rules) once to backfill existing objects to the
+      new destination. Batch Operations also supports invoking Lambda per object for
+      custom transformations.
+    source_refs:
+      - "AmazonS3/latest/userguide/replication.html"
+      - "AmazonS3/latest/userguide/batch-ops.html"
+    required_entities:
+      - "S3 Replication"
+      - "S3 Batch Operations"
+      - "S3 Batch Replication"
+  constraints:
+    must_mention:
+      - "existing objects"
+      - "Batch Replication"
+    must_not_claim:
+      - "CRR replicates existing objects automatically"
+      - "Batch Operations is for new objects"
+    max_tokens: 300
+
+- id: "storage-t3-013"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    How does AWS Storage Gateway Volume Gateway (Stored vs Cached mode) differ
+    in terms of data location, latency, and recovery use cases?
+  ground_truth:
+    answer: >
+      Volume Gateway presents iSCSI block volumes to on-premises applications. Two modes:
+      Stored Volumes mode — entire dataset is stored on-premises on the gateway's local
+      storage (low latency for all data, since everything is local), with asynchronous
+      backup to AWS as EBS snapshots. Good for applications needing low latency to the full
+      dataset and using AWS as a backup target. Recovery: restore EBS snapshots to an EBS
+      volume in AWS or ship a Snowball. Cached Volumes mode — primary data is stored in S3,
+      with a local cache of frequently accessed data (reduces storage hardware needed on-
+      premises). Only cached data has low latency; uncached reads require fetching from S3
+      (higher latency). Good for extending on-premises storage to S3 when on-premises
+      capacity is limited. Recovery: create EBS volumes from the cached volume snapshots.
+      Summary: Stored = on-premises primary + AWS backup; Cached = S3 primary + on-premises
+      cache. Choose Stored when latency to all data is critical; choose Cached when reducing
+      on-premises hardware footprint.
+    source_refs:
+      - "storagegateway/latest/userguide/StorageGatewayConcepts.html"
+    required_entities:
+      - "Volume Gateway"
+      - "Stored Volumes"
+      - "Cached Volumes"
+      - "iSCSI"
+  constraints:
+    must_mention:
+      - "iSCSI"
+      - "EBS snapshot"
+    must_not_claim:
+      - "Cached mode stores data on-premises primarily"
+      - "Stored mode uses S3 as primary"
+    max_tokens: 300

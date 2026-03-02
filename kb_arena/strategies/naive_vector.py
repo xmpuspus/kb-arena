@@ -18,8 +18,10 @@ CHUNK_TOKENS = 512
 OVERLAP_TOKENS = 50
 COLLECTION_NAME = "naive_vector"
 
-SYSTEM_PROMPT = """You are a documentation assistant. Answer the question using ONLY the provided context.
-If the context doesn't contain enough information, say so. Be concise and accurate."""
+SYSTEM_PROMPT = (
+    "You are a documentation assistant. Answer the question using ONLY the provided context.\n"
+    "If the context doesn't contain enough information, say so. Be concise and accurate."
+)
 
 
 def _tokenize(text: str) -> list[str]:

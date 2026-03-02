@@ -1,0 +1,706 @@
+- id: "compute-t2-001"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you configure an EC2 Auto Scaling group with a target tracking policy
+    to maintain 50% CPU utilization?
+  ground_truth:
+    answer: >
+      Steps: 1. Create a Launch Template specifying the AMI, instance type, security groups, and
+      IAM instance profile. 2. Create an Auto Scaling Group referencing the Launch Template,
+      specifying VPC subnets (multiple AZs for HA), minimum/desired/maximum capacity, and ELB
+      target group (if applicable). 3. Add a Target Tracking Scaling Policy: select the predefined
+      metric ASGAverageCPUUtilization with target value 50. AWS creates CloudWatch alarms
+      automatically — a scale-out alarm when CPU > 50% (after warmup period) and a scale-in
+      alarm when CPU drops sufficiently below target. 4. Optionally configure scale-in protection,
+      instance warm-up period (default 300 seconds, reduce for faster apps), and termination
+      policies (e.g., OldestInstance). The ASG will add instances when the fleet average CPU
+      exceeds 50% and remove them when CPU drops, maintaining the target.
+    source_refs:
+      - "autoscaling/ec2/userguide/as-scaling-target-tracking.html"
+    required_entities:
+      - "Auto Scaling Group"
+      - "Launch Template"
+      - "Target Tracking"
+      - "ASGAverageCPUUtilization"
+  constraints:
+    must_mention:
+      - "Launch Template"
+      - "CloudWatch alarm"
+    must_not_claim:
+      - "manual alarm creation required"
+      - "only scales up"
+    max_tokens: 200
+
+- id: "compute-t2-002"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you deploy a containerized application on ECS Fargate with a
+    load balancer and service auto scaling?
+  ground_truth:
+    answer: >
+      Steps: 1. Push container image to ECR. 2. Create ECS task definition specifying the ECR
+      image, CPU/memory (e.g., 0.5 vCPU / 1 GB), awsvpc network mode, task execution role
+      (AmazonECSTaskExecutionRolePolicy), and log configuration (awslogs to CloudWatch).
+      3. Create an ALB with a target group (IP target type for awsvpc mode) and listener on
+      port 80/443. 4. Create an ECS Service: Fargate launch type, desired count, reference the
+      task definition, assign VPC subnets and security group, attach to the ALB target group.
+      5. Enable Application Auto Scaling on the ECS service: register as a scalable target,
+      add a Target Tracking policy using ECSServiceAverageCPUUtilization at a target value.
+      The service will deploy tasks and the ALB will route traffic to healthy containers.
+    source_refs:
+      - "AmazonECS/latest/developerguide/service-configure-load-balancing.html"
+      - "AmazonECS/latest/developerguide/service-auto-scaling.html"
+    required_entities:
+      - "ECS"
+      - "Fargate"
+      - "task definition"
+      - "ALB"
+      - "Application Auto Scaling"
+  constraints:
+    must_mention:
+      - "task definition"
+      - "awsvpc"
+    must_not_claim:
+      - "ECS Fargate uses EC2 launch type"
+      - "no auto scaling for ECS services"
+    max_tokens: 200
+
+- id: "compute-t2-003"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: "How do you configure a Lambda function to access resources inside a VPC?"
+  ground_truth:
+    answer: >
+      To give Lambda access to VPC resources: 1. Configure VPC settings on the Lambda function:
+      select the VPC, choose subnets (at least two AZs for resilience), and assign a security
+      group. Lambda creates Elastic Network Interfaces (ENIs) in those subnets via the
+      hyperplane ENI mechanism. 2. The security group on the Lambda ENI must allow outbound
+      traffic to the target resource (RDS, ElastiCache, etc.). The target resource's security
+      group must allow inbound from the Lambda security group. 3. For internet access from a
+      VPC-attached Lambda, use private subnets with a NAT Gateway — Lambda in a public subnet
+      cannot reach the internet even with a public subnet. 4. Grant AWSLambdaVPCAccessExecutionRole
+      to the Lambda execution role so it can create ENIs. Note: VPC Lambdas have higher cold
+      starts due to ENI attachment, though the hyperplane model reduces this significantly.
+    source_refs:
+      - "lambda/latest/dg/configuration-vpc.html"
+    required_entities:
+      - "Lambda"
+      - "VPC"
+      - "ENI"
+      - "NAT Gateway"
+  constraints:
+    must_mention:
+      - "ENI"
+      - "NAT Gateway"
+    must_not_claim:
+      - "Lambda in public subnet can reach internet"
+      - "no security group needed"
+    max_tokens: 200
+
+- id: "compute-t2-004"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you set up a Step Functions state machine to orchestrate a Lambda
+    function with retry logic and error handling?
+  ground_truth:
+    answer: >
+      In Amazon States Language (ASL): 1. Define a Task state invoking the Lambda function via
+      its ARN using the Lambda:invoke integration. 2. Add a Retry block with ErrorEquals
+      (e.g., Lambda.ServiceException, Lambda.TooManyRequestsException), IntervalSeconds (initial
+      backoff, e.g., 2), MaxAttempts (e.g., 3), BackoffRate (multiplier, e.g., 2.0). This
+      handles transient Lambda failures with exponential backoff automatically. 3. Add a Catch
+      block for permanent failures: ErrorEquals (States.ALL or specific error types),
+      transition to a fallback state (e.g., a Fail state or a notification Task state sending
+      to SNS). 4. Deploy as a Standard or Express workflow depending on duration and
+      idempotency requirements. The state machine automatically captures execution history
+      for Standard workflows, enabling visual debugging in the console.
+    source_refs:
+      - "step-functions/latest/dg/concepts-error-handling.html"
+    required_entities:
+      - "Step Functions"
+      - "Task state"
+      - "Retry"
+      - "Catch"
+  constraints:
+    must_mention:
+      - "Retry"
+      - "Catch"
+    must_not_claim:
+      - "Step Functions cannot retry Lambda"
+      - "error handling not supported"
+    max_tokens: 200
+
+- id: "compute-t2-005"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you configure EKS Cluster Autoscaler with managed node groups to
+    automatically scale worker nodes?
+  ground_truth:
+    answer: >
+      Steps: 1. Create managed node groups with an Auto Scaling Group min/max capacity. Tag the
+      ASG with k8s.io/cluster-autoscaler/enabled=true and k8s.io/cluster-autoscaler/{cluster-name}=owned
+      so the Cluster Autoscaler can discover them. 2. Create an IAM policy with permissions for
+      autoscaling:DescribeAutoScalingGroups, autoscaling:SetDesiredCapacity,
+      autoscaling:TerminateInstanceInAutoScalingGroup, and ec2:DescribeLaunchTemplateVersions.
+      3. Use IRSA (IAM Roles for Service Accounts) to attach the policy to the Cluster Autoscaler
+      service account — annotate the service account with the IAM role ARN. 4. Deploy the
+      Cluster Autoscaler Helm chart or manifest, setting cluster name and AWS region.
+      The autoscaler watches for unschedulable pods (pending due to insufficient resources)
+      and scales up the ASG. It scales down underutilized nodes after a configurable delay.
+    source_refs:
+      - "eks/latest/userguide/autoscaling.html"
+    required_entities:
+      - "EKS"
+      - "Cluster Autoscaler"
+      - "IRSA"
+      - "managed node group"
+  constraints:
+    must_mention:
+      - "IRSA"
+      - "unschedulable pods"
+    must_not_claim:
+      - "Cluster Autoscaler built into EKS"
+      - "no IAM permissions needed"
+    max_tokens: 200
+
+- id: "compute-t2-006"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you configure EC2 Spot Instance interruption handling in an Auto Scaling group
+    to minimize downtime?
+  ground_truth:
+    answer: >
+      Best practices for Spot interruption handling in ASGs: 1. Use multiple Spot pools — specify
+      multiple instance types and sizes (e.g., m5.large, m5.xlarge, m4.large) in the Launch
+      Template or mixed instances policy so the ASG can draw from many Spot pools. 2. Enable
+      Spot Instance interruption notice handling: EC2 sends a 2-minute interruption notice
+      via EC2 instance metadata (http://169.254.169.254/latest/meta-data/spot/interruption-notice)
+      and an EventBridge event. 3. Use an ASG lifecycle hook on instance-terminating to run a
+      graceful drain script (drain connections, checkpoint state). 4. Configure the ASG with
+      both On-Demand base capacity and Spot above-base (mixed instances policy) to ensure
+      minimum On-Demand capacity. 5. Enable capacity rebalancing so the ASG proactively replaces
+      Spot instances when AWS signals an elevated interruption risk before actual interruption.
+    source_refs:
+      - "autoscaling/ec2/userguide/ec2-auto-scaling-mixed-instances-groups.html"
+      - "ec2/latest/userguide/spot-interruptions.html"
+    required_entities:
+      - "Spot Instance"
+      - "interruption notice"
+      - "lifecycle hook"
+      - "capacity rebalancing"
+  constraints:
+    must_mention:
+      - "interruption notice"
+      - "capacity rebalancing"
+    must_not_claim:
+      - "Spot instances cannot be gracefully drained"
+      - "interruption notice is 10 minutes"
+    max_tokens: 200
+
+- id: "compute-t2-007"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you configure Lambda to process SQS messages with batch processing
+    and partial batch failure handling?
+  ground_truth:
+    answer: >
+      Steps: 1. Create an SQS queue (Standard or FIFO). 2. Add an SQS event source mapping to
+      the Lambda function: specify batch size (1-10,000 for Standard, up to 10 for FIFO),
+      batch window (up to 300 seconds to accumulate messages), and enable ReportBatchItemFailures
+      in FunctionResponseTypes. 3. In the Lambda handler, process each record in the batch.
+      For failures, collect failed message IDs and return them in a batchItemFailures response:
+      {"batchItemFailures": [{"itemIdentifier": "messageId"}]}. Lambda will only return the
+      failed messages to the queue for retry; successful messages are deleted automatically.
+      4. Configure the SQS queue's visibility timeout to at least 6x the Lambda function timeout
+      to prevent message duplication during retries. 5. Add a Dead Letter Queue (DLQ) on the SQS
+      queue for messages that exceed maxReceiveCount.
+    source_refs:
+      - "lambda/latest/dg/with-sqs.html"
+    required_entities:
+      - "Lambda"
+      - "SQS"
+      - "batchItemFailures"
+      - "DLQ"
+  constraints:
+    must_mention:
+      - "batchItemFailures"
+      - "visibility timeout"
+    must_not_claim:
+      - "entire batch retried on single failure"
+      - "no partial batch failure support"
+    max_tokens: 200
+
+- id: "compute-t2-008"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you deploy a Blue/Green deployment on ECS using CodeDeploy to
+    achieve zero-downtime releases?
+  ground_truth:
+    answer: >
+      ECS Blue/Green with CodeDeploy: 1. Configure the ECS service for CodeDeploy deployment
+      controller (instead of default Rolling). 2. Create two target groups in the ALB — Blue
+      (production) and Green (new version). Set up ALB listener rules: production listener
+      routes to Blue target group; optionally a test listener on a different port routes to Green.
+      3. Create a CodeDeploy application (ECS platform) and deployment group referencing the ECS
+      service, both target groups, and the ALB listeners. 4. On deployment, CodeDeploy: starts
+      new tasks in the Green target group, waits for health checks to pass, routes a configurable
+      percentage of traffic to Green (canary, linear, or all-at-once), waits for bake time,
+      then shifts 100% to Green and terminates Blue tasks. 5. Configure automatic rollback on
+      alarm to revert to Blue if CloudWatch alarms fire during deployment.
+    source_refs:
+      - "AmazonECS/latest/developerguide/deployment-type-bluegreen.html"
+    required_entities:
+      - "ECS"
+      - "CodeDeploy"
+      - "Blue/Green"
+      - "target group"
+  constraints:
+    must_mention:
+      - "CodeDeploy"
+      - "target group"
+    must_not_claim:
+      - "ECS rolling update is same as Blue/Green"
+      - "no rollback capability"
+    max_tokens: 200
+
+- id: "compute-t2-009"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you configure CloudWatch Container Insights to monitor ECS tasks
+    and set alarms on memory usage?
+  ground_truth:
+    answer: >
+      Steps: 1. Enable Container Insights on the ECS cluster — either during cluster creation
+      or by updating the cluster setting: aws ecs update-cluster-settings --cluster my-cluster
+      --settings name=containerInsights,value=enabled. 2. Container Insights automatically
+      collects CPU, memory, network, and storage metrics per service, task, and container using
+      the embedded CloudWatch Agent in the ECS infrastructure (no separate agent install for
+      Fargate). 3. In CloudWatch Metrics, navigate to ECS/ContainerInsights namespace. Select
+      MemoryUtilized or MemoryReserved metric filtered by ClusterName and ServiceName. 4. Create
+      a CloudWatch Alarm on MemoryUtilized with threshold (e.g., 80% of MemoryReserved).
+      5. Connect the alarm to an SNS topic for notifications or Auto Scaling policy for ECS
+      service scaling. Container Insights dashboards are pre-built in CloudWatch Dashboards.
+    source_refs:
+      - "AmazonCloudWatch/latest/monitoring/ContainerInsights.html"
+    required_entities:
+      - "Container Insights"
+      - "ECS"
+      - "CloudWatch"
+      - "MemoryUtilized"
+  constraints:
+    must_mention:
+      - "Container Insights"
+      - "MemoryUtilized"
+    must_not_claim:
+      - "manual agent install required for Fargate"
+      - "Container Insights costs nothing extra"
+    max_tokens: 200
+
+- id: "compute-t2-010"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you set up Lambda function URLs with IAM authentication to
+    expose a function as an HTTPS endpoint?
+  ground_truth:
+    answer: >
+      Lambda Function URLs provide a dedicated HTTPS endpoint for a Lambda function without
+      API Gateway. Steps: 1. In the Lambda console or via CLI, create a Function URL on the
+      function or a specific alias. Choose auth type IAM (or NONE for public). 2. For IAM auth,
+      the caller must sign requests with AWS SigV4 using credentials that have
+      lambda:InvokeFunctionUrl permission on the function's ARN. 3. Optionally configure CORS
+      settings (allowed origins, methods, headers) on the Function URL for browser access.
+      4. The URL format is https://{unique-id}.lambda-url.{region}.on.aws/. 5. Lambda Function
+      URLs support streaming responses (using ResponseStream invocation mode) for progressive
+      output. For public access with rate limiting or custom auth, API Gateway is still preferred;
+      Function URLs are best for simple internal or service-to-service invocations.
+    source_refs:
+      - "lambda/latest/dg/lambda-urls.html"
+    required_entities:
+      - "Lambda Function URL"
+      - "IAM authentication"
+      - "SigV4"
+  constraints:
+    must_mention:
+      - "SigV4"
+      - "CORS"
+    must_not_claim:
+      - "Function URLs require API Gateway"
+      - "no IAM auth option"
+    max_tokens: 200
+
+- id: "compute-t2-011"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you deploy an application to AWS Elastic Beanstalk using a
+    Dockerfile with environment variable configuration?
+  ground_truth:
+    answer: >
+      Steps: 1. Create a Dockerfile at the root of your application. Beanstalk Docker platform
+      builds and runs the container automatically. 2. Optionally add a Dockerrun.aws.json
+      (v1 for single container) to configure port mapping, volumes, and environment variables.
+      3. Zip the application directory (Dockerfile + source or Dockerrun.aws.json). 4. Create
+      a Beanstalk application and environment (Docker platform). Set environment properties
+      in the Beanstalk console (Configuration → Software → Environment Properties) or via CLI:
+      aws elasticbeanstalk update-environment --option-settings Namespace=aws:elasticbeanstalk:
+      application:environment,OptionName=MY_VAR,Value=myvalue. Variables are injected as
+      environment variables in the container. 5. For secrets, reference SSM Parameter Store
+      or Secrets Manager in .ebextensions configuration files rather than storing secrets as
+      plaintext environment properties. Deploy by uploading the ZIP via console, CLI, or EB CLI.
+    source_refs:
+      - "elasticbeanstalk/latest/dg/create_deploy_docker.html"
+    required_entities:
+      - "Elastic Beanstalk"
+      - "Dockerfile"
+      - "environment properties"
+  constraints:
+    must_mention:
+      - "Dockerfile"
+      - "environment properties"
+    must_not_claim:
+      - "Beanstalk cannot run Docker"
+      - "secrets stored as plaintext properties"
+    max_tokens: 200
+
+- id: "compute-t2-012"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you configure EC2 Instance Connect and Session Manager to provide
+    secure shell access without opening port 22?
+  ground_truth:
+    answer: >
+      Two approaches for no-port-22 SSH: 1. EC2 Instance Connect Endpoint (EIC Endpoint): create
+      a VPC endpoint of type EC2_INSTANCE_CONNECT in a subnet. Attach IAM policy
+      ec2-instance-connect:OpenTunnel to the connecting user. Security groups on the EC2 instance
+      must allow inbound SSH from the EIC Endpoint security group, but not from 0.0.0.0/0.
+      Connect via console or CLI: aws ec2-instance-connect open-tunnel --instance-id i-xxx.
+      2. Systems Manager Session Manager: install SSM Agent on the instance (pre-installed on
+      Amazon Linux 2+). Attach AmazonSSMManagedInstanceCore policy to the instance's IAM role.
+      Ensure the instance can reach SSM endpoints (VPC endpoint or internet). Connect via console
+      or CLI: aws ssm start-session --target i-xxx. No inbound security group rules required at
+      all. Session Manager logs sessions to S3 or CloudWatch Logs for auditing.
+    source_refs:
+      - "ec2/latest/userguide/connect-with-ec2-instance-connect-endpoint.html"
+      - "systems-manager/latest/userguide/session-manager.html"
+    required_entities:
+      - "EC2 Instance Connect"
+      - "Session Manager"
+      - "SSM Agent"
+  constraints:
+    must_mention:
+      - "Session Manager"
+      - "no inbound port 22"
+    must_not_claim:
+      - "requires port 22 open"
+      - "Session Manager needs public IP"
+    max_tokens: 200
+
+- id: "compute-t2-013"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you build an event-driven pipeline using S3 event notifications and
+    Lambda to process uploaded files?
+  ground_truth:
+    answer: >
+      Steps: 1. Create a Lambda function to process files (reads from S3, transforms, writes
+      output). Grant the Lambda execution role s3:GetObject on the source bucket. 2. Configure
+      S3 Event Notifications on the source bucket: event type ObjectCreated:Put (or All),
+      prefix/suffix filters (e.g., uploads/*.csv), destination Lambda. S3 will invoke Lambda
+      asynchronously for each uploaded object. 3. The Lambda event contains bucket name and
+      object key. The function calls s3.get_object(Bucket=..., Key=...) to read the file.
+      4. Configure a Lambda Destination or DLQ (SQS or SNS) for failed invocations since S3
+      invokes Lambda asynchronously — failures go to the destination rather than returning
+      to S3. 5. For large files exceeding Lambda's 15-minute timeout or 10 GB /tmp limit,
+      use S3 event → SQS → Lambda or route to AWS Batch/Fargate for heavy processing.
+    source_refs:
+      - "AmazonS3/latest/userguide/NotificationHowTo.html"
+      - "lambda/latest/dg/with-s3.html"
+    required_entities:
+      - "S3 event notification"
+      - "Lambda"
+      - "DLQ"
+      - "async invocation"
+  constraints:
+    must_mention:
+      - "asynchronous"
+      - "DLQ"
+    must_not_claim:
+      - "S3 invokes Lambda synchronously"
+      - "no retry on failure"
+    max_tokens: 200
+
+- id: "compute-t2-014"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you configure EC2 Image Builder to create a hardened Amazon Linux
+    AMI with CIS benchmarks applied?
+  ground_truth:
+    answer: >
+      EC2 Image Builder automates AMI creation with a pipeline: 1. Create a Recipe selecting a
+      source image (e.g., Amazon Linux 2023 base AMI) and components. Add AWS-managed components
+      for CIS hardening from the Image Builder component library (e.g., aws:cis-hardening-linux)
+      or create a custom component with shell scripts applying your security baseline. 2. Create
+      an Infrastructure Configuration: choose an EC2 instance type for the build, an IAM instance
+      profile (EC2InstanceProfileForImageBuilder managed policy), VPC/subnet, and optional
+      security groups. 3. Create a Distribution Configuration specifying target regions for
+      AMI distribution and optional AMI sharing with other accounts. 4. Create and run an
+      Image Pipeline referencing the Recipe, Infrastructure, and Distribution configurations.
+      Image Builder launches a build EC2 instance, applies the components, tests (optional test
+      components), and creates a final AMI. 5. Subscribe to SNS notifications for pipeline
+      completion and failure.
+    source_refs:
+      - "imagebuilder/latest/userguide/what-is-image-builder.html"
+    required_entities:
+      - "EC2 Image Builder"
+      - "recipe"
+      - "CIS"
+      - "pipeline"
+  constraints:
+    must_mention:
+      - "recipe"
+      - "pipeline"
+    must_not_claim:
+      - "Image Builder requires manual AMI creation steps"
+      - "no CIS components available"
+    max_tokens: 200
+
+- id: "compute-t2-015"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you enable AWS Compute Optimizer and use its recommendations to
+    right-size EC2 instances?
+  ground_truth:
+    answer: >
+      Steps: 1. Enable AWS Compute Optimizer in your account or organization management account
+      (opt-in). Compute Optimizer uses 14 days of CloudWatch metrics by default; enable Enhanced
+      Infrastructure Metrics for 93 days of history (additional cost). 2. After 24-48 hours,
+      Compute Optimizer generates recommendations for EC2 instances, Auto Scaling groups, EBS
+      volumes, Lambda functions, and ECS on Fargate. 3. In the Compute Optimizer console,
+      review EC2 recommendations: each shows the current instance type, recommended instance
+      types (up to 3), projected CPU/memory utilization on the recommended type, and estimated
+      cost impact. Risk level (low/medium/high) indicates confidence. 4. For each recommended
+      change, validate against actual application requirements (memory-bound apps may need
+      Memory Optimized despite Compute Optimizer suggesting a smaller instance). 5. Apply changes
+      via the EC2 console (stop → modify instance type → start) or automate with Lambda + EventBridge.
+    source_refs:
+      - "compute-optimizer/latest/ug/what-is-compute-optimizer.html"
+    required_entities:
+      - "Compute Optimizer"
+      - "CloudWatch metrics"
+      - "right-size"
+  constraints:
+    must_mention:
+      - "CloudWatch metrics"
+      - "right-size"
+    must_not_claim:
+      - "Compute Optimizer auto-applies changes"
+      - "no historical data required"
+    max_tokens: 200
+
+- id: "compute-t2-016"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you configure a Lambda function to use AWS Secrets Manager for
+    database credentials with caching?
+  ground_truth:
+    answer: >
+      Steps: 1. Store database credentials in Secrets Manager (type: RDS database credentials).
+      Enable automatic rotation with a rotation Lambda if desired. 2. Grant the Lambda execution
+      role secretsmanager:GetSecretValue permission on the secret ARN. 3. In Lambda code, use
+      the AWS SDK to call GetSecretValue. For Python: boto3.client('secretsmanager').
+      get_secret_value(SecretId='my-db-creds'). 4. To avoid per-invocation latency and Secrets
+      Manager API costs, cache the secret in a module-level variable (outside the handler).
+      The cached value persists for the lifetime of the execution environment (warm starts).
+      5. Better: use the AWS Parameters and Secrets Lambda Extension (a Lambda Layer) which
+      provides a local HTTP endpoint at localhost:2773/secretsmanager/get that caches secrets
+      with configurable TTL, without any code changes to caching logic. Set
+      PARAMETERS_SECRETS_EXTENSION_CACHE_ENABLED=true and SECRETS_MANAGER_TTL environment
+      variable.
+    source_refs:
+      - "secretsmanager/latest/userguide/retrieving-secrets_lambda.html"
+    required_entities:
+      - "Secrets Manager"
+      - "Lambda"
+      - "caching"
+      - "Parameters and Secrets Extension"
+  constraints:
+    must_mention:
+      - "caching"
+      - "Parameters and Secrets Extension"
+    must_not_claim:
+      - "Secrets Manager call per invocation required"
+      - "no caching available"
+    max_tokens: 200
+
+- id: "compute-t2-017"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you configure ALB to perform HTTPS termination and redirect
+    HTTP traffic to HTTPS?
+  ground_truth:
+    answer: >
+      Steps: 1. Request or import a TLS certificate in ACM (AWS Certificate Manager) for your
+      domain. ACM validates domain ownership via DNS or email. 2. Create an ALB with two
+      listeners: HTTP listener on port 80 and HTTPS listener on port 443. 3. On the HTTP listener,
+      add a default rule: action = Redirect to HTTPS (status 301 Permanent). This redirects all
+      http:// requests to https:// on the same host and path. 4. On the HTTPS listener, select
+      the ACM certificate, configure security policy (ELBSecurityPolicy-TLS13-1-2-2021-06
+      recommended), and set the default action to Forward to your target group. 5. Optionally
+      add multiple certificates for different domains (SNI support — ALB selects the matching
+      certificate automatically). Target groups receive unencrypted HTTP traffic from the ALB,
+      so backend instances do not need certificates.
+    source_refs:
+      - "elasticloadbalancing/latest/application/create-https-listener.html"
+    required_entities:
+      - "ACM"
+      - "ALB"
+      - "HTTPS listener"
+      - "redirect rule"
+  constraints:
+    must_mention:
+      - "ACM"
+      - "redirect"
+    must_not_claim:
+      - "ALB cannot terminate TLS"
+      - "certificate required on EC2 instances"
+    max_tokens: 200
+
+- id: "compute-t2-018"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you configure EC2 user data scripts to automatically bootstrap
+    an instance with software on launch?
+  ground_truth:
+    answer: >
+      EC2 user data runs as root on first boot (by default). Steps: 1. Write a shell script
+      starting with #!/bin/bash. Include commands to install packages, configure services, and
+      pull application code. Example: yum update -y && yum install -y httpd && systemctl start
+      httpd && systemctl enable httpd. 2. Specify user data in the Launch Template (base64
+      encoded) or directly in the EC2 launch wizard. 3. User data output is logged to
+      /var/log/cloud-init-output.log for debugging. 4. By default, user data runs once on
+      first launch. To run on every boot, add a cloud-init directive (#cloud-boothook) or use
+      systemd units. 5. For complex configurations, use cloud-init YAML (cloud-config format)
+      which supports package installation, file writing, and command execution declaratively.
+      For ongoing configuration management at scale, prefer AWS Systems Manager Run Command or
+      SSM State Manager over user data.
+    source_refs:
+      - "ec2/latest/userguide/user-data.html"
+    required_entities:
+      - "user data"
+      - "cloud-init"
+      - "Launch Template"
+  constraints:
+    must_mention:
+      - "user data"
+      - "/var/log/cloud-init-output.log"
+    must_not_claim:
+      - "user data runs as non-root"
+      - "runs on every boot by default"
+    max_tokens: 200
+
+- id: "compute-t2-019"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you configure AWS Batch to process a large job array using Spot
+    compute environments with automatic retry?
+  ground_truth:
+    answer: >
+      Steps: 1. Create a Managed Compute Environment with SPOT type: specify instance types
+      (OPTIMAL or specific families), bid percentage (100 = pay up to On-Demand price), and
+      a service-linked role for Spot (AWSBatchServiceRole). Set min/max/desired vCPUs.
+      2. Create a Job Queue and assign the Spot Compute Environment (with priority). Optionally
+      add an On-Demand environment at lower priority as fallback. 3. Create a Job Definition:
+      Docker image, vCPU/memory requirements, and retry strategy — set attempts to 3 and add
+      evaluateOnExit conditions (e.g., retry on EXIT_CODE:1 or REASON:Host EC2 was terminated).
+      4. Submit the job as an array: aws batch submit-job --array-properties size=1000
+      creates 1,000 child jobs. Each child gets an AWS_BATCH_JOB_ARRAY_INDEX env var.
+      5. Spot interruptions trigger retries automatically via the retry strategy. Use checkpointing
+      in your job code to resume from the last checkpoint rather than reprocessing fully.
+    source_refs:
+      - "batch/latest/userguide/spot_fleet_IAM_role.html"
+      - "batch/latest/userguide/job_retries.html"
+    required_entities:
+      - "AWS Batch"
+      - "job array"
+      - "Spot compute environment"
+      - "retry strategy"
+  constraints:
+    must_mention:
+      - "job array"
+      - "retry strategy"
+    must_not_claim:
+      - "Batch does not support Spot"
+      - "no retry on interruption"
+    max_tokens: 200
+
+- id: "compute-t2-020"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: >
+    How do you configure CloudWatch alarms and Auto Scaling to scale an ECS
+    service based on SQS queue depth?
+  ground_truth:
+    answer: >
+      Steps: 1. Register the ECS service as an Application Auto Scaling scalable target:
+      service-namespace ecs, resource-id service/{cluster}/{service-name}, scalable-dimension
+      ecs:service:DesiredCount. 2. Create a CloudWatch alarm on the SQS metric
+      ApproximateNumberOfMessagesVisible (the queue depth metric). Set threshold for scale-out
+      (e.g., > 100 messages) and scale-in (< 10 messages). 3. Create Step Scaling Policies or
+      Target Tracking policy on the ECS scalable target. For SQS-based scaling, Target Tracking
+      with a custom metric works well: define a custom CloudWatch metric
+      BacklogPerInstance = SQS queue depth / ECS task count. Target this to your desired
+      messages-per-task value. 4. Publish the custom metric via Lambda on a schedule using
+      CloudWatch PutMetricData API. 5. This pattern scales ECS tasks proportionally to queue
+      depth, keeping per-task processing load constant regardless of queue size.
+    source_refs:
+      - "autoscaling/application/userguide/services-that-can-integrate-ecs.html"
+    required_entities:
+      - "Application Auto Scaling"
+      - "SQS"
+      - "ECS"
+      - "ApproximateNumberOfMessagesVisible"
+  constraints:
+    must_mention:
+      - "ApproximateNumberOfMessagesVisible"
+      - "scalable target"
+    must_not_claim:
+      - "ECS cannot scale on SQS metrics"
+      - "only CPU-based scaling available"
+    max_tokens: 200

@@ -53,13 +53,13 @@ class Section(BaseModel):
 class Document(BaseModel):
     """Unified document model — the central interchange for the entire pipeline.
 
-    Every doc (markdown, HTML, SEC filing) gets parsed into this model.
+    Every doc (markdown, HTML, or other format) gets parsed into this model.
     JSONL files in datasets/{corpus}/processed/ contain one Document per line.
     """
 
     id: str
     source: str  # file path or URL
-    corpus: str  # "python-stdlib" | "kubernetes" | "sec-edgar"
+    corpus: str  # "aws-compute" | "aws-storage" | "aws-networking"
     title: str
     sections: list[Section] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)

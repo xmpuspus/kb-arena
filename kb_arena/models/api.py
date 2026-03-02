@@ -20,7 +20,7 @@ class ChatRequest(BaseModel):
     query: str
     strategy: str = "hybrid"
     history: list[Message] = Field(default_factory=list)
-    corpus: str = "python-stdlib"
+    corpus: str = "aws-compute"
 
 
 class ChatResponse(BaseModel):

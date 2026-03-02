@@ -16,9 +16,11 @@ from kb_arena.models.document import Document
 from kb_arena.models.graph import GraphContext
 from kb_arena.strategies.base import AnswerResult, Strategy
 
-SYSTEM_PROMPT = """You are a documentation assistant with access to both a knowledge graph and a vector index.
-The context below comes from the most relevant sources across both retrieval methods.
-Answer accurately and completely. Cite where you found the information when useful."""
+SYSTEM_PROMPT = (
+    "You are a documentation assistant with access to both a knowledge graph and a vector index.\n"
+    "The context below comes from the most relevant sources across both retrieval methods.\n"
+    "Answer accurately and completely. Cite where you found the information when useful."
+)
 
 RERANK_PROMPT = """Rate how relevant this passage is to the question on a scale of 0.0 to 1.0.
 Return ONLY a JSON object: {"score": 0.8}
@@ -72,7 +74,7 @@ def _merge_sources(*source_lists: list[str]) -> list[str]:
 
 
 class HybridStrategy(Strategy):
-    """Intent-routed retrieval: vector for simple queries, graph for complex, both for procedural."""
+    """Intent-routed retrieval: vector for simple, graph for complex, both for procedural."""
 
     name = "hybrid"
 

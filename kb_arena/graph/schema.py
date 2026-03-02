@@ -2,92 +2,44 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
-# ── Python stdlib schema ──────────────────────────────────────────────────────
-
-
-class NodeType(str, Enum):
-    CONCEPT = "Concept"
-    MODULE = "Module"
-    CLASS = "Class"
-    FUNCTION = "Function"
-    PARAMETER = "Parameter"
-    RETURN_TYPE = "ReturnType"
-    EXCEPTION = "Exception"
-    DEPRECATION = "Deprecation"
-    VERSION = "Version"
-    EXAMPLE = "Example"
+# ── AWS documentation schema ──────────────────────────────────────────────────
 
 
-class RelType(str, Enum):
-    CONTAINS = "CONTAINS"  # Module -> Class, Class -> Function
-    REQUIRES = "REQUIRES"  # Function -> Parameter
-    RETURNS = "RETURNS"  # Function -> ReturnType
-    RAISES = "RAISES"  # Function -> Exception
-    DEPRECATED_BY = "DEPRECATED_BY"  # old -> new
-    ALTERNATIVE_TO = "ALTERNATIVE_TO"
-    REFERENCES = "REFERENCES"  # cross-module reference
-    INHERITS = "INHERITS"  # Class -> Class
-    IMPLEMENTS = "IMPLEMENTS"  # Class -> Concept (e.g., "iterator protocol")
-    EXAMPLE_OF = "EXAMPLE_OF"  # Example -> Function/Class
+class NodeType(StrEnum):
+    SERVICE = "Service"  # AWS service (Lambda, S3, EC2)
+    RESOURCE = "Resource"  # Infrastructure resource (VPC, Subnet, Security Group)
+    POLICY = "Policy"  # IAM policies, bucket policies, resource policies
+    FEATURE = "Feature"  # Service feature (versioning, encryption, auto-scaling)
+    CONFIGURATION = "Configuration"  # Config items (timeout, memory, runtime)
+    LIMIT = "Limit"  # Service limits/quotas
+    API_ACTION = "APIAction"  # AWS API actions (PutObject, InvokeFunction)
+    ARN_PATTERN = "ARNPattern"  # ARN format patterns
 
 
-# ── Kubernetes schema ─────────────────────────────────────────────────────────
-
-
-class K8sNodeType(str, Enum):
-    RESOURCE = "Resource"
-    FIELD = "Field"
-    API_GROUP = "APIGroup"
-    CONTROLLER = "Controller"
-    CONCEPT = "Concept"
-    EXAMPLE = "Example"
-    VERSION = "Version"
-
-
-class K8sRelType(str, Enum):
+class RelType(StrEnum):
+    DEPENDS_ON = "DEPENDS_ON"
+    INVOKES = "INVOKES"
+    CONNECTS_TO = "CONNECTS_TO"
+    ASSUMES = "ASSUMES"  # Role assumption
     CONTAINS = "CONTAINS"
-    BELONGS_TO = "BELONGS_TO"  # Resource -> APIGroup
-    MANAGES = "MANAGES"  # Controller -> Resource
-    REFERENCES = "REFERENCES"
-    REQUIRES = "REQUIRES"
-    EXAMPLE_OF = "EXAMPLE_OF"
-    SUPERSEDES = "SUPERSEDES"  # newer Version -> older Version
-    RELATED_TO = "RELATED_TO"
-
-
-# ── SEC EDGAR schema ──────────────────────────────────────────────────────────
-
-
-class SecNodeType(str, Enum):
-    COMPANY = "Company"
-    EXECUTIVE = "Executive"
-    BOARD_MEMBER = "BoardMember"
-    SUBSIDIARY = "Subsidiary"
-    RISK_FACTOR = "RiskFactor"
-    FINANCIAL_METRIC = "FinancialMetric"
-    LEGAL_PROCEEDING = "LegalProceeding"
-    SEGMENT = "Segment"
-
-
-class SecRelType(str, Enum):
-    EMPLOYS = "EMPLOYS"  # Company -> Executive
-    HAS_BOARD_MEMBER = "HAS_BOARD_MEMBER"
-    OWNS = "OWNS"  # Company -> Subsidiary
-    HAS_RISK = "HAS_RISK"
-    REPORTS_METRIC = "REPORTS_METRIC"
-    INVOLVED_IN = "INVOLVED_IN"  # Company -> LegalProceeding
-    OPERATES_SEGMENT = "OPERATES_SEGMENT"
-    REFERENCES = "REFERENCES"
+    PROTECTS = "PROTECTS"  # Security group -> resource
+    ROUTES_TO = "ROUTES_TO"
+    LOGS_TO = "LOGS_TO"
+    TRIGGERS = "TRIGGERS"
+    DEPLOYED_IN = "DEPLOYED_IN"
+    MANAGES = "MANAGES"
+    READS_FROM = "READS_FROM"
+    WRITES_TO = "WRITES_TO"
 
 
 # ── Corpus dispatch ───────────────────────────────────────────────────────────
 
 _CORPUS_SCHEMA: dict[str, tuple[type, type]] = {
-    "python-stdlib": (NodeType, RelType),
-    "kubernetes": (K8sNodeType, K8sRelType),
-    "sec-edgar": (SecNodeType, SecRelType),
+    "aws-compute": (NodeType, RelType),
+    "aws-storage": (NodeType, RelType),
+    "aws-networking": (NodeType, RelType),
 }
 
 

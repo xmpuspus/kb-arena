@@ -35,7 +35,7 @@ LIMIT 50
 """
 
 DEPENDENCY_CHAIN = """
-MATCH path = (source)-[:REQUIRES|IMPORTS|INHERITS|REFERENCES*1..4]->(dep)
+MATCH path = (source)-[:DEPENDS_ON|INVOKES|CONNECTS_TO|ASSUMES|TRIGGERS*1..4]->(dep)
 WHERE source.fqn = $start
 WITH path, dep, length(path) AS depth
 RETURN dep.name AS name, dep.fqn AS fqn, labels(dep)[0] AS type, depth,
@@ -58,7 +58,8 @@ WHERE n.fqn = $fqn OR toLower(n.name) = toLower($name)
 OPTIONAL MATCH (n)-[r]-(neighbor)
 RETURN n.name AS name, n.fqn AS fqn, labels(n)[0] AS type,
        n.description AS description,
-       collect({neighbor: neighbor.name, rel: type(r), dir: CASE WHEN startNode(r)=n THEN 'out' ELSE 'in' END}) AS neighbors
+       collect({neighbor: neighbor.name, rel: type(r),
+           dir: CASE WHEN startNode(r)=n THEN 'out' ELSE 'in' END}) AS neighbors
 LIMIT 1
 """
 
@@ -67,10 +68,11 @@ The context contains entities, relationships, and paths extracted from the graph
 Answer the question accurately using the graph context provided.
 Be specific about relationships and dependencies. If the graph context is incomplete, say so."""
 
-CYPHER_GEN_PROMPT = """You are a Neo4j Cypher expert. The graph contains documentation entities.
+CYPHER_GEN_PROMPT = """You are a Neo4j Cypher expert. The graph contains AWS documentation entities.
 
-Node types: Module, Class, Function, Parameter, ReturnType, Exception, Concept, Example, Deprecation, Version
-Relationship types: CONTAINS, REQUIRES, RETURNS, RAISES, DEPRECATED_BY, ALTERNATIVE_TO, REFERENCES, INHERITS, IMPLEMENTS, EXAMPLE_OF
+Node types: Service, Resource, Policy, Feature, Configuration, Limit, APIAction, ARNPattern
+Relationship types: DEPENDS_ON, INVOKES, CONNECTS_TO, ASSUMES, CONTAINS, PROTECTS,
+ROUTES_TO, LOGS_TO, TRIGGERS, DEPLOYED_IN, MANAGES, READS_FROM, WRITES_TO
 
 Write a Cypher query to answer: {question}
 
@@ -99,18 +101,23 @@ def _mock_graph_context() -> GraphContext:
     """Two-node mock graph — enough to show visualization works (Pattern 15)."""
     return GraphContext(
         nodes=[
-            {"id": "json", "name": "json", "type": "Module", "description": "JSON encoder/decoder"},
             {
-                "id": "json.loads",
-                "name": "json.loads",
-                "type": "Function",
-                "description": "Deserialize JSON string",
+                "id": "lambda",
+                "name": "AWS Lambda",
+                "type": "Service",
+                "description": "Serverless compute service",
+            },
+            {
+                "id": "iam-execution-role",
+                "name": "IAM Execution Role",
+                "type": "Policy",
+                "description": "IAM role assumed by Lambda during execution",
             },
         ],
         edges=[
-            {"source": "json", "target": "json.loads", "type": "CONTAINS"},
+            {"source": "lambda", "target": "iam-execution-role", "type": "ASSUMES"},
         ],
-        query_path=["json", "json.loads"],
+        query_path=["lambda", "iam-execution-role"],
         cypher_used="MOCK — Neo4j not connected",
     )
 
@@ -214,13 +221,15 @@ class KnowledgeGraphStrategy(Strategy):
         return "fulltext"
 
     def _extract_entities(self, question: str) -> list[str]:
-        """Heuristic: extract likely entity names (quoted or CamelCase or dotted)."""
+        """Heuristic: extract likely entity names (quoted or CamelCase or dotted or AWS-style)."""
         entities = []
         # Quoted names
         entities.extend(re.findall(r'["\']([^"\']+)["\']', question))
-        # Dotted module paths like json.loads, os.path.join
+        # Dotted paths like s3.put_object or aws.lambda
         entities.extend(re.findall(r"\b([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+)\b", question))
-        # CamelCase class names
+        # AWS hyphenated service names like api-gateway, step-functions, aws-lambda
+        entities.extend(re.findall(r"\b([a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+)\b", question))
+        # CamelCase names like Lambda, DynamoDB, CloudWatch
         entities.extend(re.findall(r"\b([A-Z][a-zA-Z0-9]+)\b", question))
         return list(dict.fromkeys(entities))[:3]  # deduplicate, limit
 
@@ -230,7 +239,7 @@ class KnowledgeGraphStrategy(Strategy):
         primary = entities[0] if entities else ""
         secondary = entities[1] if len(entities) > 1 else ""
 
-        allowed_rels = ["CONTAINS", "REQUIRES", "RETURNS", "RAISES", "REFERENCES", "INHERITS"]
+        allowed_rels = ["DEPENDS_ON", "INVOKES", "CONNECTS_TO", "ASSUMES", "CONTAINS", "TRIGGERS"]
 
         if intent == "comparison" and primary and secondary:
             cypher = COMPARISON_QUERY

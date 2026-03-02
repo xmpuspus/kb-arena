@@ -66,15 +66,15 @@ def test_pick_template_hierarchy():
 
 
 def test_pick_template_examples():
-    assert _pick_template("find usage examples for os.path.join") == "USAGE_EXAMPLES"
+    assert _pick_template("find usage examples for Lambda InvokeFunction") == "USAGE_EXAMPLES"
 
 
 def test_pick_template_dependency():
-    assert _pick_template("what does json.loads depend on?") == "DEPENDENCY_CHAIN"
+    assert _pick_template("what does Lambda depend on?") == "DEPENDENCY_CHAIN"
 
 
 def test_pick_template_comparison():
-    assert _pick_template("compare list vs deque") == "COMPARISON_QUERY"
+    assert _pick_template("compare Lambda vs EC2") == "COMPARISON_QUERY"
 
 
 def test_pick_template_returns_none_for_unknown():
@@ -94,7 +94,7 @@ def test_validate_cypher_accepts_call():
 
 
 def test_validate_cypher_rejects_plain_text():
-    assert _validate_cypher("Here is your answer: json.loads deserializes JSON.") is False
+    assert _validate_cypher("Here is your answer: Lambda runs code without servers.") is False
 
 
 # ── CypherGenerator fallback ───────────────────────────────────────────────────
@@ -105,11 +105,11 @@ async def test_generator_uses_llm_when_valid():
     mock_llm = AsyncMock()
     mock_llm.extract.return_value = "MATCH (n {fqn: $fqn}) RETURN n"
 
-    gen = CypherGenerator(mock_llm, "python-stdlib")
-    cypher, params = await gen.generate("find json.loads", {"fqn": "json.loads"})
+    gen = CypherGenerator(mock_llm, "aws-compute")
+    cypher, params = await gen.generate("find Lambda", {"fqn": "lambda"})
 
     assert "MATCH" in cypher
-    assert params == {"fqn": "json.loads"}
+    assert params == {"fqn": "lambda"}
 
 
 @pytest.mark.asyncio
@@ -117,7 +117,7 @@ async def test_generator_falls_back_on_invalid_llm_output():
     mock_llm = AsyncMock()
     mock_llm.extract.return_value = "This is not Cypher at all."
 
-    gen = CypherGenerator(mock_llm, "python-stdlib")
+    gen = CypherGenerator(mock_llm, "aws-compute")
     # "deprecat" keyword → DEPRECATION_CHAIN template
     cypher, _ = await gen.generate("what deprecated this api?")
 
@@ -129,7 +129,7 @@ async def test_generator_falls_back_on_llm_exception():
     mock_llm = AsyncMock()
     mock_llm.extract.side_effect = RuntimeError("API down")
 
-    gen = CypherGenerator(mock_llm, "python-stdlib")
+    gen = CypherGenerator(mock_llm, "aws-compute")
     cypher, params = await gen.generate("some unknown query with no keywords xyz123")
 
     # Last resort: fulltext search

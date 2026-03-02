@@ -1,0 +1,420 @@
+- id: "compute-t5-001"
+  tier: 5
+  type: multihop
+  hops: 5
+  question: >
+    How would you architect a globally distributed, highly available serverless API using
+    Lambda, API Gateway, DynamoDB Global Tables, CloudFront, and Route 53 — covering
+    traffic routing, data consistency, and failover behavior?
+  ground_truth:
+    answer: >
+      End-to-end architecture across 5 components: 1. Lambda + API Gateway (multi-region):
+      deploy the Lambda function and API Gateway REST or HTTP API in two or more AWS regions
+      (e.g., us-east-1 and eu-west-1). Each region is an independent stack. Lambda connects to
+      the regional DynamoDB endpoint via VPC or public endpoint with execution role permissions.
+      2. DynamoDB Global Tables: enable global tables on the DynamoDB table to create a
+      multi-region, active-active replication setup. Writes in any region replicate to all
+      regions within ~1 second. Applications use the regional endpoint — writes go to the
+      local region's replica. Reads are eventually consistent across regions (local replica may
+      lag). For strongly consistent reads, always read from the region where the write occurred.
+      Last-writer-wins conflict resolution. 3. CloudFront distribution: sit CloudFront in front
+      of both API Gateway endpoints. Configure origin groups with primary (us-east-1) and
+      secondary (eu-west-1) origins. CloudFront origin failover activates if the primary origin
+      returns 5xx or connection failure. This provides CDN-level caching for GET responses and
+      origin failover without DNS propagation delays. 4. Route 53 Latency routing: create alias
+      records for each API Gateway regional endpoint. Route 53 routes users to the lowest-latency
+      region. Combine with Route 53 health checks on each endpoint: if a regional API Gateway
+      goes unhealthy, Route 53 stops routing to it (failover within ~60-second TTL). 5. Failover
+      behavior: CloudFront handles edge-level failover (sub-second for cached responses);
+      Route 53 handles DNS-level failover (~60 seconds DNS TTL); application-level DynamoDB
+      reads automatically hit the surviving region's Global Table replica. For write failures,
+      implement retry logic with exponential backoff in Lambda; DynamoDB Global Tables auto-
+      route writes within the SDK if the regional endpoint is healthy. Lambda Provisioned
+      Concurrency in both regions eliminates cold start variability for consistent latency.
+    source_refs:
+      - "lambda/latest/dg/lambda-ha.html"
+      - "amazondynamodb/latest/developerguide/GlobalTables.html"
+      - "AmazonCloudFront/latest/DeveloperGuide/high_availability_origin_failover.html"
+      - "Route53/latest/DeveloperGuide/dns-failover.html"
+    required_entities:
+      - "Lambda"
+      - "API Gateway"
+      - "DynamoDB Global Tables"
+      - "CloudFront"
+      - "Route 53"
+  constraints:
+    must_mention:
+      - "Global Tables"
+      - "origin failover"
+    must_not_claim:
+      - "DynamoDB Global Tables has zero replication lag"
+      - "CloudFront eliminates need for Route 53 health checks"
+    max_tokens: 400
+
+- id: "compute-t5-002"
+  tier: 5
+  type: multihop
+  hops: 4
+  question: >
+    How do EKS Pod Identity (IRSA), Karpenter node autoscaling, EBS CSI driver, and
+    Kubernetes PersistentVolumeClaims work together to automatically provision
+    right-sized storage-attached nodes for stateful workloads?
+  ground_truth:
+    answer: >
+      Four-layer interaction: 1. EBS CSI Driver with IRSA/Pod Identity: the EBS CSI driver
+      runs as a DaemonSet and controller on EKS. It needs IAM permissions to call ec2:
+      CreateVolume, ec2:AttachVolume, ec2:DeleteVolume, etc. Using EKS Pod Identity (or IRSA),
+      the EBS CSI controller service account is bound to an IAM role with the
+      AmazonEBSCSIDriverPolicy managed policy. The CSI driver uses this identity for all EBS
+      API calls. 2. StorageClass and PersistentVolumeClaims (PVCs): define a StorageClass
+      with provisioner: ebs.csi.aws.com, volumeBindingMode: WaitForFirstConsumer (critical —
+      delays volume creation until the pod is scheduled so the EBS volume is created in the
+      correct AZ), and parameters (type: gp3, encrypted: true). Pods create PVCs referencing
+      this StorageClass. Kubernetes creates a PersistentVolume and binds it to the PVC once
+      the pod is scheduled. 3. Karpenter node autoscaling: when a pod is pending (no available
+      nodes), Karpenter reads the pod's resource requests (CPU, memory) and scheduling
+      constraints (node affinity, topology spread). Karpenter selects the optimal EC2 instance
+      type and launches it via EC2 Fleet API. With WaitForFirstConsumer PVCs, Karpenter also
+      considers the EBS AZ constraint — it must launch the node in the same AZ as the EBS
+      volume (or the volume is created in the node's AZ). 4. Complete flow: Pod submitted →
+      PVC created (pending, WaitForFirstConsumer) → Karpenter selects AZ-compatible instance
+      type → launches EC2 node → node joins cluster → PVC binding triggers EBS CSI driver to
+      create volume in same AZ → pod scheduled to node → EBS volume attached → container
+      starts with persistent storage. If node is terminated (Spot interruption or Karpenter
+      consolidation), Karpenter launches replacement in same AZ, EBS re-attaches.
+    source_refs:
+      - "eks/latest/userguide/ebs-csi.html"
+      - "eks/latest/userguide/pod-id-association.html"
+      - "karpenter.sh/docs/concepts/nodepools"
+    required_entities:
+      - "EBS CSI driver"
+      - "EKS Pod Identity"
+      - "Karpenter"
+      - "PersistentVolumeClaim"
+      - "WaitForFirstConsumer"
+  constraints:
+    must_mention:
+      - "WaitForFirstConsumer"
+      - "AZ constraint"
+    must_not_claim:
+      - "EBS volumes can span multiple AZs"
+      - "Karpenter does not consider PVC constraints"
+    max_tokens: 400
+
+- id: "compute-t5-003"
+  tier: 5
+  type: multihop
+  hops: 4
+  question: >
+    How do Lambda, Step Functions, ECS Fargate, and SQS work together in a
+    cost-optimized image processing pipeline that handles bursty traffic,
+    large files, and partial failures?
+  ground_truth:
+    answer: >
+      Pipeline design across four services: 1. Ingest layer (Lambda + SQS): S3 event
+      notifications trigger a Lambda function on object upload. Lambda validates the file
+      (size, format check) and publishes a processing message to SQS Standard Queue with
+      message attributes (bucket, key, job metadata). Lambda exits after enqueuing — no
+      long-running compute. SQS decouples the burst (hundreds of uploads/second) from the
+      processing layer. DLQ configured on SQS for messages that fail after maxReceiveCount.
+      2. Orchestration (Step Functions Express Workflow): an EventBridge Pipe or Lambda
+      polling SQS triggers a Step Functions Express Workflow per job. The workflow handles
+      job state: parallel preprocessing steps (thumbnail generation via Lambda for small files),
+      then conditional routing — if file > 100 MB, submit to ECS Fargate; else process in
+      Lambda. Choice state checks file size attribute. 3. Heavy processing (ECS Fargate):
+      Step Functions invokes an ECS RunTask API call (SDK integration, no Lambda shim needed).
+      Fargate task downloads the file from S3, processes it (e.g., video transcode, image
+      ML inference), uploads results, then exits. Fargate scales to zero when idle — no idle
+      instance cost. Step Functions waits for task completion via the .sync:2 integration
+      (polling ECS task status) or SendTaskSuccess with task token injected as container
+      environment variable. 4. Failure handling: ECS tasks that fail update Step Functions via
+      SendTaskFailure. The Catch state routes to a compensation Lambda that marks the job as
+      failed in DynamoDB and publishes an SNS notification. SQS DLQ captures messages that
+      exceeded retries. CloudWatch metric alarms on SQS ApproximateAgeOfOldestMessage detect
+      processing backlog. Cost optimization: Lambda for fast small files (sub-second, no idle
+      cost), Fargate Spot for heavy files (up to 70% Fargate discount with Spot capacity),
+      SQS Standard over FIFO (unless order required) for lower cost and higher throughput.
+    source_refs:
+      - "step-functions/latest/dg/connect-ecs.html"
+      - "AmazonECS/latest/developerguide/fargate-capacity-providers.html"
+      - "lambda/latest/dg/with-sqs.html"
+    required_entities:
+      - "Lambda"
+      - "Step Functions"
+      - "ECS Fargate"
+      - "SQS"
+      - "DLQ"
+  constraints:
+    must_mention:
+      - "DLQ"
+      - "Fargate Spot"
+    must_not_claim:
+      - "Step Functions cannot invoke ECS directly"
+      - "Lambda handles all file sizes equally well"
+    max_tokens: 400
+
+- id: "compute-t5-004"
+  tier: 5
+  type: multihop
+  hops: 4
+  question: >
+    How do EC2 Auto Scaling, ALB, CloudFront, and Route 53 work together to
+    implement a multi-region active-passive failover for a stateful web application,
+    including data replication considerations?
+  ground_truth:
+    answer: >
+      Architecture across four services with data replication: 1. Primary region (us-east-1):
+      EC2 Auto Scaling Group behind an ALB. CloudFront distribution with ALB as origin and
+      Route 53 health check on the ALB. Application writes to a primary RDS Multi-AZ instance
+      (synchronous replica within region for AZ failover). RDS Read Replica in the secondary
+      region (dr-region) replicates asynchronously. 2. Secondary region (passive): identical
+      EC2 ASG + ALB stack deployed (minimum capacity, scaled to zero or 1 warm standby).
+      Second CloudFront origin (or a separate distribution). Route 53 Failover routing:
+      primary record (us-east-1 ALB alias, evaluated via health check), secondary record
+      (dr-region ALB alias, failover). CloudFront origin failover: primary = us-east-1 ALB,
+      secondary = dr-region ALB in an origin group. 3. Failover trigger: Route 53 health check
+      monitors the primary ALB health endpoint. If it fails 3 consecutive checks (~90 seconds
+      with 30-second interval), Route 53 marks the primary record unhealthy and returns the
+      secondary alias. CloudFront independently detects 5xx from the primary origin and
+      switches to secondary (faster, no DNS TTL wait). 4. Data replication complexity: on
+      failover, the dr-region RDS Read Replica must be promoted to a standalone primary
+      (automation via Lambda + EventBridge watching Route 53 health change events, or manual).
+      Promotion takes 1-5 minutes. RPO equals the replication lag between primary and replica.
+      The EC2 ASG in dr-region scales up via a scheduled or reactive scaling policy triggered
+      by the failover event. 5. DNS propagation: Route 53 Failover TTL should be 60 seconds
+      for fast propagation. Some clients ignore TTL and cache longer — CloudFront provides
+      the sub-TTL edge failover for those users. After failback to primary, the promoted
+      secondary must be re-replicated before failback to avoid data loss.
+    source_refs:
+      - "Route53/latest/DeveloperGuide/dns-failover-types.html"
+      - "AmazonRDS/latest/UserGuide/USER_ReadRepl.html"
+      - "autoscaling/ec2/userguide/as-instance-monitoring.html"
+    required_entities:
+      - "EC2 Auto Scaling"
+      - "ALB"
+      - "CloudFront"
+      - "Route 53"
+      - "RDS Read Replica"
+  constraints:
+    must_mention:
+      - "replication lag"
+      - "RPO"
+    must_not_claim:
+      - "RDS synchronously replicates cross-region"
+      - "Route 53 failover is instantaneous"
+    max_tokens: 400
+
+- id: "compute-t5-005"
+  tier: 5
+  type: multihop
+  hops: 4
+  question: >
+    How do ECS Fargate, AWS App Mesh, AWS Cloud Map, and X-Ray work together
+    to implement a service mesh with distributed tracing for microservices?
+  ground_truth:
+    answer: >
+      Four-component service mesh architecture: 1. AWS Cloud Map for service registry: each
+      ECS service registers itself in a Cloud Map namespace. ECS + Cloud Map integration
+      creates DNS records and health-check-aware service instances. Cloud Map serves as the
+      control plane data source for App Mesh — virtual services in App Mesh reference Cloud
+      Map service names for endpoint discovery. 2. AWS App Mesh for traffic management: define
+      Virtual Services (logical service names), Virtual Nodes (actual ECS services backed by
+      Cloud Map), and Virtual Routers with route rules (path/header-based routing, retries,
+      timeouts, circuit breakers). Each ECS task definition includes an Envoy proxy sidecar
+      container (aws-appmesh-envoy image). App Mesh configures Envoy via xDS APIs with the
+      routing rules. Fargate runs both the app container and Envoy sidecar per task. 3. Envoy
+      sidecar behavior: iptables rules in the task intercept all inbound and outbound TCP
+      traffic to the Envoy proxy. Envoy enforces App Mesh policies, adds request headers
+      (including X-Ray trace context), retries on 5xx per retry policy, and collects telemetry.
+      The App Mesh Envoy does not require application code changes. 4. X-Ray distributed
+      tracing integration: Envoy natively emits X-Ray trace segments for each request it
+      proxies. The X-Ray daemon runs as a third sidecar container in the ECS task definition.
+      X-Ray trace IDs propagate via HTTP headers across Envoy sidecars in different services,
+      creating an end-to-end service map. Application code using the X-Ray SDK adds custom
+      subsegments inside the app container. CloudWatch Service Map visualizes inter-service
+      latency and error rates using the combined App Mesh + X-Ray data. Together: Cloud Map
+      provides discovery, App Mesh provides traffic policies, Envoy enforces them, X-Ray
+      provides visibility.
+    source_refs:
+      - "app-mesh/latest/userguide/what-is-app-mesh.html"
+      - "cloud-map/latest/dg/what-is-cloud-map.html"
+      - "xray/latest/devguide/xray-services-appmesh.html"
+    required_entities:
+      - "App Mesh"
+      - "Cloud Map"
+      - "Envoy sidecar"
+      - "X-Ray"
+      - "ECS Fargate"
+  constraints:
+    must_mention:
+      - "Envoy"
+      - "Cloud Map"
+    must_not_claim:
+      - "App Mesh requires code changes in application"
+      - "X-Ray daemon runs as the only sidecar"
+    max_tokens: 400
+
+- id: "compute-t5-006"
+  tier: 5
+  type: multihop
+  hops: 5
+  question: >
+    How do AWS Batch, Step Functions, S3, Lambda, and EC2 Spot instances work together
+    in a genomics secondary analysis pipeline — covering job submission, data staging,
+    cost optimization, fault tolerance, and result aggregation?
+  ground_truth:
+    answer: >
+      End-to-end pipeline across 5 components: 1. Data staging (S3 + Lambda): raw sequencing
+      data (.fastq files) land in an S3 input bucket. S3 event notifications trigger a Lambda
+      function that validates the files, extracts sample metadata, and submits a Step Functions
+      execution with the input manifest. Lambda writes a job record to DynamoDB with status
+      SUBMITTED. 2. Orchestration (Step Functions Standard Workflow): the state machine defines
+      the pipeline DAG: alignment (BWA-MEM job) → variant calling (GATK HaplotypeCaller) →
+      annotation → QC metrics. Each stage is a Task state calling the AWS Batch SubmitJob
+      API via SDK integration (.sync:2 waits for Batch job completion). Parallel Map state
+      submits per-chromosome variant calling jobs concurrently (up to 23 parallel Batch jobs
+      per sample). Catch states handle Batch job failures: on FAILED status, Step Functions
+      retries up to 2 times (for transient Spot interruptions), then routes to a notification
+      Task state. 3. Compute (AWS Batch + EC2 Spot): Batch Compute Environment uses Spot
+      instances with OPTIMAL instance type selection and 100% bid price. BEST_FIT_PROGRESSIVE
+      allocation strategy maximizes Spot availability across instance types. Each Batch job
+      definition mounts an EFS volume for inter-step shared data (reference genome, intermediate
+      BAM files). evaluateOnExit retry conditions catch host-terminated Spot failures and
+      requeue automatically. Batch Array Jobs parallelize per-sample alignment across a job
+      array sized to the number of input files. 4. Result aggregation (Lambda + S3): on Step
+      Functions workflow success, a Lambda function collects output files from S3, merges
+      VCF files (aws s3 cp --recursive), generates a manifest, and writes the final result
+      to the output bucket. Lambda publishes CloudWatch metrics (samples processed, runtime)
+      and updates DynamoDB status to COMPLETE. 5. Cost optimization: Spot instances reduce
+      Batch compute costs by up to 90%. Step Functions Standard Workflow stores execution
+      state, enabling safe Spot interruption recovery without re-running completed steps —
+      only the interrupted Batch job is retried. EFS provides shared reference data without
+      repeated S3 downloads. S3 Intelligent-Tiering on the input bucket moves older raw data
+      to cheaper tiers automatically. Total pipeline cost per sample is dominated by Batch
+      Spot compute; the orchestration layer (Step Functions + Lambda) cost is negligible.
+    source_refs:
+      - "batch/latest/userguide/job_retries.html"
+      - "step-functions/latest/dg/connect-batch.html"
+      - "AmazonS3/latest/userguide/NotificationHowTo.html"
+    required_entities:
+      - "AWS Batch"
+      - "Step Functions"
+      - "S3"
+      - "Lambda"
+      - "EC2 Spot"
+      - "EFS"
+  constraints:
+    must_mention:
+      - "Spot interruption"
+      - "job array"
+    must_not_claim:
+      - "Step Functions reruns completed Batch steps on failure"
+      - "Batch Spot instances cannot be retried"
+    max_tokens: 400
+
+- id: "compute-t5-007"
+  tier: 5
+  type: multihop
+  hops: 4
+  question: >
+    How do EKS, Karpenter, Graviton instances, and Spot interruption handling work
+    together to minimize compute costs for a mixed CPU-architecture Kubernetes workload?
+  ground_truth:
+    answer: >
+      Four-layer cost optimization strategy: 1. Karpenter NodePool configuration for
+      mixed architectures: define a NodePool with amd64 and arm64 architectures. Karpenter
+      selects between x86 (Intel/AMD) and Graviton (arm64) instance types based on availability
+      and price. Graviton3 instances (C7g, M7g, R7g) offer ~40% better price/performance vs
+      equivalent x86 for most workloads. Applications must be compiled for arm64 or use
+      multi-arch container images (docker buildx with --platform linux/amd64,linux/arm64).
+      2. Spot instance integration in Karpenter: set capacity type to include spot in the
+      NodePool. Karpenter uses EC2 Fleet with price-capacity-optimized strategy, selecting
+      instance types with deepest Spot pools to minimize interruption risk. Karpenter's
+      consolidation feature proactively replaces underutilized nodes with smaller/cheaper ones.
+      3. Spot interruption handling: Karpenter watches the EC2 Spot interruption notice via the
+      Node Termination Handler (NTH) or its built-in interruption handling (when enabled via
+      SQS interruption queue). On receiving a 2-minute interruption notice, Karpenter cordons
+      the node, drains pods gracefully (respecting PodDisruptionBudgets), and launches
+      replacement nodes before termination. Applications using Kubernetes graceful termination
+      (preStop hooks, terminationGracePeriodSeconds) complete in-flight requests before pod
+      eviction. 4. Architecture-aware scheduling: pods declare architecture requirements via
+      nodeAffinity (kubernetes.io/arch: arm64) or tolerations. Karpenter matches pods to
+      compatible instance types. For workloads without arm64 images (legacy), nodeAffinity
+      restricts to amd64. Spot + Graviton together: a typical Graviton3 Spot vs x86 On-Demand
+      comparison achieves 60-80% cost reduction. Karpenter consolidation runs every 30 seconds,
+      continuously right-sizing the node fleet.
+    source_refs:
+      - "eks/latest/userguide/karpenter.html"
+      - "ec2/latest/userguide/instance-types.html#instance-type-summary-table"
+    required_entities:
+      - "Karpenter"
+      - "Graviton"
+      - "Spot interruption"
+      - "arm64"
+      - "NodePool"
+  constraints:
+    must_mention:
+      - "Graviton"
+      - "Spot interruption"
+    must_not_claim:
+      - "Karpenter cannot mix architectures"
+      - "all containers run on arm64 without recompilation"
+    max_tokens: 400
+
+- id: "compute-t5-008"
+  tier: 5
+  type: multihop
+  hops: 5
+  question: >
+    How do Lambda, EventBridge, SNS, SQS, and Step Functions work together to implement
+    an event-driven orchestration system with fan-out, aggregation, and at-least-once
+    processing guarantees?
+  ground_truth:
+    answer: >
+      Five-component event-driven system: 1. Event ingestion (EventBridge): domain events
+      (OrderPlaced, PaymentProcessed) are published to an EventBridge custom event bus by
+      producer Lambda functions. EventBridge rules match event patterns and route events to
+      multiple targets simultaneously (fan-out). For an OrderPlaced event, rules route to:
+      SNS topic (notification fan-out), SQS queue (fulfillment processing), and Step Functions
+      state machine (order orchestration workflow). EventBridge guarantees at-least-once
+      delivery; duplicate events are possible under failure scenarios. 2. Fan-out via SNS:
+      the SNS topic has multiple subscriptions — Lambda for fraud check, SQS for analytics
+      pipeline, Lambda for email notification. SNS delivers to all subscriptions in parallel.
+      SNS+SQS pattern (SNS fanout to SQS queues): each subscriber has its own SQS queue so
+      failures in one pipeline do not affect others. 3. Async processing with SQS + Lambda:
+      fulfillment Lambda processes SQS messages with ReportBatchItemFailures. Failed individual
+      messages return to the queue (not the whole batch). SQS visibility timeout = 6x Lambda
+      timeout. DLQ captures messages exceeding maxReceiveCount. Lambda scales concurrency
+      per SQS event source mapping, throttled by reserved concurrency if needed. 4. Workflow
+      orchestration (Step Functions): the OrderOrchestration state machine coordinates
+      multi-step order fulfillment: reserve inventory → charge payment → notify warehouse →
+      update order status. Uses Wait for TaskToken for warehouse confirmation (an external
+      system calls SendTaskSuccess when goods are picked). On any step failure, Catch states
+      route to compensating transactions. Step Functions Standard Workflow stores execution
+      state so it survives Lambda restarts. 5. Aggregation: a scheduled Lambda (EventBridge
+      Scheduler) runs every 5 minutes to aggregate DynamoDB records (order counts, totals),
+      publishes CloudWatch custom metrics, and writes a summary to S3. The aggregation Lambda
+      uses DynamoDB conditional writes (if order_status = PENDING) to avoid double-counting
+      during concurrent executions. Idempotency keys on Lambda (using Powertools Idempotency
+      with DynamoDB persistence layer) prevent duplicate processing if EventBridge or SNS
+      delivers the same event twice.
+    source_refs:
+      - "eventbridge/latest/userguide/eb-event-bus.html"
+      - "sns/latest/dg/sns-sqs-as-subscriber.html"
+      - "lambda/latest/dg/with-sqs.html"
+      - "step-functions/latest/dg/connect-to-resource.html"
+    required_entities:
+      - "EventBridge"
+      - "SNS"
+      - "SQS"
+      - "Lambda"
+      - "Step Functions"
+      - "idempotency"
+  constraints:
+    must_mention:
+      - "idempotency"
+      - "fan-out"
+    must_not_claim:
+      - "EventBridge guarantees exactly-once delivery"
+      - "Step Functions prevents all duplicate executions"
+    max_tokens: 400

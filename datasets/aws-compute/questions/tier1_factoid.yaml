@@ -1,0 +1,595 @@
+- id: "compute-t1-001"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is AWS Lambda and how does it execute code?"
+  ground_truth:
+    answer: >
+      AWS Lambda is a serverless compute service that lets you run code without provisioning or
+      managing servers. You upload code as a deployment package (ZIP or container image), configure
+      a function with a handler entry point, and Lambda allocates compute capacity automatically.
+      Execution is triggered by events (API Gateway, S3, DynamoDB Streams, SQS, etc.) or direct
+      invocations. Lambda charges per request and per GB-second of compute time. Functions have a
+      maximum execution timeout of 15 minutes and memory from 128 MB to 10,240 MB.
+    source_refs:
+      - "lambda/latest/dg/welcome.html"
+    required_entities:
+      - "Lambda"
+      - "function"
+      - "event trigger"
+  constraints:
+    must_mention:
+      - "serverless"
+      - "function"
+    must_not_claim:
+      - "requires EC2 instances"
+      - "always-on server"
+    max_tokens: 200
+
+- id: "compute-t1-002"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What are EC2 instance types and how are they categorized?"
+  ground_truth:
+    answer: >
+      EC2 instance types are grouped into families based on workload characteristics. General
+      Purpose (M, T series) balance compute, memory, and networking. Compute Optimized (C series)
+      have a higher CPU-to-memory ratio for CPU-intensive workloads. Memory Optimized (R, X, z
+      series) provide large RAM for in-memory databases. Storage Optimized (I, D, H series) offer
+      high-throughput local storage. Accelerated Computing (P, G, Inf, Trn series) include GPUs
+      or custom ML accelerators. High Performance Computing (Hpc series) targets tightly coupled
+      HPC workloads. Each family has multiple sizes (e.g., m6i.large, m6i.4xlarge).
+    source_refs:
+      - "ec2/latest/userguide/instance-types.html"
+    required_entities:
+      - "EC2"
+      - "instance family"
+      - "instance type"
+  constraints:
+    must_mention:
+      - "Compute Optimized"
+      - "Memory Optimized"
+    must_not_claim:
+      - "all instances have same CPU-to-memory ratio"
+      - "only one instance family"
+    max_tokens: 200
+
+- id: "compute-t1-003"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is Amazon ECS and what launch types does it support?"
+  ground_truth:
+    answer: >
+      Amazon ECS (Elastic Container Service) is a fully managed container orchestration service
+      that runs Docker containers. It manages container placement, scheduling, service discovery,
+      and rolling updates. ECS supports two launch types: EC2 (you manage the underlying EC2
+      instances in a cluster) and Fargate (serverless — AWS manages the infrastructure, you
+      specify only vCPU and memory per task). ECS tasks are defined by task definitions, which
+      specify the container image, CPU/memory, networking mode, IAM roles, volumes, and
+      environment variables.
+    source_refs:
+      - "AmazonECS/latest/developerguide/Welcome.html"
+    required_entities:
+      - "ECS"
+      - "Fargate"
+      - "task definition"
+  constraints:
+    must_mention:
+      - "Fargate"
+      - "task definition"
+    must_not_claim:
+      - "ECS requires Kubernetes"
+      - "only EC2 launch type"
+    max_tokens: 200
+
+- id: "compute-t1-004"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is AWS Fargate and what does it eliminate compared to running containers on EC2?"
+  ground_truth:
+    answer: >
+      AWS Fargate is a serverless compute engine for containers that works with both ECS and EKS.
+      With Fargate, you do not provision, configure, or manage EC2 instances. You specify CPU and
+      memory at the task or pod level, and AWS runs the container on managed infrastructure.
+      Fargate eliminates the need to choose instance types, manage cluster capacity, patch
+      underlying OS, or scale EC2 fleets. Pricing is per vCPU and per GB of memory used, billed
+      per second with a 1-minute minimum. Fargate is ideal when you want to focus purely on
+      application logic without cluster management overhead.
+    source_refs:
+      - "AmazonECS/latest/developerguide/AWS_Fargate.html"
+    required_entities:
+      - "Fargate"
+      - "ECS"
+      - "serverless"
+  constraints:
+    must_mention:
+      - "serverless"
+      - "no EC2 management"
+    must_not_claim:
+      - "Fargate requires managing EC2"
+      - "only works with ECS"
+    max_tokens: 200
+
+- id: "compute-t1-005"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is Amazon EKS and how does it differ from self-managed Kubernetes?"
+  ground_truth:
+    answer: >
+      Amazon EKS (Elastic Kubernetes Service) is a managed Kubernetes service that runs the
+      Kubernetes control plane — etcd, API server, controller manager, and scheduler — across
+      multiple AWS Availability Zones. AWS manages control plane upgrades, patches, and
+      availability. Unlike self-managed Kubernetes, you do not operate the control plane nodes.
+      EKS integrates natively with IAM (IRSA — IAM Roles for Service Accounts), VPC networking
+      (VPC CNI), ELB (AWS Load Balancer Controller), and EBS/EFS (CSI drivers). Worker nodes can
+      be EC2 (self-managed or managed node groups) or Fargate pods.
+    source_refs:
+      - "eks/latest/userguide/what-is-eks.html"
+    required_entities:
+      - "EKS"
+      - "Kubernetes"
+      - "control plane"
+  constraints:
+    must_mention:
+      - "control plane"
+      - "managed"
+    must_not_claim:
+      - "EKS manages worker nodes automatically"
+      - "no Kubernetes control plane"
+    max_tokens: 200
+
+- id: "compute-t1-006"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is EC2 Auto Scaling and what are its core scaling policies?"
+  ground_truth:
+    answer: >
+      EC2 Auto Scaling automatically adjusts the number of EC2 instances in an Auto Scaling Group
+      (ASG) based on demand. Core scaling policies: Target Tracking — maintains a metric (e.g.,
+      CPU at 50%) by adding/removing instances; Step Scaling — scales in predefined steps based
+      on CloudWatch alarm thresholds; Simple Scaling — a single scaling adjustment per alarm
+      (older, less flexible than Step); Scheduled Scaling — pre-configured capacity changes at
+      known times; Predictive Scaling — uses ML to forecast demand and proactively scales.
+      ASGs also handle instance health checks (EC2 status or ELB health) and replace unhealthy
+      instances automatically.
+    source_refs:
+      - "autoscaling/ec2/userguide/scaling-overview.html"
+    required_entities:
+      - "Auto Scaling Group"
+      - "Target Tracking"
+      - "scaling policy"
+  constraints:
+    must_mention:
+      - "Target Tracking"
+      - "CloudWatch"
+    must_not_claim:
+      - "Auto Scaling only scales up"
+      - "no health check replacement"
+    max_tokens: 200
+
+- id: "compute-t1-007"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is AWS Elastic Beanstalk and what does it manage automatically?"
+  ground_truth:
+    answer: >
+      AWS Elastic Beanstalk is a PaaS (Platform as a Service) that deploys and scales web
+      applications without requiring you to manage underlying infrastructure. You upload an
+      application bundle (ZIP, WAR, or Docker image) and Beanstalk automatically handles:
+      EC2 instance provisioning, Auto Scaling group configuration, Elastic Load Balancer setup,
+      RDS database provisioning (optional), security group rules, CloudWatch monitoring, and
+      OS/platform patching. Supported platforms include Java, .NET, PHP, Node.js, Python, Ruby,
+      Go, and Docker. You retain full access to the underlying resources and can customize
+      configuration via .ebextensions files.
+    source_refs:
+      - "elasticbeanstalk/latest/dg/Welcome.html"
+    required_entities:
+      - "Elastic Beanstalk"
+      - "PaaS"
+      - "Auto Scaling"
+  constraints:
+    must_mention:
+      - "Auto Scaling"
+      - "load balancer"
+    must_not_claim:
+      - "Elastic Beanstalk hides all resource access"
+      - "supports only Java"
+    max_tokens: 200
+
+- id: "compute-t1-008"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is AWS Batch and what problem does it solve for batch computing workloads?"
+  ground_truth:
+    answer: >
+      AWS Batch is a fully managed service for running batch computing workloads at any scale.
+      It dynamically provisions the optimal quantity and type of compute resources (EC2 On-Demand
+      or Spot, or Fargate) based on the volume and resource requirements of submitted jobs.
+      You define job queues, compute environments, and job definitions (Docker container with
+      command, CPU/memory requirements, IAM role). Batch eliminates the need to install and
+      manage batch computing software or server clusters. It integrates with Step Functions for
+      workflow orchestration. Ideal for ML training, genomics, financial modeling, and
+      media rendering jobs.
+    source_refs:
+      - "batch/latest/userguide/what-is-batch.html"
+    required_entities:
+      - "AWS Batch"
+      - "job queue"
+      - "compute environment"
+  constraints:
+    must_mention:
+      - "job queue"
+      - "Spot"
+    must_not_claim:
+      - "requires always-on compute cluster"
+      - "only for ML workloads"
+    max_tokens: 200
+
+- id: "compute-t1-009"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is AWS Step Functions and what types of state machines does it support?"
+  ground_truth:
+    answer: >
+      AWS Step Functions is a serverless workflow orchestration service that coordinates
+      distributed application components using visual state machines defined in Amazon States
+      Language (ASL). It supports two workflow types: Standard Workflows — exactly-once execution,
+      up to 1 year duration, full execution history in the console, priced per state transition;
+      Express Workflows — at-least-once execution, up to 5 minutes duration, higher throughput,
+      priced per execution duration. State types include Task (invoke Lambda, ECS, etc.), Choice
+      (branching), Parallel (concurrent branches), Map (iterate over arrays), Wait, Pass, Succeed,
+      and Fail. Step Functions integrates with 200+ AWS services natively via SDK integrations.
+    source_refs:
+      - "step-functions/latest/dg/welcome.html"
+    required_entities:
+      - "Step Functions"
+      - "Standard Workflows"
+      - "Express Workflows"
+  constraints:
+    must_mention:
+      - "Standard Workflows"
+      - "Express Workflows"
+    must_not_claim:
+      - "only Lambda integration"
+      - "no branching support"
+    max_tokens: 200
+
+- id: "compute-t1-010"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is AWS App Runner and what type of applications is it designed for?"
+  ground_truth:
+    answer: >
+      AWS App Runner is a fully managed service for deploying containerized web applications and
+      APIs directly from source code (GitHub) or a container image (ECR). App Runner handles
+      infrastructure provisioning, deployment pipeline, load balancing, TLS certificates, auto
+      scaling, and health monitoring automatically. It targets stateless HTTP/HTTPS services that
+      need to scale to zero when idle. You configure CPU and memory per instance and App Runner
+      manages the rest. Unlike Elastic Beanstalk (which provisions EC2), App Runner uses a
+      fully abstracted compute layer similar to Fargate but with even less configuration.
+    source_refs:
+      - "apprunner/latest/dg/what-is-apprunner.html"
+    required_entities:
+      - "App Runner"
+      - "container"
+      - "auto scaling"
+  constraints:
+    must_mention:
+      - "container"
+      - "auto scaling"
+    must_not_claim:
+      - "App Runner manages EC2 instances"
+      - "only for batch workloads"
+    max_tokens: 200
+
+- id: "compute-t1-011"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is Amazon Lightsail and who is its target audience?"
+  ground_truth:
+    answer: >
+      Amazon Lightsail is a simplified cloud platform designed for developers, small businesses,
+      and students who need virtual private servers (VPS) without AWS complexity. It bundles
+      compute, SSD storage, data transfer, DNS management, and a static IP into predictable
+      monthly pricing plans starting from a few dollars per month. Lightsail offers pre-configured
+      application stacks (WordPress, LAMP, Node.js, MEAN, Magento, Drupal) via blueprints.
+      It also supports containers, databases, load balancers, and CDN distributions. Unlike full
+      EC2, Lightsail abstracts VPC configuration and uses a simplified console, but resources
+      can be peered to a VPC for hybrid setups.
+    source_refs:
+      - "lightsail/latest/userguide/what-is-amazon-lightsail.html"
+    required_entities:
+      - "Lightsail"
+      - "VPS"
+      - "blueprints"
+  constraints:
+    must_mention:
+      - "predictable pricing"
+      - "VPS"
+    must_not_claim:
+      - "Lightsail is the same as EC2"
+      - "no managed stacks"
+    max_tokens: 200
+
+- id: "compute-t1-012"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is an Application Load Balancer (ALB) and what Layer does it operate at?"
+  ground_truth:
+    answer: >
+      An Application Load Balancer (ALB) is a Layer 7 (HTTP/HTTPS/HTTP2/gRPC) load balancer that
+      routes requests based on content — URL path, host header, HTTP method, query string, source
+      IP, or HTTP header values. ALBs support listener rules with conditions and actions (forward
+      to target group, redirect, fixed-response, authenticate via Cognito or OIDC). Targets can be
+      EC2 instances, IP addresses, Lambda functions, or other ALBs. ALBs support WebSocket,
+      HTTP/2, sticky sessions (duration-based or app-based), and native integration with AWS WAF.
+      They operate within a VPC and span multiple Availability Zones for high availability.
+    source_refs:
+      - "elasticloadbalancing/latest/application/introduction.html"
+    required_entities:
+      - "ALB"
+      - "Layer 7"
+      - "listener rule"
+  constraints:
+    must_mention:
+      - "Layer 7"
+      - "path-based routing"
+    must_not_claim:
+      - "ALB operates at Layer 4"
+      - "ALB cannot route by URL path"
+    max_tokens: 200
+
+- id: "compute-t1-013"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is the difference between EC2 On-Demand, Reserved, and Spot pricing models?"
+  ground_truth:
+    answer: >
+      EC2 pricing has three main models. On-Demand: pay per second (Linux) or per hour, no
+      commitment, highest price, use for variable unpredictable workloads. Reserved Instances
+      (RI): 1- or 3-year commitment for a specific instance type in a region, up to 72% discount
+      vs On-Demand; can be Standard (fixed attributes) or Convertible (can exchange). Spot
+      Instances: bid for unused EC2 capacity, up to 90% discount but instances can be
+      interrupted with 2-minute warning when capacity is reclaimed. Savings Plans (Compute or
+      EC2) are a modern RI alternative offering flexibility across instance families with
+      committed spend. Choose On-Demand for dev/test, RI/Savings Plans for steady-state, Spot
+      for fault-tolerant batch or stateless workloads.
+    source_refs:
+      - "ec2/latest/userguide/instance-purchasing-options.html"
+    required_entities:
+      - "On-Demand"
+      - "Reserved Instance"
+      - "Spot Instance"
+  constraints:
+    must_mention:
+      - "Spot"
+      - "interruption"
+    must_not_claim:
+      - "Spot instances never interrupted"
+      - "Reserved Instances cannot be sold"
+    max_tokens: 200
+
+- id: "compute-t1-014"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is Lambda's execution model and what happens during a cold start?"
+  ground_truth:
+    answer: >
+      Lambda execution model: when a function is invoked, Lambda either reuses a warm execution
+      environment (warm start) or creates a new one (cold start). During a cold start, Lambda
+      downloads the deployment package, initializes the runtime, and runs the initialization code
+      outside the handler (global scope). This adds latency — typically 100ms to several seconds
+      depending on runtime and package size. Java and .NET runtimes have longer cold starts than
+      Python or Node.js. Mitigations: Provisioned Concurrency (pre-initializes environments,
+      eliminates cold starts for a fixed cost), Lambda SnapStart (for Java, snapshots the
+      initialized environment), and keeping packages small to reduce download time.
+    source_refs:
+      - "lambda/latest/dg/lambda-concurrency.html"
+    required_entities:
+      - "cold start"
+      - "Provisioned Concurrency"
+      - "warm start"
+  constraints:
+    must_mention:
+      - "cold start"
+      - "Provisioned Concurrency"
+    must_not_claim:
+      - "cold starts never happen"
+      - "Provisioned Concurrency is free"
+    max_tokens: 200
+
+- id: "compute-t1-015"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is ECS task definition and what key parameters does it specify?"
+  ground_truth:
+    answer: >
+      An ECS task definition is a JSON blueprint describing how one or more containers should
+      run as a task. Key parameters: container image (ECR or Docker Hub URI), CPU and memory
+      allocation (required for Fargate, optional hints for EC2), port mappings, environment
+      variables, secrets (from SSM Parameter Store or Secrets Manager), log configuration
+      (e.g., awslogs driver to CloudWatch Logs), IAM task role (permissions the container code
+      uses) and task execution role (permissions ECS uses to pull images and write logs),
+      network mode (awsvpc for Fargate, bridge/host for EC2), volumes (bind mounts, EFS, EBS),
+      and health check command. Task definitions are versioned; deploying a new revision does
+      not affect running tasks.
+    source_refs:
+      - "AmazonECS/latest/developerguide/task_definition_parameters.html"
+    required_entities:
+      - "task definition"
+      - "task role"
+      - "awsvpc"
+  constraints:
+    must_mention:
+      - "task role"
+      - "container image"
+    must_not_claim:
+      - "task definitions are not versioned"
+      - "Fargate does not require CPU/memory"
+    max_tokens: 200
+
+- id: "compute-t1-016"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is Lambda Layers and what purpose do they serve?"
+  ground_truth:
+    answer: >
+      Lambda Layers are a distribution mechanism for libraries, dependencies, custom runtimes,
+      or configuration files shared across multiple Lambda functions. A layer is a ZIP archive
+      extracted to /opt in the function execution environment. Functions can reference up to
+      5 layers, and layers can be shared across accounts or published publicly. Common uses:
+      packaging large dependencies (e.g., Pandas, PyTorch) once instead of per function, sharing
+      common utility code across functions, and distributing custom runtimes (for languages Lambda
+      does not natively support). Layers do not change function code — they extend the execution
+      environment. Layer size counts toward the 250 MB unzipped deployment limit.
+    source_refs:
+      - "lambda/latest/dg/chapter-layers.html"
+    required_entities:
+      - "Lambda Layers"
+      - "/opt"
+      - "shared dependencies"
+  constraints:
+    must_mention:
+      - "layers"
+      - "/opt"
+    must_not_claim:
+      - "layers replace function code"
+      - "unlimited layers per function"
+    max_tokens: 200
+
+- id: "compute-t1-017"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is AWS CloudWatch and what does it monitor for EC2 instances?"
+  ground_truth:
+    answer: >
+      Amazon CloudWatch is a monitoring and observability service that collects metrics, logs, and
+      events from AWS resources and applications. For EC2, CloudWatch collects standard metrics
+      every 5 minutes by default (or 1 minute with detailed monitoring): CPUUtilization,
+      NetworkIn/Out, DiskReadOps/WriteOps, and StatusCheckFailed. Memory utilization and disk
+      space are not collected by default — they require installing the CloudWatch Agent, which
+      pushes custom metrics. CloudWatch Alarms trigger Auto Scaling actions, SNS notifications,
+      or EC2 actions (stop, reboot, recover) based on thresholds. CloudWatch Logs stores
+      application and OS logs from instances running the CloudWatch Agent or Unified Agent.
+    source_refs:
+      - "AmazonCloudWatch/latest/monitoring/monitor_estimated_charges_with_cloudwatch.html"
+      - "ec2/latest/userguide/using-cloudwatch.html"
+    required_entities:
+      - "CloudWatch"
+      - "CPUUtilization"
+      - "CloudWatch Agent"
+  constraints:
+    must_mention:
+      - "CloudWatch Agent"
+      - "memory"
+    must_not_claim:
+      - "CloudWatch collects memory by default"
+      - "no custom metrics possible"
+    max_tokens: 200
+
+- id: "compute-t1-018"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is an EKS managed node group and how does it differ from self-managed nodes?"
+  ground_truth:
+    answer: >
+      An EKS managed node group is a set of EC2 instances provisioned and managed by AWS as
+      worker nodes in an EKS cluster. AWS handles: AMI selection (EKS-optimized AMI), node
+      provisioning via Auto Scaling Groups, Kubernetes version upgrades (graceful drain and
+      replace), and node health replacement. Self-managed nodes require you to bootstrap nodes
+      manually, manage ASG lifecycle hooks, and handle upgrades. Managed node groups support
+      multiple instance types within one group (for Spot diversity), custom launch templates
+      (for custom AMI or user data), and label/taint configuration. Fargate profiles are an
+      alternative that eliminates node management entirely for compatible Pod workloads.
+    source_refs:
+      - "eks/latest/userguide/managed-node-groups.html"
+    required_entities:
+      - "managed node group"
+      - "EKS"
+      - "Auto Scaling Group"
+  constraints:
+    must_mention:
+      - "managed node group"
+      - "upgrade"
+    must_not_claim:
+      - "managed node groups are free"
+      - "no customization possible"
+    max_tokens: 200
+
+- id: "compute-t1-019"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is Lambda concurrency and what is the difference between reserved and provisioned concurrency?"
+  ground_truth:
+    answer: >
+      Lambda concurrency is the number of function instances running simultaneously. The default
+      account-level concurrency limit is 1,000 concurrent executions per region (can be increased).
+      Reserved concurrency: sets a maximum concurrent execution limit for a specific function,
+      ensuring it cannot consume all account concurrency and other functions always have capacity.
+      It does not pre-initialize environments (cold starts still possible). Provisioned
+      concurrency: pre-initializes a specified number of execution environments so they are
+      warm and ready to respond immediately — eliminating cold starts. Provisioned concurrency
+      has an additional hourly cost beyond standard invocation pricing. Unreserved concurrency
+      is shared across functions with no reserved setting.
+    source_refs:
+      - "lambda/latest/dg/configuration-concurrency.html"
+    required_entities:
+      - "reserved concurrency"
+      - "provisioned concurrency"
+      - "cold start"
+  constraints:
+    must_mention:
+      - "reserved concurrency"
+      - "provisioned concurrency"
+    must_not_claim:
+      - "provisioned concurrency is free"
+      - "reserved concurrency eliminates cold starts"
+    max_tokens: 200
+
+- id: "compute-t1-020"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is Network Load Balancer (NLB) and when should you choose it over ALB?"
+  ground_truth:
+    answer: >
+      A Network Load Balancer (NLB) operates at Layer 4 (TCP, UDP, TLS) and is designed for
+      ultra-low latency and extreme throughput — millions of requests per second. NLB preserves
+      the client source IP by default (ALB replaces it with its own IP unless Proxy Protocol is
+      used). NLB supports static IP addresses and Elastic IP assignment per AZ, making it
+      suitable when clients require whitelisting a fixed IP. Choose NLB over ALB when: you need
+      TCP/UDP protocols beyond HTTP, lowest possible latency matters, you need static IPs, or
+      you are integrating with AWS PrivateLink (which requires NLB). ALB is better for HTTP/S
+      routing with content-based rules, auth integration, and gRPC.
+    source_refs:
+      - "elasticloadbalancing/latest/network/introduction.html"
+    required_entities:
+      - "NLB"
+      - "Layer 4"
+      - "static IP"
+  constraints:
+    must_mention:
+      - "Layer 4"
+      - "static IP"
+    must_not_claim:
+      - "NLB operates at Layer 7"
+      - "NLB replaces source IP by default"
+    max_tokens: 200

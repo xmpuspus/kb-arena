@@ -10,10 +10,10 @@ All 5 intents feed into hybrid strategy's routing logic.
 from __future__ import annotations
 
 import re
-from enum import Enum
+from enum import StrEnum
 
 
-class QueryIntent(str, Enum):
+class QueryIntent(StrEnum):
     FACTOID = "factoid"
     COMPARISON = "comparison"
     RELATIONAL = "relational"
@@ -54,6 +54,12 @@ class IntentRouter:
             r"\bif I .+ what happens\b",
             r"\bcause(?:s)?\b",
             r"\bimplication(?:s)?\b",
+            r"\btrigger(?:s)?\b",
+            r"\binvoke(?:s)?\b",
+            r"\bconnect(?:s|ed)? to\b",
+            r"\broute(?:s)? to\b",
+            r"\blogs? to\b",
+            r"\bdeployed in\b",
         ],
         QueryIntent.PROCEDURAL: [
             r"\bhow (?:do|can|should|to)\b",
@@ -64,6 +70,54 @@ class IntentRouter:
             r"\binstall\b",
             r"\bcreate\b",
             r"\bbuild\b",
+            r"\bdeploy\b",
+            r"\blaunch\b",
+            r"\benable\b",
+            r"\battach\b",
+        ],
+        QueryIntent.FACTOID: [
+            # AWS compute
+            r"\b(?:AWS )?Lambda\b",
+            r"\b(?:Amazon )?EC2\b",
+            r"\b(?:Amazon )?ECS\b",
+            r"\b(?:AWS )?Fargate\b",
+            r"\b(?:AWS )?Batch\b",
+            r"\bStep Functions\b",
+            r"\bElastic Beanstalk\b",
+            r"\bAuto Scaling\b",
+            r"\bEKS\b",
+            # AWS storage
+            r"\b(?:Amazon )?S3\b",
+            r"\b(?:Amazon )?EBS\b",
+            r"\b(?:Amazon )?EFS\b",
+            r"\b(?:Amazon )?FSx\b",
+            r"\bGlacier\b",
+            r"\bStorage Gateway\b",
+            # AWS networking
+            r"\b(?:Amazon )?VPC\b",
+            r"\bRoute 53\b",
+            r"\bCloudFront\b",
+            r"\b(?:Application )?ALB\b",
+            r"\b(?:Network )?NLB\b",
+            r"\bAPI Gateway\b",
+            r"\bDirect Connect\b",
+            r"\bElastic Load Balancing\b",
+            r"\bWAF\b",
+            # AWS identity & security
+            r"\b(?:AWS )?IAM\b",
+            r"\b(?:AWS )?ACM\b",
+            r"\b(?:AWS )?KMS\b",
+            r"\bSecrets Manager\b",
+            # AWS database & messaging
+            r"\bDynamoDB\b",
+            r"\b(?:Amazon )?RDS\b",
+            r"\b(?:Amazon )?Aurora\b",
+            r"\b(?:Amazon )?SQS\b",
+            r"\b(?:Amazon )?SNS\b",
+            # AWS operations
+            r"\bCloudWatch\b",
+            r"\bCloudFormation\b",
+            r"\bCloudTrail\b",
         ],
     }
 

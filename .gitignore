@@ -56,3 +56,6 @@ datasets/*/raw/*.txt
 # Processed data (generated, not committed)
 datasets/*/processed/*.jsonl
 !datasets/*/processed/.gitkeep
+
+# Claude Code
+.claude/

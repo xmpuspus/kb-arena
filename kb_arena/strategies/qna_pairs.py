@@ -19,7 +19,8 @@ from kb_arena.strategies.base import AnswerResult, Strategy
 
 COLLECTION_NAME = "qna_pairs"
 
-QNA_GENERATION_PROMPT = """You are a technical documentation expert. Generate 3-5 question-answer pairs from this documentation section.
+QNA_GENERATION_PROMPT = """You are a technical documentation expert. \
+Generate 3-5 question-answer pairs from this documentation section.
 
 Rules:
 - Questions should be what a developer would actually ask
@@ -32,8 +33,12 @@ Section heading: {heading}
 Section content:
 {content}"""
 
-ANSWER_PROMPT = """You are a documentation assistant. A user asked a question and retrieved a pre-generated answer.
-Lightly rephrase the answer to directly address the user's phrasing. Keep it factual and concise."""
+ANSWER_PROMPT = (
+    "You are a documentation assistant. A user asked a question"
+    " and retrieved a pre-generated answer.\n"
+    "Lightly rephrase the answer to directly address the user's phrasing."
+    " Keep it factual and concise."
+)
 
 
 def _parse_qna_json(raw: str) -> list[dict]:
@@ -185,7 +190,10 @@ class QnAPairStrategy(Strategy):
         answer = best_answer
         if best_answer and matched_q and matched_q.lower() != question.lower():
             llm = self._get_llm()
-            context = f"User question: {question}\nMatched question: {matched_q}\nPre-generated answer: {best_answer}"
+            context = (
+                f"User question: {question}\nMatched question: {matched_q}"
+                f"\nPre-generated answer: {best_answer}"
+            )
             answer = await llm.generate(
                 query=question,
                 context=context,

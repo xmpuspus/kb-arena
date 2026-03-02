@@ -1,0 +1,482 @@
+- id: "compute-t4-001"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do IAM roles, VPC security groups, and EC2 instance profiles work together
+    to grant an EC2 instance secure access to S3 and RDS?
+  ground_truth:
+    answer: >
+      Three layers work together: 1. IAM instance profile: an EC2 instance profile is a
+      container for an IAM role attached at instance launch (or later). The instance
+      automatically receives temporary credentials via the instance metadata service
+      (IMDS at 169.254.169.254). The IAM role's permissions policy grants s3:GetObject,
+      s3:PutObject on the target bucket ARN — no hardcoded credentials needed. 2. Security
+      group for outbound internet access: the EC2 instance's security group must allow
+      outbound HTTPS (443) to reach S3 public endpoints, OR a VPC Gateway Endpoint for S3 is
+      created (no security group rule needed for endpoint traffic, only a bucket policy with
+      aws:sourceVpc condition). 3. RDS access: the RDS instance is in a private subnet with
+      a security group allowing inbound on the DB port (3306/5432) from the EC2 security group
+      ID. The EC2 security group does not need an explicit outbound rule if it allows all
+      outbound. The IAM role does not grant access to RDS — RDS IAM authentication is
+      separate and requires enabling it on the RDS instance and granting rds-db:connect in
+      the IAM policy with the DB user ARN. For standard password auth, only security group
+      rules matter for RDS network access.
+    source_refs:
+      - "IAM/latest/UserGuide/id_roles_use_switch-role-ec2_instance-profiles.html"
+      - "vpc/latest/userguide/VPC_SecurityGroups.html"
+      - "AmazonRDS/latest/UserGuide/UsingWithRDS.IAMDBAuth.html"
+    required_entities:
+      - "IAM instance profile"
+      - "EC2 security group"
+      - "IMDS"
+      - "RDS security group"
+  constraints:
+    must_mention:
+      - "instance profile"
+      - "security group"
+    must_not_claim:
+      - "IAM role grants RDS network access"
+      - "hardcoded credentials required"
+    max_tokens: 300
+
+- id: "compute-t4-002"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do ECS task roles, ECR image pulls, and Secrets Manager integrate to
+    give containers the correct permissions without hardcoding credentials?
+  ground_truth:
+    answer: >
+      Three relationships: 1. ECR image pull: ECS uses the task execution role (not the task
+      role) to authenticate with ECR. The execution role needs ecr:GetAuthorizationToken,
+      ecr:BatchCheckLayerAvailability, ecr:GetDownloadUrlForLayer, ecr:BatchGetImage. AWS
+      provides the AmazonECSTaskExecutionRolePolicy managed policy. The ECS agent uses these
+      permissions before the container starts. 2. Task role: once the container starts, it uses
+      a separate task role for application-level AWS API calls (e.g., s3:PutObject, dynamodb:
+      Query). The task role is attached to the task definition and credentials are delivered
+      via the ECS container credentials endpoint (not IMDS). 3. Secrets Manager: secrets
+      (database passwords, API keys) are specified in the task definition as secrets with
+      valueFrom pointing to a Secrets Manager ARN or SSM Parameter Store path. ECS injects
+      them as environment variables at container startup. The execution role needs
+      secretsmanager:GetSecretValue on those ARNs. The task role is separate — it does not
+      need Secrets Manager access unless the application calls the API at runtime.
+    source_refs:
+      - "AmazonECS/latest/developerguide/task_execution_IAM_role.html"
+      - "AmazonECS/latest/developerguide/task-iam-roles.html"
+      - "AmazonECS/latest/developerguide/specifying-sensitive-data-secrets.html"
+    required_entities:
+      - "task execution role"
+      - "task role"
+      - "ECR"
+      - "Secrets Manager"
+  constraints:
+    must_mention:
+      - "task execution role"
+      - "task role"
+    must_not_claim:
+      - "task role pulls ECR images"
+      - "secrets injected via IMDS"
+    max_tokens: 300
+
+- id: "compute-t4-003"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do ALB target groups, ECS services, and CloudMap service discovery
+    work together in a microservices architecture?
+  ground_truth:
+    answer: >
+      Two discovery mechanisms work differently: ALB-based routing and CloudMap service
+      discovery. ALB target groups (IP mode): when ECS registers a task with awsvpc networking,
+      the task gets its own ENI and IP. The ECS service registers each task IP in the ALB
+      target group automatically and deregisters on task stop. The ALB health checks each IP
+      and routes traffic to healthy tasks. Used for north-south (external to service) traffic.
+      CloudMap service discovery: ECS creates a CloudMap namespace (HTTP or DNS type) and
+      service entry. Each task registers a DNS A record (for DNS namespace) or a service
+      instance (for HTTP namespace) with its private IP. Other microservices discover the
+      service via DNS (e.g., api.internal.namespace.local) which returns all healthy task IPs.
+      CloudMap TTL is short (0-30 sec); client-side load balancing distributes across IPs.
+      Used for east-west (service-to-service) traffic. Both can coexist: public-facing services
+      use ALB, internal service mesh uses CloudMap DNS, with Route 53 Resolver for DNS
+      resolution within the VPC.
+    source_refs:
+      - "AmazonECS/latest/developerguide/service-load-balancing.html"
+      - "AmazonECS/latest/developerguide/service-discovery.html"
+    required_entities:
+      - "ALB target group"
+      - "ECS service"
+      - "CloudMap"
+      - "awsvpc"
+  constraints:
+    must_mention:
+      - "CloudMap"
+      - "awsvpc"
+    must_not_claim:
+      - "ALB and CloudMap cannot coexist"
+      - "CloudMap requires ALB"
+    max_tokens: 300
+
+- id: "compute-t4-004"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do Lambda execution role, resource-based policies, and VPC endpoints
+    work together to allow Lambda to call DynamoDB without internet access?
+  ground_truth:
+    answer: >
+      Three components: 1. Lambda execution role: the Lambda function's IAM role must have
+      dynamodb:GetItem, dynamodb:PutItem (etc.) permissions on the DynamoDB table ARN. These
+      are IAM identity-based permissions controlling what the Lambda code can call. 2. VPC
+      Gateway Endpoint for DynamoDB: if the Lambda function is deployed in a VPC with private
+      subnets, create a Gateway Endpoint for DynamoDB in the VPC. Add a route to the endpoint
+      in the private subnet's route table (automatically added via the endpoint creation wizard).
+      The endpoint allows traffic to DynamoDB to route privately without a NAT Gateway or
+      internet access. Gateway Endpoints are free. 3. Endpoint policy: the VPC Gateway Endpoint
+      has an optional endpoint policy (resource-based policy on the endpoint) that restricts
+      which DynamoDB actions or tables can be accessed through the endpoint — acts as an
+      additional guardrail beyond the IAM role. DynamoDB's own resource-based policy
+      (table policy) can further restrict access to specific VPCs via aws:sourceVpc condition.
+      All three layers compose: IAM role allows the action, endpoint routes traffic privately,
+      endpoint policy and table policy provide additional boundaries.
+    source_refs:
+      - "amazondynamodb/latest/developerguide/vpc-endpoints-dynamodb.html"
+      - "lambda/latest/dg/configuration-vpc.html"
+    required_entities:
+      - "Lambda execution role"
+      - "VPC Gateway Endpoint"
+      - "DynamoDB"
+      - "endpoint policy"
+  constraints:
+    must_mention:
+      - "Gateway Endpoint"
+      - "endpoint policy"
+    must_not_claim:
+      - "NAT Gateway required for DynamoDB"
+      - "Gateway Endpoint has hourly cost"
+    max_tokens: 300
+
+- id: "compute-t4-005"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do EKS OIDC provider, IRSA (IAM Roles for Service Accounts), and
+    Kubernetes service accounts work together to give pods AWS permissions?
+  ground_truth:
+    answer: >
+      IRSA (IAM Roles for Service Accounts) eliminates the need for node-level EC2 instance
+      profiles that grant permissions to all pods on a node. How it works: 1. EKS creates an
+      OIDC identity provider endpoint for the cluster. Register this OIDC provider in IAM.
+      2. Create an IAM role with a trust policy that trusts the OIDC provider and specifies the
+      Kubernetes namespace and service account name as conditions:
+      oidc.eks.{region}.amazonaws.com/id/{OIDC_ID}:sub = system:serviceaccount:{namespace}:{sa-name}.
+      Attach the required permissions policy to the role. 3. Create a Kubernetes service account
+      in the namespace and annotate it with eks.amazonaws.com/role-arn: {IAM_role_ARN}. 4. Any
+      pod using that service account receives a projected token (via the EKS Pod Identity Webhook)
+      mounted at /var/run/secrets/eks.amazonaws.com/serviceaccount/token. The AWS SDK
+      automatically uses this token to assume the IAM role via STS. Result: each pod gets
+      fine-grained, pod-scoped AWS permissions without sharing credentials with other pods.
+      EKS Pod Identity (2023) is a simpler alternative: an association between service account
+      and IAM role configured via the EKS API, no OIDC setup required.
+    source_refs:
+      - "eks/latest/userguide/iam-roles-for-service-accounts.html"
+    required_entities:
+      - "IRSA"
+      - "OIDC provider"
+      - "Kubernetes service account"
+      - "IAM role"
+  constraints:
+    must_mention:
+      - "OIDC"
+      - "service account"
+    must_not_claim:
+      - "IRSA requires node IAM role"
+      - "all pods on a node share one IAM role with IRSA"
+    max_tokens: 300
+
+- id: "compute-t4-006"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do Step Functions, SQS, and Lambda work together to implement
+    a distributed saga pattern for compensating transactions?
+  ground_truth:
+    answer: >
+      The saga pattern coordinates distributed transactions where each step must have a
+      compensating transaction for rollback. Implementation with Step Functions + SQS + Lambda:
+      1. Step Functions state machine defines the saga: each step is a Task state invoking a
+      Lambda function that performs a local transaction (e.g., ReserveInventory, ChargeCreditCard,
+      ConfirmOrder). 2. Each Task state has a Catch for task failure: on error, the state machine
+      transitions to a compensation branch with parallel compensating Tasks
+      (e.g., ReleaseInventory, RefundCreditCard). 3. For long-running steps or external system
+      coordination, use the Wait for TaskToken pattern: Step Functions sends a message to SQS
+      with the task token embedded. An external service (or Lambda consumer) processes the SQS
+      message and calls SendTaskSuccess/SendTaskFailure with the token to resume the workflow.
+      4. SQS provides durability if Lambda consumers are temporarily unavailable. The task token
+      approach decouples Step Functions from synchronous Lambda execution for cross-service
+      coordination. Step Functions provides the saga execution state; Lambda performs the work;
+      SQS buffers asynchronous coordination messages.
+    source_refs:
+      - "step-functions/latest/dg/connect-to-resource.html"
+      - "step-functions/latest/dg/concepts-patterns.html"
+    required_entities:
+      - "Step Functions"
+      - "SQS"
+      - "Lambda"
+      - "task token"
+      - "compensating transaction"
+  constraints:
+    must_mention:
+      - "task token"
+      - "compensating"
+    must_not_claim:
+      - "Step Functions provides ACID transactions"
+      - "saga requires a single database"
+    max_tokens: 300
+
+- id: "compute-t4-007"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do EC2 Auto Scaling lifecycle hooks, EventBridge, and Lambda work together
+    to implement custom instance initialization and termination logic?
+  ground_truth:
+    answer: >
+      Lifecycle hooks pause Auto Scaling transitions at two points: launch (after instance
+      starts, before it enters InService) and terminate (before instance terminates, after it
+      leaves InService). Integration with EventBridge and Lambda: 1. Define a lifecycle hook
+      on the ASG for autoscaling:EC2_INSTANCE_LAUNCHING or EC2_INSTANCE_TERMINATING.
+      2. Configure the hook to send a notification to an EventBridge event bus (or SNS/SQS).
+      3. Create an EventBridge rule matching lifecycle hook events (source: aws.autoscaling,
+      detail-type: EC2 Instance-launch Lifecycle Action). Target the rule to a Lambda function.
+      4. The Lambda performs custom logic: on launch — register the instance with an internal
+      service registry, run health checks, pull deployment artifacts. On terminate — drain
+      connections, deregister from service registry, flush metrics, archive logs.
+      5. After logic completes, Lambda calls autoscaling:CompleteLifecycleAction with CONTINUE
+      (proceed normally) or ABANDON (for launch, terminate the instance; for termination,
+      already terminating). The hook has a heartbeat timeout (default 3600 seconds); Lambda
+      must complete within this window or extend via RecordLifecycleActionHeartbeat.
+    source_refs:
+      - "autoscaling/ec2/userguide/lifecycle-hooks.html"
+    required_entities:
+      - "lifecycle hook"
+      - "EventBridge"
+      - "Lambda"
+      - "CompleteLifecycleAction"
+  constraints:
+    must_mention:
+      - "lifecycle hook"
+      - "CompleteLifecycleAction"
+    must_not_claim:
+      - "lifecycle hooks require SNS only"
+      - "no timeout on lifecycle hooks"
+    max_tokens: 300
+
+- id: "compute-t4-008"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do ECS cluster capacity providers, Auto Scaling groups, and managed scaling
+    work together to reduce cluster costs with Spot instances?
+  ground_truth:
+    answer: >
+      Capacity providers link ECS clusters to EC2 Auto Scaling Groups to manage cluster
+      scaling automatically. How they interact: 1. Create a Managed Scaling capacity provider:
+      associate an ASG with the ECS capacity provider and enable managed scaling. Set Target
+      Capacity (e.g., 80% — ECS keeps cluster at 80% utilization, leaving headroom for bursts).
+      2. ECS uses a Cluster Auto Scaling metric (CapacityProviderReservation) to calculate
+      how many instances are needed based on pending task resource requirements. It adjusts
+      the ASG desired capacity via CloudWatch + Auto Scaling. 3. For Spot: create two capacity
+      providers — one for On-Demand ASG (base capacity) and one for Spot ASG (overflow). Define
+      a capacity provider strategy on the ECS cluster: 1 On-Demand base, then weight 4 Spot
+      to 1 On-Demand for scale-out. ECS dispatches tasks to providers according to weights.
+      4. Managed termination protection: capacity provider can protect instances with running
+      tasks from ASG scale-in (drains tasks first). 5. Result: costs optimized by maximizing
+      Spot usage; On-Demand provides stable base; ECS manages the cluster size automatically
+      without manual ASG intervention.
+    source_refs:
+      - "AmazonECS/latest/developerguide/cluster-capacity-providers.html"
+    required_entities:
+      - "capacity provider"
+      - "managed scaling"
+      - "ASG"
+      - "CapacityProviderReservation"
+  constraints:
+    must_mention:
+      - "capacity provider"
+      - "managed termination protection"
+    must_not_claim:
+      - "capacity providers require manual ASG scaling"
+      - "Spot not supported with capacity providers"
+    max_tokens: 300
+
+- id: "compute-t4-009"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do Lambda function destinations, SQS dead-letter queues, and CloudWatch
+    alarms work together to ensure reliable asynchronous Lambda processing?
+  ground_truth:
+    answer: >
+      Asynchronous Lambda invocations (from S3, SNS, EventBridge, etc.) retry automatically
+      twice on failure. After all retries, the event is either dropped or sent to a failure
+      destination. Three complementary reliability mechanisms: 1. Lambda Destinations
+      (recommended): configure OnSuccess and OnFailure destinations. OnFailure can point to
+      SQS, SNS, Lambda, or EventBridge. The destination receives the original event plus
+      function response metadata (including the error). More information than a DLQ.
+      2. DLQ on the function: an older mechanism — sends only the original event payload to
+      SQS or SNS on failure, without metadata. Destinations are preferred for new code.
+      Both can be configured simultaneously — Destination takes precedence for async
+      invocations if both are set. 3. CloudWatch Alarms: Lambda publishes Errors, Throttles,
+      DeadLetterErrors (failed DLQ deliveries), and DestinationDeliveryFailures metrics.
+      Create alarms on these metrics with SNS notification to operations teams. Specifically
+      alarm on DeadLetterErrors — if Lambda cannot deliver to the DLQ (e.g., SQS queue full,
+      permissions issue), the event is lost silently without this alarm.
+    source_refs:
+      - "lambda/latest/dg/invocation-async.html"
+      - "lambda/latest/dg/invocation-destinations.html"
+    required_entities:
+      - "Lambda Destinations"
+      - "DLQ"
+      - "DeadLetterErrors"
+      - "CloudWatch alarm"
+  constraints:
+    must_mention:
+      - "Destinations"
+      - "DeadLetterErrors"
+    must_not_claim:
+      - "DLQ and Destinations are identical"
+      - "async Lambda never loses events without config"
+    max_tokens: 300
+
+- id: "compute-t4-010"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do EKS network policies, VPC CNI security groups for pods, and namespace
+    RBAC work together to implement pod-level security isolation?
+  ground_truth:
+    answer: >
+      Three independent but complementary security layers: 1. Kubernetes Network Policies
+      (Layer 3/4 traffic control): define which pods can communicate with each other using
+      podSelector and namespaceSelector. Enforced by a CNI plugin that supports network policy
+      (e.g., AWS VPC CNI with Calico, or Cilium). Default deny ingress policy in a namespace
+      blocks all inbound pod-to-pod traffic unless explicitly allowed. Network policies work
+      at the overlay level using pod IP labels. 2. VPC Security Groups for Pods (AWS-specific):
+      assign a VPC security group directly to a pod (via SecurityGroupPolicy CRD). Traffic to/
+      from that pod is enforced at the VPC level — can reference other security groups by ID.
+      Required for pods that need to access AWS resources (RDS, ElastiCache) via security group
+      rules without CIDR-based rules. Uses ENI trunking (requires compatible instance types,
+      m5.large minimum). 3. Kubernetes RBAC: controls which users or service accounts can
+      perform Kubernetes API actions (create pods, list secrets, exec into containers) within
+      namespaces. Uses Roles/RoleBindings (namespace-scoped) and ClusterRoles/ClusterRoleBindings.
+      These three layers are orthogonal: RBAC controls who can deploy/manage workloads, Network
+      Policies control pod-to-pod traffic flow, Security Groups control pod-to-AWS-service traffic.
+    source_refs:
+      - "eks/latest/userguide/network-policies.html"
+      - "eks/latest/userguide/security-groups-for-pods.html"
+    required_entities:
+      - "Network Policy"
+      - "Security Groups for Pods"
+      - "RBAC"
+      - "ENI trunking"
+  constraints:
+    must_mention:
+      - "Network Policy"
+      - "Security Groups for Pods"
+    must_not_claim:
+      - "RBAC controls pod network traffic"
+      - "Network Policy and Security Groups are the same"
+    max_tokens: 300
+
+- id: "compute-t4-011"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do CloudWatch Application Signals, X-Ray distributed tracing, and Lambda
+    Powertools work together to achieve full observability for a Lambda-based API?
+  ground_truth:
+    answer: >
+      Three layers of observability working together: 1. AWS X-Ray distributed tracing: X-Ray
+      instruments Lambda functions automatically when active tracing is enabled on the function.
+      Each invocation creates a trace with segments (Lambda runtime, initialization, invocation)
+      and subsegments (outbound AWS SDK calls, HTTP requests). X-Ray propagates trace context
+      (X-Amzn-Trace-Id header) across downstream Lambda invocations, API Gateway, SQS, and
+      other X-Ray integrated services, enabling end-to-end trace visualization. 2. Lambda
+      Powertools for Python/TypeScript/Java: open-source library simplifying structured logging
+      (JSON to CloudWatch Logs with trace/request correlation), X-Ray tracing decorators
+      (@tracer.capture_lambda_handler), and metrics (custom CloudWatch metrics via EMF —
+      Embedded Metric Format for zero-additional-API metrics publishing). 3. CloudWatch
+      Application Signals: auto-instruments applications (without code changes for supported
+      runtimes) to produce RED metrics (Rate, Errors, Duration) as CloudWatch metrics and
+      X-Ray traces. Provides a pre-built service health dashboard. Together: Powertools handles
+      structured logs and manual trace annotations, X-Ray provides distributed trace maps,
+      and Application Signals provides SLO-oriented health views. CloudWatch Logs Insights
+      queries over structured Powertools logs complement the trace data.
+    source_refs:
+      - "xray/latest/devguide/xray-lambda.html"
+      - "AmazonCloudWatch/latest/monitoring/CloudWatch-Application-Signals.html"
+    required_entities:
+      - "X-Ray"
+      - "Lambda Powertools"
+      - "Application Signals"
+      - "EMF"
+  constraints:
+    must_mention:
+      - "X-Ray"
+      - "Powertools"
+    must_not_claim:
+      - "X-Ray replaces structured logging"
+      - "no code changes needed for X-Ray in Lambda"
+    max_tokens: 300
+
+- id: "compute-t4-012"
+  tier: 4
+  type: relational
+  hops: 3
+  question: >
+    How do ECS task networking with awsvpc mode, Application Load Balancer, and
+    AWS PrivateLink work together to expose an internal microservice securely?
+  ground_truth:
+    answer: >
+      Three-layer architecture for internal service exposure: 1. ECS awsvpc networking: each
+      ECS task with awsvpc mode gets its own ENI and private IP in the VPC subnet. The ECS
+      service registers task IPs as targets in the target group (IP target type). This is
+      required because tasks do not have fixed EC2 instance IPs — they move across hosts.
+      The target group health-checks each task IP and deregisters unhealthy or stopped tasks.
+      2. NLB as PrivateLink endpoint: AWS PrivateLink requires an NLB (not ALB) as the
+      endpoint service backing. Create an NLB with an IP target group pointing to the same
+      ECS task IPs (or use a chained ALB → NLB architecture where NLB forwards to ALB).
+      Create a VPC Endpoint Service on the NLB. Consumer VPCs create Interface Endpoints
+      (PrivateLink) referencing the endpoint service. 3. PrivateLink benefits: consumer VPCs
+      can have overlapping CIDRs (unlike VPC peering), traffic never leaves AWS network,
+      the provider service is not exposed to consumer VPC address space — only the specific
+      service endpoint. Service accounts can require acceptance (manual or automated) before
+      granting consumer access. This architecture exposes ECS services across VPC or account
+      boundaries securely without peering.
+    source_refs:
+      - "AmazonECS/latest/developerguide/task-networking-awsvpc.html"
+      - "vpc/latest/privatelink/create-endpoint-service.html"
+    required_entities:
+      - "awsvpc"
+      - "NLB"
+      - "PrivateLink"
+      - "VPC Endpoint Service"
+  constraints:
+    must_mention:
+      - "awsvpc"
+      - "PrivateLink"
+    must_not_claim:
+      - "PrivateLink works with ALB directly as endpoint service"
+      - "awsvpc requires EC2 instance networking"
+    max_tokens: 300

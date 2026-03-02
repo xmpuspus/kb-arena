@@ -1,14 +1,14 @@
 # KB Arena
 
-Benchmark knowledge graphs vs vector RAG on real documentation.
+Benchmark knowledge graphs vs vector RAG on AWS documentation.
 
-KB Arena runs the same 200 questions against 5 retrieval strategies — naive vector, contextual vector, Q&A pairs, knowledge graph, and hybrid — and measures accuracy, latency percentiles, and response reliability across 3 real-world documentation corpora. The result: empirical evidence for which data representation actually works, not opinions.
+KB Arena runs the same 200 questions against 5 retrieval strategies — naive vector, contextual vector, Q&A pairs, knowledge graph, and hybrid — and measures accuracy, latency percentiles, and response reliability across 3 AWS documentation corpora (Compute, Storage, Networking). The result: empirical evidence for which data representation actually works when your documentation spans 200+ interconnected AWS services.
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-339-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ```mermaid
 graph TD
-    Q["How do I expose a StatefulSet with persistent<br/>storage through an Ingress with TLS termination?"]
+    Q["How do I set up a Lambda function behind API Gateway<br/>with VPC access to an RDS database?"]
 
     Q --> S1["Naive Vector<br/><small>ChromaDB · Embed→Rank</small>"]
     Q --> S2["Contextual Vector<br/><small>ChromaDB · Chunk+Parent</small>"]
@@ -23,8 +23,8 @@ graph TD
     S5 --> E
 
     E --> P1["1. Structural<br/><small>must_mention · must_not_claim</small>"]
-    P1 --> P2["2. Entity Coverage<br/><small>required entities in answer</small>"]
-    P2 --> P3["3. Source Attribution<br/><small>returned vs expected refs</small>"]
+    P1 --> P2["2. Entity Coverage<br/><small>required AWS entities in answer</small>"]
+    P2 --> P3["3. Source Attribution<br/><small>returned vs expected AWS doc refs</small>"]
     P3 --> P4["4. LLM-as-Judge<br/><small>accuracy · completeness · faithfulness</small>"]
 
     P4 --> R["Report<br/><small>accuracy by tier · latency p50/p95/p99<br/>reliability rates · cross-strategy ranking</small>"]
@@ -47,21 +47,34 @@ graph TD
 
 ## Screenshots
 
-**Benchmark results** — Sortable accuracy table by tier with grouped bar chart. Hybrid and knowledge graph strategies dominate on tier 3-5 questions where vector RAG breaks down.
+**Benchmark results** — Sortable accuracy table by tier with grouped bar chart. Hybrid and knowledge graph strategies dominate on tier 3-5 questions where cross-service AWS queries break vector RAG.
 
 ![Benchmark results](docs/screenshot-benchmark.png)
 
-**Strategy comparison** — Ask the same question to all 5 strategies simultaneously. Toggle strategies on/off, switch corpora, and compare answers side-by-side with SSE streaming.
+**Strategy comparison** — Ask the same question about AWS services to all 5 strategies simultaneously. Toggle strategies on/off, switch AWS corpora, and compare answers side-by-side with SSE streaming.
 
 ![Strategy comparison demo](docs/screenshot-demo.png)
 
-**Knowledge graph explorer** — Interactive force-directed graph visualization of extracted entities and relationships. Color-coded by type (Module, Class, Function, Exception), with search filtering and click-to-inspect.
+**Knowledge graph explorer** — Interactive force-directed graph visualization of AWS service dependencies extracted from documentation. Glow effects, degree-based sizing, hover highlighting, bezier edges, and zoom controls.
 
 ![Knowledge graph viewer](docs/screenshot-graph.png)
 
-**Home page** — Overview of the 5 strategies, 3 corpora, 5 difficulty tiers, and the evaluation methodology.
+**Home page** — Overview of the 5 strategies, 3 AWS corpora, 5 difficulty tiers, and the evaluation methodology.
 
 ![Home page](docs/screenshot-home.png)
+
+---
+
+## Why AWS Documentation?
+
+AWS has 200+ services with deep cross-service dependencies. A question like "How do I set up Lambda behind API Gateway with VPC access to RDS?" requires understanding 6 interconnected resources: API Gateway, Lambda, IAM Execution Role, VPC Subnets, Security Groups, and RDS Subnet Groups. This is exactly where knowledge graphs outperform vector RAG — the relationships between services matter more than the text of any single documentation page.
+
+KB Arena uses live AWS documentation as the test corpus because:
+
+- **Real complexity** — AWS service relationships are inherently graph-structured (IAM policies, VPC networking, service integrations)
+- **Known ground truth** — AWS docs are authoritative and verifiable
+- **Practical relevance** — "How do I configure X with Y?" is the #1 question format for AWS users
+- **Multi-hop reasoning** — Tier 4-5 questions require traversing 3-5 service dependencies that no single doc page covers
 
 ---
 
@@ -69,9 +82,9 @@ graph TD
 
 > "What should the data format be for freeform texts or multiple documents so we can have an accurate, reliable, and fast knowledge retrieval + chatbot system?"
 
-The source format matters far less than the retrieval architecture. Knowledge graphs as an intermediate representation — extracted from ANY source format — beat every other approach on multi-hop, relational, and comparative queries. Pure vector RAG wins on simple lookups but collapses on queries touching 3+ interconnected concepts.
+The source format matters far less than the retrieval architecture. Knowledge graphs as an intermediate representation — extracted from AWS documentation — beat every other approach on multi-hop, relational, and comparative queries. Pure vector RAG wins on simple lookups but collapses on queries touching 3+ interconnected AWS services.
 
-This project proves it with real data, reproducible benchmarks, and a live side-by-side chatbot demo.
+This project proves it with real AWS data, reproducible benchmarks, and a live side-by-side chatbot demo.
 
 ---
 
@@ -86,12 +99,12 @@ This project proves it with real data, reproducible benchmarks, and a live side-
 | Latency percentiles (p50/p95/p99) | Y | - | - | - |
 | Response reliability tracking | Y | Y | - | - |
 | 4-pass evaluator (structural + LLM) | Y | LLM-only | BM25 | LLM |
-| Multi-corpus (3 domains) | Y | Custom | 18 datasets | Custom |
+| Multi-corpus (3 AWS domains) | Y | Custom | 18 datasets | Custom |
 | Pip-installable CLI | Y | Y | Y | - |
 | Entity coverage scoring | Y | - | - | - |
 | Source attribution scoring | Y | Y | - | - |
 
-RAGAS and BEIR benchmark retrieval quality but only test vector-based approaches. KB Arena adds knowledge graph and hybrid strategies to the comparison, with a difficulty-tiered question set that isolates exactly where each approach breaks down.
+RAGAS and BEIR benchmark retrieval quality but only test vector-based approaches. KB Arena adds knowledge graph and hybrid strategies to the comparison, with a difficulty-tiered question set that isolates exactly where each approach breaks down on AWS documentation.
 
 ---
 
@@ -114,17 +127,17 @@ Start Neo4j (for knowledge graph strategy):
 docker compose up neo4j -d
 ```
 
-Run the full pipeline:
+Run the full pipeline on AWS documentation:
 
 ```bash
-# 1. Parse raw documentation into unified Document model
-kb-arena ingest ./docs --corpus python-stdlib
+# 1. Download and parse AWS documentation into unified Document model
+kb-arena ingest ./aws-docs --corpus aws-compute
 
-# 2. Build knowledge graph in Neo4j
-kb-arena build-graph --corpus python-stdlib
+# 2. Build knowledge graph of AWS service dependencies in Neo4j
+kb-arena build-graph --corpus aws-compute
 
 # 3. Build vector indexes in ChromaDB
-kb-arena build-vectors --corpus python-stdlib
+kb-arena build-vectors --corpus aws-compute
 
 # 4. Run benchmark (200 questions × 5 strategies)
 kb-arena benchmark --corpus all --strategy all
@@ -142,41 +155,41 @@ The API runs at `http://localhost:8000` and the Next.js frontend at `http://loca
 
 ## Real-World Examples
 
-### 1. Ingest Documentation — Any Format to JSONL
+### 1. Ingest AWS Documentation
 
-Parse a directory of raw docs into the unified Document model:
+Parse AWS documentation into the unified Document model:
 
 ```bash
-$ kb-arena ingest ./python-stdlib-docs --corpus python-stdlib --format html
+$ kb-arena ingest ./aws-docs --corpus aws-compute --format html
 
-Parsing ./python-stdlib-docs (format: html)
-  json.html → 47 sections, 12,847 tokens
-  os.html → 128 sections, 34,291 tokens
-  asyncio.html → 89 sections, 27,103 tokens
+Parsing ./aws-docs (format: html)
+  lambda/latest/dg/configuration-vpc.html → 34 sections, 9,847 tokens
+  ec2/latest/userguide/instance-types.html → 89 sections, 28,103 tokens
+  ecs/latest/developerguide/task-definitions.html → 47 sections, 14,291 tokens
   ...
-Written 412 documents to datasets/python-stdlib/processed/docs.jsonl
+Written 412 documents to datasets/aws-compute/processed/docs.jsonl
 ```
 
-Three parsers ship out of the box:
+Three AWS corpora ship out of the box:
 
 ```bash
-kb-arena ingest ./k8s-docs --corpus kubernetes --format markdown
-kb-arena ingest ./sec-filings --corpus sec-edgar --format sec-edgar
-kb-arena ingest ./anything --corpus custom --format auto  # auto-detects
+kb-arena ingest ./aws-docs --corpus aws-compute   # Lambda, EC2, ECS, EKS, Batch
+kb-arena ingest ./aws-docs --corpus aws-storage    # S3, DynamoDB, RDS, EFS, ElastiCache
+kb-arena ingest ./aws-docs --corpus aws-networking # VPC, CloudFront, Route 53, API Gateway, ELB
 ```
 
 ### 2. Build the Knowledge Graph
 
-Extract entities and relationships into Neo4j using corpus-specific schemas:
+Extract AWS service entities and relationships into Neo4j:
 
 ```bash
-$ kb-arena build-graph --corpus python-stdlib
+$ kb-arena build-graph --corpus aws-compute
 
 Extracting entities from 412 documents...
-  json.loads → Function (raises: JSONDecodeError, returns: Any)
-  json.JSONDecodeError → Exception (inherits: ValueError)
-  os.getcwd → Function (returns: str)
-  collections.OrderedDict → Class (inherits: dict)
+  Lambda → Service (connects_to: VPC, RDS, S3, DynamoDB, SQS)
+  API Gateway → Service (invokes: Lambda, integrates: Cognito)
+  IAM Execution Role → Policy (assumed_by: Lambda, ECS)
+  Security Group → Resource (protects: RDS, Lambda, EC2)
   ...
 Resolving duplicates (Jaro-Winkler threshold: 0.92)...
   Merged 23 duplicate entities
@@ -189,7 +202,7 @@ Done.
 Build ChromaDB indexes for the three vector-backed strategies:
 
 ```bash
-$ kb-arena build-vectors --corpus python-stdlib --strategy all
+$ kb-arena build-vectors --corpus aws-compute --strategy all
 
 Building index: naive_vector (412 documents)
   Embedding with text-embedding-3-large (3072 dims)...
@@ -197,7 +210,7 @@ Building index: naive_vector (412 documents)
 Done: naive_vector
 
 Building index: contextual_vector (412 documents)
-  Adding parent context to each chunk...
+  Adding parent AWS service context to each chunk...
   412 chunks indexed in ChromaDB
 Done: contextual_vector
 
@@ -209,31 +222,31 @@ Done: qna_pairs
 
 ### 4. Run the Benchmark
 
-Run 200 questions against all 5 strategies with per-query timeout and retry:
+Run 200 questions about AWS services against all 5 strategies:
 
 ```bash
 $ kb-arena benchmark --corpus all --strategy all
 
-Running benchmark: python-stdlib × naive_vector (75 questions)
+Running benchmark: aws-compute × naive_vector (75 questions)
   ████████████████████████████████████████ 75/75 [00:42]
-Running benchmark: python-stdlib × knowledge_graph (75 questions)
+Running benchmark: aws-compute × knowledge_graph (75 questions)
   ████████████████████████████████████████ 75/75 [01:14]
   ...
 
 Results written to:
-  results/python-stdlib_naive_vector.json
-  results/python-stdlib_contextual_vector.json
-  results/python-stdlib_qna_pairs.json
-  results/python-stdlib_knowledge_graph.json
-  results/python-stdlib_hybrid.json
-  results/kubernetes_naive_vector.json
+  results/aws-compute_naive_vector.json
+  results/aws-compute_contextual_vector.json
+  results/aws-compute_qna_pairs.json
+  results/aws-compute_knowledge_graph.json
+  results/aws-compute_hybrid.json
+  results/aws-storage_naive_vector.json
   ...
 ```
 
 Filter by corpus, strategy, or tier:
 
 ```bash
-kb-arena benchmark --corpus python-stdlib --strategy knowledge_graph --tier 4
+kb-arena benchmark --corpus aws-compute --strategy knowledge_graph --tier 4
 ```
 
 ### 5. Generate the Report
@@ -250,7 +263,7 @@ The report contains 6 sections per corpus plus a cross-strategy ranking:
 ```
 # KB Arena Benchmark Report
 
-## python-stdlib
+## aws-compute
 
 ### Overall Accuracy by Strategy
 | Strategy          | Accuracy | Completeness | Faithfulness | Avg Latency (ms) | Total Cost  | Cost/Correct |
@@ -261,29 +274,11 @@ The report contains 6 sections per corpus plus a cross-strategy ranking:
 | knowledge_graph   | ...      | ...          | ...          | ...              | $...        | $...         |
 | hybrid            | ...      | ...          | ...          | ...              | $...        | $...         |
 
-### Latency Distribution by Strategy
-| Strategy | Avg | p50 | p95 | p99 | Min | Max |
-
-### Response Reliability by Strategy
-| Strategy | Success Rate | Error Rate | Empty Rate | Avg Faithfulness | Avg Source Attr | Avg Entity Cov |
-
 ### Accuracy by Tier
-| Strategy          | Tier 1 - Factoid | Tier 2 - Multi-entity | Tier 3 - Comparative | Tier 4 - Relational | Tier 5 - Temporal |
-
-### Accuracy by Question Type
-| Strategy          | factoid | comparison | relational | temporal | causal |
-
-### Latency by Tier (p50 ms)
-| Strategy          | Tier 1 | Tier 2 | Tier 3 | Tier 4 | Tier 5 |
+| Strategy          | Tier 1 - Factoid | Tier 2 - Procedural | Tier 3 - Comparative | Tier 4 - Relational | Tier 5 - Multi-hop |
 
 ## Cross-Strategy Ranking
 | Rank | Strategy         | Avg Accuracy | p50 Latency (ms) | Success Rate | Composite |
-|------|------------------|-------------|------------------|-------------|-----------|
-| 1    | hybrid           | ...         | ...              | ...         | ...       |
-| 2    | knowledge_graph  | ...         | ...              | ...         | ...       |
-| 3    | contextual_vector| ...         | ...              | ...         | ...       |
-| 4    | naive_vector     | ...         | ...              | ...         | ...       |
-| 5    | qna_pairs        | ...         | ...              | ...         | ...       |
 
 *Composite = 0.5 * Accuracy + 0.3 * Reliability + 0.2 * Latency Score*
 ```
@@ -305,19 +300,21 @@ The chatbot API supports both synchronous and SSE streaming:
 # Synchronous — single strategy
 $ curl -s -X POST http://localhost:8000/chat \
   -H 'Content-Type: application/json' \
-  -d '{"query": "What exception does json.loads raise?", "strategy": "knowledge_graph"}' | python3 -m json.tool
+  -d '{"query": "What IAM permissions does Lambda need for VPC access?", "strategy": "knowledge_graph"}' | python3 -m json.tool
 
 {
-  "answer": "json.loads() raises json.JSONDecodeError when given invalid JSON. JSONDecodeError is a subclass of ValueError.",
+  "answer": "Lambda requires the AWSLambdaVPCAccessExecutionRole managed policy, which grants ec2:CreateNetworkInterface, ec2:DescribeNetworkInterfaces, and ec2:DeleteNetworkInterface permissions for creating ENIs in VPC subnets.",
   "strategy_used": "knowledge_graph",
-  "sources": ["json.html#json.JSONDecodeError", "json.html#json.loads"],
+  "sources": ["lambda/latest/dg/configuration-vpc.html", "lambda/latest/dg/lambda-intro-execution-role.html"],
   "graph_context": {
     "entities": [
-      {"name": "json.loads", "type": "Function"},
-      {"name": "json.JSONDecodeError", "type": "Exception"}
+      {"name": "Lambda", "type": "Service"},
+      {"name": "IAM Execution Role", "type": "Policy"},
+      {"name": "VPC", "type": "Service"}
     ],
     "relationships": [
-      {"source": "json.loads", "type": "RAISES", "target": "json.JSONDecodeError"}
+      {"source": "Lambda", "type": "ASSUMES", "target": "IAM Execution Role"},
+      {"source": "Lambda", "type": "DEPLOYED_IN", "target": "VPC"}
     ]
   },
   "latency_ms": 823.4,
@@ -329,254 +326,75 @@ $ curl -s -X POST http://localhost:8000/chat \
 SSE streaming returns 4 event types:
 
 ```
-event: message_id
-data: {"id": "a1b2c3d4"}
+event: token
+data: {"text": "Lambda requires"}
 
 event: token
-data: {"text": "json.loads()"}
-
-event: token
-data: {"text": " raises "}
-
-event: token
-data: {"text": "json.JSONDecodeError"}
+data: {"text": " the AWSLambdaVPCAccessExecutionRole"}
 
 event: done
-data: {"sources": ["json.html#json.JSONDecodeError"], "strategy_used": "knowledge_graph"}
+data: {"sources": ["lambda/latest/dg/configuration-vpc.html"], "strategy_used": "knowledge_graph"}
 
 event: meta
 data: {"latency_ms": 823.4, "tokens_used": 147, "cost_usd": 0.0012}
 ```
 
-### 7. Health Check
-
-```bash
-$ curl -s http://localhost:8000/health | python3 -m json.tool
-
-{
-  "status": "ok",
-  "neo4j": "connected",
-  "strategies": ["naive_vector", "contextual_vector", "qna_pairs", "knowledge_graph", "hybrid"]
-}
-```
-
-When Neo4j is unavailable, the graph strategy falls back to mock data gracefully:
-
-```json
-{
-  "status": "ok",
-  "neo4j": "unavailable (mock mode)",
-  "strategies": ["naive_vector", "contextual_vector", "qna_pairs", "knowledge_graph", "hybrid"]
-}
-```
-
 ---
 
-## Python API
+## The 200 Questions
 
-### Evaluate a Single Answer
+Questions are organized into 5 difficulty tiers across 3 AWS documentation corpora:
 
-```python
-import asyncio
-from kb_arena.benchmark.evaluator import evaluate
-from kb_arena.models.benchmark import GroundTruth, Constraints
+| Tier | Type | Hops | Where vector RAG breaks | Example |
+|------|------|------|--------------------------|---------|
+| 1 | Factoid | 1 | All strategies competitive | "What is the default timeout for a Lambda function?" |
+| 2 | Procedural | 2 | Vector drops to ~60% | "How do I enable server-side encryption on an S3 bucket with KMS?" |
+| 3 | Comparative | 2-3 | Vector drops to ~30%, graph dominates | "Compare S3 Standard vs Glacier vs Glacier Deep Archive for compliance archival" |
+| 4 | Relational | 3-4 | Only graph answers correctly | "What IAM policies does an ECS task need to pull from ECR, write to CloudWatch, and read from Secrets Manager?" |
+| 5 | Multi-hop | 3-5 | Only graph + provenance answers | "How does a request flow from Route 53 through CloudFront with WAF to an ALB target group running ECS Fargate tasks?" |
 
-async def main():
-    score = await evaluate(
-        answer="json.loads raises json.JSONDecodeError for invalid input.",
-        ground_truth=GroundTruth(
-            answer="json.loads() raises JSONDecodeError.",
-            source_refs=["json.html#json.JSONDecodeError"],
-            required_entities=["json.loads", "json.JSONDecodeError"],
-        ),
-        constraints=Constraints(
-            must_mention=["JSONDecodeError", "ValueError"],
-            must_not_claim=["TypeError", "SyntaxError"],
-        ),
-        sources=["json.html#json.JSONDecodeError"],
-        llm=None,  # structural-only (no LLM cost)
-    )
-    print(f"Accuracy: {score.accuracy}")                    # 0.5 (1 of 2 must_mention)
-    print(f"Entity coverage: {score.entity_coverage}")      # 1.0
-    print(f"Source attribution: {score.source_attribution}") # 1.0
-    print(f"Structural pass: {score.structural_pass}")       # True
+### Corpora
 
-asyncio.run(main())
+| Corpus | Questions | Domain | AWS Services |
+|--------|-----------|--------|--------------|
+| aws-compute | 75 | Compute services | Lambda, EC2, ECS, EKS, Batch, Fargate |
+| aws-storage | 65 | Storage & databases | S3, DynamoDB, RDS, EFS, ElastiCache, Redshift |
+| aws-networking | 60 | Networking & delivery | VPC, CloudFront, Route 53, API Gateway, ELB, WAF |
+
+Each question includes ground truth, required entities, source refs from AWS documentation, `must_mention` terms, and `must_not_claim` terms — all hand-verified against current AWS docs.
+
+### Question Format
+
+Questions are defined in YAML with full evaluation metadata:
+
+```yaml
+- id: "aws-compute-t4-003"
+  tier: 4
+  type: relational
+  hops: 3
+  question: "How do I set up a Lambda function behind API Gateway with VPC access to an RDS database?"
+  ground_truth:
+    answer: "Create API Gateway with Lambda proxy integration. Configure Lambda with VPC subnets and security groups..."
+    source_refs:
+      - "lambda/latest/dg/configuration-vpc.html"
+      - "AmazonRDS/latest/UserGuide/USER_VPC.html"
+      - "apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html"
+    required_entities:
+      - "API Gateway"
+      - "Lambda"
+      - "IAM Execution Role"
+      - "VPC"
+      - "Security Group"
+      - "RDS"
+  constraints:
+    must_mention:
+      - "AWSLambdaVPCAccessExecutionRole"
+      - "security group"
+      - "private subnet"
+    must_not_claim:
+      - "Lambda can access RDS without VPC configuration"
+      - "API Gateway needs VPC access to invoke Lambda"
 ```
-
-### Query a Single Strategy
-
-```python
-import asyncio
-from kb_arena.strategies import get_strategy
-
-async def main():
-    strategy = get_strategy("knowledge_graph")
-    result = await strategy.query("What does json.loads return?")
-
-    print(f"Answer: {result.answer}")
-    print(f"Sources: {result.sources}")
-    print(f"Latency: {result.latency_ms:.0f}ms")
-    print(f"Cost: ${result.cost_usd:.4f}")
-
-    if result.graph_context:
-        for entity in result.graph_context.entities:
-            print(f"  Entity: {entity.name} ({entity.type})")
-        for rel in result.graph_context.relationships:
-            print(f"  Rel: {rel.source} --{rel.type}--> {rel.target}")
-
-asyncio.run(main())
-```
-
-### Classify Query Intent
-
-```python
-import asyncio
-from kb_arena.chatbot.router import IntentRouter
-from kb_arena.llm.client import LLMClient
-
-async def main():
-    router = IntentRouter(llm=LLMClient())
-
-    # Stage 1 (keyword scan, <1ms)
-    intent = await router.classify("Compare json.dumps vs pickle.dumps")
-    print(intent)  # QueryIntent.COMPARISON
-
-    # Stage 2 (Haiku LLM, ~50ms) — only if keyword scan misses
-    intent = await router.classify("What implications does asyncio have for database access?")
-    print(intent)  # QueryIntent.RELATIONAL
-
-asyncio.run(main())
-```
-
-### Run Benchmark Programmatically
-
-```python
-import asyncio
-from kb_arena.benchmark.runner import run_benchmark
-from kb_arena.benchmark.reporter import generate_report
-
-async def main():
-    # Run a subset
-    await run_benchmark(corpus="python-stdlib", strategy="knowledge_graph", tier=4)
-
-    # Generate report
-    generate_report(corpus="python-stdlib", output="./my_report.md")
-
-asyncio.run(main())
-```
-
-### Use the LLM Client Directly
-
-```python
-import asyncio
-from kb_arena.llm.client import LLMClient
-
-async def main():
-    llm = LLMClient()
-
-    # Classification (Haiku, ~20 tokens, <50ms, cached system prompt)
-    intent = await llm.classify(
-        query="What's the difference between threads and processes?",
-        system_prompt="Classify as: factoid, comparison, relational",
-        allowed_values=["factoid", "comparison", "relational"],
-    )
-    print(intent)  # "comparison"
-
-    # Generation (Sonnet, cached system prompt)
-    answer = await llm.generate(
-        query="What does json.loads return?",
-        context="json.loads deserializes a JSON string to a Python object...",
-        system_prompt="You are a Python documentation assistant.",
-    )
-    print(answer)
-
-    # LLM-as-judge (Sonnet)
-    judgment = await llm.judge(
-        answer="json.loads returns a dict",
-        reference="json.loads returns a Python object — dict, list, str, int, float, bool, or None",
-        system_prompt="Score accuracy, completeness, faithfulness as JSON.",
-    )
-    print(judgment)  # {"accuracy": 0.6, "completeness": 0.4, "faithfulness": 1.0}
-
-asyncio.run(main())
-```
-
-### Work with Latency Stats
-
-```python
-from kb_arena.models.benchmark import LatencyStats
-
-# From a list of query times
-values = [120.5, 340.2, 180.7, 520.1, 90.3, 210.8, 150.4, 680.9, 310.6, 240.0]
-stats = LatencyStats.from_values(values)
-
-print(f"Avg: {stats.avg_ms:.0f}ms")   # 284ms
-print(f"p50: {stats.p50_ms:.0f}ms")   # 240ms
-print(f"p95: {stats.p95_ms:.0f}ms")   # 681ms (falls back to max for <20 samples)
-print(f"Min: {stats.min_ms:.0f}ms")   # 90ms
-print(f"Max: {stats.max_ms:.0f}ms")   # 681ms
-```
-
----
-
-## What Gets Measured
-
-KB Arena evaluates across three dimensions. Each dimension is broken down by question tier and strategy.
-
-### Accuracy (4-pass evaluation)
-
-Every answer goes through four sequential evaluation passes:
-
-```
-Pass 1: Structural Check         <1ms    regex-based
-  └── must_mention terms present? must_not_claim terms absent?
-Pass 2: Entity Coverage          <1ms    regex-based
-  └── what fraction of required_entities appear in the answer?
-Pass 3: Source Attribution        <1ms    substring matching
-  └── do returned sources match expected source_refs?
-Pass 4: LLM-as-Judge            ~500ms   Claude Sonnet
-  └── accuracy (0-1), completeness (0-1), faithfulness (0-1)
-```
-
-If Pass 1 fails (false claims detected), the answer scores 0.0 and the LLM judge is skipped — saving cost and preventing the LLM from rationalizing a wrong answer.
-
-### Latency
-
-Per-query wall-clock time with percentile breakdown:
-
-| Metric | Description |
-|--------|-------------|
-| avg | Mean latency across all queries |
-| p50 | Median — what most queries feel like |
-| p95 | Tail latency — 1 in 20 queries is this slow |
-| p99 | Worst-case latency (needs 100+ samples) |
-| min/max | Bounds |
-
-Reported per-strategy, per-tier, and cross-strategy. The p95 calculation requires 20+ samples to avoid noise; below that it falls back to max.
-
-### Reliability
-
-| Metric | Description |
-|--------|-------------|
-| Success rate | Queries that returned a non-error, non-empty answer |
-| Error rate | Timeouts, API failures, malformed responses |
-| Empty rate | Queries that returned nothing |
-| Avg faithfulness | Mean faithfulness score (0-1) from LLM judge |
-| Avg source attribution | Mean source attribution score |
-| Avg entity coverage | Mean entity coverage ratio |
-
-Each query runs with a configurable timeout (default 120s) and retry with exponential backoff (default 2 retries).
-
-### Cross-Strategy Ranking
-
-Strategies are ranked by a composite score:
-
-```
-Composite = 0.5 × Accuracy + 0.3 × Reliability + 0.2 × Latency Score
-```
-
-Where Latency Score = max(0, 1 - p50/10000), so a 10-second median maps to 0.0.
 
 ---
 
@@ -584,53 +402,50 @@ Where Latency Score = max(0, 1 - p50/10000), so a 10-second median maps to 0.0.
 
 ### Strategy 1: Naive Vector
 
-The baseline every RAG tutorial teaches. Chunk documents, embed with `text-embedding-3-large` (3072 dimensions), store in ChromaDB, retrieve top-k by cosine similarity, generate answer.
+The baseline every RAG tutorial teaches. Chunk AWS doc pages, embed with `text-embedding-3-large` (3072 dimensions), store in ChromaDB, retrieve top-k by cosine similarity, generate answer.
 
-**Strengths:** Fast, simple, good on factoid lookups.
-**Weakness:** No understanding of relationships between concepts. "Which modules implement the iterator protocol?" returns chunks that mention iterators but can't connect them.
+**Strengths:** Fast, simple, good on single-service factoid lookups.
+**Weakness:** No understanding of cross-service dependencies. "What IAM policies does an ECS task need for ECR and CloudWatch?" returns chunks about ECS but can't connect the IAM→ECR→CloudWatch dependency chain.
 
 ### Strategy 2: Contextual Vector
 
-Same as naive vector, but each chunk is embedded with its parent document context prepended. A chunk from `json.html` about `JSONDecodeError` gets embedded as "json module documentation: JSONDecodeError is a subclass of ValueError..."
+Same as naive vector, but each chunk is embedded with its parent AWS service context prepended. A chunk from the Lambda VPC docs gets embedded as "AWS Lambda developer guide — VPC configuration: When you connect a function to a VPC..."
 
-**Strengths:** Better at disambiguation — "loads" in json context vs "loads" in pickle context.
-**Weakness:** Still can't traverse relationships.
+**Strengths:** Better at disambiguating service-specific terms — "security group" in VPC context vs EC2 context vs RDS context.
+**Weakness:** Still can't traverse cross-service relationships.
 
 ### Strategy 3: Q&A Pairs
 
-LLM pre-generates question-answer pairs from each document at index time. At query time, the question is matched against pre-generated questions via vector similarity.
+LLM pre-generates question-answer pairs from each AWS doc page at index time. At query time, the question is matched against pre-generated questions via vector similarity.
 
 **Strengths:** Direct question-to-answer mapping — no retrieval noise.
-**Weakness:** Only answers questions the LLM thought to generate. Novel questions fall through.
+**Weakness:** Only answers questions the LLM thought to generate. Novel cross-service architecture questions fall through.
 
 ### Strategy 4: Knowledge Graph
 
-Extracts entities and relationships into Neo4j using corpus-specific schemas. Queries are classified by intent and routed to specialized Cypher templates. Entity resolution uses Jaro-Winkler similarity for fuzzy matching.
+Extracts AWS services, resources, policies, and their dependencies into Neo4j using AWS-specific schemas. Queries are classified by intent and routed to specialized Cypher templates. Entity resolution uses Jaro-Winkler similarity for fuzzy matching of AWS service names.
 
 Four Cypher templates:
 
 ```cypher
 -- Multi-hop traversal (tier 4-5 questions)
-MATCH path = (start)-[*1..{depth}]-(connected)
-WHERE start.fqn = $target
-RETURN connected.name, length(path) AS hops
+MATCH path = (start:Service)-[*1..{depth}]-(connected)
+WHERE start.name = $target
+RETURN connected.name, type(connected), length(path) AS hops
 
--- Comparison (tier 3 questions)
-MATCH (a)-[r1]-(shared)-[r2]-(b)
-WHERE a.fqn = $entity_a AND b.fqn = $entity_b
-RETURN shared.name, type(r1), type(r2)
-
--- Dependency chain (tier 4 relational)
-MATCH path = (source)-[:REQUIRES|IMPORTS|INHERITS*1..4]->(dep)
-WHERE source.fqn = $start
+-- Cross-service dependency chain
+MATCH path = (source:Service)-[:INVOKES|CONNECTS_TO|DEPLOYED_IN*1..4]->(dep)
+WHERE source.name = $start
 RETURN dep.name, length(path) AS depth
 
--- Fulltext search (all tiers)
-CALL db.index.fulltext.queryNodes('entity_search', $query) YIELD node, score
+-- Service comparison
+MATCH (a:Service)-[r1]-(shared)-[r2]-(b:Service)
+WHERE a.name = $service_a AND b.name = $service_b
+RETURN shared.name, type(r1), type(r2)
 ```
 
-**Strengths:** Multi-hop reasoning, relationship queries, comparisons across entities.
-**Weakness:** Slower (Neo4j round-trips), requires schema design per corpus.
+**Strengths:** Multi-hop reasoning across AWS services, dependency chain queries, service comparisons.
+**Weakness:** Slower (Neo4j round-trips), requires schema design per AWS domain.
 
 ### Strategy 5: Hybrid
 
@@ -642,65 +457,8 @@ comparison / relational → knowledge_graph (graph path)
 procedural → both paths, fused via RRF, re-ranked by Sonnet
 ```
 
-Results are deduplicated by leading-token overlap, re-ranked by Sonnet (each passage scored 0-1), and top 5 passages feed final generation.
-
-**Strengths:** Best of both — vector for recall, graph for precision on structured queries.
+**Strengths:** Best of both — vector for recall on single-service questions, graph for precision on cross-service architecture queries.
 **Weakness:** Highest latency (two retrieval paths + re-ranking), most complex.
-
----
-
-## The 200 Questions
-
-Questions are organized into 5 difficulty tiers across 3 corpora:
-
-| Tier | Type | Hops | Where vector RAG breaks | Example |
-|------|------|------|--------------------------|---------|
-| 1 | Factoid | 1 | All strategies competitive | "What is the default timeout for a Kubernetes liveness probe?" |
-| 2 | Multi-entity | 2 | Vector drops to ~60% | "Which services support both feature A and feature B?" |
-| 3 | Comparative | 2-3 | Vector drops to ~30%, graph dominates | "Compare the authentication methods of ConfigMap vs Secret vs ServiceAccount" |
-| 4 | Relational | 3-4 | Only graph answers correctly | "If I configure a PersistentVolumeClaim with ReadWriteMany, what downstream effects does that have on pod scheduling?" |
-| 5 | Multi-hop | 3-5 | Only graph + provenance answers | "What changed between K8s 1.25 and 1.28 that affects Ingress configurations using deprecated annotations?" |
-
-### Corpora
-
-| Corpus | Questions | Domain | Source Format |
-|--------|-----------|--------|---------------|
-| python-stdlib | 75 | API reference documentation | HTML |
-| kubernetes | 65 | Infrastructure documentation | Markdown |
-| sec-edgar | 60 | Financial regulatory filings | SEC EDGAR XML/HTML |
-
-Each question includes ground truth, required entities, source refs, `must_mention` terms, and `must_not_claim` terms — all hand-verified.
-
-### Question Format
-
-Questions are defined in YAML with full evaluation metadata:
-
-```yaml
-- id: "k8s-t4-003"
-  tier: 4
-  type: relational
-  hops: 3
-  question: "How do I expose a StatefulSet with persistent storage through an Ingress with TLS termination?"
-  ground_truth:
-    answer: "Create a headless Service targeting the StatefulSet, configure an Ingress resource with TLS..."
-    source_refs:
-      - "concepts/services-networking/ingress.md"
-      - "concepts/workloads/controllers/statefulset.md"
-    required_entities:
-      - "StatefulSet"
-      - "PersistentVolumeClaim"
-      - "Service"
-      - "Ingress"
-      - "TLS"
-  constraints:
-    must_mention:
-      - "headless Service"
-      - "volumeClaimTemplates"
-      - "tls"
-    must_not_claim:
-      - "StatefulSets cannot be exposed via Ingress"
-      - "use a LoadBalancer instead"
-```
 
 ---
 
@@ -710,14 +468,14 @@ Questions are defined in YAML with full evaluation metadata:
 kb_arena/
 ├── cli.py                        # Typer CLI — 7 commands
 ├── settings.py                   # Pydantic-settings, all config from env
-├── ingest/                       # Stage 1: document parsing
+├── ingest/                       # Stage 1: AWS documentation parsing
 │   ├── pipeline.py               # Orchestrator — detect format, dispatch parser
 │   └── parsers/
-│       ├── html.py               # BeautifulSoup HTML parser
+│       ├── html.py               # AWS HTML documentation parser
 │       ├── markdown.py           # Markdown section parser
-│       └── sec_edgar.py          # SEC EDGAR filing parser
+│       └── aws_docs.py           # AWS-specific doc structure parser
 ├── graph/                        # Stage 2: knowledge graph
-│   ├── schema.py                 # Per-corpus node/rel enums (Python, K8s, SEC)
+│   ├── schema.py                 # AWS service node/rel enums
 │   ├── extractor.py              # LLM entity/relationship extraction
 │   ├── resolver.py               # Jaro-Winkler entity resolution
 │   ├── neo4j_store.py            # Async Neo4j driver wrapper
@@ -752,63 +510,41 @@ kb_arena/
 web/                              # Next.js 14 frontend
 ├── app/                          # App router pages
 ├── components/
-│   ├── ChatPanel.tsx             # Side-by-side strategy chat
+│   ├── ChatPanel.tsx             # Side-by-side strategy chat with SSE
 │   ├── BenchmarkTable.tsx        # Sortable results table
 │   ├── TierChart.tsx             # Recharts accuracy by tier
-│   ├── GraphViewer.tsx           # Canvas force-directed graph viz
-│   ├── Nav.tsx                   # Navigation
-│   └── ThemeToggle.tsx           # Dark mode toggle
+│   ├── GraphViewer.tsx           # Canvas force-directed graph viz (Gephi-style)
+│   └── Nav.tsx                   # Navigation
 └── lib/
     └── api.ts                    # Typed API client
 
 datasets/
-├── python-stdlib/questions/      # 75 questions (5 tiers × 8-20 each)
-├── kubernetes/questions/         # 65 questions (5 tiers × 8-15 each)
-└── sec-edgar/questions/          # 60 questions (5 tiers × 12 each)
+├── aws-compute/questions/        # 75 questions (5 tiers × 8-20 each)
+├── aws-storage/questions/        # 65 questions (5 tiers × 8-15 each)
+└── aws-networking/questions/     # 60 questions (5 tiers × 12 each)
 ```
 
 ---
 
-## Graph Schemas
+## Graph Schema — AWS Services
 
-Each corpus has a purpose-built schema. The extractor uses the schema to generate structured prompts for entity/relationship extraction.
-
-### Python stdlib
-
-10 node types, 10 relationship types:
+The knowledge graph schema models AWS service architecture:
 
 ```
-Module ─CONTAINS─→ Class ─INHERITS─→ Class
-                   Class ─CONTAINS─→ Function
-                                     Function ─REQUIRES─→ Parameter
-                                     Function ─RETURNS─→ ReturnType
-                                     Function ─RAISES─→ Exception
-Module ─REFERENCES─→ Module
-Class ─IMPLEMENTS─→ Concept
+Service ─INVOKES─→ Service          (API Gateway → Lambda)
+Service ─CONNECTS_TO─→ Service      (Lambda → RDS)
+Service ─DEPLOYED_IN─→ Service      (Lambda → VPC)
+Service ─TRIGGERED_BY─→ Service     (Lambda → SQS)
+Service ─READS_FROM─→ Service       (Lambda → S3)
+Service ─LOGS_TO─→ Service          (ECS → CloudWatch)
+Resource ─PROTECTS─→ Service        (Security Group → RDS)
+Resource ─HOSTS─→ Service           (Subnet → RDS)
+Policy ─MANAGED_BY─→ Service        (Execution Role → IAM)
+Service ─ASSUMES─→ Policy           (Lambda → Execution Role)
 ```
 
-### Kubernetes
-
-7 node types, 8 relationship types:
-
-```
-APIGroup ←BELONGS_TO─ Resource ─REQUIRES─→ Resource
-                       Controller ─MANAGES─→ Resource
-                       Version ─SUPERSEDES─→ Version
-```
-
-### SEC EDGAR
-
-8 node types, 8 relationship types:
-
-```
-Company ─EMPLOYS─→ Executive
-Company ─OWNS─→ Subsidiary
-Company ─HAS_RISK─→ RiskFactor
-Company ─REPORTS_METRIC─→ FinancialMetric
-Company ─OPERATES_SEGMENT─→ Segment
-Company ─INVOLVED_IN─→ LegalProceeding
-```
+Node types: Service, Resource, Policy, Feature
+Relationship types: INVOKES, CONNECTS_TO, DEPLOYED_IN, TRIGGERED_BY, READS_FROM, LOGS_TO, PROTECTS, HOSTS, CONTAINS, ASSUMES, MANAGED_BY, ROUTES_TO, FORWARDS_TO, PUBLISHES_TO, USES, PROTECTED_BY, PULLS_FROM
 
 ---
 
@@ -816,68 +552,15 @@ Company ─INVOLVED_IN─→ LegalProceeding
 
 | Command | Description |
 |---|---|
-| `ingest <path>` | Parse raw docs into JSONL. Options: `--corpus`, `--format` (auto/html/markdown/sec-edgar) |
-| `build-graph` | Extract entities/rels → Neo4j. Options: `--corpus`, `--schema` (auto/python/kubernetes/sec) |
+| `ingest <path>` | Parse AWS docs into JSONL. Options: `--corpus`, `--format` (auto/html/markdown) |
+| `build-graph` | Extract AWS entities/rels → Neo4j. Options: `--corpus`, `--schema` (auto/aws-compute/aws-storage/aws-networking) |
 | `build-vectors` | Build ChromaDB indexes. Options: `--corpus`, `--strategy` (all/naive/contextual/qna) |
 | `benchmark` | Run evaluation. Options: `--corpus`, `--strategy`, `--tier` (0=all) |
 | `report` | Generate report. Options: `--corpus`, `--output` |
 | `serve` | Launch chatbot API. Options: `--host`, `--port`, `--reload` |
-| `download <corpus>` | Download raw dataset files |
+| `download <corpus>` | Download raw AWS documentation files |
 
 All commands are independently re-runnable. Each stage writes to disk (JSONL, Neo4j, ChromaDB, JSON results) so you can re-run any stage without repeating earlier ones.
-
----
-
-## API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/chat` | Single question → answer from specified strategy |
-| `POST` | `/chat/stream` | SSE streaming response (4 event types) |
-| `GET` | `/strategies` | List available strategies and their status |
-| `GET` | `/health` | Health check (Neo4j status, loaded strategies) |
-
-### Request/Response Format
-
-```json
-// POST /chat
-{
-  "query": "What does json.loads return?",
-  "strategy": "hybrid",
-  "history": [
-    {"role": "user", "content": "Tell me about json"},
-    {"role": "assistant", "content": "The json module provides..."}
-  ],
-  "corpus": "python-stdlib"
-}
-
-// Response
-{
-  "answer": "json.loads() deserializes a JSON string...",
-  "strategy_used": "hybrid",
-  "sources": ["json.html#json.loads"],
-  "graph_context": {
-    "entities": [...],
-    "relationships": [...]
-  },
-  "latency_ms": 1042.3,
-  "tokens_used": 234,
-  "cost_usd": 0.0018
-}
-```
-
-### Error Envelope
-
-All errors follow a consistent envelope:
-
-```json
-{
-  "error": {
-    "code": "unknown_strategy",
-    "message": "Unknown strategy 'bad'. Available: ['naive_vector', 'contextual_vector', ...]"
-  }
-}
-```
 
 ---
 
@@ -900,19 +583,6 @@ All prefixed with `KB_ARENA_`. Loaded from `.env` file or environment.
 | `NEO4J_USER` | `neo4j` | Neo4j username |
 | `NEO4J_PASSWORD` | `kbarena` | Neo4j password |
 
-### ChromaDB
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CHROMA_PATH` | `./chroma_data` | ChromaDB persistent storage path |
-
-### Embeddings
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `EMBEDDING_MODEL` | `text-embedding-3-large` | OpenAI embedding model |
-| `EMBEDDING_DIMENSIONS` | `3072` | Embedding vector dimensions |
-
 ### LLM Models
 
 | Variable | Default | Description |
@@ -927,15 +597,6 @@ All prefixed with `KB_ARENA_`. Loaded from `.env` file or environment.
 | `BENCHMARK_TEMPERATURE` | `0.0` | LLM temperature for benchmark runs |
 | `BENCHMARK_MAX_CONCURRENT` | `5` | Max parallel queries |
 | `BENCHMARK_QUERY_TIMEOUT_S` | `120` | Per-query timeout in seconds |
-| `BENCHMARK_MAX_RETRIES` | `2` | Retry count with exponential backoff |
-
-### Server
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `HOST` | `0.0.0.0` | API bind address |
-| `PORT` | `8000` | API port |
-| `DEBUG` | `false` | Debug mode (shows full error messages) |
 
 ---
 
@@ -944,11 +605,9 @@ All prefixed with `KB_ARENA_`. Loaded from `.env` file or environment.
 ### Docker Compose (all services)
 
 ```bash
-# Set API keys
 echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
 echo "OPENAI_API_KEY=sk-..." >> .env
 
-# Start Neo4j + API + Web
 docker compose up -d
 ```
 
@@ -958,172 +617,28 @@ docker compose up -d
 | `api` | Built from Dockerfile | FastAPI backend | 8000 |
 | `web` | Built from `./web` | Next.js 14 frontend | 3000 |
 
-### Volumes
-
-| Volume | Mount | Purpose |
-|--------|-------|---------|
-| `neo4j_data` | `/data` | Neo4j persistent storage |
-| `chroma_data` | `/data/chroma` | ChromaDB persistent storage |
-| `./datasets` | `/datasets` | Question YAML files |
-| `./results` | `/results` | Benchmark output |
-
 ---
 
 ## Testing
 
 ```bash
-# Install dev dependencies
 pip install -e '.[dev]'
 
 # Run all unit tests (339 tests)
 pytest tests/ -q
 
 # Run specific test modules
-pytest tests/test_benchmark.py -v     # evaluator, models, aggregation (24 tests)
-pytest tests/test_strategies.py -v    # all 5 strategies (26 tests)
-pytest tests/test_graph/ -v           # cypher, extractor, resolver (28 tests)
-pytest tests/test_ingest.py -v        # all 3 parsers (18 tests)
-pytest tests/test_router.py -v        # intent classification (12 tests)
+pytest tests/test_benchmark.py -v     # evaluator, models, aggregation
+pytest tests/test_strategies.py -v    # all 5 strategies
+pytest tests/test_graph/ -v           # cypher, extractor, resolver
+pytest tests/test_ingest.py -v        # parsers
 
 # Integration tests (requires Neo4j + ChromaDB running)
 pytest tests/integration/ -v
 
-# API tests (mocked, no external dependencies)
-pytest tests/api/ -v
-
-# Live tests (requires API keys + Neo4j + ChromaDB)
-ANTHROPIC_API_KEY=sk-ant-... OPENAI_API_KEY=sk-... pytest tests/live/ -v
-
 # Lint + format
 ruff check . && ruff format --check .
 ```
-
-| Suite | Tests | Requires |
-|-------|-------|----------|
-| `tests/test_*.py` | 177 | Nothing |
-| `tests/api/` | ~30 | Nothing (mocked) |
-| `tests/integration/` | ~50 | Neo4j, ChromaDB |
-| `tests/live/` | ~80 | API keys, Neo4j, ChromaDB |
-
----
-
-## Security
-
-### API Security
-
-- **Rate limiting** — In-memory per-IP rate limiter (60 requests/minute) on all chat endpoints
-- **CORS** — Configurable allowed origins, defaults to `http://localhost:3000`. Never `*` in production
-- **Error envelope** — Debug details only exposed when `KB_ARENA_DEBUG=true`. Production returns generic messages
-- **Input validation** — All request bodies validated by Pydantic v2 with strict type checking
-
-### Credential Management
-
-- **No hardcoded secrets** — All API keys loaded from environment variables via `pydantic-settings`
-- **Neo4j credentials** — Configurable via env vars, Docker secrets in production
-- **LLM API keys** — Never logged, never included in error messages or benchmark output
-
-### Dependencies
-
-All 14 direct dependencies are pinned to exact versions in `pyproject.toml`:
-
-```toml
-dependencies = [
-    "anthropic==0.42.0",
-    "neo4j==5.27.0",
-    "chromadb==0.5.23",
-    "fastapi==0.115.6",
-    "pydantic==2.10.4",
-    # ...
-]
-```
-
-### Database Security
-
-- **Parameterized queries only** — No string interpolation in Cypher
-- **Read-only access** from chatbot API — Queries use `MATCH`/`RETURN`, never `CREATE`/`DELETE`
-- **Graph mutations** only during `build-graph` stage
-
----
-
-## Contributing
-
-### Development Setup
-
-```bash
-git clone https://github.com/xmpuspus/kb-arena
-cd kb-arena
-pip install -e '.[dev]'
-
-# Start Neo4j for integration tests
-docker compose up neo4j -d
-```
-
-### Code Style
-
-Ruff handles both linting and formatting. Run before every commit:
-
-```bash
-ruff check .          # lint
-ruff format .         # format
-ruff check --fix .    # auto-fix
-```
-
-Configuration in `pyproject.toml`:
-
-```toml
-[tool.ruff]
-target-version = "py311"
-line-length = 100
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP"]
-```
-
-### Adding a New Corpus
-
-1. Create a parser in `kb_arena/ingest/parsers/` implementing document → `list[Document]`
-2. Add node/rel enums in `kb_arena/graph/schema.py`
-3. Register the schema in `_CORPUS_SCHEMA`
-4. Write question YAML files in `datasets/{corpus}/questions/tier{1-5}_*.yaml`
-5. Add tests for the parser and schema
-
-### Adding a New Strategy
-
-1. Create a class in `kb_arena/strategies/` extending `Strategy`
-2. Implement `build_index(documents)` and `query(question, top_k)` methods
-3. Register in `STRATEGY_REGISTRY` in `kb_arena/strategies/__init__.py`
-4. Add to `get_strategy()` factory if it needs special initialization
-5. Add to the chatbot lifespan in `kb_arena/chatbot/api.py`
-6. Write tests in `tests/test_strategies.py`
-
-### Writing Questions
-
-Each question needs:
-
-```yaml
-- id: "corpus-tN-NNN"          # unique ID
-  tier: 1-5                     # difficulty tier
-  type: factoid|comparison|...  # question type
-  hops: 1-5                     # reasoning hops required
-  question: "..."               # the actual question
-  ground_truth:
-    answer: "..."               # reference answer
-    source_refs: [...]          # expected source documents
-    required_entities: [...]    # entities that must appear
-  constraints:
-    must_mention: [...]         # terms the answer must include
-    must_not_claim: [...]       # false claims to detect
-```
-
-Guidelines:
-- Tier 1-2 should be answerable by any strategy
-- Tier 3-4 should specifically test graph traversal and relationships
-- Tier 5 should require temporal reasoning (version changes, deprecations)
-- `must_not_claim` should include common misconceptions, not obscure edge cases
-
-### Commit Messages
-
-Simple messages, no prefix format. Example: "Add SEC EDGAR benchmark questions"
 
 ---
 
@@ -1138,28 +653,13 @@ Simple messages, no prefix format. Example: "Add SEC EDGAR benchmark questions"
 | Graph store | Neo4j 5 (Community) | Strategy 4 (APOC plugin for graph algorithms) |
 | Backend | FastAPI 0.115 + Uvicorn | Chatbot API with SSE streaming |
 | Frontend | Next.js 14 + Tailwind | Side-by-side demo, benchmark tables, graph viz |
-| Graph viz | Canvas (custom) | Force-directed graph with Fruchterman-Reingold layout |
+| Graph viz | Canvas (custom) | Force-directed graph with glow, bezier edges, hover highlighting |
 | Charts | Recharts | Accuracy by tier charts |
 | Models | Pydantic v2 | All data interchange — 15 models across 4 modules |
 | CLI | Typer 0.12 + Rich | 7 pipeline commands |
 | Entity resolution | Jellyfish | Jaro-Winkler fuzzy matching |
-| Graph analysis | NetworkX | Graph statistics |
 | Testing | pytest + pytest-asyncio | 339 tests across 18 files |
 | Lint/Format | Ruff | Check + format in one tool |
-
----
-
-## Repository Structure
-
-```
-kb-arena/
-  kb_arena/            pip install kb-arena          CLI + library (41 Python modules, 10K lines)
-  web/                 npm install && npm run dev    Next.js 14 frontend (10 components)
-  datasets/            Question YAML files           200 questions, 3 corpora, 5 tiers
-  tests/               pytest tests/                 339 tests across 18 files
-  docker-compose.yml   docker compose up             Neo4j + API + Web
-  pyproject.toml       Package metadata              Hatchling build, all deps pinned
-```
 
 ---
 

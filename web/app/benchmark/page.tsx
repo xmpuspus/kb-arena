@@ -88,17 +88,18 @@ export default function BenchmarkPage() {
         <h3 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>Methodology</h3>
         <div className="text-xs leading-relaxed space-y-1" style={{ color: "var(--muted)" }}>
           <p>
-            Each question is sent to all 5 strategies. Answers are evaluated through a 4-pass pipeline:
-            structural checks (must_mention / must_not_claim), entity coverage, source attribution,
-            and LLM-as-judge scoring for accuracy, completeness, and faithfulness.
+            Each question about AWS services is sent to all 5 strategies. Answers are evaluated through a 4-pass pipeline:
+            structural checks (must_mention / must_not_claim), entity coverage against AWS documentation,
+            source attribution, and LLM-as-judge scoring for accuracy, completeness, and faithfulness.
           </p>
           <p>
             Composite ranking: 0.5 * accuracy + 0.3 * reliability + 0.2 * latency_score.
             Latency score inverts p95 so lower is better.
           </p>
           <p>
-            Tiers: 1 = factoid (single lookup), 2 = procedural (how-to), 3 = comparative (A vs B),
-            4 = relational (requires joins), 5 = multi-hop (3+ concepts, cross-module).
+            Tiers: 1 = factoid (single AWS service lookup), 2 = procedural (how-to with one service),
+            3 = comparative (service A vs B), 4 = relational (cross-service dependencies),
+            5 = multi-hop (3+ services, architecture patterns).
           </p>
         </div>
       </div>

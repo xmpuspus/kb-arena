@@ -1,0 +1,429 @@
+- id: "net-t1-001"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is Amazon VPC and what are its core components?"
+  ground_truth:
+    answer: >
+      Amazon VPC (Virtual Private Cloud) lets you provision a logically isolated section of
+      the AWS Cloud where you can launch AWS resources in a virtual network you define. Core
+      components: subnets (public and private, scoped to an AZ), route tables (control traffic
+      routing), internet gateways (enable internet access), NAT gateways (outbound-only internet
+      for private subnets), security groups (stateful instance-level firewall), and network ACLs
+      (stateless subnet-level firewall). Each VPC has a CIDR block (IPv4 and optionally IPv6).
+    source_refs:
+      - "vpc/latest/userguide/what-is-amazon-vpc.html"
+    required_entities:
+      - "VPC"
+      - "subnet"
+      - "route table"
+  constraints:
+    must_mention:
+      - "isolated"
+      - "subnet"
+    must_not_claim:
+      - "shared network"
+    max_tokens: 200
+
+- id: "net-t1-002"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is the difference between a public subnet and a private subnet in a VPC?"
+  ground_truth:
+    answer: >
+      A public subnet has a route table entry that sends traffic (0.0.0.0/0) to an Internet
+      Gateway, and instances with public IP addresses can communicate directly with the internet.
+      A private subnet has no route to an Internet Gateway — instances cannot receive inbound
+      internet connections. Private subnets use a NAT Gateway (in a public subnet) for
+      outbound internet access. The subnet itself is not inherently public or private; it is
+      the route table association and the presence of an Internet Gateway route that determine
+      the classification.
+    source_refs:
+      - "vpc/latest/userguide/configure-subnets.html"
+    required_entities:
+      - "public subnet"
+      - "private subnet"
+      - "Internet Gateway"
+  constraints:
+    must_mention:
+      - "route table"
+      - "Internet Gateway"
+    must_not_claim:
+      - "subnet type is fixed at creation"
+      - "private subnets have no internet access at all"
+    max_tokens: 200
+
+- id: "net-t1-003"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is a Security Group in AWS and what are its key characteristics?"
+  ground_truth:
+    answer: >
+      A Security Group is a virtual stateful firewall that controls inbound and outbound traffic
+      for EC2 instances and other resources. Key characteristics: stateful (if you allow inbound
+      traffic, the response is automatically allowed outbound); supports ALLOW rules only (no
+      DENY rules); rules specify protocol, port range, and source/destination (IP CIDR or
+      another security group); evaluated as a whole (all rules checked before decision); applied
+      at the instance level, not the subnet level; up to 5 security groups per network interface.
+      Default security group allows all outbound and all inbound from the same group.
+    source_refs:
+      - "vpc/latest/userguide/vpc-security-groups.html"
+    required_entities:
+      - "security group"
+      - "stateful"
+  constraints:
+    must_mention:
+      - "stateful"
+      - "ALLOW rules only"
+    must_not_claim:
+      - "supports DENY rules"
+      - "subnet level"
+    max_tokens: 200
+
+- id: "net-t1-004"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is a Network ACL (NACL) and how does it differ from a security group?"
+  ground_truth:
+    answer: >
+      A Network ACL (NACL) is a stateless firewall that controls inbound and outbound traffic
+      at the subnet level. Key differences from security groups: NACLs are stateless (return
+      traffic must be explicitly allowed); NACLs support both ALLOW and DENY rules; rules are
+      evaluated in numbered order (lowest first, first match wins); each subnet is associated
+      with exactly one NACL; NACLs apply to all instances in a subnet. Security groups are
+      stateful, support only ALLOW rules, are applied per-instance, and all rules are evaluated.
+      The default NACL allows all inbound and outbound traffic.
+    source_refs:
+      - "vpc/latest/userguide/vpc-network-acls.html"
+    required_entities:
+      - "Network ACL"
+      - "stateless"
+  constraints:
+    must_mention:
+      - "stateless"
+      - "subnet level"
+    must_not_claim:
+      - "stateful"
+      - "instance level"
+    max_tokens: 200
+
+- id: "net-t1-005"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is an Internet Gateway and what does it do in a VPC?"
+  ground_truth:
+    answer: >
+      An Internet Gateway (IGW) is a horizontally scaled, redundant, highly available VPC
+      component that enables communication between your VPC and the internet. It serves two
+      purposes: provides a target in VPC route tables for internet-routable traffic, and
+      performs network address translation (NAT) for instances with public IPv4 addresses.
+      An IGW is attached to a VPC (one IGW per VPC), is region-scoped (not AZ-specific),
+      and has no bandwidth constraints. For instances in public subnets to reach the internet,
+      the route table must have a 0.0.0.0/0 route pointing to the IGW.
+    source_refs:
+      - "vpc/latest/userguide/VPC_Internet_Gateway.html"
+    required_entities:
+      - "Internet Gateway"
+      - "NAT"
+  constraints:
+    must_mention:
+      - "route table"
+      - "public IP"
+    must_not_claim:
+      - "per-AZ"
+      - "bandwidth limited"
+    max_tokens: 200
+
+- id: "net-t1-006"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is a NAT Gateway and when should you use it?"
+  ground_truth:
+    answer: >
+      A NAT Gateway (Network Address Translation Gateway) allows instances in private subnets
+      to initiate outbound connections to the internet or other AWS services while preventing
+      inbound connections from the internet. NAT Gateway is deployed in a public subnet and
+      requires an Elastic IP address. It is managed by AWS (no maintenance required), scales
+      automatically up to 45 Gbps per gateway, and is highly available within an AZ. Use it
+      when private instances need software updates, package downloads, or access to external
+      APIs without being directly reachable from the internet. For HA, deploy one NAT Gateway
+      per AZ.
+    source_refs:
+      - "vpc/latest/userguide/vpc-nat-gateway.html"
+    required_entities:
+      - "NAT Gateway"
+      - "private subnet"
+      - "Elastic IP"
+  constraints:
+    must_mention:
+      - "outbound"
+      - "private subnet"
+    must_not_claim:
+      - "allows inbound connections"
+      - "free of charge"
+    max_tokens: 200
+
+- id: "net-t1-007"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is VPC peering and what are its key limitations?"
+  ground_truth:
+    answer: >
+      VPC peering is a networking connection between two VPCs that enables routing of traffic
+      using private IPv4 or IPv6 addresses. Peering can be intra-account, cross-account, or
+      cross-region. Limitations: transitive peering is not supported — traffic from VPC A
+      cannot reach VPC C through VPC B (A must peer directly with C); overlapping CIDR blocks
+      are not allowed between peered VPCs; a peered VPC cannot use the other VPC's Internet
+      Gateway, NAT Gateway, or VPN connection (no edge-to-edge routing); there is no bandwidth
+      constraint on peering connections but data transfer charges apply for cross-AZ and
+      cross-region traffic.
+    source_refs:
+      - "vpc/latest/peering/what-is-vpc-peering.html"
+    required_entities:
+      - "VPC peering"
+      - "transitive peering"
+  constraints:
+    must_mention:
+      - "transitive"
+      - "overlapping CIDR"
+    must_not_claim:
+      - "transitive peering is supported"
+      - "same account only"
+    max_tokens: 200
+
+- id: "net-t1-008"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is AWS Transit Gateway and how does it simplify multi-VPC connectivity?"
+  ground_truth:
+    answer: >
+      AWS Transit Gateway (TGW) is a network transit hub that connects VPCs and on-premises
+      networks through a central hub-and-spoke model. Each VPC or VPN attaches once to TGW,
+      and TGW routes traffic between attachments. Unlike VPC peering (which requires a full
+      mesh of N*(N-1)/2 connections for N VPCs), TGW requires N attachments. TGW supports
+      transitive routing, multiple route tables for network segmentation, Direct Connect
+      Gateway attachments, Site-to-Site VPN, and inter-region peering. Charged per attachment-hour
+      and per GB of data processed.
+    source_refs:
+      - "vpc/latest/tgw/what-is-transit-gateway.html"
+    required_entities:
+      - "Transit Gateway"
+      - "hub-and-spoke"
+  constraints:
+    must_mention:
+      - "transitive"
+      - "hub-and-spoke"
+    must_not_claim:
+      - "free of charge"
+      - "no route table support"
+    max_tokens: 200
+
+- id: "net-t1-009"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is Amazon Route 53 and what routing policies does it support?"
+  ground_truth:
+    answer: >
+      Amazon Route 53 is a scalable, highly available DNS web service. It supports eight
+      routing policies: Simple (single-resource, no health checks), Weighted (route traffic
+      proportionally across resources), Latency (route to the lowest-latency AWS region),
+      Failover (active-passive with health checks), Geolocation (route based on user's
+      geographic location), Geoproximity (route based on resource location with optional bias),
+      Multivalue Answer (return up to 8 healthy IPs), and IP-based (route based on client IP
+      CIDR). Route 53 also provides domain registration and health checking.
+    source_refs:
+      - "Route53/latest/DeveloperGuide/routing-policy.html"
+    required_entities:
+      - "Route 53"
+      - "routing policy"
+  constraints:
+    must_mention:
+      - "Latency"
+      - "Failover"
+    must_not_claim:
+      - "only one routing policy"
+      - "no health checks"
+    max_tokens: 200
+
+- id: "net-t1-010"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is Amazon CloudFront and what are its primary use cases?"
+  ground_truth:
+    answer: >
+      Amazon CloudFront is a global content delivery network (CDN) that delivers data, videos,
+      applications, and APIs to users through a worldwide network of edge locations with low
+      latency. Primary use cases: static asset delivery (images, CSS, JavaScript), live and
+      on-demand video streaming, API acceleration, dynamic content caching, DDoS mitigation
+      (via AWS Shield Standard at no cost), and HTTPS termination. CloudFront caches responses
+      at edge locations using TTL and Cache-Control headers. Origins can be S3, ALB, EC2,
+      API Gateway, or any custom HTTP endpoint.
+    source_refs:
+      - "AmazonCloudFront/latest/DeveloperGuide/Introduction.html"
+    required_entities:
+      - "CloudFront"
+      - "edge locations"
+  constraints:
+    must_mention:
+      - "edge locations"
+      - "caching"
+    must_not_claim:
+      - "stores data permanently"
+      - "only for static content"
+    max_tokens: 200
+
+- id: "net-t1-011"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is AWS PrivateLink and what two components are required to use it?"
+  ground_truth:
+    answer: >
+      AWS PrivateLink provides private connectivity between VPCs and AWS services or
+      customer/partner services without exposing traffic to the public internet. The two
+      required components: an Interface Endpoint (in the consumer VPC) — an elastic network
+      interface with a private IP address that serves as the entry point for traffic destined
+      to the service; and an Endpoint Service (in the provider VPC) — backed by an NLB that
+      fronts the service being shared. PrivateLink allows overlapping CIDR blocks between
+      consumer and provider VPCs. Traffic does not traverse the internet or require IGW, NAT,
+      VPN, or Direct Connect.
+    source_refs:
+      - "vpc/latest/privatelink/what-is-privatelink.html"
+    required_entities:
+      - "PrivateLink"
+      - "Interface Endpoint"
+      - "Endpoint Service"
+  constraints:
+    must_mention:
+      - "Interface Endpoint"
+      - "NLB"
+    must_not_claim:
+      - "requires non-overlapping CIDRs"
+      - "exposes entire VPC"
+    max_tokens: 200
+
+- id: "net-t1-012"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is AWS Direct Connect and how does it differ from Site-to-Site VPN?"
+  ground_truth:
+    answer: >
+      AWS Direct Connect is a dedicated physical network connection from an on-premises
+      location to AWS, bypassing the public internet. Available bandwidths: 50 Mbps to
+      100 Gbps (hosted connections 50 Mbps–10 Gbps; dedicated connections 1 Gbps–100 Gbps).
+      Key differences from Site-to-Site VPN: Direct Connect provides consistent latency and
+      bandwidth with no internet jitter; VPN traverses the public internet with variable
+      performance. Direct Connect does not encrypt traffic by default (requires MACsec or
+      IPsec over Direct Connect for encryption); VPN provides IPsec encryption. Direct Connect
+      suits large-volume, latency-sensitive workloads; VPN suits lower-cost or backup connectivity.
+    source_refs:
+      - "directconnect/latest/UserGuide/Welcome.html"
+    required_entities:
+      - "Direct Connect"
+      - "Site-to-Site VPN"
+  constraints:
+    must_mention:
+      - "dedicated"
+      - "no encryption by default"
+    must_not_claim:
+      - "Direct Connect encrypts by default"
+      - "same as VPN"
+    max_tokens: 200
+
+- id: "net-t1-013"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is a VPC endpoint and what are the two types?"
+  ground_truth:
+    answer: >
+      A VPC endpoint enables private connectivity between a VPC and supported AWS services
+      without requiring an Internet Gateway, NAT device, VPN, or Direct Connect. Two types:
+      Gateway Endpoints — support only S3 and DynamoDB, added as a route in the route table,
+      no hourly charge. Interface Endpoints (powered by AWS PrivateLink) — create an elastic
+      network interface with a private IP in your subnet, support most AWS services and
+      marketplace services, incur an hourly charge plus data processing fees. Gateway Endpoints
+      do not use security groups; Interface Endpoints have associated security groups.
+    source_refs:
+      - "vpc/latest/privatelink/vpc-endpoints.html"
+    required_entities:
+      - "VPC endpoint"
+      - "Gateway Endpoint"
+      - "Interface Endpoint"
+  constraints:
+    must_mention:
+      - "Gateway Endpoint"
+      - "Interface Endpoint"
+    must_not_claim:
+      - "Gateway Endpoints support all services"
+      - "Interface Endpoints are free"
+    max_tokens: 200
+
+- id: "net-t1-014"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is AWS Global Accelerator and how does it differ from CloudFront?"
+  ground_truth:
+    answer: >
+      AWS Global Accelerator uses the AWS global network to route user traffic over the AWS
+      backbone to the optimal AWS endpoint (ALB, NLB, EC2, or Elastic IP) for lowest latency.
+      It provides two static anycast IP addresses as fixed entry points globally. Unlike
+      CloudFront (which caches content at edge locations), Global Accelerator does not cache
+      content — it routes all traffic to the origin over the AWS network. CloudFront is optimal
+      for cacheable HTTP/S content; Global Accelerator is better for non-HTTP protocols (UDP,
+      TCP), latency-sensitive applications, or workloads needing static IP addresses and
+      consistent performance without caching.
+    source_refs:
+      - "global-accelerator/latest/dg/what-is-global-accelerator.html"
+    required_entities:
+      - "Global Accelerator"
+      - "anycast"
+  constraints:
+    must_mention:
+      - "anycast"
+      - "no caching"
+    must_not_claim:
+      - "Global Accelerator caches content"
+      - "same as CloudFront"
+    max_tokens: 200
+
+- id: "net-t1-015"
+  tier: 1
+  type: factoid
+  hops: 1
+  question: "What is VPC Flow Logs and what information does each flow record contain?"
+  ground_truth:
+    answer: >
+      VPC Flow Logs capture metadata about IP traffic flowing through network interfaces in a
+      VPC, subnet, or specific ENI. Each flow record includes: account ID, interface ID,
+      source and destination IP addresses, source and destination ports, IP protocol, packet
+      count, byte count, start and end timestamps, and action (ACCEPT or REJECT). Flow logs
+      can be published to CloudWatch Logs or S3. They do not capture packet payloads or traffic
+      to the instance metadata service (169.254.169.254), Amazon DNS, DHCP, or Windows
+      activation servers. Flow logs are useful for security analysis, network troubleshooting,
+      and compliance auditing.
+    source_refs:
+      - "vpc/latest/userguide/flow-logs.html"
+    required_entities:
+      - "VPC Flow Logs"
+      - "ACCEPT"
+      - "REJECT"
+  constraints:
+    must_mention:
+      - "source IP"
+      - "ACCEPT"
+    must_not_claim:
+      - "captures packet contents"
+      - "real-time only"
+    max_tokens: 200

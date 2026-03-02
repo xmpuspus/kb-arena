@@ -18,7 +18,7 @@ def _make_json_docs() -> list[Document]:
         Document(
             id="json-loads-doc",
             source="https://docs.python.org/3/library/json.html#json.loads",
-            corpus="python-stdlib",
+            corpus="aws-compute",
             title="json.loads",
             sections=[
                 Section(
@@ -53,16 +53,17 @@ def _make_json_docs() -> list[Document]:
         Document(
             id="json-dumps-doc",
             source="https://docs.python.org/3/library/json.html#json.dumps",
-            corpus="python-stdlib",
+            corpus="aws-compute",
             title="json.dumps",
             sections=[
                 Section(
                     id="json-dumps-section",
                     title="json.dumps",
                     content=(
-                        "json.dumps(obj, *, skipkeys=False, ensure_ascii=True, check_circular=True, "
-                        "allow_nan=True, cls=None, indent=None, separators=None, default=None, "
-                        "sort_keys=False, **kw) "
+                        "json.dumps(obj, *, skipkeys=False, ensure_ascii=True,"
+                        " check_circular=True, allow_nan=True, cls=None,"
+                        " indent=None, separators=None, default=None,"
+                        " sort_keys=False, **kw) "
                         "Serialize obj to a JSON formatted str using this conversion table. "
                         "If indent is a non-negative integer, then JSON array elements and object "
                         "members will be pretty-printed with that indent level."
@@ -76,7 +77,7 @@ def _make_json_docs() -> list[Document]:
         Document(
             id="json-error-doc",
             source="https://docs.python.org/3/library/json.html#json.JSONDecodeError",
-            corpus="python-stdlib",
+            corpus="aws-compute",
             title="json.JSONDecodeError",
             sections=[
                 Section(
@@ -101,7 +102,7 @@ def _make_json_docs() -> list[Document]:
         Document(
             id="json-encoder-doc",
             source="https://docs.python.org/3/library/json.html#json.JSONEncoder",
-            corpus="python-stdlib",
+            corpus="aws-compute",
             title="json.JSONEncoder",
             sections=[
                 Section(
@@ -124,7 +125,7 @@ def _make_json_docs() -> list[Document]:
         Document(
             id="json-module-doc",
             source="https://docs.python.org/3/library/json.html",
-            corpus="python-stdlib",
+            corpus="aws-compute",
             title="json — JSON encoder and decoder",
             sections=[
                 Section(

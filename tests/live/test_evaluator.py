@@ -13,8 +13,11 @@ pytestmark = pytest.mark.live
 @pytest.fixture
 def json_ground_truth():
     return GroundTruth(
-        answer="json.loads(s) deserializes a JSON string to a Python object such as dict, list, or primitive.",
-        source_refs=["python-stdlib-json"],
+        answer=(
+            "json.loads(s) deserializes a JSON string to a Python object"
+            " such as dict, list, or primitive."
+        ),
+        source_refs=["aws-compute-lambda"],
         required_entities=["json.loads", "JSONDecodeError"],
     )
 
@@ -181,7 +184,9 @@ def known_qa_pairs():
         },
         {
             "question": "What exception does json.loads raise?",
-            "good_answer": "json.loads raises json.JSONDecodeError when the input is not valid JSON.",
+            "good_answer": (
+                "json.loads raises json.JSONDecodeError when the input is not valid JSON."
+            ),
             "bad_answer": "json.loads raises FileNotFoundError when the file doesn't exist.",
             "constraints": Constraints(must_mention=["JSONDecodeError"]),
             "ground_truth": GroundTruth(

@@ -20,7 +20,7 @@ console = Console()
 def ingest(
     path: str = typer.Argument(..., help="Path to raw documents directory"),
     corpus: str = typer.Option(
-        "custom", help="Corpus name: python-stdlib, kubernetes, sec-edgar, custom"
+        "custom", help="Corpus name: aws-compute, aws-storage, aws-networking, custom"
     ),
     format: str = typer.Option("auto", help="Parser format: auto, markdown, html, sec-edgar"),
 ):
@@ -35,8 +35,8 @@ def ingest(
 
 @app.command()
 def build_graph(
-    corpus: str = typer.Option("python-stdlib", help="Corpus to build graph for"),
-    schema: str = typer.Option("auto", help="Schema: auto, python, kubernetes, sec"),
+    corpus: str = typer.Option("aws-compute", help="Corpus to build graph for"),
+    schema: str = typer.Option("auto", help="Schema: auto, aws"),
 ):
     """Stage 2: Extract entities/relationships, build Neo4j graph.
 
@@ -51,7 +51,7 @@ def build_graph(
 
 @app.command()
 def build_vectors(
-    corpus: str = typer.Option("python-stdlib", help="Corpus to build vectors for"),
+    corpus: str = typer.Option("aws-compute", help="Corpus to build vectors for"),
     strategy: str = typer.Option("all", help="Strategy: all, naive, contextual, qna"),
 ):
     """Stage 3: Build vector indexes for strategies 1-3.
@@ -67,7 +67,7 @@ def build_vectors(
 
 @app.command()
 def benchmark(
-    corpus: str = typer.Option("all", help="Corpus: all, python-stdlib, kubernetes, sec-edgar"),
+    corpus: str = typer.Option("all", help="Corpus: all, aws-compute, aws-storage, aws-networking"),
     strategy: str = typer.Option(
         "all",
         help="Strategy: all, naive_vector, contextual_vector, qna_pairs, knowledge_graph, hybrid",
@@ -119,7 +119,7 @@ def serve(
 @app.command()
 def download(
     corpus: str = typer.Argument(
-        ..., help="Corpus to download: python-stdlib, kubernetes, sec-edgar"
+        ..., help="Corpus to download: aws-compute, aws-storage, aws-networking"
     ),
 ):
     """Download raw dataset files for a corpus."""

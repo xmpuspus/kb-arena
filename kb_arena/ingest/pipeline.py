@@ -28,13 +28,8 @@ _EXT_MAP: dict[str, str] = {
     ".htm": "html",
 }
 
-# Corpora that default to the SEC EDGAR parser when format=auto
-_SEC_CORPORA = {"sec-edgar"}
-
 
 def _detect_format(path: Path, corpus: str) -> str:
-    if corpus in _SEC_CORPORA:
-        return "sec-edgar"
     return _EXT_MAP.get(path.suffix.lower(), "html")
 
 

@@ -18,7 +18,7 @@ def load_questions(
     """Load and validate questions from YAML files for a corpus.
 
     Args:
-        corpus: corpus name (python-stdlib, kubernetes, sec-edgar)
+        corpus: corpus name (aws-compute, aws-storage, aws-networking)
         tier: filter to specific tier (0 = all tiers)
         question_type: filter to specific type (empty = all types)
     """
@@ -45,7 +45,7 @@ def load_questions(
 
 def load_all_questions(tier: int = 0, question_type: str = "") -> list[Question]:
     """Load questions across all corpora."""
-    corpora = ["python-stdlib", "kubernetes", "sec-edgar"]
+    corpora = ["aws-compute", "aws-storage", "aws-networking"]
     all_questions: list[Question] = []
     for corpus in corpora:
         try:

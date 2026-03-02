@@ -38,7 +38,7 @@ Output ONLY valid JSON matching this schema:
     {{
       "id": "<unique_id>",
       "name": "<display name>",
-      "fqn": "<fully qualified name, e.g. os.path.join>",
+      "fqn": "<fully qualified name, e.g. aws.lambda.invoke>",
       "type": "<one of the allowed node types>",
       "description": "<one sentence>",
       "properties": {{}},
@@ -57,7 +57,7 @@ Output ONLY valid JSON matching this schema:
 
 Rules:
 - Use ONLY the allowed types listed above. Any other type will be rejected.
-- fqn must be globally unique and dot-separated (e.g. json.loads, not just loads)
+- fqn must be globally unique and dot-separated (e.g. aws.lambda.invoke, not just invoke)
 - Omit entities with no clear type match
 - Omit relationships where either endpoint fqn is not in the entity list
 """
@@ -166,7 +166,7 @@ async def extract_document(doc: Document, llm: LLMClient, system_prompt: str) ->
     )
 
 
-async def run_extraction(corpus: str = "python-stdlib", schema: str = "auto") -> None:
+async def run_extraction(corpus: str = "aws-compute", schema: str = "auto") -> None:
     """Orchestrate: load processed JSONL → extract → resolve → load to Neo4j."""
     # Validate corpus has a known schema
     get_schema(corpus)
@@ -184,9 +184,9 @@ async def run_extraction(corpus: str = "python-stdlib", schema: str = "auto") ->
     # Load schema DDL
     cypher_dir = Path("cypher")
     schema_map = {
-        "python-stdlib": cypher_dir / "schema_python.cypher",
-        "kubernetes": cypher_dir / "schema_kubernetes.cypher",
-        "sec-edgar": cypher_dir / "schema_sec.cypher",
+        "aws-compute": cypher_dir / "schema_aws.cypher",
+        "aws-storage": cypher_dir / "schema_aws.cypher",
+        "aws-networking": cypher_dir / "schema_aws.cypher",
     }
     if schema_file := schema_map.get(corpus):
         if schema_file.exists():

@@ -87,7 +87,7 @@ async def json_strategy_with_index(tmp_path_factory, live_openai_key):
         Document(
             id="json-mt-doc",
             source="test://json",
-            corpus="python-stdlib",
+            corpus="aws-compute",
             title="json module",
             sections=[
                 Section(
@@ -118,7 +118,7 @@ async def json_strategy_with_index(tmp_path_factory, live_openai_key):
         Document(
             id="ospath-mt-doc",
             source="test://os.path",
-            corpus="python-stdlib",
+            corpus="aws-compute",
             title="os.path module",
             sections=[
                 Section(

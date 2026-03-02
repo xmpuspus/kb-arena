@@ -99,8 +99,8 @@ async def test_naive_query_uses_top_k(mock_chroma_client, mock_llm_client):
 
 def test_heading_prefix_with_path(sample_section):
     prefix = _heading_prefix(sample_section)
-    assert "json" in prefix
-    assert "json.loads" in prefix
+    assert "Lambda" in prefix
+    assert "Configuration" in prefix
 
 
 def test_heading_prefix_fallback():
@@ -112,7 +112,7 @@ def test_heading_prefix_fallback():
 def test_enrich_chunk(sample_section):
     enriched = _enrich_chunk("some chunk text", sample_section)
     assert "##" in enriched
-    assert "json" in enriched
+    assert "Lambda" in enriched
     assert "some chunk text" in enriched
 
 
@@ -121,7 +121,7 @@ def test_section_metadata(sample_document, sample_section):
     assert meta["source_id"] == sample_document.id
     assert meta["has_code"] is True
     assert meta["has_table"] is False
-    assert "json" in meta["section_path"]
+    assert "Lambda" in meta["section_path"]
 
 
 @pytest.mark.asyncio
@@ -187,7 +187,7 @@ async def test_qna_query_returns_pregenerated_answer(mock_chroma_client, mock_ll
             [
                 {
                     "answer": "json.loads deserializes a JSON string to Python.",
-                    "source_id": "python-stdlib-json",
+                    "source_id": "aws-compute-lambda",
                     "section_id": "json-loads",
                 }
             ]

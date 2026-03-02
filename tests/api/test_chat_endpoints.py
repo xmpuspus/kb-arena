@@ -367,7 +367,7 @@ def test_corpus_field_accepted(client):
         json={
             "query": "What is json?",
             "strategy": "naive_vector",
-            "corpus": "python-stdlib",
+            "corpus": "aws-compute",
         },
     )
     assert r.status_code == 200

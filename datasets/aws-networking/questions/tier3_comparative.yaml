@@ -1,0 +1,413 @@
+- id: "net-t3-001"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "Compare Security Groups and Network ACLs: when should you use each, and what are their key differences?"
+  ground_truth:
+    answer: >
+      Security Groups vs Network ACLs:
+      Statefulness: Security groups are stateful (return traffic auto-allowed); NACLs are
+      stateless (return traffic requires an explicit inbound rule).
+      Rule types: Security groups support ALLOW only; NACLs support both ALLOW and DENY.
+      Evaluation: Security groups evaluate all rules; NACLs evaluate rules in numbered order
+      (lowest first, first match wins).
+      Scope: Security groups are instance/ENI-level; NACLs are subnet-level (all instances
+      in the subnet are affected).
+      Use cases: Security groups as the primary control for instance-level access; NACLs to
+      block specific IPs at the subnet boundary (e.g., known bad actors) or as a defense-in-depth
+      layer. NACLs are better for explicit DENY, such as blocking a specific IP range that
+      should not reach any instance in a subnet.
+    source_refs:
+      - "vpc/latest/userguide/vpc-security-groups.html"
+      - "vpc/latest/userguide/vpc-network-acls.html"
+    required_entities:
+      - "Security Group"
+      - "Network ACL"
+  constraints:
+    must_mention:
+      - "stateful"
+      - "stateless"
+      - "DENY"
+    must_not_claim:
+      - "Security Groups support DENY"
+      - "NACLs are stateful"
+    max_tokens: 300
+
+- id: "net-t3-002"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    Compare ALB (Application Load Balancer), NLB (Network Load Balancer), and
+    Gateway Load Balancer: when should you choose each?
+  ground_truth:
+    answer: >
+      ALB (Layer 7): Operates at the HTTP/HTTPS layer. Supports content-based routing
+      (path, host header, query string, HTTP method), WebSocket, HTTP/2, Lambda targets,
+      sticky sessions, WAF integration, and native OIDC/Cognito auth. Best for web applications
+      and microservices with HTTP routing needs. Cannot preserve client source IP natively
+      (uses X-Forwarded-For).
+      NLB (Layer 4): Operates at the TCP/UDP/TLS layer. Extreme low latency, preserves source
+      IP, supports static IP / Elastic IP, handles millions of requests per second. Best for
+      non-HTTP protocols, latency-sensitive APIs, gaming, IoT, PrivateLink Endpoint Services.
+      Does not support content-based routing.
+      Gateway Load Balancer (Layer 3): Transparently routes all traffic through third-party
+      virtual appliances (firewalls, IDS/IPS) using GENEVE encapsulation. Not for application
+      traffic routing — used solely for inline traffic inspection architectures.
+    source_refs:
+      - "elasticloadbalancing/latest/userguide/what-is-load-balancing.html"
+    required_entities:
+      - "ALB"
+      - "NLB"
+      - "Gateway Load Balancer"
+  constraints:
+    must_mention:
+      - "Layer 7"
+      - "Layer 4"
+      - "GENEVE"
+    must_not_claim:
+      - "ALB preserves source IP directly"
+      - "NLB supports path routing"
+    max_tokens: 300
+
+- id: "net-t3-003"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "Compare VPC peering and AWS Transit Gateway for connecting 10+ VPCs. What are the trade-offs?"
+  ground_truth:
+    answer: >
+      VPC Peering for 10 VPCs: requires 10*(10-1)/2 = 45 peering connections (full mesh),
+      45 sets of route table entries per VPC pair, no transitive routing, management overhead
+      grows as O(N^2). Pros: low per-connection cost (only data transfer), no extra hop,
+      lower latency. Cons: does not scale, no centralized route management, no shared
+      on-premises connectivity.
+      Transit Gateway for 10 VPCs: requires 10 TGW attachments, centralized route tables,
+      supports transitive routing, on-premises via single Direct Connect Gateway or VPN
+      attachment, and inter-region TGW peering. Pros: scales linearly, operationally simpler,
+      supports network segmentation with multiple TGW route tables. Cons: per-attachment-hour
+      charge (~$0.05/hr each) plus data processing charge ($0.02/GB); adds a hop that slightly
+      increases latency. For 10+ VPCs, Transit Gateway is operationally preferable.
+    source_refs:
+      - "vpc/latest/tgw/what-is-transit-gateway.html"
+      - "vpc/latest/peering/what-is-vpc-peering.html"
+    required_entities:
+      - "Transit Gateway"
+      - "VPC peering"
+  constraints:
+    must_mention:
+      - "transitive"
+      - "N*(N-1)/2"
+    must_not_claim:
+      - "Transit Gateway is free"
+      - "VPC peering supports transitive routing"
+    max_tokens: 300
+
+- id: "net-t3-004"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "Compare CloudFront and Global Accelerator: what are the differences in use cases, caching, and protocol support?"
+  ground_truth:
+    answer: >
+      CloudFront (CDN): Caches content at 400+ edge locations globally. Best for static and
+      cacheable HTTP/S content (images, video, JavaScript), API responses with cache headers,
+      and content requiring Lambda@Edge or CloudFront Functions for customization. Supports
+      HTTP/1.1, HTTP/2, HTTP/3 (QUIC). Reduces origin load via caching. Integrates with
+      WAF, Shield, and S3 OAC.
+      Global Accelerator (network-level): No caching — routes all traffic over the AWS global
+      network backbone to origin endpoints. Provides two static anycast IPs. Best for
+      non-cacheable content, latency-sensitive TCP/UDP applications (gaming, VoIP, IoT),
+      multi-region active-active failover with consistent static IPs, and applications that
+      cannot use DNS-based failover. GA does not process HTTP — it is a network-level
+      accelerator. Both use AWS edge network, but for different layers of the stack.
+    source_refs:
+      - "AmazonCloudFront/latest/DeveloperGuide/Introduction.html"
+      - "global-accelerator/latest/dg/what-is-global-accelerator.html"
+    required_entities:
+      - "CloudFront"
+      - "Global Accelerator"
+      - "anycast"
+  constraints:
+    must_mention:
+      - "caching"
+      - "anycast"
+      - "UDP"
+    must_not_claim:
+      - "Global Accelerator caches content"
+      - "CloudFront handles UDP"
+    max_tokens: 300
+
+- id: "net-t3-005"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "Compare Gateway Endpoints (S3/DynamoDB) and Interface Endpoints (PrivateLink) for VPC private access to AWS services."
+  ground_truth:
+    answer: >
+      Gateway Endpoints: Support only S3 and DynamoDB. Implemented as route table entries
+      (no ENI created). No additional cost — free to use. Traffic is routed within the AWS
+      network but uses public IP ranges of S3/DynamoDB (though it does not traverse the
+      internet). Not accessible from on-premises via VPN or Direct Connect. No DNS changes;
+      the endpoint is enforced at the route table level. Not billable per GB.
+      Interface Endpoints (PrivateLink): Create an ENI with a private IP in your subnet for
+      hundreds of AWS services and third-party services. Accessible from on-premises via VPN
+      or Direct Connect. Have associated security groups. Incur hourly charges plus data
+      processing fees. Enable private DNS names so the standard service hostname resolves to
+      the private IP. Required for services other than S3 and DynamoDB.
+    source_refs:
+      - "vpc/latest/privatelink/vpc-endpoints.html"
+    required_entities:
+      - "Gateway Endpoint"
+      - "Interface Endpoint"
+      - "PrivateLink"
+  constraints:
+    must_mention:
+      - "route table"
+      - "ENI"
+    must_not_claim:
+      - "Gateway Endpoints accessible from on-premises via VPN"
+      - "Interface Endpoints are free"
+    max_tokens: 300
+
+- id: "net-t3-006"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "Compare AWS Direct Connect and Site-to-Site VPN for hybrid connectivity: cost, performance, and reliability trade-offs."
+  ground_truth:
+    answer: >
+      Site-to-Site VPN: Encrypted IPsec tunnel over the public internet. Setup time: minutes.
+      Cost: ~$0.05/hr per VPN connection + data transfer. Maximum throughput: 1.25 Gbps per
+      connection (ECMP over multiple connections on TGW can reach higher). Variable latency
+      (dependent on internet path). Good for: rapid deployment, disaster recovery, encrypting
+      Direct Connect traffic, lower traffic volumes. Availability: depends on internet path.
+      Direct Connect: Dedicated private circuit, 50 Mbps to 100 Gbps. Consistent latency and
+      bandwidth. Data transfer costs lower than VPN at high volumes. Setup time: weeks (circuit
+      provisioning). No native encryption (add MACsec or IPsec). Cost: port-hour fee plus
+      data transfer out. Resilience requires two Direct Connect connections or a VPN backup.
+      Best practice: use Direct Connect with a VPN backup for hybrid architectures.
+    source_refs:
+      - "directconnect/latest/UserGuide/Welcome.html"
+      - "vpn/latest/s2svpn/VPC_VPN.html"
+    required_entities:
+      - "Direct Connect"
+      - "Site-to-Site VPN"
+  constraints:
+    must_mention:
+      - "dedicated"
+      - "1.25 Gbps"
+    must_not_claim:
+      - "Direct Connect encrypts by default"
+      - "VPN and Direct Connect same performance"
+    max_tokens: 300
+
+- id: "net-t3-007"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "Compare Route 53 Latency routing and Geolocation routing policies: when would each produce different results?"
+  ground_truth:
+    answer: >
+      Latency routing: Routes the user to the AWS region that provides the lowest measured
+      network latency, regardless of the user's physical location. AWS maintains a latency
+      database between internet subnets and regions. A user in South America might be routed
+      to us-east-1 if that region has lower latency for their ISP than sa-east-1.
+      Geolocation routing: Routes based on the geographic location (continent or country) of
+      the DNS query source. A user in Germany is always routed to the record for Europe,
+      regardless of latency. Requires a default record for unmatched locations.
+      Key differences: Latency can route users away from their geographically closest region;
+      Geolocation is deterministic by location. Use Latency for performance optimization;
+      Geolocation for content localization, legal requirements (data residency), or region-specific
+      features. Latency routing is generally preferred for performance; Geolocation for
+      compliance.
+    source_refs:
+      - "Route53/latest/DeveloperGuide/routing-policy-latency.html"
+      - "Route53/latest/DeveloperGuide/routing-policy-geo.html"
+    required_entities:
+      - "Route 53"
+      - "Latency routing"
+      - "Geolocation routing"
+  constraints:
+    must_mention:
+      - "latency"
+      - "geographic location"
+    must_not_claim:
+      - "Latency and Geolocation produce same results"
+      - "Geolocation based on IP latency"
+    max_tokens: 300
+
+- id: "net-t3-008"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "Compare AWS Network Firewall and Security Groups for network traffic control: what gaps does each leave?"
+  ground_truth:
+    answer: >
+      Security Groups: Stateful, operate at the ENI level, support ALLOW rules only (inbound
+      and outbound), can reference other security groups. Best for instance-to-instance access
+      control and service-level policies. Cannot inspect packet payload or DNS names; cannot
+      do DENY by IP range (only ALLOW). No deep packet inspection.
+      AWS Network Firewall: Managed stateful/stateless firewall at the VPC subnet boundary.
+      Supports Suricata-compatible rules for deep packet inspection (payload, protocol anomalies),
+      domain list filtering (allow/block by domain name), TLS inspection, and explicit DENY.
+      Deployed as a VPC endpoint in a dedicated firewall subnet; requires routing changes to
+      steer traffic through it.
+      Gaps: Security groups cannot block specific public IPs at scale or inspect payloads.
+      Network Firewall does not replace security groups (operates at different granularity);
+      it complements them. A complete posture uses both: Network Firewall at the perimeter,
+      security groups per resource.
+    source_refs:
+      - "network-firewall/latest/developerguide/what-is-aws-network-firewall.html"
+      - "vpc/latest/userguide/vpc-security-groups.html"
+    required_entities:
+      - "AWS Network Firewall"
+      - "Security Group"
+      - "Suricata"
+  constraints:
+    must_mention:
+      - "deep packet inspection"
+      - "stateful"
+    must_not_claim:
+      - "Network Firewall replaces security groups"
+      - "Security Groups support DENY"
+    max_tokens: 300
+
+- id: "net-t3-009"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    Compare Route 53 Failover routing and AWS Global Accelerator endpoint failover:
+    how do they differ in failover speed and mechanism?
+  ground_truth:
+    answer: >
+      Route 53 Failover: DNS-based. When the primary endpoint's health check fails, Route 53
+      stops returning the primary DNS record and returns the secondary. Failover speed is
+      bounded by DNS TTL — clients caching the old DNS answer continue using the failed
+      endpoint until TTL expires (typically 60 seconds minimum, longer for clients that
+      ignore TTL). Some DNS resolvers cache longer than the TTL. No TCP connection migration.
+      Global Accelerator Failover: Network-level, not DNS-based. The static anycast IPs
+      never change. GA continuously monitors endpoints via health checks and reroutes traffic
+      at the network layer within ~30 seconds of failure detection. Existing TCP connections
+      on the old endpoint are dropped (GA does not migrate connections), but new connections
+      go to the healthy endpoint immediately without DNS cache concerns. GA is faster and
+      more reliable for failover than DNS-based approaches.
+    source_refs:
+      - "Route53/latest/DeveloperGuide/dns-failover.html"
+      - "global-accelerator/latest/dg/about-endpoint-groups-automatic-failover.html"
+    required_entities:
+      - "Route 53 Failover"
+      - "Global Accelerator"
+      - "health check"
+  constraints:
+    must_mention:
+      - "DNS TTL"
+      - "anycast"
+    must_not_claim:
+      - "Route 53 failover is instant"
+      - "Global Accelerator migrates TCP connections"
+    max_tokens: 300
+
+- id: "net-t3-010"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "Compare NAT Gateway and NAT Instance for private subnet outbound internet access: cost, performance, and management."
+  ground_truth:
+    answer: >
+      NAT Gateway (managed): Fully managed by AWS, scales automatically up to 45 Gbps,
+      highly available within an AZ (deploy one per AZ for HA). No maintenance. Cost:
+      ~$0.045/hr plus $0.045/GB processed. No bandwidth management needed. Cannot be used
+      as a bastion host. Supports TCP, UDP, ICMP. Does not support port forwarding.
+      NAT Instance (self-managed EC2): You manage the instance, patches, and HA. Maximum
+      bandwidth depends on instance type. Requires disabling source/destination check on the
+      ENI. Can be used as a bastion host or for port forwarding. Cost: EC2 instance cost
+      (can be cheaper for low-traffic workloads on small instances). Must manage failover
+      manually. NAT Gateway is recommended for almost all production workloads due to
+      managed HA and no maintenance. NAT Instances only make sense for very specific use
+      cases requiring custom configuration or extremely low cost.
+    source_refs:
+      - "vpc/latest/userguide/vpc-nat-comparison.html"
+    required_entities:
+      - "NAT Gateway"
+      - "NAT Instance"
+  constraints:
+    must_mention:
+      - "45 Gbps"
+      - "source/destination check"
+    must_not_claim:
+      - "NAT Instance is recommended for production"
+      - "NAT Gateway supports port forwarding"
+    max_tokens: 300
+
+- id: "net-t3-011"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: "Compare AWS Shield Standard and AWS Shield Advanced: what additional protections does Advanced provide?"
+  ground_truth:
+    answer: >
+      Shield Standard: Automatically enabled for all AWS customers at no additional cost.
+      Protects against common Layer 3 and Layer 4 DDoS attacks (SYN/UDP floods, reflection
+      attacks) for CloudFront, Route 53, ELB, and EC2/Elastic IP. No SLA guarantee and no
+      access to DDoS response team.
+      Shield Advanced (paid, ~$3,000/month with 1-year commitment): Adds Layer 7 DDoS
+      protection with automatic WAF rule deployment, near-real-time attack visibility and
+      metrics in CloudWatch, DDoS cost protection (credits for scaling charges due to DDoS),
+      24/7 DDoS Response Team (DRT) access, attack forensics reports, and proactive event
+      response. Covers CloudFront, Route 53, ELB, EC2/Elastic IP, Global Accelerator, and
+      AWS Network Firewall. Shield Advanced requires subscribing resources explicitly.
+      Choose Advanced for applications with strict availability SLAs or high DDoS risk.
+    source_refs:
+      - "waf/latest/developerguide/ddos-overview.html"
+      - "waf/latest/developerguide/ddos-advanced-summary.html"
+    required_entities:
+      - "Shield Standard"
+      - "Shield Advanced"
+      - "DDoS"
+  constraints:
+    must_mention:
+      - "no additional cost"
+      - "DDoS Response Team"
+    must_not_claim:
+      - "Shield Standard includes DRT access"
+      - "Shield Advanced covers all services automatically"
+    max_tokens: 300
+
+- id: "net-t3-012"
+  tier: 3
+  type: comparative
+  hops: 2
+  question: >
+    Compare AWS PrivateLink and VPC peering for cross-account service sharing:
+    which is more appropriate for a SaaS provider exposing a service to many customers?
+  ground_truth:
+    answer: >
+      VPC peering for cross-account sharing: exposes the entire VPC address space of the
+      provider to the consumer (over-broad access). Requires non-overlapping CIDRs, limiting
+      scalability. Each customer account needs a separate peering connection. Route table
+      entries required in both VPCs. No transitive routing — consumer cannot use peering to
+      reach a third party. Suitable for tightly coupled internal environments.
+      PrivateLink for SaaS providers: exposes only a specific service endpoint (backed by
+      NLB), not the entire VPC. Supports overlapping CIDR blocks (each consumer has their
+      own endpoint). Scales to thousands of consumers. The provider accepts or auto-accepts
+      connection requests. No route table changes required in consumer VPCs. AWS Marketplace
+      services use PrivateLink. Best for SaaS providers: more secure (least-privilege service
+      exposure), operationally scalable, and supports overlapping CIDRs across diverse
+      customer environments.
+    source_refs:
+      - "vpc/latest/privatelink/what-is-privatelink.html"
+      - "vpc/latest/peering/what-is-vpc-peering.html"
+    required_entities:
+      - "PrivateLink"
+      - "VPC peering"
+      - "Endpoint Service"
+  constraints:
+    must_mention:
+      - "overlapping CIDR"
+      - "least privilege"
+    must_not_claim:
+      - "VPC peering recommended for SaaS"
+      - "PrivateLink exposes full VPC"
+    max_tokens: 300

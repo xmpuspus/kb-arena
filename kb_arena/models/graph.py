@@ -12,7 +12,7 @@ class Entity(BaseModel):
 
     id: str
     name: str
-    fqn: str  # fully qualified name, e.g. "os.path.join"
+    fqn: str  # fully qualified name, e.g. "aws.lambda.invoke"
     type: str  # must match a NodeType enum value
     description: str = ""
     properties: dict[str, Any] = Field(default_factory=dict)

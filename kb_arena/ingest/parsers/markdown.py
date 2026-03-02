@@ -2,8 +2,7 @@
 
 Handles:
 - Markdown: ATX headings (#, ##, ...), fenced code blocks, pipe tables
-- RST: underline headings, directive blocks (.. function::, .. class::, etc.),
-  cross-reference roles (:func:, :class:, :mod:, :meth:), :: code blocks, grid tables
+- RST: underline headings, directive blocks, cross-reference roles, :: code blocks, grid tables
 """
 
 from __future__ import annotations
@@ -357,7 +356,7 @@ def _parse_rst(text: str, source: str, corpus: str) -> list[Document]:
         heading_path = list(heading_stack)
 
         # Strip directive lines from content text
-        content_lines = [l for l in body_lines if not _RST_DIRECTIVE.match(l)]
+        content_lines = [ln for ln in body_lines if not _RST_DIRECTIVE.match(ln)]
         content = "\n".join(content_lines).strip()
 
         links = _extract_rst_xrefs("\n".join(body_lines))

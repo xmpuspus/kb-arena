@@ -10,34 +10,34 @@ import pytest
 from kb_arena.graph.extractor import _validate_result, extract_document
 from kb_arena.models.graph import ExtractionResult
 
-PYTHON_CORPUS = "python-stdlib"
+AWS_CORPUS = "aws-compute"
 
 _VALID_LLM_RESPONSE = {
     "entities": [
         {
-            "id": "json.loads",
-            "name": "json.loads",
-            "fqn": "json.loads",
-            "type": "Function",
-            "description": "Deserialize a JSON string to a Python object.",
+            "id": "aws.lambda.invoke",
+            "name": "InvokeFunction",
+            "fqn": "aws.lambda.invoke",
+            "type": "APIAction",
+            "description": "Invokes an AWS Lambda function.",
             "properties": {},
             "aliases": [],
         },
         {
-            "id": "json.JSONDecodeError",
-            "name": "json.JSONDecodeError",
-            "fqn": "json.JSONDecodeError",
-            "type": "Exception",
-            "description": "Raised when JSON parsing fails.",
+            "id": "aws.iam.execution-role",
+            "name": "ExecutionRole",
+            "fqn": "aws.iam.execution-role",
+            "type": "Policy",
+            "description": "IAM role that Lambda assumes for execution.",
             "properties": {},
             "aliases": [],
         },
     ],
     "relationships": [
         {
-            "source_fqn": "json.loads",
-            "target_fqn": "json.JSONDecodeError",
-            "type": "RAISES",
+            "source_fqn": "aws.lambda.invoke",
+            "target_fqn": "aws.iam.execution-role",
+            "type": "ASSUMES",
             "properties": {},
         }
     ],
@@ -45,11 +45,11 @@ _VALID_LLM_RESPONSE = {
 
 
 def test_validate_result_accepts_valid_types():
-    result = _validate_result(_VALID_LLM_RESPONSE, PYTHON_CORPUS, "json-loads")
+    result = _validate_result(_VALID_LLM_RESPONSE, AWS_CORPUS, "lambda-invoke")
     assert len(result.entities) == 2
     assert len(result.relationships) == 1
-    assert result.entities[0].fqn == "json.loads"
-    assert result.relationships[0].type == "RAISES"
+    assert result.entities[0].fqn == "aws.lambda.invoke"
+    assert result.relationships[0].type == "ASSUMES"
 
 
 def test_validate_result_rejects_unknown_node_type():
@@ -67,7 +67,7 @@ def test_validate_result_rejects_unknown_node_type():
         ],
         "relationships": [],
     }
-    result = _validate_result(bad, PYTHON_CORPUS, "sec-x")
+    result = _validate_result(bad, AWS_CORPUS, "s1")
     assert result.entities == []
 
 
@@ -76,24 +76,24 @@ def test_validate_result_rejects_unknown_rel_type():
         "entities": list(_VALID_LLM_RESPONSE["entities"]),
         "relationships": [
             {
-                "source_fqn": "json.loads",
-                "target_fqn": "json.JSONDecodeError",
+                "source_fqn": "aws.lambda.invoke",
+                "target_fqn": "aws.iam.execution-role",
                 "type": "INVENTED_REL",
                 "properties": {},
             }
         ],
     }
-    result = _validate_result(bad, PYTHON_CORPUS, "sec-x")
+    result = _validate_result(bad, AWS_CORPUS, "s1")
     assert result.relationships == []
 
 
 def test_validate_result_drops_dangling_relationships():
     """Relationships referencing fqns not in the entity list are dropped."""
     payload = {
-        "entities": [_VALID_LLM_RESPONSE["entities"][0]],  # only json.loads
-        "relationships": list(_VALID_LLM_RESPONSE["relationships"]),  # refs json.JSONDecodeError
+        "entities": [_VALID_LLM_RESPONSE["entities"][0]],  # only aws.lambda.invoke
+        "relationships": list(_VALID_LLM_RESPONSE["relationships"]),  # refs aws.iam.execution-role
     }
-    result = _validate_result(payload, PYTHON_CORPUS, "s1")
+    result = _validate_result(payload, AWS_CORPUS, "s1")
     assert result.relationships == []
 
 
@@ -104,7 +104,7 @@ async def test_extract_document_calls_llm_per_section(sample_document):
 
     from kb_arena.graph.extractor import _build_system_prompt
 
-    result = await extract_document(sample_document, mock_llm, _build_system_prompt(PYTHON_CORPUS))
+    result = await extract_document(sample_document, mock_llm, _build_system_prompt(AWS_CORPUS))
 
     # Called once per section in sample_document
     assert mock_llm.extract.call_count == len(sample_document.sections)
@@ -118,6 +118,6 @@ async def test_extract_document_handles_bad_json(sample_document):
 
     from kb_arena.graph.extractor import _build_system_prompt
 
-    result = await extract_document(sample_document, mock_llm, _build_system_prompt(PYTHON_CORPUS))
+    result = await extract_document(sample_document, mock_llm, _build_system_prompt(AWS_CORPUS))
     # Should not crash — returns empty result
     assert isinstance(result, ExtractionResult)

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Benchmark knowledge graphs vs vector RAG on real documentation. Proves empirically that knowledge graphs beat vector RAG on multi-hop, relational, and comparative queries across 3 real-world document sets (Python stdlib, Kubernetes docs, SEC EDGAR filings).
+Benchmark knowledge graphs vs vector RAG on AWS documentation. Proves empirically that knowledge graphs beat vector RAG on multi-hop, relational, and comparative queries across 3 AWS documentation corpora (Compute, Storage, Networking).
 
 ## Architecture
 
@@ -24,17 +24,17 @@ docker compose up -d
 
 # Or locally
 pip install -e ".[dev]"
-kb-arena ingest ./datasets/python-stdlib/raw/ --corpus python-stdlib
-kb-arena build-graph --corpus python-stdlib
-kb-arena build-vectors --corpus python-stdlib
-kb-arena benchmark --corpus python-stdlib
+kb-arena ingest ./datasets/aws-compute/raw/ --corpus aws-compute
+kb-arena build-graph --corpus aws-compute
+kb-arena build-vectors --corpus aws-compute
+kb-arena benchmark --corpus aws-compute
 kb-arena serve
 ```
 
 ## Project Structure
 
 - `kb_arena/models/` — Pydantic v2 models (Document, Entity, Question, etc.). Central interchange.
-- `kb_arena/ingest/` — Document parsers (markdown, HTML, SEC EDGAR) + pipeline orchestrator
+- `kb_arena/ingest/` — Document parsers (markdown, HTML, AWS docs) + pipeline orchestrator
 - `kb_arena/graph/` — Neo4j graph engine: schema, extraction, resolution, batch loading, Cypher templates
 - `kb_arena/strategies/` — 5 retrieval strategies, all implement Strategy base class
 - `kb_arena/benchmark/` — YAML question loader, evaluator (structural + LLM judge), runner, reporter
@@ -78,6 +78,15 @@ ruff check . && ruff format --check .
 - **SSE streaming:** 4 event types (message_id, token, done, meta)
 - **Lifespan init:** Services on app.state, structured errors when Neo4j unavailable
 - **Dual-model LLM:** Haiku for cheap classification, Sonnet for generation. cache_control on system prompts.
+
+## Frontend (web/)
+
+- **Theme:** Cloudwright light (CSS custom properties in globals.css)
+- **Corpora:** aws-compute, aws-storage, aws-networking (defined in lib/api.ts)
+- **GraphViewer:** Custom canvas force-directed graph (~600 lines), no external graph libs
+- **Demo page:** Pre-filled with AWS Lambda/API Gateway/RDS showcase question
+- **Screenshots:** Use `agent-browser` with networkidle wait (NOT Playwright CLI `--wait-for-timeout` which misses CSS hydration). Dev server must be running on port 3001.
+- **Build:** `cd web && npm install && npx next build` — builds static pages
 
 ## Never
 

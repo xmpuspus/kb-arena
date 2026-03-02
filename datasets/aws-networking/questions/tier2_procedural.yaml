@@ -1,0 +1,456 @@
+- id: "net-t2-001"
+  tier: 2
+  type: procedural
+  hops: 1
+  question: "How do you configure a VPC to allow EC2 instances in a private subnet to access the internet?"
+  ground_truth:
+    answer: >
+      To allow private subnet instances outbound internet access: 1. Deploy a NAT Gateway in
+      a public subnet (one with a route to the Internet Gateway). Assign an Elastic IP to the
+      NAT Gateway. 2. In the private subnet's route table, add a route: 0.0.0.0/0 → nat-gateway-id.
+      3. Ensure the public subnet's route table has 0.0.0.0/0 → igw-id. 4. Update the instance
+      security group to allow outbound traffic on needed ports. Traffic path: private instance
+      → NAT Gateway (Elastic IP) → Internet Gateway → internet. Return traffic reverses. For
+      high availability, deploy one NAT Gateway per AZ and point each AZ's private subnets
+      to the NAT Gateway in the same AZ.
+    source_refs:
+      - "vpc/latest/userguide/vpc-nat-gateway.html"
+      - "vpc/latest/userguide/VPC_Route_Tables.html"
+    required_entities:
+      - "NAT Gateway"
+      - "Elastic IP"
+      - "route table"
+  constraints:
+    must_mention:
+      - "0.0.0.0/0"
+      - "NAT Gateway"
+    must_not_claim:
+      - "Internet Gateway in private subnet"
+      - "NAT Gateway allows inbound"
+    max_tokens: 200
+
+- id: "net-t2-002"
+  tier: 2
+  type: procedural
+  hops: 1
+  question: "How do you set up VPC peering between two VPCs in different AWS accounts?"
+  ground_truth:
+    answer: >
+      Cross-account VPC peering setup: 1. In the requester account, create a VPC peering
+      connection request specifying the accepter VPC ID and accepter account ID. 2. In the
+      accepter account, navigate to VPC peering connections and accept the request. 3. In
+      both VPCs, update the route tables: add a route for the peer VPC's CIDR pointing to
+      the peering connection (pcx-xxxxxx). 4. Update security groups in both VPCs to allow
+      traffic from the peer VPC's CIDR range. Ensure no CIDR overlap between the two VPCs.
+      DNS resolution: enable DNS resolution support on both sides of the peering connection
+      to resolve private hostnames across VPCs.
+    source_refs:
+      - "vpc/latest/peering/create-vpc-peering-connection.html"
+    required_entities:
+      - "VPC peering"
+      - "route table"
+      - "security group"
+  constraints:
+    must_mention:
+      - "accept"
+      - "route table"
+    must_not_claim:
+      - "automatic route propagation"
+      - "no CIDR overlap requirement"
+    max_tokens: 200
+
+- id: "net-t2-003"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: "How do you configure an Application Load Balancer to route traffic to different microservices based on URL path?"
+  ground_truth:
+    answer: >
+      ALB path-based routing: 1. Create one ALB with an HTTPS listener on port 443.
+      2. Create separate target groups for each microservice (e.g., tg-api, tg-auth, tg-static)
+      with appropriate health check paths. Register backend instances or ECS tasks into each
+      target group. 3. Add listener rules with path conditions: /api/* → forward to tg-api;
+      /auth/* → forward to tg-auth; /static/* → forward to tg-static. 4. Set a default rule
+      to handle unmatched paths (forward to a default target group or return a fixed 404
+      response). Rules are evaluated in priority order; lower numbers evaluated first.
+    source_refs:
+      - "elasticloadbalancing/latest/application/listener-update-rules.html"
+      - "elasticloadbalancing/latest/application/load-balancer-target-groups.html"
+    required_entities:
+      - "ALB"
+      - "listener rule"
+      - "target group"
+  constraints:
+    must_mention:
+      - "path"
+      - "target group"
+    must_not_claim:
+      - "one target group per ALB"
+      - "NLB supports path routing"
+    max_tokens: 200
+
+- id: "net-t2-004"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: "How do you configure Route 53 to fail over between a primary and secondary region?"
+  ground_truth:
+    answer: >
+      Route 53 active-passive failover: 1. Create health checks for the primary endpoint
+      (HTTP/HTTPS to the primary ALB or EC2 instance). 2. Create a DNS record (A or CNAME)
+      with Failover routing policy, Record type = PRIMARY, and associate the health check.
+      3. Create a second DNS record for the same name with Failover routing policy, Record
+      type = SECONDARY, pointing to the secondary region endpoint (no health check required,
+      but recommended). 4. If the primary health check fails, Route 53 automatically routes
+      all traffic to the secondary record. Keep TTL low (60 seconds) so DNS propagation is
+      fast. For private resources in a VPC, use a CloudWatch alarm health check.
+    source_refs:
+      - "Route53/latest/DeveloperGuide/dns-failover-configuring.html"
+    required_entities:
+      - "Route 53"
+      - "health check"
+      - "Failover routing"
+  constraints:
+    must_mention:
+      - "PRIMARY"
+      - "health check"
+    must_not_claim:
+      - "instant failover"
+      - "no TTL needed"
+    max_tokens: 200
+
+- id: "net-t2-005"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: "How do you restrict S3 bucket access so objects are only served through CloudFront?"
+  ground_truth:
+    answer: >
+      Using Origin Access Control (OAC): 1. Create a CloudFront distribution with the S3
+      bucket as the origin. 2. Create an OAC for the distribution (signing behavior: sign
+      requests). 3. Update the S3 bucket policy to grant s3:GetObject to the CloudFront
+      service principal (cloudfront.amazonaws.com) with aws:SourceArn condition set to the
+      distribution ARN. 4. Enable S3 Block Public Access to deny any public ACLs or bucket
+      policy overrides. 5. Remove any existing public-read ACLs. Result: direct S3 URL
+      requests are denied (403); only CloudFront-signed requests succeed. OAC supersedes the
+      older Origin Access Identity (OAI) and supports SSE-KMS buckets.
+    source_refs:
+      - "AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html"
+    required_entities:
+      - "CloudFront"
+      - "Origin Access Control"
+      - "S3 bucket policy"
+  constraints:
+    must_mention:
+      - "OAC"
+      - "bucket policy"
+    must_not_claim:
+      - "OAI is the current recommendation"
+      - "public access required"
+    max_tokens: 200
+
+- id: "net-t2-006"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: "How do you expose a private EC2 service to external consumers using AWS PrivateLink?"
+  ground_truth:
+    answer: >
+      PrivateLink provider setup: 1. Create an NLB in the provider VPC with your EC2 service
+      as targets. 2. Create a VPC Endpoint Service referencing the NLB ARN. Optionally require
+      acceptance for new connections. Share the endpoint service name with consumers.
+      Consumer setup: 3. In the consumer VPC, create an Interface Endpoint specifying the
+      endpoint service name. Choose subnets in each AZ. A private IP ENI is created per AZ.
+      4. Update the consumer security group to allow outbound traffic to the endpoint on the
+      service port. 5. Optionally enable Private DNS names so the service is accessible via
+      a friendly hostname. The consumer VPC CIDR can overlap with the provider VPC CIDR.
+    source_refs:
+      - "vpc/latest/privatelink/create-endpoint-service.html"
+    required_entities:
+      - "PrivateLink"
+      - "Endpoint Service"
+      - "Interface Endpoint"
+      - "NLB"
+  constraints:
+    must_mention:
+      - "NLB"
+      - "Interface Endpoint"
+    must_not_claim:
+      - "requires VPC peering"
+      - "no overlapping CIDR support"
+    max_tokens: 200
+
+- id: "net-t2-007"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: "How do you configure an AWS Site-to-Site VPN connection to a VPC?"
+  ground_truth:
+    answer: >
+      Site-to-Site VPN setup: 1. Create a Customer Gateway (CGW) in AWS representing your
+      on-premises router — specify the BGP ASN and static public IP of the on-premises device.
+      2. Create a Virtual Private Gateway (VGW) and attach it to the VPC. 3. Create a
+      Site-to-Site VPN connection linking the VGW and CGW. AWS generates two IPsec tunnel
+      configurations (for redundancy). 4. Download the VPN configuration for your on-premises
+      device type and apply it. 5. Enable route propagation on the VPC route table to
+      automatically propagate on-premises routes from the VGW, or add static routes. Each
+      tunnel supports up to 1.25 Gbps; use multiple connections or Direct Connect for more.
+    source_refs:
+      - "vpn/latest/s2svpn/SetUpVPNConnections.html"
+    required_entities:
+      - "Customer Gateway"
+      - "Virtual Private Gateway"
+      - "IPsec tunnel"
+  constraints:
+    must_mention:
+      - "two tunnels"
+      - "route propagation"
+    must_not_claim:
+      - "single tunnel for redundancy"
+      - "10 Gbps per connection"
+    max_tokens: 200
+
+- id: "net-t2-008"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: "How do you set up Route 53 private hosted zones for internal service DNS resolution across multiple VPCs?"
+  ground_truth:
+    answer: >
+      Private hosted zone (PHZ) setup: 1. Create a Route 53 private hosted zone (e.g.,
+      internal.corp) and associate it with the primary VPC during creation. 2. Add DNS records
+      for services (e.g., auth.internal.corp → 10.0.1.15). 3. To share the PHZ with additional
+      VPCs, associate those VPCs with the PHZ (VPCs in different accounts require a CLI
+      authorization step). 4. Ensure DNS resolution and DNS hostnames are enabled on each
+      associated VPC. VPC DNS resolver (at VPC CIDR + 2) queries Route 53 for PHZ records.
+      For on-premises access to PHZ, configure Route 53 Resolver Inbound Endpoints and set
+      the on-premises DNS to forward the domain to the inbound endpoint IPs.
+    source_refs:
+      - "Route53/latest/DeveloperGuide/hosted-zones-private.html"
+      - "Route53/latest/DeveloperGuide/resolver-forwarding-inbound-queries.html"
+    required_entities:
+      - "private hosted zone"
+      - "Route 53 Resolver"
+      - "VPC association"
+  constraints:
+    must_mention:
+      - "private hosted zone"
+      - "DNS resolution"
+    must_not_claim:
+      - "public DNS for internal names"
+      - "automatic cross-VPC resolution"
+    max_tokens: 200
+
+- id: "net-t2-009"
+  tier: 2
+  type: procedural
+  hops: 1
+  question: "How do you enable VPC Flow Logs and send them to S3 for long-term retention?"
+  ground_truth:
+    answer: >
+      Enabling VPC Flow Logs to S3: 1. In the S3 console, create a bucket (or use existing)
+      with appropriate retention policies. Add a bucket policy granting the flow logs delivery
+      service (delivery.logs.amazonaws.com) PutObject and GetBucketAcl permissions. 2. In the
+      VPC console, select the VPC, subnet, or ENI and choose "Create flow log." 3. Set
+      destination to S3, enter the bucket ARN with a log prefix (e.g.,
+      arn:aws:s3:::my-bucket/vpc-logs/). 4. Choose the filter (All, Accept, or Reject), log
+      format (default or custom fields), and maximum aggregation interval (1 or 10 minutes).
+      5. Flow logs begin publishing within a few minutes. Use Athena with AWS-provided DDL
+      to query them.
+    source_refs:
+      - "vpc/latest/userguide/flow-logs-s3.html"
+    required_entities:
+      - "VPC Flow Logs"
+      - "S3"
+      - "bucket policy"
+  constraints:
+    must_mention:
+      - "bucket policy"
+      - "aggregation interval"
+    must_not_claim:
+      - "flow logs are free"
+      - "real-time delivery"
+    max_tokens: 200
+
+- id: "net-t2-010"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: "How do you configure a Network Load Balancer for TLS termination with an ACM certificate?"
+  ground_truth:
+    answer: >
+      NLB TLS termination: 1. Request or import an SSL/TLS certificate in AWS Certificate
+      Manager (ACM) for your domain. 2. Create an NLB. 3. Add a TLS listener on port 443,
+      select the ACM certificate, and choose a security policy (TLS 1.2+ recommended,
+      e.g., ELBSecurityPolicy-TLS13-1-2-2021-06). 4. Create a target group using TCP protocol
+      on port 80 (or the backend port). Register EC2 instances or IPs as targets. 5. The NLB
+      terminates TLS, decrypts the request, and forwards plaintext TCP to backends. For
+      pass-through (backend handles TLS), use a TCP listener instead. Health checks should
+      use TCP or HTTP on the backend port.
+    source_refs:
+      - "elasticloadbalancing/latest/network/create-tls-listener.html"
+    required_entities:
+      - "NLB"
+      - "TLS listener"
+      - "ACM certificate"
+  constraints:
+    must_mention:
+      - "ACM"
+      - "TLS"
+    must_not_claim:
+      - "NLB does HTTP routing"
+      - "certificate stored on EC2"
+    max_tokens: 200
+
+- id: "net-t2-011"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: "How do you connect multiple VPCs to on-premises networks using AWS Transit Gateway and Direct Connect?"
+  ground_truth:
+    answer: >
+      Transit Gateway with Direct Connect: 1. Create a Transit Gateway. 2. Attach each VPC
+      to the TGW with TGW VPC attachments. 3. Create a Direct Connect Gateway (DXGW). 4.
+      Associate the DXGW with the TGW using a Transit VIF (Virtual Interface) attachment —
+      specify the BGP ASN and allowed prefixes. 5. On the Direct Connect side, create a
+      Transit VIF on your Direct Connect connection pointing to the DXGW. 6. Configure BGP
+      on your on-premises router. 7. Update TGW route tables to propagate routes from the
+      DXGW attachment and VPC attachments. All VPCs connected to TGW can now reach on-premises
+      via the single Direct Connect connection through DXGW.
+    source_refs:
+      - "directconnect/latest/UserGuide/direct-connect-transit-gateways.html"
+      - "vpc/latest/tgw/tgw-dcgw.html"
+    required_entities:
+      - "Transit Gateway"
+      - "Direct Connect Gateway"
+      - "Transit VIF"
+  constraints:
+    must_mention:
+      - "Direct Connect Gateway"
+      - "BGP"
+    must_not_claim:
+      - "separate Direct Connect per VPC required"
+      - "no route table needed"
+    max_tokens: 200
+
+- id: "net-t2-012"
+  tier: 2
+  type: procedural
+  hops: 1
+  question: "How do you configure an Elastic IP address for a NAT Gateway and what happens if it is reassigned?"
+  ground_truth:
+    answer: >
+      EIP for NAT Gateway: 1. Allocate an Elastic IP address from Amazon's pool (or bring
+      your own IP) in the same region as the NAT Gateway. 2. When creating the NAT Gateway,
+      select the Elastic IP allocation ID. The NAT Gateway's public IP is fixed at this EIP
+      for its lifetime. 3. Outbound traffic from private instances appears to originate from
+      this Elastic IP on the internet. If you disassociate or delete the NAT Gateway, the
+      Elastic IP remains allocated (you are charged for unattached EIPs at ~$0.005/hr). You
+      cannot reassign an EIP from a running NAT Gateway to another resource. To change the
+      EIP, delete the NAT Gateway, reassociate the EIP, and create a new NAT Gateway.
+    source_refs:
+      - "vpc/latest/userguide/vpc-nat-gateway.html"
+      - "vpc/latest/userguide/vpc-eips.html"
+    required_entities:
+      - "Elastic IP"
+      - "NAT Gateway"
+  constraints:
+    must_mention:
+      - "Elastic IP"
+      - "fixed"
+    must_not_claim:
+      - "EIP changes automatically"
+      - "free when unattached"
+    max_tokens: 200
+
+- id: "net-t2-013"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: "How do you use AWS WAF to protect an ALB from SQL injection and rate-based attacks?"
+  ground_truth:
+    answer: >
+      WAF on ALB: 1. Create a WAF Web ACL in the same region as the ALB. 2. Add the
+      AWS-AWSManagedRulesSQLiRuleSet managed rule group to block common SQL injection
+      patterns in request body, URI, and query string. 3. Add a rate-based rule: set a
+      threshold (e.g., 2000 requests per 5 minutes per IP) with action Block — this limits
+      brute force and DDoS. 4. Optionally add AWSManagedRulesCommonRuleSet for OWASP Top
+      10 coverage. 5. Associate the Web ACL with the ALB. 6. Enable WAF logging to CloudWatch
+      or S3 for visibility. Test with count mode first before switching rules to block to
+      avoid false positives.
+    source_refs:
+      - "waf/latest/developerguide/waf-chapter.html"
+      - "waf/latest/developerguide/waf-rule-statement-type-rate-based.html"
+    required_entities:
+      - "WAF"
+      - "Web ACL"
+      - "SQL injection"
+      - "rate-based rule"
+  constraints:
+    must_mention:
+      - "rate-based"
+      - "managed rule"
+    must_not_claim:
+      - "WAF works with NLB directly"
+      - "blocks all attacks automatically"
+    max_tokens: 200
+
+- id: "net-t2-014"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: "How do you configure CloudFront to serve content from multiple origins using cache behaviors?"
+  ground_truth:
+    answer: >
+      Multi-origin CloudFront: 1. Create a CloudFront distribution. 2. Define multiple origins:
+      e.g., an S3 bucket for static assets and an ALB for dynamic API traffic. 3. Configure
+      cache behaviors with path patterns: /api/* → ALB origin, with caching disabled (TTL 0)
+      or short TTL; /* (default) → S3 origin, with longer TTL for static assets. 4. For the
+      ALB origin, set the cache policy to CachingDisabled and origin request policy to pass
+      headers/cookies needed by the API. 5. For the S3 origin, enable OAC and apply an
+      appropriate caching TTL. Cache behaviors are evaluated in order; the default behavior
+      matches last.
+    source_refs:
+      - "AmazonCloudFront/latest/DeveloperGuide/distribution-web-values-specify.html"
+    required_entities:
+      - "CloudFront"
+      - "cache behavior"
+      - "origin"
+  constraints:
+    must_mention:
+      - "path pattern"
+      - "TTL"
+    must_not_claim:
+      - "one origin per distribution"
+      - "cache behaviors evaluated randomly"
+    max_tokens: 200
+
+- id: "net-t2-015"
+  tier: 2
+  type: procedural
+  hops: 2
+  question: "How do you set up Route 53 Resolver forwarding rules to resolve on-premises DNS names from within a VPC?"
+  ground_truth:
+    answer: >
+      Outbound DNS forwarding: 1. Create Route 53 Resolver Outbound Endpoints in the VPC —
+      these are ENIs in two or more subnets (for redundancy) that act as the forwarding source.
+      Assign security groups allowing UDP/TCP port 53 outbound to the on-premises DNS server.
+      2. Create a Resolver forwarding rule specifying the domain name to forward (e.g.,
+      corp.internal) and the target IP addresses of the on-premises DNS servers. 3. Associate
+      the forwarding rule with the VPC. When EC2 instances query corp.internal, the VPC DNS
+      resolver routes the query through the Outbound Endpoints to the on-premises DNS servers.
+      On-premises DNS servers must allow queries from the Outbound Endpoint IPs.
+    source_refs:
+      - "Route53/latest/DeveloperGuide/resolver-forwarding-outbound-queries.html"
+    required_entities:
+      - "Route 53 Resolver"
+      - "Outbound Endpoint"
+      - "forwarding rule"
+  constraints:
+    must_mention:
+      - "Outbound Endpoint"
+      - "forwarding rule"
+    must_not_claim:
+      - "Inbound Endpoint for outbound queries"
+      - "automatic without endpoints"
+    max_tokens: 200

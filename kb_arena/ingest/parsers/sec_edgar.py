@@ -147,7 +147,7 @@ class SecEdgarParser:
                 content_parts.append(tag.get_text(separator=" ", strip=True))
                 tables.extend(_extract_tables(tag))
             content = " ".join(content_parts).strip()
-            entities = _extract_named_entities(content)
+            _extract_named_entities(content)  # side-effect: NER cache
             sid = _unique_id(
                 _slugify(f"item-{current_item_num}-{current_title}"),
                 seen_ids,
@@ -194,7 +194,7 @@ class SecEdgarParser:
         # Fallback: if no Item headers found, treat whole doc as one section
         if not sections:
             full_text = body.get_text(separator=" ", strip=True)
-            entities = _extract_named_entities(full_text)
+            _extract_named_entities(full_text)  # side-effect: NER cache
             sid = _unique_id(_slugify(path.stem), seen_ids)
             sections.append(
                 Section(

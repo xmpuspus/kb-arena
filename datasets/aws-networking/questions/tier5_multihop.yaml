@@ -1,0 +1,437 @@
+- id: "net-t5-001"
+  tier: 5
+  type: multihop
+  hops: 5
+  question: >
+    A user in Tokyo opens a browser and loads a React app hosted on S3 behind CloudFront.
+    The React app calls an API Gateway endpoint that invokes a Lambda function, which
+    queries an RDS database in a private subnet. Trace every network hop and service
+    boundary from the browser request to the database query response.
+  ground_truth:
+    answer: >
+      Full trace (5 hops): Hop 1 — Browser → CloudFront edge (Tokyo): DNS resolves
+      app.example.com to a CloudFront anycast IP. The request reaches the nearest CloudFront
+      PoP in Tokyo. CloudFront checks its cache; for index.html (short TTL), it fetches from
+      the S3 origin via OAC over the AWS backbone. For cached JS/CSS, it responds from cache.
+      Hop 2 — React app → API Gateway: Browser calls https://api.example.com/v1/data. This
+      DNS resolves to an API Gateway regional endpoint (or CloudFront-fronted custom domain).
+      API Gateway receives the HTTPS request, validates the Authorization header (JWT via
+      Cognito authorizer or IAM), evaluates usage plan and throttling limits, then invokes
+      the Lambda integration. Hop 3 — API Gateway → Lambda: Lambda is invoked with the
+      event payload. If Lambda is VPC-attached, it uses a hyperplane ENI in a private subnet
+      (pre-allocated, avoids cold start ENI creation). Lambda's security group allows outbound
+      to the RDS security group. Hop 4 — Lambda → RDS: Lambda connects to the RDS endpoint
+      (DNS resolves to RDS private IP in the private subnet). The route is intra-VPC (local
+      route). The RDS security group allows inbound on port 5432 from the Lambda security
+      group. RDS executes the query. Hop 5 — RDS → Lambda → API Gateway → CloudFront →
+      Browser: response travels back through each hop. Lambda returns the result to API
+      Gateway, which formats the HTTP response. If not cacheable, API Gateway returns directly
+      to the browser. Each leg uses TLS. VPC Flow Logs record the Lambda-to-RDS traffic.
+    source_refs:
+      - "AmazonCloudFront/latest/DeveloperGuide/HowCloudFrontWorks.html"
+      - "apigateway/latest/developerguide/api-gateway-api-integration-types.html"
+      - "lambda/latest/dg/configuration-vpc.html"
+      - "AmazonRDS/latest/UserGuide/Overview.DBInstance.html"
+    required_entities:
+      - "CloudFront"
+      - "API Gateway"
+      - "Lambda"
+      - "RDS"
+      - "VPC"
+      - "Security Group"
+  constraints:
+    must_mention:
+      - "CloudFront"
+      - "API Gateway"
+      - "Lambda"
+      - "private subnet"
+    must_not_claim:
+      - "RDS publicly accessible"
+      - "Lambda outside VPC can reach RDS directly"
+    max_tokens: 400
+
+- id: "net-t5-002"
+  tier: 5
+  type: multihop
+  hops: 4
+  question: >
+    An enterprise connects its on-premises data center to AWS via Direct Connect. They have
+    10 VPCs across 3 regions, managed by a centralized Networking account. Describe how
+    Transit Gateway, Direct Connect Gateway, AWS RAM, and per-region TGW route tables work
+    together to enforce traffic segmentation between production and non-production workloads
+    while sharing a single Direct Connect connection.
+  ground_truth:
+    answer: >
+      Architecture: Hop 1 — On-premises → Direct Connect: Physical Direct Connect connection
+      (dedicated or hosted) at a colocation facility. A Transit VIF (not Private VIF) is
+      created on the connection, associating it with a Direct Connect Gateway (DXGW). DXGW
+      is a global resource not tied to a specific region.
+      Hop 2 — DXGW → Regional Transit Gateways: The DXGW is associated with TGWs in all 3
+      regions (us-east-1, eu-west-1, ap-southeast-1). BGP advertises on-premises prefixes to
+      each TGW and vice versa. Each TGW advertises its attached VPC CIDRs back to on-premises.
+      Hop 3 — TGW → VPCs via AWS RAM and attachments: The Networking account shares each
+      regional TGW via AWS RAM with all spoke accounts (or the Organization). Prod and
+      non-prod accounts attach their VPCs to the regional TGW. Each TGW has two route tables:
+      prod-rt (prod VPC attachments associated; propagates prod VPC CIDRs and on-premises
+      prefixes) and nonprod-rt (non-prod VPC attachments; propagates non-prod CIDRs and
+      on-premises prefixes). Prod VPCs cannot reach non-prod VPCs because they are in
+      different TGW route tables with no cross-propagation.
+      Hop 4 — Intra-VPC security: Within each VPC, Security Groups enforce least-privilege
+      per resource; NACLs provide subnet-boundary defense. VPC Flow Logs feed GuardDuty and
+      Security Hub for threat detection. The single Direct Connect serves both prod and
+      non-prod traffic — segmentation is enforced at the TGW route table layer, not at the
+      physical circuit.
+    source_refs:
+      - "directconnect/latest/UserGuide/direct-connect-transit-gateways.html"
+      - "vpc/latest/tgw/tgw-route-tables.html"
+      - "ram/latest/userguide/what-is.html"
+    required_entities:
+      - "Direct Connect Gateway"
+      - "Transit Gateway"
+      - "AWS RAM"
+      - "TGW route table"
+      - "Transit VIF"
+  constraints:
+    must_mention:
+      - "Transit VIF"
+      - "TGW route table"
+      - "AWS RAM"
+    must_not_claim:
+      - "separate Direct Connect per region"
+      - "VPC peering for segmentation"
+    max_tokens: 400
+
+- id: "net-t5-003"
+  tier: 5
+  type: multihop
+  hops: 4
+  question: >
+    A multi-region active-active web application uses Route 53, Global Accelerator, ALBs,
+    and Auto Scaling in us-east-1 and eu-west-1. When the us-east-1 region becomes
+    unhealthy, describe the full failover chain: how each service detects the failure and
+    how traffic shifts, including DNS propagation, anycast rerouting, ALB health checks,
+    and ASG behavior.
+  ground_truth:
+    answer: >
+      Failover chain across 4 hops:
+      Hop 1 — Global Accelerator endpoint health detection: GA continuously monitors the
+      us-east-1 ALB via health checks (TCP or HTTP). When the ALB fails health checks (below
+      threshold, ~10-30s), GA marks the us-east-1 endpoint as unhealthy. GA reroutes new
+      connections to the eu-west-1 endpoint over the AWS backbone — within ~30 seconds.
+      Existing TCP connections to us-east-1 are dropped; clients reconnect automatically.
+      Because GA uses static anycast IPs, there is no DNS TTL propagation delay. This is the
+      fastest failover path.
+      Hop 2 — Route 53 health check and DNS failover: Route 53 health checkers independently
+      poll the us-east-1 ALB endpoint. After the configured failure threshold (e.g., 3
+      consecutive failures over ~30s), Route 53 marks the us-east-1 record unhealthy and
+      stops returning it in DNS responses for the Failover or Latency policy. New DNS queries
+      resolve to eu-west-1 ALB. Clients with cached DNS answers continue using us-east-1
+      until TTL expires (60s typical). This path is slower than GA due to TTL.
+      Hop 3 — ALB in eu-west-1 absorbs traffic: eu-west-1 ALB receives the redirected traffic.
+      ALB health checks verify its target group's EC2 instances are healthy. If the Auto
+      Scaling Group (ASG) in eu-west-1 has insufficient capacity (if it was scaled down),
+      it scales out to handle the additional load — ASG target tracking (CPU or request count)
+      triggers scale-out. New EC2 instances launch, register with the ALB target group, and
+      pass health checks before receiving traffic (~2-5 min for EC2 launch).
+      Hop 4 — Recovery: When us-east-1 recovers, Route 53 health checks pass, and the record
+      becomes active again. GA reroutes users back based on latency. ASG in us-east-1 scales
+      back up. No manual intervention required.
+    source_refs:
+      - "global-accelerator/latest/dg/about-endpoint-groups-automatic-failover.html"
+      - "Route53/latest/DeveloperGuide/dns-failover.html"
+      - "autoscaling/ec2/userguide/as-scaling-target-tracking.html"
+    required_entities:
+      - "Global Accelerator"
+      - "Route 53"
+      - "ALB"
+      - "Auto Scaling Group"
+  constraints:
+    must_mention:
+      - "anycast"
+      - "DNS TTL"
+      - "health check"
+    must_not_claim:
+      - "GA migrates existing TCP connections"
+      - "Route 53 failover is instant"
+    max_tokens: 400
+
+- id: "net-t5-004"
+  tier: 5
+  type: multihop
+  hops: 5
+  question: >
+    Describe how a security team would design a centralized egress inspection architecture
+    using AWS Network Firewall, Transit Gateway, an Inspection VPC, and VPC Flow Logs to
+    enforce and audit all outbound internet traffic from 20 spoke VPCs, including the
+    routing path for an HTTP request from a spoke VPC instance to the internet.
+  ground_truth:
+    answer: >
+      Centralized egress architecture (5-hop routing):
+      Hop 1 — Spoke VPC → Transit Gateway: In each spoke VPC, the private subnet route table
+      has a default route (0.0.0.0/0) pointing to the Transit Gateway VPC attachment. Spoke
+      VPCs have no Internet Gateway or NAT Gateway — all internet-bound traffic is forced
+      through TGW. TGW has a "spoke" route table associated with all spoke VPC attachments.
+      The spoke route table has a default route (0.0.0.0/0) pointing to the Inspection VPC
+      TGW attachment.
+      Hop 2 — Transit Gateway → Inspection VPC (ingress subnet): The Inspection VPC TGW
+      attachment lives in a dedicated subnet (TGW attachment subnet). The Inspection VPC's
+      TGW-attachment-subnet route table routes 0.0.0.0/0 to the AWS Network Firewall endpoint
+      in the same AZ (deployed in a firewall subnet).
+      Hop 3 — AWS Network Firewall inspection: The Network Firewall endpoint receives the
+      packet. Firewall policy evaluates stateless rules first (basic L3/L4 filtering), then
+      stateful rules (Suricata domain list: block known-bad domains, allow-list approved
+      destinations, detect C2 patterns). Blocked traffic is dropped and logged. Allowed
+      traffic exits the firewall endpoint toward the NAT Gateway subnet.
+      Hop 4 — Inspection VPC → NAT Gateway → Internet Gateway: The firewall subnet route
+      table routes 0.0.0.0/0 to the NAT Gateway (in a public subnet). NAT Gateway translates
+      the spoke VPC's private IP to the Inspection VPC's Elastic IP. The NAT Gateway's route
+      table routes 0.0.0.0/0 to the Internet Gateway. Traffic exits to the internet with
+      the Inspection VPC's Elastic IP as the source.
+      Hop 5 — Return traffic path: Response from the internet arrives at the IGW → NAT
+      Gateway → Network Firewall (stateful inspection recognizes the return flow) → TGW →
+      spoke VPC → instance. VPC Flow Logs on the Inspection VPC's ENIs capture all traffic
+      for audit. The "inspection" TGW route table propagates spoke VPC CIDRs back to each
+      spoke for return routing.
+    source_refs:
+      - "network-firewall/latest/developerguide/architectures.html"
+      - "vpc/latest/tgw/transit-gateway-nat-igw.html"
+    required_entities:
+      - "AWS Network Firewall"
+      - "Transit Gateway"
+      - "Inspection VPC"
+      - "NAT Gateway"
+      - "VPC Flow Logs"
+  constraints:
+    must_mention:
+      - "Network Firewall"
+      - "Inspection VPC"
+      - "TGW route table"
+    must_not_claim:
+      - "spoke VPCs have Internet Gateway"
+      - "Network Firewall in every spoke VPC"
+    max_tokens: 400
+
+- id: "net-t5-005"
+  tier: 5
+  type: multihop
+  hops: 4
+  question: >
+    How do CloudFront, WAF, Shield Advanced, Route 53, and ALB work together as defense
+    layers during a sophisticated application-layer DDoS attack targeting a web application?
+    Describe each layer's role, what it blocks, and what reaches the next layer.
+  ground_truth:
+    answer: >
+      Defense-in-depth DDoS response across 4 layers:
+      Layer 1 — Route 53 + Shield Advanced: Attackers flood DNS to prevent resolution.
+      Shield Advanced protects Route 53 from DNS-layer DDoS (volumetric query floods). Route 53
+      is inherently distributed and highly available. Shield Advanced enables DDoS Response
+      Team (DRT) to apply emergency mitigations on Route 53 if needed. Route 53 Resolver DNS
+      Firewall blocks resolution to attacker-controlled domains (for botnet C2 enumeration
+      from inside the VPC).
+      Layer 2 — CloudFront edge + Shield Advanced: Volumetric HTTP flood traffic hits
+      CloudFront PoPs globally. Shield Advanced detects the attack signature and applies
+      automatic L7 rate limiting and scrubbing at the edge — most attack traffic is absorbed
+      or dropped at CloudFront PoPs near the attacker, not at the origin. Shield Advanced
+      provides near-real-time DDoS metrics and DRT access for custom mitigations.
+      Layer 3 — AWS WAF on CloudFront: Sophisticated L7 attacks that bypass volumetric
+      scrubbing (slow HTTP attacks, HTTP floods from legitimate-looking IPs, credential
+      stuffing) are filtered by WAF rules. Rate-based rules block IPs exceeding thresholds.
+      AWS Managed Rule Groups (Bot Control, AWSManagedRulesCommonRuleSet) handle automated
+      attack patterns. WAF geo-blocking can restrict traffic from unexpected regions. WAF
+      logs all evaluated requests to CloudWatch or S3 for forensics.
+      Layer 4 — ALB + Security Groups: Traffic that passes WAF reaches the ALB (origin).
+      ALB connection rate limits and timeout settings absorb slow-read attacks. Security
+      Groups on EC2 targets allow only traffic from ALB — no direct internet traffic reaches
+      EC2 instances. If overloaded, Auto Scaling adds capacity. Shield Advanced monitors
+      ALB metrics and can provide DDoS cost protection credits for scaling events triggered
+      by the attack.
+    source_refs:
+      - "waf/latest/developerguide/ddos-overview.html"
+      - "AmazonCloudFront/latest/DeveloperGuide/distribution-web-awswaf.html"
+      - "global-accelerator/latest/dg/disaster-recovery-resiliency.html"
+    required_entities:
+      - "CloudFront"
+      - "WAF"
+      - "Shield Advanced"
+      - "Route 53"
+      - "ALB"
+  constraints:
+    must_mention:
+      - "DDoS Response Team"
+      - "rate-based"
+      - "edge"
+    must_not_claim:
+      - "Shield Standard sufficient for L7 attacks"
+      - "WAF operates at network layer"
+    max_tokens: 400
+
+- id: "net-t5-006"
+  tier: 5
+  type: multihop
+  hops: 4
+  question: >
+    An organization uses AWS PrivateLink to expose a data service from a provider account
+    to 50 consumer accounts. The data service runs on ECS behind an NLB, with data stored
+    in S3 accessed via a VPC Gateway Endpoint. Trace the full data flow from a consumer
+    account making a request through PrivateLink to data returned from S3, identifying
+    each network boundary and access control mechanism.
+  ground_truth:
+    answer: >
+      Full data flow (4 network boundaries):
+      Boundary 1 — Consumer VPC → PrivateLink Interface Endpoint: The consumer application
+      (EC2 or Lambda) connects to the Interface Endpoint private IP (ENI in consumer's subnet).
+      The consumer security group allows outbound to the Interface Endpoint on the service
+      port (e.g., 443). The Interface Endpoint's security group allows inbound from consumer
+      resources. DNS for the endpoint service name resolves to the Interface Endpoint's
+      private IP (private DNS enabled). Traffic never leaves the AWS network.
+      Boundary 2 — PrivateLink → Provider NLB: PrivateLink forwards the traffic (via the
+      Endpoint Service) to the provider account's NLB. The NLB is in the provider VPC;
+      its security group allows inbound from the PrivateLink service (no source IP filtering
+      needed — NLB accepts connections from the endpoint service). NLB performs health checks
+      on ECS tasks and forwards to a healthy task. The provider VPC CIDR can overlap with
+      the consumer VPC CIDR — PrivateLink handles this transparently.
+      Boundary 3 — NLB → ECS task: NLB routes to the ECS task (Fargate or EC2 launch type)
+      registered in the target group. The ECS task's security group allows inbound on the
+      service port from the NLB. The task processes the request and needs to read data from S3.
+      Boundary 4 — ECS task → S3 via Gateway Endpoint: The ECS task issues an S3 API call.
+      The provider VPC's route table includes a Gateway Endpoint route (S3 prefix list → vpce).
+      The request reaches S3 via the Gateway Endpoint without traversing the internet. The
+      S3 bucket policy restricts access to the provider VPC via the vpc-endpoint condition
+      (aws:sourceVpce). The data is retrieved and returned through the same path back to the
+      consumer. The entire path — consumer to S3 — stays on the AWS private network.
+    source_refs:
+      - "vpc/latest/privatelink/create-endpoint-service.html"
+      - "vpc/latest/privatelink/vpc-endpoints-s3.html"
+      - "AmazonECS/latest/developerguide/task-networking.html"
+    required_entities:
+      - "PrivateLink"
+      - "Interface Endpoint"
+      - "NLB"
+      - "Gateway Endpoint"
+      - "S3"
+  constraints:
+    must_mention:
+      - "Interface Endpoint"
+      - "Gateway Endpoint"
+      - "overlapping CIDR"
+    must_not_claim:
+      - "traffic traverses internet"
+      - "VPC peering required"
+    max_tokens: 400
+
+- id: "net-t5-007"
+  tier: 5
+  type: multihop
+  hops: 5
+  question: >
+    Describe how you would architect DNS resolution for a hybrid cloud environment where
+    EC2 instances in 5 VPCs (3 regions) need to resolve on-premises private hostnames,
+    on-premises systems need to resolve AWS private hosted zone records, and all VPCs
+    need to resolve each other's service discovery names — using Route 53 Resolver, private
+    hosted zones, and Resolver endpoints.
+  ground_truth:
+    answer: >
+      Hybrid DNS architecture (5 resolution paths):
+      Path 1 — AWS to on-premises (outbound forwarding): Create Route 53 Resolver Outbound
+      Endpoints in a Hub VPC in each region (two ENIs per endpoint, in separate AZs). Create
+      Resolver forwarding rules for on-premises domains (corp.internal → on-premises DNS IPs
+      10.0.0.53 and 10.0.0.54). Share the forwarding rules across accounts and VPCs via
+      AWS RAM. Associate each forwarding rule with all 5 VPCs. When any EC2 instance queries
+      a corp.internal name, the VPC DNS resolver forwards through the Outbound Endpoint
+      to on-premises DNS.
+      Path 2 — On-premises to AWS private hosted zones (inbound): Create Route 53 Resolver
+      Inbound Endpoints in the Hub VPC in each region (two ENIs with private IPs). Configure
+      on-premises DNS servers to forward aws.internal queries to the Inbound Endpoint IPs.
+      Route 53 resolves the PHZ records and returns private IPs to on-premises DNS, which
+      caches and returns to on-premises clients.
+      Path 3 — Cross-VPC PHZ sharing: Create private hosted zones for each VPC's services
+      (e.g., us-east-services.internal). Associate each PHZ with all 5 VPCs that need access.
+      PHZ association across accounts requires Route 53 CLI authorization (the PHZ owner
+      authorizes each account, then the VPC owner creates the association). EC2 instances in
+      any associated VPC resolve these names directly.
+      Path 4 — Cross-region DNS forwarding (VPC to VPC): For VPCs in different regions, if
+      a VPC in ap-southeast-1 needs to resolve names from a us-east-1 PHZ, associate the
+      PHZ with the ap-southeast-1 VPC directly (PHZ associations are region-agnostic). No
+      Resolver endpoint needed for cross-region PHZ resolution.
+      Path 5 — Service discovery for ECS/EKS: AWS Cloud Map publishes service discovery
+      namespaces registered in Route 53 (private or public). ECS tasks registered with Cloud
+      Map resolve service.namespace via the VPC DNS resolver. Associate the Cloud Map
+      namespace (which creates a PHZ) with all relevant VPCs. Combined: Resolver handles
+      on-premises bridging; PHZ associations handle cross-VPC; Cloud Map handles dynamic
+      service registration.
+    source_refs:
+      - "Route53/latest/DeveloperGuide/resolver.html"
+      - "Route53/latest/DeveloperGuide/hosted-zones-private.html"
+      - "cloud-map/latest/dg/what-is-cloud-map.html"
+    required_entities:
+      - "Route 53 Resolver"
+      - "Outbound Endpoint"
+      - "Inbound Endpoint"
+      - "private hosted zone"
+      - "AWS RAM"
+      - "Cloud Map"
+  constraints:
+    must_mention:
+      - "Outbound Endpoint"
+      - "Inbound Endpoint"
+      - "forwarding rule"
+    must_not_claim:
+      - "on-premises DNS resolves PHZ without Inbound Endpoint"
+      - "PHZ associations limited to one VPC"
+    max_tokens: 400
+
+- id: "net-t5-008"
+  tier: 5
+  type: multihop
+  hops: 4
+  question: >
+    An ECS Fargate task in a private subnet needs to pull a container image from ECR,
+    write logs to CloudWatch Logs, read configuration from Secrets Manager, and process
+    data stored in S3 — all without any internet access. Describe the complete set of
+    VPC endpoints required, the routing configuration, IAM permissions, and security
+    group rules to make this work.
+  ground_truth:
+    answer: >
+      Private Fargate task — fully air-gapped from internet (4 service hops):
+      Required Interface Endpoints (in the same VPC, private subnets): ecr.api (ECR control
+      plane for auth token), ecr.dkr (ECR Docker registry for image layers), logs (CloudWatch
+      Logs), secretsmanager (Secrets Manager). Required Gateway Endpoint: S3 (for ECR image
+      layers stored in S3, and for application S3 access).
+      Hop 1 — ECR image pull: ECS agent calls ecr.api Interface Endpoint to get an
+      authorization token. It then pulls image layers from ecr.dkr Interface Endpoint. Image
+      layers stored in S3 are fetched via the S3 Gateway Endpoint (ECR uses S3 for layer
+      storage). Without the S3 Gateway Endpoint, ECR pulls fail even with the ECR endpoints.
+      Hop 2 — CloudWatch Logs: The Fargate task's log driver (awslogs) sends log streams to
+      the logs Interface Endpoint. The endpoint security group allows HTTPS (443) inbound
+      from the task's security group.
+      Hop 3 — Secrets Manager: The task code calls secretsmanager Interface Endpoint to
+      retrieve secrets. Task execution role must have secretsmanager:GetSecretValue on the
+      specific secret ARN.
+      Hop 4 — S3 data access: Application code reads/writes S3 via the S3 Gateway Endpoint
+      (route table entry: S3 prefix list → vpce). Task execution role needs s3:GetObject,
+      s3:PutObject on the specific bucket ARN.
+      Security group rules: create one security group for all Interface Endpoints allowing
+      inbound HTTPS (TCP 443) from the task's security group CIDR or SG reference. The
+      task's security group allows outbound HTTPS to the VPC CIDR (covers all endpoints)
+      and implicitly allows return traffic (stateful). No 0.0.0.0/0 outbound rule needed.
+      Route table: private subnet has the S3 Gateway Endpoint route; no IGW or NAT Gateway
+      route. The subnet is fully isolated from the internet.
+    source_refs:
+      - "AmazonECR/latest/userguide/vpc-endpoints.html"
+      - "AmazonECS/latest/developerguide/fargate-task-networking.html"
+      - "vpc/latest/privatelink/vpc-endpoints.html"
+    required_entities:
+      - "ECR Interface Endpoint"
+      - "S3 Gateway Endpoint"
+      - "CloudWatch Logs endpoint"
+      - "Secrets Manager endpoint"
+      - "Fargate"
+  constraints:
+    must_mention:
+      - "ecr.dkr"
+      - "S3 Gateway Endpoint"
+      - "no internet access"
+    must_not_claim:
+      - "NAT Gateway required for private Fargate"
+      - "ECR pulls work without S3 endpoint"
+    max_tokens: 400

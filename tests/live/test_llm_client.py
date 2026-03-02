@@ -8,12 +8,17 @@ import pytest
 
 pytestmark = pytest.mark.live
 
+_CLASSIFY_PROMPT = (
+    "Classify: factoid, comparison, relational, procedural, exploratory. Return one word."
+)
+_CLASSIFY_VALUES = ["factoid", "comparison", "relational", "procedural", "exploratory"]
+
 
 async def test_classify_factoid(live_llm_client):
     result = await live_llm_client.classify(
         query="What is json.loads?",
-        system_prompt="Classify: factoid, comparison, relational, procedural, exploratory. Return one word.",
-        allowed_values=["factoid", "comparison", "relational", "procedural", "exploratory"],
+        system_prompt=_CLASSIFY_PROMPT,
+        allowed_values=_CLASSIFY_VALUES,
     )
     assert result == "factoid"
 
@@ -21,8 +26,8 @@ async def test_classify_factoid(live_llm_client):
 async def test_classify_comparison(live_llm_client):
     result = await live_llm_client.classify(
         query="Compare list vs tuple in Python",
-        system_prompt="Classify: factoid, comparison, relational, procedural, exploratory. Return one word.",
-        allowed_values=["factoid", "comparison", "relational", "procedural", "exploratory"],
+        system_prompt=_CLASSIFY_PROMPT,
+        allowed_values=_CLASSIFY_VALUES,
     )
     assert result == "comparison"
 
@@ -30,8 +35,8 @@ async def test_classify_comparison(live_llm_client):
 async def test_classify_relational(live_llm_client):
     result = await live_llm_client.classify(
         query="What depends on os.path?",
-        system_prompt="Classify: factoid, comparison, relational, procedural, exploratory. Return one word.",
-        allowed_values=["factoid", "comparison", "relational", "procedural", "exploratory"],
+        system_prompt=_CLASSIFY_PROMPT,
+        allowed_values=_CLASSIFY_VALUES,
     )
     assert result == "relational"
 
@@ -39,8 +44,8 @@ async def test_classify_relational(live_llm_client):
 async def test_classify_procedural(live_llm_client):
     result = await live_llm_client.classify(
         query="How do I read a CSV file?",
-        system_prompt="Classify: factoid, comparison, relational, procedural, exploratory. Return one word.",
-        allowed_values=["factoid", "comparison", "relational", "procedural", "exploratory"],
+        system_prompt=_CLASSIFY_PROMPT,
+        allowed_values=_CLASSIFY_VALUES,
     )
     assert result == "procedural"
 

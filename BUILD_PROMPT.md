@@ -1,4 +1,4 @@
-# KB Arena — Build Prompt
+# KB Arena — Build Prompt (Enhance & Migrate)
 
 Copy this entire prompt into a new Claude Code session from `~/Desktop/kb-arena/`.
 
@@ -6,301 +6,340 @@ Copy this entire prompt into a new Claude Code session from `~/Desktop/kb-arena/
 
 ## PROMPT START
 
-Ultrawork this. Build the KB Arena project from PLAN.md. Read PLAN.md first, then execute in parallel agent teams across worktrees. Don't stop until everything is built and verified.
+Ultrawork this. Read PLAN.md first, then CLAUDE.md for conventions. The codebase already exists — your job is to **migrate, enhance, and verify** it. Execute in parallel agent teams. Don't stop until everything passes tests, looks polished, and is visually verified with screenshots.
 
-### Phase 0: Scaffold (orchestrator — no worktree)
+### Context
 
-Before spinning up agents, create the skeleton they all write into:
+KB Arena benchmarks 5 retrieval strategies (vector RAG vs knowledge graphs) on **AWS documentation** — the most sprawling, cross-referenced, and inconsistently structured professional documentation in existence. 200+ services, each with overlapping concepts (VPCs appear in EC2, Lambda, RDS, ECS docs), implicit dependencies (Lambda needs an Execution Role, which needs IAM policies, which reference S3 ARNs), and documentation spread across guides, API references, and FAQs with no unified structure. This makes it the perfect stress test for retrieval architectures.
 
+The project proves empirically: knowledge graphs beat vector RAG on multi-hop, relational, and comparative queries. Pure vector wins on simple lookups but collapses when queries touch 3+ interconnected AWS services.
+
+**3 AWS corpora:**
+- **aws-compute** — Lambda, EC2, ECS, Fargate, Batch, Step Functions (75 questions)
+- **aws-storage** — S3, EBS, EFS, FSx, Glacier, Storage Gateway (65 questions)
+- **aws-networking** — VPC, Route 53, CloudFront, ALB/NLB, API Gateway, Direct Connect (60 questions)
+
+### Current State
+
+The codebase is **partially migrated** from its original Python-stdlib/Kubernetes/SEC-EDGAR content to AWS. The code structure, models, strategies, frontend, and graph viewer all exist and work. What remains:
+
+**Backend (partially migrated):**
+- `kb_arena/graph/schema.py` — Still has Python/K8s/SEC schemas in `_CORPUS_SCHEMA`. Needs AWS node/rel types: Service, Resource, Policy, Feature + DEPENDS_ON, INVOKES, CONNECTS_TO, ASSUMES, etc.
+- `kb_arena/strategies/knowledge_graph.py` — Mock data still references json/json.loads Python examples. CYPHER_GEN_PROMPT still has Python node/rel types. Needs AWS examples and schema.
+- `kb_arena/chatbot/router.py` — AWS corpus references partially done. Verify keywords cover AWS service names.
+
+**Question files (old content, need full rewrite):**
+- `datasets/python-stdlib/questions/*.yaml` — DELETE these entirely
+- `datasets/kubernetes/questions/*.yaml` — DELETE these entirely
+- `datasets/sec-edgar/questions/*.yaml` — DELETE these entirely
+- CREATE new `datasets/aws-compute/questions/*.yaml`, `datasets/aws-storage/questions/*.yaml`, `datasets/aws-networking/questions/*.yaml` with 200 total questions across 5 tiers
+
+**Tests (old fixtures):**
+- `tests/conftest.py` — Fixtures reference Python stdlib (json.loads, os.path.join). Migrate to AWS examples (Lambda functions, S3 bucket policies).
+- `tests/integration/test_ingest_to_vector.py` — Sample data references Python modules. Migrate to AWS service documents.
+- All other test files — scan for Python/K8s/SEC references, replace with AWS equivalents.
+
+**Frontend (theme done, content partially migrated):**
+- Cloudwright light theme is applied and builds clean
+- `web/app/page.tsx` — AWS content mostly in place. Verify all references.
+- `web/app/demo/page.tsx` — Pre-filled with AWS Lambda question. Verify answers.
+- `web/app/graph/page.tsx` — 25 AWS service nodes, 30 edges already defined. Verify completeness.
+- `web/app/benchmark/page.tsx` — Methodology text updated. Verify.
+- `web/components/GraphViewer.tsx` — Already rewritten (~600 lines, Gephi-quality canvas). DO NOT MODIFY unless broken.
+- `web/components/BenchmarkTable.tsx` — Footer references AWS. Verify.
+
+**Screenshots (ALL stale, need retake):**
+- `docs/screenshot-home.png` — Styled but shows pre-AWS content
+- `docs/screenshot-demo.png` — Styled but shows Kubernetes question
+- `docs/screenshot-benchmark.png` — Styled but old methodology text
+- `docs/screenshot-graph.png` — BROKEN: captured without CSS, shows unstyled HTML
+
+**README.md** — Exists with AWS focus but may reference stale content.
+
+---
+
+### Wave 1: MIGRATE (3 parallel agents in worktrees)
+
+**Agent 1: "migrate-backend" (implementer, worktree, sonnet)**
+
+Branch: `migrate/backend-aws`
+
+Migrate all backend Python files from Python-stdlib/K8s/SEC references to AWS. Read each file before modifying.
+
+Files to modify:
+- `kb_arena/graph/schema.py` — Replace `_CORPUS_SCHEMA` dispatch. NodeTypes: Service, Resource, Policy, Feature, Configuration, Limit, API_Action, ARN_Pattern. RelTypes: DEPENDS_ON, INVOKES, CONNECTS_TO, ASSUMES, CONTAINS, PROTECTS, ROUTES_TO, LOGS_TO, TRIGGERS, DEPLOYED_IN, MANAGES, READS_FROM, WRITES_TO. Three corpus schemas: aws-compute, aws-storage, aws-networking.
+- `kb_arena/strategies/knowledge_graph.py` — Replace mock data with AWS examples (Lambda -> IAM Role -> S3 access). Update CYPHER_GEN_PROMPT with AWS node/rel types. Update example Cypher queries.
+- `kb_arena/chatbot/router.py` — Verify AWS service name keywords in intent classifier. Add any missing: Lambda, EC2, S3, RDS, VPC, IAM, CloudFront, DynamoDB, SQS, SNS, ECS, EKS, Route 53, ALB, NLB, API Gateway, CloudWatch, Secrets Manager, etc.
+- `kb_arena/graph/cypher_templates.py` — If exists, update templates for AWS service relationships.
+- `kb_arena/graph/extractor.py` — If exists, update system prompt to use AWS schema.
+- Any other `.py` file referencing "python-stdlib", "kubernetes", "sec-edgar", "json.loads", "os.path", "pathlib", or K8s/SEC concepts.
+
+Scan with: `grep -r "python-stdlib\|kubernetes\|sec-edgar\|json\.loads\|os\.path\|pathlib\|kubectl\|EDGAR\|filing" kb_arena/ --include="*.py" -l`
+
+Rules:
+- Read before modifying — understand existing structure.
+- Keep the same code style. Don't add docstrings, comments, or type annotations beyond what exists.
+- Don't restructure or refactor — just migrate content references.
+- Run `python3 -m pytest tests/ -x` after all changes to verify nothing broke.
+
+---
+
+**Agent 2: "migrate-questions" (implementer, worktree, sonnet)**
+
+Branch: `migrate/aws-questions`
+
+Delete old question files and create 200 AWS documentation questions across 3 corpora and 5 tiers.
+
+Step 1 — Delete old:
+```bash
+rm -rf datasets/python-stdlib/questions/
+rm -rf datasets/kubernetes/questions/
+rm -rf datasets/sec-edgar/questions/
 ```
-kb-arena/
-├── pyproject.toml
-├── docker-compose.yml
-├── CLAUDE.md
-├── .env.example
-├── cypher/
-├── kb_arena/__init__.py
-├── kb_arena/settings.py
-├── kb_arena/cli.py
-├── kb_arena/models/__init__.py
-├── kb_arena/models/document.py
-├── kb_arena/models/graph.py
-├── kb_arena/models/benchmark.py
-├── kb_arena/models/api.py
-├── kb_arena/llm/__init__.py
-├── kb_arena/llm/client.py
-├── kb_arena/strategies/__init__.py
-├── kb_arena/strategies/base.py
-├── datasets/python-stdlib/raw/.gitkeep
-├── datasets/python-stdlib/processed/.gitkeep
-├── datasets/python-stdlib/questions/.gitkeep
-├── datasets/kubernetes/raw/.gitkeep
-├── datasets/kubernetes/processed/.gitkeep
-├── datasets/kubernetes/questions/.gitkeep
-├── datasets/sec-edgar/raw/.gitkeep
-├── datasets/sec-edgar/processed/.gitkeep
-├── datasets/sec-edgar/questions/.gitkeep
-├── results/.gitkeep
-├── tests/conftest.py
-├── web/.gitkeep
-└── .gitignore
+
+Step 2 — Create directory structure:
+```
+datasets/aws-compute/questions/
+datasets/aws-storage/questions/
+datasets/aws-networking/questions/
 ```
 
-Write the shared models (document.py, graph.py, benchmark.py, api.py), settings.py, llm/client.py, strategies/base.py, and pyproject.toml FIRST — these are the contracts all agents depend on. Commit to main.
+Step 3 — Write question files:
 
-Write a CLAUDE.md for this project with:
-- Project overview and architecture
-- How to run (docker compose up, kb-arena ingest, kb-arena benchmark, kb-arena serve)
-- Python 3.12, FastAPI, Neo4j Community 5, ChromaDB, Claude Haiku/Sonnet
-- Naming conventions: snake_case functions, PascalCase classes, NodeType/RelType enums
-- Testing: pytest, mock Neo4j with conftest fixtures
-- Never hardcode API keys — use .env via pydantic-settings
+`datasets/aws-compute/questions/` (75 questions):
+- `tier1_factoid.yaml` — 20 questions. Single AWS service lookups. "What is the maximum timeout for a Lambda function?" "What instance types support EBS optimization?"
+- `tier2_procedural.yaml` — 20 questions. How-to with one service. "How do you configure a Lambda function to run inside a VPC?"
+- `tier3_comparative.yaml` — 15 questions. Service A vs B. "When should you use Lambda vs Fargate for container workloads?"
+- `tier4_relational.yaml` — 12 questions. Cross-service dependencies. "What IAM permissions does a Lambda function need to read from DynamoDB and write to S3?"
+- `tier5_multihop.yaml` — 8 questions. 3+ services, architecture patterns. "Design the IAM policy chain for: API Gateway -> Lambda -> RDS in private subnet with Secrets Manager credential rotation."
 
-Commit scaffold to main. Then launch Wave 1.
+`datasets/aws-storage/questions/` (65 questions):
+- `tier1_factoid.yaml` — 18 questions. "What are the S3 storage classes?" "What is the maximum size of an EBS volume?"
+- `tier2_procedural.yaml` — 17 questions. "How do you configure S3 lifecycle rules to transition objects to Glacier?"
+- `tier3_comparative.yaml` — 13 questions. "When should you use EFS vs FSx for Lustre?"
+- `tier4_relational.yaml` — 10 questions. "How do S3 bucket policies interact with IAM policies for cross-account access?"
+- `tier5_multihop.yaml` — 7 questions. "Trace the data flow: application writes to EFS mounted on ECS Fargate, backed up by AWS Backup to S3, replicated cross-region."
 
----
+`datasets/aws-networking/questions/` (60 questions):
+- `tier1_factoid.yaml` — 17 questions. "What is the maximum number of VPCs per region?"
+- `tier2_procedural.yaml` — 15 questions. "How do you configure a VPC endpoint for S3?"
+- `tier3_comparative.yaml` — 12 questions. "ALB vs NLB: when to use which?"
+- `tier4_relational.yaml` — 10 questions. "How do security groups, NACLs, and WAF rules layer together?"
+- `tier5_multihop.yaml` — 6 questions. "Design the complete network path: user -> CloudFront -> WAF -> ALB -> ECS in private subnet -> RDS via VPC endpoint."
 
-### Wave 1: BUILD (4 parallel agents in worktrees)
+Each YAML entry must have: id, tier, type, hops, question, ground_truth (answer, source_refs, required_entities), constraints (must_mention, must_not_claim).
 
-Spin up a team. Create 4 agents, each in their own worktree. Each agent gets their own branch. Agents work in PARALLEL.
-
-**Agent 1: "ingest" (implementer, worktree, sonnet)**
-
-Branch: `feat/ingest-pipeline`
-
-Build the document ingestion pipeline. Read PLAN.md "Pattern 8: Multi-Stage CLI Pipeline" and "Dataset Selection" sections.
-
-Files to create:
-- `kb_arena/ingest/__init__.py`
-- `kb_arena/ingest/pipeline.py` — orchestrator, reads raw docs, writes JSONL to processed/
-- `kb_arena/ingest/parsers/__init__.py`
-- `kb_arena/ingest/parsers/markdown.py` — parses .md and .rst files into Document model
-- `kb_arena/ingest/parsers/html.py` — parses HTML files (Python docs format) into Document model
-- `kb_arena/ingest/parsers/sec_edgar.py` — parses SEC EDGAR 10-K HTML into Document model
-- `tests/test_ingest.py` — test each parser with sample documents
-
-Implementation notes:
-- Every parser outputs the shared `Document` model from `kb_arena/models/document.py`
-- Write JSONL intermediates to `datasets/{corpus}/processed/` (climate-money-ph pattern)
-- HTML parser must handle Python docs format: `<dl>` for function signatures, `<table>` for params, nested `<div class="section">`
-- RST parser: handle directives (.. function::, .. class::, .. deprecated::), cross-references (:func:, :class:, :mod:)
-- Heading path extraction: track the h1 > h2 > h3 hierarchy as `section.heading_path`
-- Download Python stdlib HTML docs from `docs.python.org/3/library/` for 50 most-used modules
-- Tests: parse a real Python docs page (json.html or os.html), verify sections, tables, cross-refs extracted
-
-Wire the `ingest` CLI command in `kb_arena/cli.py`.
+Ground truth answers must be factually correct against real AWS documentation. Source refs should be real AWS docs URLs (https://docs.aws.amazon.com/...).
 
 ---
 
-**Agent 2: "graph" (implementer, worktree, sonnet)**
+**Agent 3: "migrate-tests" (implementer, worktree, sonnet)**
 
-Branch: `feat/graph-engine`
+Branch: `migrate/aws-tests`
 
-Build the knowledge graph engine. Read PLAN.md "Pattern 2-4, 6-7" and "Graph schema for Python docs" sections.
+Migrate all test fixtures and assertions from Python/K8s/SEC to AWS content.
 
-Files to create:
-- `kb_arena/graph/__init__.py`
-- `kb_arena/graph/schema.py` — NodeType + RelType enums per corpus (Python, K8s, SEC). Include validation.
-- `kb_arena/graph/extractor.py` — LLM-based entity/relationship extraction with schema constraints. System prompt includes enum values as ONLY allowed types. Post-validation rejects unknowns.
-- `kb_arena/graph/resolver.py` — Two-threshold Jaro-Winkler entity resolution (>=0.92 auto-merge, 0.85-0.91 review). Use jellyfish library.
-- `kb_arena/graph/neo4j_store.py` — UNWIND/MERGE batch loading (batch_size=1000), cursor management (always consume results), node-before-edge loading order.
-- `kb_arena/graph/cypher_templates.py` — 8+ pre-built Cypher query templates: single_entity_lookup, multi_hop, comparison, dependency_chain, deprecation_chain, cross_reference, type_hierarchy, usage_examples.
-- `kb_arena/graph/cypher_generator.py` — Text-to-Cypher via LLM for novel queries. System prompt includes schema. Fallback to template matching.
-- `kb_arena/graph/analyzer.py` — networkx graph algorithms (communities, centrality, dependency chains) via asyncio.to_thread. 5-minute in-memory cache.
-- `cypher/schema_python.cypher` — idempotent DDL with IF NOT EXISTS. Uniqueness constraints, fulltext index across 4+ label types, vector index for embeddings.
-- `cypher/schema_kubernetes.cypher`
-- `cypher/schema_sec.cypher`
-- `tests/test_graph/test_extractor.py`
-- `tests/test_graph/test_resolver.py`
-- `tests/test_graph/test_cypher.py`
+Files to modify:
+- `tests/conftest.py` — Replace `sample_section` (json.loads) with AWS example (Lambda function configuration). Replace `sample_document` (python-stdlib-json) with AWS document (aws-compute-lambda). Replace `sample_documents` (json + os modules) with AWS documents (Lambda + S3). Keep exact same fixture structure and field types.
+- `tests/integration/test_ingest_to_vector.py` — Replace Python module sample data with AWS service documents. Keep same test logic.
+- All files in `tests/` — scan for old references: `grep -r "python-stdlib\|kubernetes\|sec-edgar\|json\.loads\|os\.path\|pathlib" tests/ -l`
 
-Wire the `build-graph` CLI command.
-
----
-
-**Agent 3: "strategies" (implementer, worktree, sonnet)**
-
-Branch: `feat/strategies`
-
-Build all 5 retrieval strategies. Read PLAN.md "The 5 Retrieval Strategies — Detailed Implementation" and "Pattern 5, 9" sections.
-
-Files to create:
-- `kb_arena/strategies/naive_vector.py` — Strategy 1. ChromaDB, 512-token chunks, 50-token overlap, top-k=5. ~80 lines. Deliberately simple.
-- `kb_arena/strategies/contextual_vector.py` — Strategy 2. Prepend heading_path to chunks before embedding. Metadata filters on ChromaDB where clause. ~120 lines.
-- `kb_arena/strategies/qna_pairs.py` — Strategy 3. LLM generates 3-5 QnA pairs per section at build time. Embed questions. At query time, match question embeddings, return pre-generated answers. ~210 lines.
-- `kb_arena/strategies/knowledge_graph.py` — Strategy 4. Uses graph/ module. Intent → template query or Cypher gen → execute → assemble context → generate answer. ~600 lines.
-- `kb_arena/strategies/hybrid.py` — Strategy 5. 3-stage intent classification (keyword → Haiku → regex fallback). Routes factoid/exploratory to vector, comparison/relational to graph, procedural to both with fusion. ~200 lines.
-- `kb_arena/chatbot/__init__.py`
-- `kb_arena/chatbot/router.py` — IntentRouter with 3-stage classification. QueryIntent enum.
-- `kb_arena/chatbot/session.py` — Client-side memory helper. Last 6 turns, truncated to 500 chars per assistant message.
-- `kb_arena/chatbot/api.py` — FastAPI app with SSE streaming. Lifespan init. Consistent error envelope. CORS. Rate limiter. Mock fallback if Neo4j unavailable.
-- `tests/test_strategies.py`
-- `tests/test_router.py`
-
-Wire `build-vectors` and `serve` CLI commands.
-
----
-
-**Agent 4: "benchmark" (implementer, worktree, sonnet)**
-
-Branch: `feat/benchmark`
-
-Build the benchmark engine AND write all 200+ questions. Read PLAN.md "Benchmark Methodology", "Pattern 13", and "Query Complexity Tiers" sections.
-
-Files to create:
-- `kb_arena/benchmark/questions.py` — YAML question loader. Validates against Question model.
-- `kb_arena/benchmark/evaluator.py` — Two-pass: structural checks (must_mention / must_not_claim) then LLM-as-judge. Cloudwright pattern.
-- `kb_arena/benchmark/runner.py` — Orchestrator. Runs all specified strategies against all questions. Captures accuracy, latency, tokens, cost. Writes results JSON.
-- `kb_arena/benchmark/reporter.py` — Generates markdown report + summary JSON from results.
-- `datasets/python-stdlib/questions/tier1_factoid.yaml` — 20 questions. Single-fact lookups about Python stdlib. Real questions with verified ground truth from docs.python.org.
-- `datasets/python-stdlib/questions/tier2_multi_entity.yaml` — 20 questions. Multi-entity queries spanning 2+ modules.
-- `datasets/python-stdlib/questions/tier3_comparative.yaml` — 15 questions. Compare stdlib alternatives.
-- `datasets/python-stdlib/questions/tier4_relational.yaml` — 12 questions. Dependency/causation chains.
-- `datasets/python-stdlib/questions/tier5_temporal.yaml` — 8 questions. Version changes + relationships.
-- Same 5 files for `kubernetes/` (15, 15, 15, 12, 8 questions)
-- Same 5 files for `sec-edgar/` (15, 15, 10, 11, 9 questions)
-- `tests/test_benchmark.py`
-
-Wire `benchmark` and `report` CLI commands.
-
-Each question YAML entry must have: id, tier, type, hops, question, ground_truth (answer, source_refs, required_entities), constraints (must_mention, must_not_claim). Use real questions with real answers verified against actual documentation.
+Rules:
+- Read each test file fully before modifying.
+- Keep the same test structure and assertions — only change content/data.
+- Don't add new tests. Don't remove tests. Don't change assertion logic.
+- Run `python3 -m pytest tests/ -x -v` after changes.
 
 ---
 
 ### Wave 1 Merge (orchestrator)
 
-After all 4 agents complete:
-1. Merge `feat/ingest-pipeline` → main (no conflicts expected — owns ingest/)
-2. Merge `feat/graph-engine` → main (no conflicts — owns graph/ and cypher/)
-3. Merge `feat/strategies` → main (may touch cli.py — resolve if needed)
-4. Merge `feat/benchmark` → main (no conflicts — owns benchmark/ and datasets/)
-5. Run `pytest tests/` on merged main — fix any integration issues
-6. Commit merged main
+After all 3 agents complete:
+1. Merge `migrate/backend-aws` -> main
+2. Merge `migrate/aws-questions` -> main
+3. Merge `migrate/aws-tests` -> main
+4. Run `python3 -m pytest tests/ -x` on merged main — fix any integration issues
+5. Commit merged main
 
 ---
 
-### Wave 2: QA + FRONTEND (3 parallel agents in worktrees)
+### Wave 2: FRONTEND VERIFY + GRAPH (2 parallel agents)
 
-**Agent 5: "qa-integration" (qa-verifier, worktree, sonnet)**
+**Agent 4: "frontend-verify" (implementer, worktree, sonnet)**
 
-Branch: `qa/integration-tests`
+Branch: `enhance/frontend-content`
 
-Full integration test suite. Read the merged codebase on main.
+Verify and fix all frontend files for AWS consistency. The Cloudwright light theme and component structure are already done — this is content verification only.
 
-Tasks:
-1. Run `pytest tests/` — fix any failures from merging
-2. Write integration tests that exercise the full pipeline:
-   - `tests/integration/test_ingest_to_vector.py` — ingest sample doc → build vector index → query → verify answer
-   - `tests/integration/test_ingest_to_graph.py` — ingest sample doc → extract entities → load Neo4j → query via Cypher → verify
-   - `tests/integration/test_benchmark_e2e.py` — run benchmark on 5 sample questions across 2 strategies → verify results JSON schema
-   - `tests/integration/test_chatbot_api.py` — FastAPI TestClient: POST /chat, verify SSE events, verify error envelope on bad input
-3. Verify all CLI commands work: `kb-arena ingest --help`, `kb-arena build-graph --help`, `kb-arena benchmark --help`, `kb-arena serve --help`
-4. Verify docker-compose.yml is valid: `docker compose config`
-5. Lint with ruff: `ruff check . && ruff format --check .`
-6. Fix all issues found
+Checklist:
+1. `web/lib/api.ts` — Verify CORPORA array is `["aws-compute", "aws-storage", "aws-networking"]` with correct labels and question counts (75, 65, 60).
+2. `web/app/page.tsx` — Verify hero text, strategy descriptions, corpus cards, tier labels all reference AWS. No Python/K8s/SEC mentions.
+3. `web/app/demo/page.tsx` — Verify pre-filled question is AWS-themed. Verify 5 strategy answers are realistic for AWS query.
+4. `web/app/benchmark/page.tsx` — Verify methodology text references AWS corpora. Verify tier descriptions match question files.
+5. `web/components/BenchmarkTable.tsx` — Verify footer text.
+6. `web/app/graph/page.tsx` — Verify 25 AWS service nodes and 30 edges are present and correctly typed.
+7. **DO NOT modify** `web/components/GraphViewer.tsx` — it's already complete.
+8. Run `cd web && npm run build` — must compile with zero errors.
+9. Scan all `web/` files: `grep -r "python\|kubernetes\|kubectl\|sec-edgar\|EDGAR\|filing\|stdlib" web/ --include="*.ts" --include="*.tsx" -l`
 
----
-
-**Agent 6: "qa-benchmark" (qa-verifier, worktree, sonnet)**
-
-Branch: `qa/benchmark-validation`
-
-Validate all 200+ benchmark questions for quality.
-
-Tasks:
-1. Load every YAML question file — verify valid YAML and matches Question model schema
-2. Check for duplicate question IDs across all files
-3. Verify every `source_ref` points to a real page in the documentation (check URL or file exists)
-4. Verify `must_mention` terms are actually present in the `ground_truth.answer`
-5. Verify `must_not_claim` terms are NOT present in the `ground_truth.answer`
-6. Verify question distribution matches PLAN.md targets per tier per corpus
-7. Spot-check 20 random questions: is the ground_truth.answer actually correct per the real documentation?
-8. Flag any questions that are ambiguous, have incorrect ground truth, or have weak constraints
-9. Write a validation report to `datasets/VALIDATION_REPORT.md`
-10. Fix any issues found in question files
+Fix any stale references found.
 
 ---
 
-**Agent 7: "frontend" (implementer, worktree, sonnet)**
+**Agent 5: "frontend-graph" (qa-verifier, worktree, sonnet)**
 
-Branch: `feat/frontend`
+Branch: `verify/graph-page`
 
-Build the Next.js 14 frontend. Read PLAN.md "Repository Structure > web/" section.
+Verify the graph page renders correctly with AWS service nodes.
 
-Tasks:
-1. Scaffold Next.js 14 + Tailwind + TypeScript in `web/`
-2. `web/app/page.tsx` — Landing page: project title, results table (hardcoded initially from PLAN.md expected values), architecture diagram (static image or ASCII), "Try the Demo" button, "Quick Start" section
-3. `web/app/demo/page.tsx` — Side-by-side chatbot. 5 panels (one per strategy). Single input box at top. On submit, POST to each strategy endpoint in parallel. Show streaming answers via SSE. Below each answer: latency, tokens, cost, source refs.
-4. `web/app/benchmark/page.tsx` — Interactive benchmark explorer. Recharts bar chart: accuracy by tier for each strategy. Dropdown to filter by corpus. Sortable results table.
-5. `web/app/graph/page.tsx` — Knowledge graph visualizer. Sigma.js component. Load graph JSON from API. Node colors by type. Click node to see details panel.
-6. `web/components/ChatPanel.tsx` — Single strategy chat panel with SSE streaming, loading state, source attribution
-7. `web/components/BenchmarkTable.tsx` — Sortable, filterable table
-8. `web/components/TierChart.tsx` — Recharts grouped bar chart (wrap in ResponsiveContainer!)
-9. `web/components/GraphViewer.tsx` — Sigma.js wrapper with zoom/pan, node type legend
-10. Keep it clean — Tailwind utility classes, no component library deps, dark/light toggle
+1. `cd web && npm install && npx next dev -p 3001 &`
+2. Wait for "Ready" message
+3. Use `agent-browser` to open http://localhost:3001/graph
+4. Wait for networkidle + 3 seconds for canvas animation
+5. Take a test screenshot — verify:
+   - Nodes are visible with glow effects (colored circles, not plain dots)
+   - Edges are curved bezier (not straight lines)
+   - At least 20 nodes visible
+   - Labels appear near nodes
+   - Background is light (#f8fafc), not dark
+6. If graph looks broken, check browser console for errors
+7. Report findings but DO NOT modify GraphViewer.tsx
 
 ---
 
 ### Wave 2 Merge (orchestrator)
 
-1. Merge `qa/integration-tests` → main (test files + fixes)
-2. Merge `qa/benchmark-validation` → main (question fixes + validation report)
-3. Merge `feat/frontend` → main (web/ directory, no conflicts)
-4. Run full test suite on merged main
-5. Fix any remaining issues
+1. Merge `enhance/frontend-content` -> main
+2. Merge `verify/graph-page` findings — fix if needed
+3. Run `cd web && npm run build` on merged main
+4. Commit
 
 ---
 
-### Wave 3: FINAL QA (2 parallel agents)
+### Wave 3: QA + DOCS + SCREENSHOTS (3 parallel agents)
 
-**Agent 8: "qa-final" (qa-verifier, worktree, sonnet)**
+**Agent 6: "qa-enforce" (qa-verifier, worktree, sonnet)**
 
-Branch: `qa/final-verification`
+Branch: `qa/final`
 
-Final verification pass:
-1. Run `ruff check . && ruff format --check .` — zero warnings
-2. Run `pytest tests/ -v` — all pass
-3. Verify `pip install -e .` works and all CLI commands are accessible
-4. Verify `kb-arena --help` shows all subcommands
-5. Test the naive pipeline end-to-end: create a small test corpus (3 markdown files), ingest, build vectors, run 3 benchmark questions, verify results JSON
-6. Verify docker-compose.yml works: `docker compose up -d && sleep 10 && docker compose ps` — all healthy
-7. Check for hardcoded paths, API keys, or secrets — none should exist
-8. Verify .gitignore covers: .env, __pycache__, *.pyc, node_modules, .next, neo4j_data, chroma_data
-9. Verify pyproject.toml metadata: name, version, description, author, license, python requires, dependencies
-10. Write final QA report to `QA_REPORT.md`
+Enforce all quality gates:
 
-**Agent 9: "readme" (implementer, worktree, sonnet)**
+1. **Python lint**: `ruff check . && ruff format --check .` — zero warnings. Fix any issues.
+2. **Python tests**: `python3 -m pytest tests/ -v` — all pass. Fix failures.
+3. **Frontend build**: `cd web && npm run build` — zero errors.
+4. **No old references**: These greps must return ZERO results (excluding BUILD_PROMPT.md, PLAN.md, git history, and .md documentation):
+   ```bash
+   grep -r "python-stdlib\|kubernetes\|sec-edgar" --include="*.py" --include="*.ts" --include="*.tsx" --include="*.yaml" -l
+   ```
+5. **No hardcoded secrets**: `grep -r "sk-\|AKIA\|password=" --include="*.py" --include="*.ts" -l` — zero results (excluding .env.example).
+6. **Question count validation**: Count questions in each corpus YAML — must total 200 (75 + 65 + 60).
+7. **YAML validity**: Load every question YAML file and validate schema.
+8. Write QA report to `QA_REPORT.md`.
 
-Branch: `feat/readme`
+---
 
-Write the viral README. Read PLAN.md "The README Structure (Viral Optimization)" section.
+**Agent 7: "readme-docs" (implementer, worktree, sonnet)**
 
-Create:
-- `README.md` — follow the exact structure from PLAN.md. Results table (use placeholder values marked [PENDING BENCHMARK]). Architecture diagram as ASCII art matching PLAN.md. Quick start with pip install + 3 commands. "How It Works" section. Comparison table vs existing work. Contributing section. License (MIT).
-- `.env.example` — all required env vars with placeholder values
-- `docs/ARCHITECTURE.md` — detailed architecture doc referencing the patterns from PLAN.md
-- `docs/BENCHMARK_METHODOLOGY.md` — how benchmarks are designed, evaluated, reproduced
+Branch: `enhance/readme`
+
+Update README.md to match current state:
+
+1. Read current README.md first.
+2. Verify all content references AWS documentation (not Python/K8s/SEC).
+3. Verify screenshot references point to `docs/screenshot-*.png`.
+4. Verify "Quick Start" commands work: `pip install -e .`, `kb-arena --help`.
+5. Verify architecture description matches actual code structure.
+6. Fix any stale content found.
+7. Verify `.env.example` has all required vars.
+
+Do NOT rewrite the README from scratch — just verify and fix inconsistencies.
+
+---
+
+**Agent 8: "screenshots" (implementer, worktree, sonnet)**
+
+Branch: `enhance/screenshots`
+
+Retake all 4 publication-quality screenshots. The old ones are stale or broken.
+
+Prerequisites:
+```bash
+cd web && npm install && npx next dev -p 3001 &
+# Wait for "Ready" message
+```
+
+Use `agent-browser` (NOT Playwright CLI — it misses CSS hydration):
+
+**Screenshot 1: Home page**
+```bash
+agent-browser open http://localhost:3001
+agent-browser wait --load networkidle
+agent-browser wait 2000
+agent-browser screenshot --full docs/screenshot-home.png
+```
+Verify: styled page with AWS content, Cloudwright light theme, strategy cards visible.
+
+**Screenshot 2: Demo page**
+```bash
+agent-browser open http://localhost:3001/demo
+agent-browser wait --load networkidle
+agent-browser wait 2000
+agent-browser screenshot --full docs/screenshot-demo.png
+```
+Verify: AWS Lambda question pre-filled, strategy tabs visible, answer panels with metrics.
+
+**Screenshot 3: Benchmark page**
+```bash
+agent-browser open http://localhost:3001/benchmark
+agent-browser wait --load networkidle
+agent-browser wait 2000
+agent-browser screenshot --full docs/screenshot-benchmark.png
+```
+Verify: table with strategy comparison, AWS methodology text, tier descriptions.
+
+**Screenshot 4: Graph page**
+```bash
+agent-browser open http://localhost:3001/graph
+agent-browser wait --load networkidle
+agent-browser wait 5000
+agent-browser screenshot --full docs/screenshot-graph.png
+```
+Verify: AWS service nodes with glow, curved edges, labels, light background. Wait 5s for force simulation to settle.
+
+For each screenshot: if it shows unstyled HTML (no colors, no borders, plain text), the CSS didn't load. Close browser, restart dev server, try again.
 
 ---
 
 ### Wave 3 Merge + Final Commit
 
-1. Merge both branches → main
-2. Run final `pytest && ruff check .`
-3. Commit: "Complete initial build of kb-arena"
+1. Merge all branches -> main
+2. Run final checks: `python3 -m pytest tests/ && ruff check . && cd web && npm run build`
+3. Verify all 4 screenshots show properly styled pages with AWS content
+4. Commit: "Migrate to AWS documentation, enforce tests, retake screenshots"
 
 ---
 
-### Routing and constraints
+### Code Quality Rules
+
+All agents must follow these:
+
+1. **Read before modifying** — understand existing code structure before making changes.
+2. **Minimal changes** — modify only what's needed for AWS migration. Don't refactor, restructure, or "improve" surrounding code.
+3. **No AI fingerprints** — no excessive docstrings, no numbered step comments (`# Step 1:`), no isinstance() on every parameter, no defensive returns for impossible cases, no 3+ helpers for a 20-line operation.
+4. **Match existing style** — if the file uses single quotes, use single quotes. If it has no docstrings, don't add them. If functions are 40 lines, don't break them into 10-line helpers.
+5. **Test enforcement** — `pytest` must pass after every agent's changes. Not optional.
+6. **Lint enforcement** — `ruff check .` must pass. Not optional.
+7. **No stale references** — zero mentions of python-stdlib, kubernetes, sec-edgar, json.loads (as example data), os.path (as example data), pathlib (as example data), kubectl, EDGAR, filing in any non-documentation file.
+
+### Routing and Constraints
 
 - All agents: restrict searches to project directory only. Never search ~/Desktop or ~/.claude recursively.
-- All agents: read PLAN.md before starting. Follow the exact patterns described.
+- All agents: read PLAN.md and CLAUDE.md before starting.
 - All agents: use the shared models from kb_arena/models/ — do NOT create parallel model definitions.
-- Build agents (Wave 1): implementer type, worktree isolation, sonnet model.
-- QA agents (Wave 2-3): qa-verifier type, worktree isolation, sonnet model.
-- Frontend agent: implementer type, worktree isolation, sonnet model.
+- Build/migrate agents: implementer type, worktree isolation, sonnet model.
+- QA agents: qa-verifier type, worktree isolation, sonnet model.
 - Orchestrator budget: stay under 25% context. Write summaries, not full file contents.
-- Max 4 concurrent agents per wave. Wait for wave completion before starting next wave.
+- Max 3 concurrent agents per wave. Wait for wave completion before starting next wave.
 - If an agent hits 3+ failures on same issue: stop, report to orchestrator, move on.
 
 ## PROMPT END
