@@ -1,0 +1,335 @@
+- id: "k8s-t2-001"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "Which Kubernetes resources can reference a ConfigMap?"
+  ground_truth:
+    answer: "ConfigMaps can be referenced by: Pods (as environment variables via envFrom/env.valueFrom.configMapKeyRef, or as volume mounts), Deployments, StatefulSets, DaemonSets, Jobs, CronJobs (all via their Pod template spec), and HorizontalPodAutoscalers (for custom metrics configuration). Ingress controllers and some operators also consume ConfigMaps for their own configuration."
+    source_refs:
+      - "concepts/configuration/configmap.md"
+      - "concepts/workloads/controllers/deployment.md"
+    required_entities:
+      - "ConfigMap"
+      - "Pod"
+      - "Deployment"
+  constraints:
+    must_mention:
+      - "Pod"
+      - "environment variables"
+      - "volume"
+    must_not_claim:
+      - "only Pods"
+      - "Secrets only"
+
+- id: "k8s-t2-002"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "What resources are created when you create a Deployment in Kubernetes?"
+  ground_truth:
+    answer: "Creating a Deployment causes Kubernetes to create: a ReplicaSet (managed by the Deployment controller) and the specified number of Pods (managed by the ReplicaSet controller). The Deployment owns the ReplicaSet, and the ReplicaSet owns the Pods — this ownership is tracked via ownerReferences. Old ReplicaSets are retained for rollback history (limited by revisionHistoryLimit)."
+    source_refs:
+      - "concepts/workloads/controllers/deployment.md"
+    required_entities:
+      - "Deployment"
+      - "ReplicaSet"
+      - "Pod"
+  constraints:
+    must_mention:
+      - "ReplicaSet"
+      - "Pod"
+    must_not_claim:
+      - "Service"
+      - "directly creates containers"
+
+- id: "k8s-t2-003"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "How do ResourceQuota and LimitRange work together in a Kubernetes Namespace?"
+  ground_truth:
+    answer: "ResourceQuota limits the total amount of resources that can be consumed in a Namespace — for example, total CPU, memory, and number of objects like Pods or Services. LimitRange sets default and maximum resource requests/limits per individual Pod or container. Together: LimitRange ensures every container has resource limits (so ResourceQuota can count them), while ResourceQuota caps the aggregate. Without LimitRange, Pods without explicit limits may not count toward ResourceQuota."
+    source_refs:
+      - "concepts/policy/resource-quotas.md"
+      - "concepts/policy/limit-range.md"
+    required_entities:
+      - "ResourceQuota"
+      - "LimitRange"
+      - "Namespace"
+  constraints:
+    must_mention:
+      - "ResourceQuota"
+      - "LimitRange"
+      - "Namespace"
+    must_not_claim:
+      - "identical"
+      - "LimitRange is global"
+
+- id: "k8s-t2-004"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "What is the relationship between a Service and Endpoints in Kubernetes?"
+  ground_truth:
+    answer: "When you create a Service, Kubernetes automatically creates an Endpoints (or EndpointSlice in 1.21+) object with the same name. The endpoint controller watches for Pods that match the Service's selector and adds their IP:port to the Endpoints. kube-proxy on each node watches Endpoints and programs iptables/IPVS rules to route traffic. If a Pod fails its readiness probe, its IP is removed from Endpoints."
+    source_refs:
+      - "concepts/services-networking/service.md"
+      - "concepts/services-networking/endpoint-slices.md"
+    required_entities:
+      - "Service"
+      - "Endpoints"
+      - "kube-proxy"
+  constraints:
+    must_mention:
+      - "Endpoints"
+      - "selector"
+      - "kube-proxy"
+    must_not_claim:
+      - "manually managed"
+      - "DNS only"
+
+- id: "k8s-t2-005"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "How do PodDisruptionBudget and HorizontalPodAutoscaler interact during scaling events?"
+  ground_truth:
+    answer: "A PodDisruptionBudget (PDB) specifies the minimum number of Pods that must be available during voluntary disruptions (evictions, node drains, rolling updates). A HorizontalPodAutoscaler (HPA) scales the number of Pod replicas based on metrics. During a scale-down, the HPA evicts Pods and the PDB can block eviction if it would violate the minimum availability guarantee. If HPA tries to scale below the PDB's minAvailable, evictions are rejected until other Pods come up."
+    source_refs:
+      - "tasks/run-application/configure-pdb.md"
+      - "tasks/run-application/horizontal-pod-autoscale.md"
+    required_entities:
+      - "PodDisruptionBudget"
+      - "HorizontalPodAutoscaler"
+  constraints:
+    must_mention:
+      - "PodDisruptionBudget"
+      - "eviction"
+    must_not_claim:
+      - "PDB controls HPA"
+      - "HPA ignores PDB"
+
+- id: "k8s-t2-006"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "What Kubernetes components are involved in serving DNS for cluster-internal service discovery?"
+  ground_truth:
+    answer: "CoreDNS is the cluster DNS server, deployed as a Deployment in the kube-system namespace. kubelet configures each Pod's /etc/resolv.conf to point to the CoreDNS Service's ClusterIP. When a Pod queries a Service by name (e.g., my-svc.my-ns.svc.cluster.local), CoreDNS resolves it to the Service's ClusterIP. kube-proxy programs the actual packet forwarding from the ClusterIP to Pod IPs."
+    source_refs:
+      - "concepts/services-networking/dns-pod-service.md"
+    required_entities:
+      - "CoreDNS"
+      - "kubelet"
+      - "kube-proxy"
+  constraints:
+    must_mention:
+      - "CoreDNS"
+      - "DNS"
+      - "ClusterIP"
+    must_not_claim:
+      - "kube-dns is the current default"
+      - "DNS handled by kube-proxy"
+
+- id: "k8s-t2-007"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "How do ServiceAccounts, RBAC Roles, and RoleBindings work together to grant Pod access to the Kubernetes API?"
+  ground_truth:
+    answer: "Every Pod runs with a ServiceAccount (default if not specified). To grant a Pod API access, you: create a Role (namespaced) or ClusterRole (cluster-wide) defining allowed verbs on API resources; create a RoleBinding linking the ServiceAccount to the Role; the mounted service account token (in /var/run/secrets/kubernetes.io/serviceaccount/) is used for authentication. The kube-apiserver enforces the RBAC policy on each request."
+    source_refs:
+      - "reference/access-authn-authz/rbac.md"
+      - "tasks/configure-pod-container/configure-service-account.md"
+    required_entities:
+      - "ServiceAccount"
+      - "Role"
+      - "RoleBinding"
+  constraints:
+    must_mention:
+      - "ServiceAccount"
+      - "RoleBinding"
+      - "Role"
+    must_not_claim:
+      - "Pods have admin access by default"
+      - "ServiceAccount is optional"
+
+- id: "k8s-t2-008"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "What is the relationship between a StatefulSet, its Pods, and PersistentVolumeClaims?"
+  ground_truth:
+    answer: "A StatefulSet creates Pods with stable, predictable names (pod-0, pod-1, ...) and can create PersistentVolumeClaims per Pod via volumeClaimTemplates. Each Pod gets its own PVC (e.g., data-pod-0, data-pod-1), and PVCs are not deleted when the Pod is deleted or when the StatefulSet is scaled down. They must be manually deleted. This ensures stateful data persists across Pod restarts and rescheduling."
+    source_refs:
+      - "concepts/workloads/controllers/statefulset.md"
+    required_entities:
+      - "StatefulSet"
+      - "PersistentVolumeClaim"
+      - "volumeClaimTemplates"
+  constraints:
+    must_mention:
+      - "PersistentVolumeClaim"
+      - "stable"
+    must_not_claim:
+      - "PVCs deleted with Pod"
+      - "same PVC for all Pods"
+
+- id: "k8s-t2-009"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "Which Kubernetes objects work together to run a batch job that retries on failure?"
+  ground_truth:
+    answer: "A Job manages batch workloads. It creates one or more Pods and ensures the specified number of completions succeed. backoffLimit controls how many times a failed Pod is retried before the Job is marked as failed. CronJob wraps a Job to run on a schedule. Jobs track successful completions with the .status.succeeded field and retain failed Pods (up to backoffLimit) for debugging."
+    source_refs:
+      - "concepts/workloads/controllers/job.md"
+      - "concepts/workloads/controllers/cron-jobs.md"
+    required_entities:
+      - "Job"
+      - "CronJob"
+      - "backoffLimit"
+  constraints:
+    must_mention:
+      - "Job"
+      - "backoffLimit"
+      - "completions"
+    must_not_claim:
+      - "Deployment handles batch jobs"
+      - "never retries"
+
+- id: "k8s-t2-010"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "How do NetworkPolicy resources interact with the CNI plugin to restrict Pod traffic?"
+  ground_truth:
+    answer: "NetworkPolicy is a Kubernetes API object that specifies how Pods communicate with each other and external endpoints. However, NetworkPolicy enforcement requires a CNI plugin that supports it — for example, Calico, Cilium, or Weave Net. If the cluster uses a CNI that does not support NetworkPolicy (such as Flannel by default), the objects can be created but have no effect. The CNI plugin watches NetworkPolicy objects and programs iptables or eBPF rules on each node."
+    source_refs:
+      - "concepts/services-networking/network-policies.md"
+    required_entities:
+      - "NetworkPolicy"
+      - "CNI"
+    required_entities:
+      - "NetworkPolicy"
+      - "CNI"
+      - "Calico"
+  constraints:
+    must_mention:
+      - "NetworkPolicy"
+      - "CNI"
+    must_not_claim:
+      - "enforced by kube-proxy"
+      - "works with all CNI plugins"
+
+- id: "k8s-t2-011"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "What Kubernetes components work together to implement Pod autoscaling based on CPU metrics?"
+  ground_truth:
+    answer: "HorizontalPodAutoscaler (HPA) reads CPU metrics from the Metrics Server, which aggregates resource usage from kubelet's Summary API on each node. HPA compares current CPU utilization against the target percentage and adjusts the Deployment or StatefulSet's replica count. The Metrics Server must be installed separately — it is not part of core Kubernetes. For custom metrics, the HPA can use the custom.metrics.k8s.io API via an adapter."
+    source_refs:
+      - "tasks/run-application/horizontal-pod-autoscale.md"
+      - "tasks/debug/debug-cluster/resource-metrics-pipeline.md"
+    required_entities:
+      - "HorizontalPodAutoscaler"
+      - "Metrics Server"
+      - "kubelet"
+  constraints:
+    must_mention:
+      - "HorizontalPodAutoscaler"
+      - "Metrics Server"
+    must_not_claim:
+      - "Metrics Server is built-in"
+      - "kube-scheduler handles autoscaling"
+
+- id: "k8s-t2-012"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "How do Ingress resources and Ingress controllers work together to route external HTTP traffic?"
+  ground_truth:
+    answer: "An Ingress resource defines HTTP routing rules (hostnames, paths, TLS termination) as a Kubernetes object. An Ingress controller (e.g., ingress-nginx, Traefik, HAProxy Ingress) watches Ingress objects and configures an actual load balancer or reverse proxy accordingly. The Ingress controller is not part of core Kubernetes and must be deployed separately. Multiple Ingress controllers can coexist in a cluster using IngressClass resources to distinguish which controller handles which Ingress."
+    source_refs:
+      - "concepts/services-networking/ingress.md"
+      - "concepts/services-networking/ingress-controllers.md"
+    required_entities:
+      - "Ingress"
+      - "IngressController"
+      - "IngressClass"
+  constraints:
+    must_mention:
+      - "Ingress"
+      - "controller"
+      - "routing"
+    must_not_claim:
+      - "Ingress controller is built into Kubernetes"
+      - "Service handles HTTP routing"
+
+- id: "k8s-t2-013"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "What happens to a Pod's volumes when a node fails and the Pod is rescheduled to a different node?"
+  ground_truth:
+    answer: "Behavior depends on volume type: emptyDir volumes are lost permanently (node-local ephemeral). hostPath volumes are not portable — the data stays on the failed node. PersistentVolumes backed by network storage (NFS, EBS, GCE PD, Azure Disk) can be detached from the failed node and reattached on the new node. Cloud provider volumes may have a detach timeout before reattachment is allowed. CSI volumes follow the CSI driver's detach/attach behavior."
+    source_refs:
+      - "concepts/storage/volumes.md"
+      - "concepts/storage/persistent-volumes.md"
+    required_entities:
+      - "emptyDir"
+      - "PersistentVolume"
+      - "hostPath"
+  constraints:
+    must_mention:
+      - "emptyDir"
+      - "PersistentVolume"
+    must_not_claim:
+      - "all data is preserved"
+      - "volumes follow the Pod automatically"
+
+- id: "k8s-t2-014"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "Which Kubernetes resources are involved when using node affinity and pod anti-affinity together?"
+  ground_truth:
+    answer: "Node affinity (spec.affinity.nodeAffinity) constrains which nodes a Pod can be scheduled onto based on node labels. Pod anti-affinity (spec.affinity.podAntiAffinity) constrains a Pod relative to other Pods' labels. The kube-scheduler evaluates both during scheduling. Required rules (requiredDuringSchedulingIgnoredDuringExecution) act as hard constraints; preferred rules are soft. Taints and tolerations interact orthogonally with affinity."
+    source_refs:
+      - "concepts/scheduling-eviction/assign-pod-node.md"
+    required_entities:
+      - "nodeAffinity"
+      - "podAntiAffinity"
+      - "kube-scheduler"
+  constraints:
+    must_mention:
+      - "nodeAffinity"
+      - "podAntiAffinity"
+      - "scheduler"
+    must_not_claim:
+      - "node affinity and pod affinity are the same"
+      - "always enforced after scheduling"
+
+- id: "k8s-t2-015"
+  tier: 2
+  type: multi_entity
+  hops: 2
+  question: "What is the relationship between a DaemonSet and node taints/tolerations?"
+  ground_truth:
+    answer: "A DaemonSet ensures a copy of a Pod runs on every node (or a subset matching a nodeSelector). By default, DaemonSet Pods tolerate the node.kubernetes.io/not-ready and node.kubernetes.io/unreachable taints, allowing them to run on nodes that other Pods cannot. DaemonSets are commonly used for cluster infrastructure (logging agents, monitoring, CNI plugins). To run on nodes with custom taints, the DaemonSet Pod spec must include matching tolerations."
+    source_refs:
+      - "concepts/workloads/controllers/daemonset.md"
+      - "concepts/scheduling-eviction/taint-and-toleration.md"
+    required_entities:
+      - "DaemonSet"
+      - "toleration"
+      - "taint"
+  constraints:
+    must_mention:
+      - "DaemonSet"
+      - "toleration"
+      - "every node"
+    must_not_claim:
+      - "DaemonSet ignores taints"
+      - "runs on control plane by default"

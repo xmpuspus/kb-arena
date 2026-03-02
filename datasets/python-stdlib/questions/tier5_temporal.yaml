@@ -1,0 +1,190 @@
+- id: "py-t5-001"
+  tier: 5
+  type: temporal
+  hops: 2
+  question: "When was datetime.datetime.utcnow() deprecated and what is the recommended replacement?"
+  ground_truth:
+    answer: "datetime.datetime.utcnow() was deprecated in Python 3.12 (released October 2023). The recommended replacement is datetime.datetime.now(datetime.timezone.utc), which returns a timezone-aware datetime instead of a naive one. The deprecation warning was added because naive UTC datetimes are a common source of bugs when code later assumes local time."
+    source_refs:
+      - "datetime.html#datetime.datetime.utcnow"
+      - "whatsnew/3.12.html"
+    required_entities:
+      - "datetime.datetime.utcnow"
+      - "datetime.timezone.utc"
+      - "Python 3.12"
+  constraints:
+    must_mention:
+      - "3.12"
+      - "deprecated"
+      - "datetime.timezone.utc"
+    must_not_claim:
+      - "removed"
+      - "3.11"
+      - "3.13"
+
+- id: "py-t5-002"
+  tier: 5
+  type: temporal
+  hops: 2
+  question: "What changed in the asyncio event loop policy in Python 3.10 on Windows?"
+  ground_truth:
+    answer: "In Python 3.10, the default event loop policy on Windows changed from WindowsSelectorEventLoop to WindowsProactorEventLoop. WindowsProactorEventLoop supports subprocess and pipe operations which the selector-based loop did not. This is a breaking change for code that relied on the selector loop behavior on Windows. ProactorEventLoop was already the default for subprocess use since 3.8."
+    source_refs:
+      - "asyncio-policy.html"
+      - "whatsnew/3.10.html"
+    required_entities:
+      - "asyncio"
+      - "WindowsProactorEventLoop"
+      - "WindowsSelectorEventLoop"
+  constraints:
+    must_mention:
+      - "Windows"
+      - "ProactorEventLoop"
+      - "3.10"
+    must_not_claim:
+      - "Linux"
+      - "macOS"
+      - "3.9"
+
+- id: "py-t5-003"
+  tier: 5
+  type: temporal
+  hops: 2
+  question: "When was the match statement (structural pattern matching) introduced in Python and which PEP defined it?"
+  ground_truth:
+    answer: "Structural pattern matching (the match/case statement) was introduced in Python 3.10, released October 2021. It was defined by PEP 634 (specification), PEP 635 (motivation and rationale), and PEP 636 (tutorial). The match statement is a soft keyword — 'match' and 'case' are not reserved words and can still be used as identifiers."
+    source_refs:
+      - "reference/compound_stmts.html#the-match-statement"
+      - "whatsnew/3.10.html"
+    required_entities:
+      - "match"
+      - "PEP 634"
+      - "Python 3.10"
+  constraints:
+    must_mention:
+      - "3.10"
+      - "PEP 634"
+      - "match"
+    must_not_claim:
+      - "3.9"
+      - "3.11"
+      - "reserved keyword"
+
+- id: "py-t5-004"
+  tier: 5
+  type: temporal
+  hops: 2
+  question: "What happened to distutils in Python 3.12 and when was its deprecation first announced?"
+  ground_truth:
+    answer: "distutils was removed entirely in Python 3.12. It was deprecated in Python 3.10 (announced via PEP 632 in 2021). Users are directed to setuptools, which provides a distutils compatibility shim. distutils had been the original packaging tool since Python 2.0 but was superseded by pip and setuptools over the preceding decade."
+    source_refs:
+      - "whatsnew/3.12.html"
+      - "whatsnew/3.10.html"
+    required_entities:
+      - "distutils"
+      - "Python 3.12"
+      - "Python 3.10"
+  constraints:
+    must_mention:
+      - "distutils"
+      - "removed"
+      - "3.12"
+    must_not_claim:
+      - "still available"
+      - "3.11"
+      - "pip replaced it"
+
+- id: "py-t5-005"
+  tier: 5
+  type: temporal
+  hops: 2
+  question: "When was the tomllib module added to the Python standard library and what was available before it?"
+  ground_truth:
+    answer: "tomllib was added to the Python standard library in Python 3.11 (released October 2022). It provides read-only TOML parsing (writing is not supported). Before 3.11, TOML parsing required third-party packages such as tomli (which tomllib is based on) or toml. The tomli package was the reference implementation and was donated to CPython."
+    source_refs:
+      - "tomllib.html"
+      - "whatsnew/3.11.html"
+    required_entities:
+      - "tomllib"
+      - "Python 3.11"
+      - "tomli"
+  constraints:
+    must_mention:
+      - "3.11"
+      - "tomllib"
+      - "TOML"
+    must_not_claim:
+      - "3.10"
+      - "3.12"
+      - "write"
+
+- id: "py-t5-006"
+  tier: 5
+  type: temporal
+  hops: 2
+  question: "What changes did Python 3.9 make to type hints that reduced the need for the typing module?"
+  ground_truth:
+    answer: "Python 3.9 (PEP 585) made built-in collection types directly usable as generic types in annotations. Before 3.9, you had to write typing.List[int], typing.Dict[str, int], typing.Tuple[int, ...]. In 3.9+, you can write list[int], dict[str, int], tuple[int, ...] directly. Similarly, PEP 604 (Python 3.10) allowed X | Y union syntax instead of typing.Union[X, Y]."
+    source_refs:
+      - "whatsnew/3.9.html"
+      - "library/typing.html"
+    required_entities:
+      - "Python 3.9"
+      - "PEP 585"
+      - "typing"
+  constraints:
+    must_mention:
+      - "3.9"
+      - "PEP 585"
+      - "list"
+    must_not_claim:
+      - "typing module removed"
+      - "3.8"
+
+- id: "py-t5-007"
+  tier: 5
+  type: temporal
+  hops: 3
+  question: "How has the behavior of ssl.SSLContext defaults changed between Python 3.9 and 3.12 with respect to minimum TLS version?"
+  ground_truth:
+    answer: "Python 3.10 changed the default minimum TLS version for ssl.SSLContext to TLSv1.2 (dropping TLS 1.0 and 1.1 support by default). Prior to 3.10, TLS 1.0 and 1.1 were allowed. ssl.create_default_context() has enforced a minimum of TLS 1.2 since Python 3.6. In Python 3.12, OP_NO_SSLv2 and OP_NO_SSLv3 options were deprecated since SSLv2/v3 are no longer supported at all."
+    source_refs:
+      - "ssl.html"
+      - "whatsnew/3.10.html"
+      - "whatsnew/3.12.html"
+    required_entities:
+      - "ssl.SSLContext"
+      - "TLSv1.2"
+      - "Python 3.10"
+  constraints:
+    must_mention:
+      - "TLS"
+      - "3.10"
+      - "minimum"
+    must_not_claim:
+      - "TLS 1.0 still supported by default"
+      - "3.9"
+
+- id: "py-t5-008"
+  tier: 5
+  type: temporal
+  hops: 2
+  question: "When was importlib.resources.files() introduced and what did it replace?"
+  ground_truth:
+    answer: "importlib.resources.files() was introduced in Python 3.9 as the new recommended API for accessing package data files. It replaced the older importlib.resources.open_binary(), open_text(), read_binary(), read_text(), and path() functions, which were deprecated in Python 3.11. The files() API returns a Traversable object, which works correctly with namespace packages and zip-imported packages unlike the older functions."
+    source_refs:
+      - "importlib.resources.html"
+      - "whatsnew/3.9.html"
+      - "whatsnew/3.11.html"
+    required_entities:
+      - "importlib.resources.files"
+      - "Python 3.9"
+      - "Traversable"
+  constraints:
+    must_mention:
+      - "3.9"
+      - "files"
+      - "deprecated"
+    must_not_claim:
+      - "3.10"
+      - "removed in 3.9"

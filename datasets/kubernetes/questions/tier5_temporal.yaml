@@ -1,0 +1,183 @@
+- id: "k8s-t5-001"
+  tier: 5
+  type: temporal
+  hops: 2
+  question: "What API resources graduated from beta to stable between Kubernetes 1.25 and 1.28?"
+  ground_truth:
+    answer: "Between Kubernetes 1.25 and 1.28, several APIs graduated to stable (v1): CronJob v1 became stable in 1.21. In 1.25: PodDisruptionBudget (policy/v1 stable, policy/v1beta1 removed). In 1.26: FlowSchema and PriorityLevelConfiguration (flowcontrol.apiserver.k8s.io/v1beta3). In 1.27: StatefulSet minReadySeconds went stable. In 1.28: Job's backoffLimitPerIndex graduated to stable. HorizontalPodAutoscaler v2 became stable in 1.23. The general pattern was removal of v1beta1 variants once v1 stable APIs existed."
+    source_refs:
+      - "reference/kubernetes-api/"
+      - "CHANGELOG-1.25.md"
+      - "CHANGELOG-1.28.md"
+    required_entities:
+      - "PodDisruptionBudget"
+      - "policy/v1"
+  constraints:
+    must_mention:
+      - "stable"
+      - "beta"
+      - "PodDisruptionBudget"
+    must_not_claim:
+      - "no changes between 1.25 and 1.28"
+      - "CronJob was stable in 1.25"
+
+- id: "k8s-t5-002"
+  tier: 5
+  type: temporal
+  hops: 2
+  question: "When was the Kubernetes Docker container runtime (dockershim) removed and what replaced it?"
+  ground_truth:
+    answer: "dockershim was removed in Kubernetes 1.24 (released May 2022). It had been deprecated since Kubernetes 1.20 (December 2020). The replacement is any CRI-compliant container runtime: containerd (most common, already used by Docker internally), CRI-O (focused on Kubernetes use cases), or other CRI implementations. Clusters running Docker-based nodes needed to migrate to containerd or CRI-O before upgrading to 1.24."
+    source_refs:
+      - "CHANGELOG-1.24.md"
+      - "tasks/administer-cluster/migrating-from-dockershim/"
+    required_entities:
+      - "dockershim"
+      - "containerd"
+      - "CRI"
+  constraints:
+    must_mention:
+      - "1.24"
+      - "dockershim"
+      - "containerd"
+    must_not_claim:
+      - "Docker removed in 1.20"
+      - "still supported in 1.24"
+
+- id: "k8s-t5-003"
+  tier: 5
+  type: temporal
+  hops: 2
+  question: "When did Kubernetes introduce the sidecar container feature as a first-class concept and how does it differ from init containers?"
+  ground_truth:
+    answer: "Sidecar containers as a first-class API feature (via restartPolicy: Always on init containers) were introduced as alpha in Kubernetes 1.28 (August 2023) and graduated to stable in 1.29. Before this, sidecars were just regular containers with no ordering guarantee relative to the main container. The new API allows init containers with restartPolicy: Always, which start before the main containers and are restarted if they exit — behaving as long-running sidecars while still respecting init ordering. Traditional init containers run to completion and are not restarted."
+    source_refs:
+      - "CHANGELOG-1.28.md"
+      - "concepts/workloads/pods/init-containers.md"
+    required_entities:
+      - "sidecar"
+      - "init container"
+      - "Kubernetes 1.28"
+  constraints:
+    must_mention:
+      - "1.28"
+      - "sidecar"
+      - "restartPolicy"
+    must_not_claim:
+      - "available since 1.0"
+      - "init containers are sidecars"
+
+- id: "k8s-t5-004"
+  tier: 5
+  type: temporal
+  hops: 2
+  question: "What changes did Kubernetes 1.25 make to PodSecurityPolicy and what replaced it?"
+  ground_truth:
+    answer: "PodSecurityPolicy (PSP) was removed in Kubernetes 1.25 (August 2022). It had been deprecated since Kubernetes 1.21 (April 2021). PSP was replaced by Pod Security Admission (PSA), which enforces one of three built-in policy levels: privileged, baseline, or restricted — applied via namespace labels. Third-party policy engines like OPA/Gatekeeper and Kyverno provide finer-grained control. PSA is simpler than PSP but less configurable per-policy."
+    source_refs:
+      - "CHANGELOG-1.25.md"
+      - "concepts/security/pod-security-admission.md"
+    required_entities:
+      - "PodSecurityPolicy"
+      - "Pod Security Admission"
+      - "Kubernetes 1.25"
+  constraints:
+    must_mention:
+      - "PodSecurityPolicy"
+      - "removed"
+      - "1.25"
+    must_not_claim:
+      - "PSP still available in 1.25"
+      - "removed in 1.24"
+
+- id: "k8s-t5-005"
+  tier: 5
+  type: temporal
+  hops: 2
+  question: "When was EndpointSlices introduced and when did it become the default over Endpoints in Kubernetes?"
+  ground_truth:
+    answer: "EndpointSlices were introduced as alpha in Kubernetes 1.16 (September 2019) and graduated to GA (stable) in 1.21 (April 2021). EndpointSlices became the primary mechanism used by kube-proxy starting in 1.21, with the EndpointSlice controller enabled by default. The motivation was scalability: a single Endpoints object is limited to one object per Service regardless of backend count, while EndpointSlices shard the backend IPs across multiple objects (default 100 endpoints per slice) reducing API server watch traffic significantly at scale."
+    source_refs:
+      - "concepts/services-networking/endpoint-slices.md"
+      - "CHANGELOG-1.21.md"
+    required_entities:
+      - "EndpointSlice"
+      - "Kubernetes 1.21"
+  constraints:
+    must_mention:
+      - "EndpointSlice"
+      - "1.21"
+      - "scalability"
+    must_not_claim:
+      - "Endpoints removed"
+      - "introduced in 1.24"
+
+- id: "k8s-t5-006"
+  tier: 5
+  type: temporal
+  hops: 2
+  question: "What changed in Kubernetes server-side apply between 1.18 and 1.22?"
+  ground_truth:
+    answer: "Server-side apply (SSA) was introduced as alpha in Kubernetes 1.14 and promoted to beta in 1.16. Between 1.18 and 1.22: SSA graduated to GA (stable) in Kubernetes 1.22 (August 2021). Key improvements included: field management tracking (each manager owns specific fields), conflict detection (two managers cannot both claim ownership of the same field without forcing), and integration with kubectl apply using --server-side flag. Before GA, SSA used client-side apply which computed diffs locally and lacked manager tracking."
+    source_refs:
+      - "reference/using-api/server-side-apply.md"
+      - "CHANGELOG-1.22.md"
+    required_entities:
+      - "server-side apply"
+      - "Kubernetes 1.22"
+      - "field management"
+  constraints:
+    must_mention:
+      - "server-side apply"
+      - "1.22"
+      - "field management"
+    must_not_claim:
+      - "introduced in 1.22"
+      - "no change between 1.18 and 1.22"
+
+- id: "k8s-t5-007"
+  tier: 5
+  type: temporal
+  hops: 2
+  question: "When was the Kubernetes in-cluster loadbalancer API (Gateway API) introduced and how does it differ from Ingress?"
+  ground_truth:
+    answer: "Gateway API was introduced as alpha in Kubernetes 1.18 (2020) via the sig-network/gateway-api project. It graduated to GA (v1) in Kubernetes 1.28 (August 2023). Gateway API is a superset of Ingress: it introduces GatewayClass (infrastructure type), Gateway (cluster operator managed entry point), and HTTPRoute/TCPRoute/GRPCRoute (application developer managed routing rules) as separate roles. This role separation is the key difference from Ingress, which conflates infrastructure and routing configuration. Gateway API also supports TCP/UDP/gRPC routing natively."
+    source_refs:
+      - "concepts/services-networking/gateway.md"
+      - "CHANGELOG-1.28.md"
+    required_entities:
+      - "Gateway API"
+      - "GatewayClass"
+      - "HTTPRoute"
+  constraints:
+    must_mention:
+      - "Gateway API"
+      - "HTTPRoute"
+      - "GatewayClass"
+    must_not_claim:
+      - "Gateway API is part of core Kubernetes"
+      - "replaces Ingress immediately"
+
+- id: "k8s-t5-008"
+  tier: 5
+  type: temporal
+  hops: 2
+  question: "What security-related default changes did Kubernetes make between versions 1.23 and 1.26?"
+  ground_truth:
+    answer: "Between 1.23 and 1.26: (1) ServiceAccount token projection was changed — bounded ServiceAccount tokens (with expiry) became the default in 1.22, replacing long-lived tokens that never expired. (2) Legacy ServiceAccount tokens (secret-based, non-expiring) began generating warnings in 1.24 and can be disabled. (3) PSP was removed in 1.25 and replaced by Pod Security Admission. (4) In 1.26, the default behavior for automountServiceAccountToken was not changed but discouraged in favor of per-Pod opt-in. (5) CertificateSigningRequest v1 became required (v1beta1 removed in 1.22)."
+    source_refs:
+      - "CHANGELOG-1.22.md"
+      - "CHANGELOG-1.24.md"
+      - "CHANGELOG-1.25.md"
+    required_entities:
+      - "ServiceAccount"
+      - "PodSecurityPolicy"
+      - "token"
+  constraints:
+    must_mention:
+      - "token"
+      - "PodSecurityPolicy"
+      - "1.25"
+    must_not_claim:
+      - "no security changes"
+      - "ServiceAccount tokens unchanged"
