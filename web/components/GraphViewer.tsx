@@ -158,7 +158,7 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
       ctx.beginPath();
       ctx.moveTo(ps.x, ps.y);
       ctx.lineTo(pt.x, pt.y);
-      ctx.strokeStyle = dim ? "#1e293b" : "#334155";
+      ctx.strokeStyle = dim ? "#e2e8f0" : "#94a3b8";
       ctx.lineWidth = 1;
       ctx.stroke();
     }
@@ -173,16 +173,16 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
 
       ctx.beginPath();
       ctx.arc(p.x, p.y, isSelected ? 10 : 7, 0, Math.PI * 2);
-      ctx.fillStyle = dim ? "#1e293b" : color;
+      ctx.fillStyle = dim ? "#e2e8f0" : color;
       ctx.fill();
       if (isSelected) {
-        ctx.strokeStyle = "#ffffff";
+        ctx.strokeStyle = "#0f172a";
         ctx.lineWidth = 2;
         ctx.stroke();
       }
 
       if (!dim) {
-        ctx.fillStyle = "#cbd5e1";
+        ctx.fillStyle = "#475569";
         ctx.font = "10px sans-serif";
         ctx.fillText(node.label.slice(0, 20), p.x + 10, p.y + 4);
       }
@@ -281,7 +281,7 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
         <canvas
           ref={canvasRef}
           className="flex-1 rounded-lg border cursor-grab active:cursor-grabbing"
-          style={{ borderColor: "var(--border)", background: "#0a1628" }}
+          style={{ borderColor: "var(--border)", background: "#f8fafc" }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}

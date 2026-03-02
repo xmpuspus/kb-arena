@@ -12,7 +12,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
       <body className="min-h-screen" style={{ background: "var(--background)", color: "var(--foreground)" }}>
         <Nav />
         <main>{children}</main>
@@ -21,7 +21,8 @@ export default function RootLayout({
             href="https://github.com/xavier/kb-arena"
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-accent transition-colors"
+            className="hover:opacity-70 transition-opacity"
+            style={{ color: "var(--accent)" }}
           >
             GitHub
           </a>

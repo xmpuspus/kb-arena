@@ -15,7 +15,7 @@ function StrategyCard({ label, desc, color }: { label: string; desc: string; col
   return (
     <div
       className="rounded-lg border p-4 flex flex-col gap-2"
-      style={{ borderColor: "var(--border)", background: "var(--card)" }}
+      style={{ borderColor: "var(--border)", background: "var(--card)", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}
     >
       <div className="flex items-center gap-2">
         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />

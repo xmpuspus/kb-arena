@@ -5,12 +5,21 @@ import { streamChat, STRATEGY_LABELS, type Message, type Strategy } from "@/lib/
 
 type PanelState = "idle" | "loading" | "streaming" | "complete" | "error";
 
+export interface DemoResult {
+  answer: string;
+  sources: string[];
+  latencyMs: number;
+  tokensUsed: number;
+  costUsd: number;
+}
+
 interface Props {
   strategy: Strategy;
   query: string;
   corpus: string;
   history: Message[];
   trigger: number; // increment to fire a new query
+  demoResult?: DemoResult; // pre-filled result for showcase mode
 }
 
 interface Result {
@@ -21,10 +30,10 @@ interface Result {
   costUsd: number;
 }
 
-export default function ChatPanel({ strategy, query, corpus, history, trigger }: Props) {
-  const [state, setState] = useState<PanelState>("idle");
-  const [answer, setAnswer] = useState("");
-  const [result, setResult] = useState<Result | null>(null);
+export default function ChatPanel({ strategy, query, corpus, history, trigger, demoResult }: Props) {
+  const [state, setState] = useState<PanelState>(demoResult ? "complete" : "idle");
+  const [answer, setAnswer] = useState(demoResult?.answer ?? "");
+  const [result, setResult] = useState<Result | null>(demoResult ?? null);
   const [error, setError] = useState("");
   const abortRef = useRef<AbortController | null>(null);
 

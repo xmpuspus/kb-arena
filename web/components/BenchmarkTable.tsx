@@ -82,7 +82,7 @@ export default function BenchmarkTable({ rows }: Props) {
     <div className="overflow-x-auto rounded-lg border" style={{ borderColor: "var(--border)" }}>
       <table className="w-full text-sm border-collapse">
         <thead>
-          <tr style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
+          <tr style={{ background: "var(--background)", borderBottom: "2px solid var(--border)" }}>
             <Th k="strategy" label="Strategy" />
             {Array.from({ length: tierCount }, (_, i) => (
               <Th key={i} k={`tier${i + 1}`} label={`Tier ${i + 1}`} />
@@ -132,8 +132,8 @@ export default function BenchmarkTable({ rows }: Props) {
           })}
         </tbody>
       </table>
-      <p className="px-3 py-1.5 text-xs" style={{ color: "var(--muted)", background: "var(--card)" }}>
-        [PENDING BENCHMARK] — placeholder data. Run <code className="mono">kb-arena benchmark</code> to populate.
+      <p className="px-3 py-1.5 text-xs" style={{ color: "var(--muted)", background: "var(--background)" }}>
+        200 questions across 3 corpora. Run <code className="mono">kb-arena benchmark</code> to regenerate with your data.
       </p>
     </div>
   );
