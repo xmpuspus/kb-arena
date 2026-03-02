@@ -1,36 +1,36 @@
-# DocGraph Bench — Build Prompt
+# KB Arena — Build Prompt
 
-Copy this entire prompt into a new Claude Code session from `~/Desktop/docgraph-bench/`.
+Copy this entire prompt into a new Claude Code session from `~/Desktop/kb-arena/`.
 
 ---
 
 ## PROMPT START
 
-Ultrawork this. Build the DocGraph Bench project from PLAN.md. Read PLAN.md first, then execute in parallel agent teams across worktrees. Don't stop until everything is built and verified.
+Ultrawork this. Build the KB Arena project from PLAN.md. Read PLAN.md first, then execute in parallel agent teams across worktrees. Don't stop until everything is built and verified.
 
 ### Phase 0: Scaffold (orchestrator — no worktree)
 
 Before spinning up agents, create the skeleton they all write into:
 
 ```
-docgraph-bench/
+kb-arena/
 ├── pyproject.toml
 ├── docker-compose.yml
 ├── CLAUDE.md
 ├── .env.example
 ├── cypher/
-├── docgraph/__init__.py
-├── docgraph/settings.py
-├── docgraph/cli.py
-├── docgraph/models/__init__.py
-├── docgraph/models/document.py
-├── docgraph/models/graph.py
-├── docgraph/models/benchmark.py
-├── docgraph/models/api.py
-├── docgraph/llm/__init__.py
-├── docgraph/llm/client.py
-├── docgraph/strategies/__init__.py
-├── docgraph/strategies/base.py
+├── kb_arena/__init__.py
+├── kb_arena/settings.py
+├── kb_arena/cli.py
+├── kb_arena/models/__init__.py
+├── kb_arena/models/document.py
+├── kb_arena/models/graph.py
+├── kb_arena/models/benchmark.py
+├── kb_arena/models/api.py
+├── kb_arena/llm/__init__.py
+├── kb_arena/llm/client.py
+├── kb_arena/strategies/__init__.py
+├── kb_arena/strategies/base.py
 ├── datasets/python-stdlib/raw/.gitkeep
 ├── datasets/python-stdlib/processed/.gitkeep
 ├── datasets/python-stdlib/questions/.gitkeep
@@ -50,7 +50,7 @@ Write the shared models (document.py, graph.py, benchmark.py, api.py), settings.
 
 Write a CLAUDE.md for this project with:
 - Project overview and architecture
-- How to run (docker compose up, docgraph ingest, docgraph benchmark, docgraph serve)
+- How to run (docker compose up, kb-arena ingest, kb-arena benchmark, kb-arena serve)
 - Python 3.12, FastAPI, Neo4j Community 5, ChromaDB, Claude Haiku/Sonnet
 - Naming conventions: snake_case functions, PascalCase classes, NodeType/RelType enums
 - Testing: pytest, mock Neo4j with conftest fixtures
@@ -71,16 +71,16 @@ Branch: `feat/ingest-pipeline`
 Build the document ingestion pipeline. Read PLAN.md "Pattern 8: Multi-Stage CLI Pipeline" and "Dataset Selection" sections.
 
 Files to create:
-- `docgraph/ingest/__init__.py`
-- `docgraph/ingest/pipeline.py` — orchestrator, reads raw docs, writes JSONL to processed/
-- `docgraph/ingest/parsers/__init__.py`
-- `docgraph/ingest/parsers/markdown.py` — parses .md and .rst files into Document model
-- `docgraph/ingest/parsers/html.py` — parses HTML files (Python docs format) into Document model
-- `docgraph/ingest/parsers/sec_edgar.py` — parses SEC EDGAR 10-K HTML into Document model
+- `kb_arena/ingest/__init__.py`
+- `kb_arena/ingest/pipeline.py` — orchestrator, reads raw docs, writes JSONL to processed/
+- `kb_arena/ingest/parsers/__init__.py`
+- `kb_arena/ingest/parsers/markdown.py` — parses .md and .rst files into Document model
+- `kb_arena/ingest/parsers/html.py` — parses HTML files (Python docs format) into Document model
+- `kb_arena/ingest/parsers/sec_edgar.py` — parses SEC EDGAR 10-K HTML into Document model
 - `tests/test_ingest.py` — test each parser with sample documents
 
 Implementation notes:
-- Every parser outputs the shared `Document` model from `docgraph/models/document.py`
+- Every parser outputs the shared `Document` model from `kb_arena/models/document.py`
 - Write JSONL intermediates to `datasets/{corpus}/processed/` (climate-money-ph pattern)
 - HTML parser must handle Python docs format: `<dl>` for function signatures, `<table>` for params, nested `<div class="section">`
 - RST parser: handle directives (.. function::, .. class::, .. deprecated::), cross-references (:func:, :class:, :mod:)
@@ -88,7 +88,7 @@ Implementation notes:
 - Download Python stdlib HTML docs from `docs.python.org/3/library/` for 50 most-used modules
 - Tests: parse a real Python docs page (json.html or os.html), verify sections, tables, cross-refs extracted
 
-Wire the `ingest` CLI command in `docgraph/cli.py`.
+Wire the `ingest` CLI command in `kb_arena/cli.py`.
 
 ---
 
@@ -99,14 +99,14 @@ Branch: `feat/graph-engine`
 Build the knowledge graph engine. Read PLAN.md "Pattern 2-4, 6-7" and "Graph schema for Python docs" sections.
 
 Files to create:
-- `docgraph/graph/__init__.py`
-- `docgraph/graph/schema.py` — NodeType + RelType enums per corpus (Python, K8s, SEC). Include validation.
-- `docgraph/graph/extractor.py` — LLM-based entity/relationship extraction with schema constraints. System prompt includes enum values as ONLY allowed types. Post-validation rejects unknowns.
-- `docgraph/graph/resolver.py` — Two-threshold Jaro-Winkler entity resolution (>=0.92 auto-merge, 0.85-0.91 review). Use jellyfish library.
-- `docgraph/graph/neo4j_store.py` — UNWIND/MERGE batch loading (batch_size=1000), cursor management (always consume results), node-before-edge loading order.
-- `docgraph/graph/cypher_templates.py` — 8+ pre-built Cypher query templates: single_entity_lookup, multi_hop, comparison, dependency_chain, deprecation_chain, cross_reference, type_hierarchy, usage_examples.
-- `docgraph/graph/cypher_generator.py` — Text-to-Cypher via LLM for novel queries. System prompt includes schema. Fallback to template matching.
-- `docgraph/graph/analyzer.py` — networkx graph algorithms (communities, centrality, dependency chains) via asyncio.to_thread. 5-minute in-memory cache.
+- `kb_arena/graph/__init__.py`
+- `kb_arena/graph/schema.py` — NodeType + RelType enums per corpus (Python, K8s, SEC). Include validation.
+- `kb_arena/graph/extractor.py` — LLM-based entity/relationship extraction with schema constraints. System prompt includes enum values as ONLY allowed types. Post-validation rejects unknowns.
+- `kb_arena/graph/resolver.py` — Two-threshold Jaro-Winkler entity resolution (>=0.92 auto-merge, 0.85-0.91 review). Use jellyfish library.
+- `kb_arena/graph/neo4j_store.py` — UNWIND/MERGE batch loading (batch_size=1000), cursor management (always consume results), node-before-edge loading order.
+- `kb_arena/graph/cypher_templates.py` — 8+ pre-built Cypher query templates: single_entity_lookup, multi_hop, comparison, dependency_chain, deprecation_chain, cross_reference, type_hierarchy, usage_examples.
+- `kb_arena/graph/cypher_generator.py` — Text-to-Cypher via LLM for novel queries. System prompt includes schema. Fallback to template matching.
+- `kb_arena/graph/analyzer.py` — networkx graph algorithms (communities, centrality, dependency chains) via asyncio.to_thread. 5-minute in-memory cache.
 - `cypher/schema_python.cypher` — idempotent DDL with IF NOT EXISTS. Uniqueness constraints, fulltext index across 4+ label types, vector index for embeddings.
 - `cypher/schema_kubernetes.cypher`
 - `cypher/schema_sec.cypher`
@@ -125,15 +125,15 @@ Branch: `feat/strategies`
 Build all 5 retrieval strategies. Read PLAN.md "The 5 Retrieval Strategies — Detailed Implementation" and "Pattern 5, 9" sections.
 
 Files to create:
-- `docgraph/strategies/naive_vector.py` — Strategy 1. ChromaDB, 512-token chunks, 50-token overlap, top-k=5. ~80 lines. Deliberately simple.
-- `docgraph/strategies/contextual_vector.py` — Strategy 2. Prepend heading_path to chunks before embedding. Metadata filters on ChromaDB where clause. ~120 lines.
-- `docgraph/strategies/qna_pairs.py` — Strategy 3. LLM generates 3-5 QnA pairs per section at build time. Embed questions. At query time, match question embeddings, return pre-generated answers. ~210 lines.
-- `docgraph/strategies/knowledge_graph.py` — Strategy 4. Uses graph/ module. Intent → template query or Cypher gen → execute → assemble context → generate answer. ~600 lines.
-- `docgraph/strategies/hybrid.py` — Strategy 5. 3-stage intent classification (keyword → Haiku → regex fallback). Routes factoid/exploratory to vector, comparison/relational to graph, procedural to both with fusion. ~200 lines.
-- `docgraph/chatbot/__init__.py`
-- `docgraph/chatbot/router.py` — IntentRouter with 3-stage classification. QueryIntent enum.
-- `docgraph/chatbot/session.py` — Client-side memory helper. Last 6 turns, truncated to 500 chars per assistant message.
-- `docgraph/chatbot/api.py` — FastAPI app with SSE streaming. Lifespan init. Consistent error envelope. CORS. Rate limiter. Mock fallback if Neo4j unavailable.
+- `kb_arena/strategies/naive_vector.py` — Strategy 1. ChromaDB, 512-token chunks, 50-token overlap, top-k=5. ~80 lines. Deliberately simple.
+- `kb_arena/strategies/contextual_vector.py` — Strategy 2. Prepend heading_path to chunks before embedding. Metadata filters on ChromaDB where clause. ~120 lines.
+- `kb_arena/strategies/qna_pairs.py` — Strategy 3. LLM generates 3-5 QnA pairs per section at build time. Embed questions. At query time, match question embeddings, return pre-generated answers. ~210 lines.
+- `kb_arena/strategies/knowledge_graph.py` — Strategy 4. Uses graph/ module. Intent → template query or Cypher gen → execute → assemble context → generate answer. ~600 lines.
+- `kb_arena/strategies/hybrid.py` — Strategy 5. 3-stage intent classification (keyword → Haiku → regex fallback). Routes factoid/exploratory to vector, comparison/relational to graph, procedural to both with fusion. ~200 lines.
+- `kb_arena/chatbot/__init__.py`
+- `kb_arena/chatbot/router.py` — IntentRouter with 3-stage classification. QueryIntent enum.
+- `kb_arena/chatbot/session.py` — Client-side memory helper. Last 6 turns, truncated to 500 chars per assistant message.
+- `kb_arena/chatbot/api.py` — FastAPI app with SSE streaming. Lifespan init. Consistent error envelope. CORS. Rate limiter. Mock fallback if Neo4j unavailable.
 - `tests/test_strategies.py`
 - `tests/test_router.py`
 
@@ -148,10 +148,10 @@ Branch: `feat/benchmark`
 Build the benchmark engine AND write all 200+ questions. Read PLAN.md "Benchmark Methodology", "Pattern 13", and "Query Complexity Tiers" sections.
 
 Files to create:
-- `docgraph/benchmark/questions.py` — YAML question loader. Validates against Question model.
-- `docgraph/benchmark/evaluator.py` — Two-pass: structural checks (must_mention / must_not_claim) then LLM-as-judge. Cloudwright pattern.
-- `docgraph/benchmark/runner.py` — Orchestrator. Runs all specified strategies against all questions. Captures accuracy, latency, tokens, cost. Writes results JSON.
-- `docgraph/benchmark/reporter.py` — Generates markdown report + summary JSON from results.
+- `kb_arena/benchmark/questions.py` — YAML question loader. Validates against Question model.
+- `kb_arena/benchmark/evaluator.py` — Two-pass: structural checks (must_mention / must_not_claim) then LLM-as-judge. Cloudwright pattern.
+- `kb_arena/benchmark/runner.py` — Orchestrator. Runs all specified strategies against all questions. Captures accuracy, latency, tokens, cost. Writes results JSON.
+- `kb_arena/benchmark/reporter.py` — Generates markdown report + summary JSON from results.
 - `datasets/python-stdlib/questions/tier1_factoid.yaml` — 20 questions. Single-fact lookups about Python stdlib. Real questions with verified ground truth from docs.python.org.
 - `datasets/python-stdlib/questions/tier2_multi_entity.yaml` — 20 questions. Multi-entity queries spanning 2+ modules.
 - `datasets/python-stdlib/questions/tier3_comparative.yaml` — 15 questions. Compare stdlib alternatives.
@@ -194,7 +194,7 @@ Tasks:
    - `tests/integration/test_ingest_to_graph.py` — ingest sample doc → extract entities → load Neo4j → query via Cypher → verify
    - `tests/integration/test_benchmark_e2e.py` — run benchmark on 5 sample questions across 2 strategies → verify results JSON schema
    - `tests/integration/test_chatbot_api.py` — FastAPI TestClient: POST /chat, verify SSE events, verify error envelope on bad input
-3. Verify all CLI commands work: `docgraph ingest --help`, `docgraph build-graph --help`, `docgraph benchmark --help`, `docgraph serve --help`
+3. Verify all CLI commands work: `kb-arena ingest --help`, `kb-arena build-graph --help`, `kb-arena benchmark --help`, `kb-arena serve --help`
 4. Verify docker-compose.yml is valid: `docker compose config`
 5. Lint with ruff: `ruff check . && ruff format --check .`
 6. Fix all issues found
@@ -261,7 +261,7 @@ Final verification pass:
 1. Run `ruff check . && ruff format --check .` — zero warnings
 2. Run `pytest tests/ -v` — all pass
 3. Verify `pip install -e .` works and all CLI commands are accessible
-4. Verify `docgraph --help` shows all subcommands
+4. Verify `kb-arena --help` shows all subcommands
 5. Test the naive pipeline end-to-end: create a small test corpus (3 markdown files), ingest, build vectors, run 3 benchmark questions, verify results JSON
 6. Verify docker-compose.yml works: `docker compose up -d && sleep 10 && docker compose ps` — all healthy
 7. Check for hardcoded paths, API keys, or secrets — none should exist
@@ -287,7 +287,7 @@ Create:
 
 1. Merge both branches → main
 2. Run final `pytest && ruff check .`
-3. Commit: "Complete initial build of docgraph-bench"
+3. Commit: "Complete initial build of kb-arena"
 
 ---
 
@@ -295,7 +295,7 @@ Create:
 
 - All agents: restrict searches to project directory only. Never search ~/Desktop or ~/.claude recursively.
 - All agents: read PLAN.md before starting. Follow the exact patterns described.
-- All agents: use the shared models from docgraph/models/ — do NOT create parallel model definitions.
+- All agents: use the shared models from kb_arena/models/ — do NOT create parallel model definitions.
 - Build agents (Wave 1): implementer type, worktree isolation, sonnet model.
 - QA agents (Wave 2-3): qa-verifier type, worktree isolation, sonnet model.
 - Frontend agent: implementer type, worktree isolation, sonnet model.

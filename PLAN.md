@@ -1,4 +1,10 @@
-# DocGraph Bench — The Definitive Knowledge Graph RAG Benchmark
+# KB Arena — Knowledge Base Arena
+
+**Package:** `pip install kb-arena`
+**CLI:** `kb-arena ingest`, `kb-arena benchmark`, `kb-arena serve`
+**Import:** `from kb_arena import Pipeline, Benchmark`
+**PyPI:** https://pypi.org/project/kb-arena/ (AVAILABLE — confirmed 2026-03-02)
+**GitHub:** github.com/xmpuspus/kb-arena
 
 ## The Question This Answers
 
@@ -82,7 +88,7 @@ These are the exact implementation patterns that made paper-trail-ph, cloudwrigh
 Cloudwright's ArchSpec is a Pydantic v2 model that every module reads and writes. This eliminated an entire class of integration bugs.
 
 ```python
-# docgraph/models/document.py — the central interchange for this project
+# kb_arena/models/document.py — the central interchange for this project
 class Section(BaseModel):
     id: str = Field(pattern=r"^[a-zA-Z0-9_-]+$")  # IaC-safe IDs (cloudwright pattern)
     title: str
@@ -111,7 +117,7 @@ class Document(BaseModel):
 Both graph projects use Python str Enums for node and edge types. Typos fail at import time, not as silent 0-result Cypher queries.
 
 ```python
-# docgraph/graph/schema.py
+# kb_arena/graph/schema.py
 class NodeType(str, Enum):
     CONCEPT = "Concept"
     MODULE = "Module"
@@ -165,7 +171,7 @@ OPTIONS {indexConfig: {`vector.dimensions`: 1536, `vector.similarity_function`: 
 ### Pattern 4: Two-Threshold Entity Resolution (from paper-trail-ph)
 
 ```python
-# docgraph/graph/resolver.py
+# kb_arena/graph/resolver.py
 import jellyfish
 
 MERGE_THRESHOLD = 0.92    # auto-merge — proven in paper-trail-ph
@@ -216,7 +222,7 @@ def normalize_name(name: str) -> str:
 Cloudcare's 3-stage pipeline (keyword → LLM → regex fallback) is the most robust classification pattern across Xavier's projects.
 
 ```python
-# docgraph/chatbot/router.py
+# kb_arena/chatbot/router.py
 class QueryIntent(str, Enum):
     FACTOID = "factoid"           # "What is X?" → vector is fine
     COMPARISON = "comparison"      # "Compare X vs Y" → graph needed
@@ -272,7 +278,7 @@ class IntentRouter:
 All 13 red flag detectors in paper-trail-ph are pure Cypher — no Python-side computation. This means graph queries are auditable, testable, and run at Neo4j speed.
 
 ```python
-# docgraph/graph/cypher_templates.py — pre-built query templates for common patterns
+# kb_arena/graph/cypher_templates.py — pre-built query templates for common patterns
 
 MULTI_HOP_QUERY = """
 // Find all entities connected to {target} within {depth} hops
@@ -313,7 +319,7 @@ LIMIT 100
 ### Pattern 7: Batch Loading with UNWIND + MERGE (from paper-trail-ph)
 
 ```python
-# docgraph/graph/neo4j_store.py
+# kb_arena/graph/neo4j_store.py
 BATCH_SIZE = 1000  # paper-trail-ph's proven batch size
 
 async def load_nodes(self, nodes: list[dict], label: NodeType) -> int:
@@ -362,7 +368,7 @@ async def load_edges(self, edges: list[dict], rel_type: RelType) -> int:
 Both graph projects use a staged CLI where each step is independently runnable. Climate-money-ph has the most mature version: `collect → transform → load → analyze → validate`.
 
 ```python
-# docgraph/cli.py — Typer CLI (cloudwright uses Typer + Rich)
+# kb_arena/cli.py — Typer CLI (cloudwright uses Typer + Rich)
 import typer
 app = typer.Typer()
 
@@ -401,7 +407,7 @@ def report(corpus: str = "all"):
 ### Pattern 9: LLM Dual-Model Split with Cache Control (from cloudwright)
 
 ```python
-# docgraph/llm/client.py
+# kb_arena/llm/client.py
 GENERATE_MODEL = "claude-sonnet-4-6"        # extraction, generation, evaluation
 FAST_MODEL = "claude-haiku-4-5-20251001"    # classification, routing
 
@@ -437,7 +443,7 @@ class LLMClient:
 ### Pattern 10: SSE Streaming with Typed Events (from paper-trail-ph)
 
 ```python
-# docgraph/chatbot/api.py
+# kb_arena/chatbot/api.py
 from sse_starlette.sse import EventSourceResponse
 
 async def chat_stream(request: ChatRequest):
@@ -475,7 +481,7 @@ async def chat_stream(request: ChatRequest):
 ### Pattern 11: Service Initialization in Lifespan (from paper-trail-ph)
 
 ```python
-# docgraph/chatbot/api.py
+# kb_arena/chatbot/api.py
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
@@ -509,7 +515,7 @@ async def lifespan(app: FastAPI):
 ### Pattern 12: Graph Analysis with asyncio.to_thread (from climate-money-ph)
 
 ```python
-# docgraph/graph/analyzer.py
+# kb_arena/graph/analyzer.py
 import networkx as nx
 
 class GraphAnalyzer:
@@ -568,7 +574,7 @@ class GraphAnalyzer:
 ### Pattern 14: Consistent Error Envelope (from paper-trail-ph)
 
 ```python
-# docgraph/chatbot/api.py
+# kb_arena/chatbot/api.py
 class ErrorResponse(BaseModel):
     error: ErrorDetail
 
@@ -850,14 +856,14 @@ Based on Xavier's proven patterns:
 
 9. **Mock fallback** — Climate-money-ph pattern: if Neo4j isn't connected, graph strategy returns mock data with a warning. Allows the demo to partially work during development or when infra is partially deployed.
 
-10. **Hatchling monorepo** — Cloudwright ships 3 packages from one repo (`core`, `cli`, `web`). DocGraph can start as a single package and split later if needed. `pyproject.toml` with `[project.scripts]` entry point for the CLI.
+10. **Hatchling monorepo** — Cloudwright ships 3 packages from one repo (`core`, `cli`, `web`). KB Arena can start as a single package and split later if needed. `pyproject.toml` with `[project.scripts]` entry point for the CLI.
 
 ---
 
 ## Repository Structure
 
 ```
-docgraph-bench/
+kb-arena/
 ├── README.md                    # The viral README
 ├── pyproject.toml               # pip-installable (hatchling, cloudwright pattern)
 ├── docker-compose.yml           # Neo4j + ChromaDB + API (paper-trail-ph pattern)
@@ -873,7 +879,7 @@ docgraph-bench/
 │   ├── schema_kubernetes.cypher # K8s schema
 │   └── schema_sec.cypher        # SEC filing schema
 │
-├── docgraph/
+├── kb_arena/
 │   ├── __init__.py
 │   ├── cli.py                   # Typer + Rich CLI (cloudwright pattern)
 │   ├── settings.py              # Pydantic Settings (env-based config)
@@ -987,6 +993,192 @@ docgraph-bench/
 
 ---
 
+## Pip Package Design
+
+KB Arena ships as a single pip-installable package. The goal: `pip install kb-arena && kb-arena ingest ./my-docs/ && kb-arena serve` works from scratch.
+
+### Public API
+
+```python
+# kb_arena/__init__.py — public surface
+from kb_arena.models.document import Document, Section
+from kb_arena.models.graph import Entity, Relationship
+from kb_arena.models.benchmark import Question, BenchmarkResult
+from kb_arena.ingest.pipeline import Pipeline
+from kb_arena.benchmark.runner import Benchmark
+from kb_arena.strategies.base import Strategy
+
+__all__ = [
+    "Document", "Section", "Entity", "Relationship",
+    "Question", "BenchmarkResult", "Pipeline", "Benchmark", "Strategy",
+]
+```
+
+Users who `from kb_arena import Pipeline, Benchmark` get a clean API. Internal modules (graph store, LLM client, etc.) are importable but not part of the public contract.
+
+### pyproject.toml
+
+```toml
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kb-arena"
+version = "0.1.0"
+description = "Benchmark knowledge graphs vs vector RAG on real documentation"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "Xavier Puspus", email = "xavier@xmpuspus.dev" }]
+keywords = ["rag", "knowledge-graph", "benchmark", "neo4j", "chromadb", "llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "typer==0.12.5",
+    "rich==13.9.4",
+    "pydantic==2.10.4",
+    "pydantic-settings==2.7.1",
+    "httpx==0.28.1",
+    "anthropic==0.42.0",
+    "neo4j==5.27.0",
+    "chromadb==0.5.23",
+    "jellyfish==1.1.3",
+    "networkx==3.4.2",
+    "beautifulsoup4==4.12.3",
+    "pyyaml==6.0.2",
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "sse-starlette==2.2.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==8.3.4", "ruff==0.8.6", "pytest-asyncio==0.24.0", "httpx"]
+datasets = ["requests==2.32.3"]  # for downloading raw docs
+frontend = []  # frontend is Node-based, not Python
+
+[project.scripts]
+kb-arena = "kb_arena.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/xmpuspus/kb-arena"
+Documentation = "https://github.com/xmpuspus/kb-arena/tree/main/docs"
+Repository = "https://github.com/xmpuspus/kb-arena"
+Issues = "https://github.com/xmpuspus/kb-arena/issues"
+```
+
+### Dependency Strategy
+
+All dependencies pinned to exact versions — no `>=`, `^`, or `~`. This prevents version drift that breaks reproducibility (the whole point of a benchmark).
+
+**Core vs optional split:**
+- Core deps (always installed): Typer, Pydantic, httpx, anthropic, neo4j, chromadb, jellyfish, networkx, bs4, pyyaml, FastAPI, uvicorn, sse-starlette
+- Dev deps (`pip install kb-arena[dev]`): pytest, ruff, pytest-asyncio
+- Dataset download (`pip install kb-arena[datasets]`): requests (for fetching raw docs from docs.python.org, k8s.io, SEC EDGAR)
+
+### Dataset Download-on-Demand
+
+Raw datasets are NOT bundled in the pip package (too large). Instead:
+
+```python
+# kb_arena/datasets/downloader.py
+DATASET_REGISTRY = {
+    "python-stdlib": {
+        "modules": ["json", "os", "sys", "pathlib", ...],  # 50 modules
+        "base_url": "https://docs.python.org/3/library/{module}.html",
+        "parser": "html",
+    },
+    "kubernetes": {
+        "base_url": "https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/",
+        "parser": "html",
+    },
+    "sec-edgar": {
+        "base_url": "https://www.sec.gov/cgi-bin/browse-edgar",
+        "parser": "sec_edgar",
+    },
+}
+```
+
+CLI: `kb-arena download python-stdlib` fetches raw docs to `datasets/python-stdlib/raw/`. Ships with question YAML files (small, committed to the package).
+
+### Plugin System for Custom Strategies
+
+Users can add custom retrieval strategies without forking:
+
+```python
+# Custom strategy in user code
+from kb_arena.strategies.base import Strategy, AnswerResult
+
+class MyCustomStrategy(Strategy):
+    name = "my_custom"
+
+    async def build_index(self, documents: list[Document]) -> None:
+        # Build your custom index
+        ...
+
+    async def query(self, question: str, top_k: int = 5) -> AnswerResult:
+        # Your retrieval logic
+        ...
+```
+
+Registration via pyproject.toml entry points:
+
+```toml
+# In user's pyproject.toml
+[project.entry-points."kb_arena.strategies"]
+my_custom = "my_package.strategy:MyCustomStrategy"
+```
+
+The benchmark runner auto-discovers registered strategies via `importlib.metadata.entry_points()`.
+
+### Versioning and Release
+
+- SemVer: `0.1.0` for initial release, bump minor for new strategies/datasets
+- Benchmark results always tagged with package version (`results/v0.1.0/`)
+- Breaking changes to Question/BenchmarkResult models = major version bump
+- GitHub Actions CI: lint, test, build wheel, publish to PyPI on tag push
+
+### CI/CD Pipeline
+
+```yaml
+# .github/workflows/publish.yml
+name: Publish to PyPI
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install build twine
+      - run: python -m build
+      - run: twine upload dist/*
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+```
+
+### .gitignore additions for packaging
+
+```
+dist/
+*.egg-info/
+build/
+.eggs/
+```
+
+---
+
 ## The Benchmark Methodology
 
 ### Question Design (200+ questions)
@@ -1015,7 +1207,7 @@ Each question is a YAML file (cloudwright pattern) tagged with:
 ### Evaluation Pipeline (cloudwright pattern)
 
 ```python
-# docgraph/benchmark/evaluator.py
+# kb_arena/benchmark/evaluator.py
 class BenchmarkEvaluator:
     """Two-pass evaluation: structural checks (cheap) → LLM judge (expensive).
     Cloudwright lesson: structural checks catch 80% of issues without LLM."""
@@ -1064,9 +1256,9 @@ class BenchmarkEvaluator:
 - All benchmark questions committed to repo as YAML
 - Deterministic seeding for LLM calls (temperature=0)
 - Docker Compose for full stack: `docker compose up` → Neo4j + ChromaDB + API
-- Single command: `docgraph benchmark run --dataset python-stdlib`
+- Single command: `kb-arena benchmark run --dataset python-stdlib`
 - Results auto-committed as JSON with timestamps and model versions
-- `docgraph benchmark diff results/v1.json results/v2.json` — compare runs
+- `kb-arena benchmark diff results/v1.json results/v2.json` — compare runs
 
 ---
 
@@ -1081,7 +1273,7 @@ services:
       - "7474:7474"   # HTTP
       - "7687:7687"   # Bolt
     environment:
-      - NEO4J_AUTH=neo4j/docgraph
+      - NEO4J_AUTH=neo4j/kbarena
       - NEO4J_PLUGINS=["apoc"]
       # GDS excluded by design — Enterprise-only (paper-trail-ph decision)
     volumes:
@@ -1099,7 +1291,7 @@ services:
     environment:
       - NEO4J_URI=bolt://neo4j:7687
       - NEO4J_USER=neo4j
-      - NEO4J_PASSWORD=docgraph
+      - NEO4J_PASSWORD=kbarena
       - CHROMA_PATH=/data/chroma
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
     depends_on:
@@ -1134,17 +1326,17 @@ volumes:
 
 **Tasks:**
 1. Scaffold repo with hatchling pyproject.toml, Typer CLI, basic project structure
-2. Implement `docgraph/models/document.py` — the Pydantic v2 unified document model
-3. Implement `docgraph/ingest/parsers/html.py` — Python docs HTML parser
-4. Implement `docgraph/ingest/pipeline.py` — raw docs → JSONL
-5. Implement `docgraph/strategies/base.py` — abstract Strategy interface + AnswerResult model
-6. Implement `docgraph/strategies/naive_vector.py` — Strategy 1 (ChromaDB, ~80 lines)
+2. Implement `kb_arena/models/document.py` — the Pydantic v2 unified document model
+3. Implement `kb_arena/ingest/parsers/html.py` — Python docs HTML parser
+4. Implement `kb_arena/ingest/pipeline.py` — raw docs → JSONL
+5. Implement `kb_arena/strategies/base.py` — abstract Strategy interface + AnswerResult model
+6. Implement `kb_arena/strategies/naive_vector.py` — Strategy 1 (ChromaDB, ~80 lines)
 7. Write 50 Tier 1 YAML questions for Python stdlib with ground truth
-8. Implement `docgraph/benchmark/runner.py` + `evaluator.py` (structural checks only, no LLM judge yet)
+8. Implement `kb_arena/benchmark/runner.py` + `evaluator.py` (structural checks only, no LLM judge yet)
 9. Run first benchmark: verify pipeline works end-to-end
 10. Docker Compose with Neo4j + API
 
-**Verification:** `docgraph ingest ./datasets/python-stdlib/raw/ && docgraph benchmark run --strategy naive_vector --tier 1` produces a results JSON.
+**Verification:** `kb-arena ingest ./datasets/python-stdlib/raw/ && kb-arena benchmark run --strategy naive_vector --tier 1` produces a results JSON.
 
 ### Phase 2: Knowledge Graph (Week 2)
 
@@ -1153,12 +1345,12 @@ volumes:
 **Tasks:**
 1. Define Python stdlib graph schema as NodeType/RelType enums
 2. Write cypher/schema_python.cypher with idempotent constraints + indexes
-3. Implement `docgraph/graph/extractor.py` — LLM entity extraction with schema constraints
-4. Implement `docgraph/graph/resolver.py` — Jaro-Winkler entity resolution
-5. Implement `docgraph/graph/neo4j_store.py` — UNWIND/MERGE batch loading
-6. Implement `docgraph/graph/cypher_templates.py` — 5-8 template queries for known patterns
-7. Implement `docgraph/graph/cypher_generator.py` — Text-to-Cypher fallback
-8. Implement `docgraph/strategies/knowledge_graph.py` — Strategy 4
+3. Implement `kb_arena/graph/extractor.py` — LLM entity extraction with schema constraints
+4. Implement `kb_arena/graph/resolver.py` — Jaro-Winkler entity resolution
+5. Implement `kb_arena/graph/neo4j_store.py` — UNWIND/MERGE batch loading
+6. Implement `kb_arena/graph/cypher_templates.py` — 5-8 template queries for known patterns
+7. Implement `kb_arena/graph/cypher_generator.py` — Text-to-Cypher fallback
+8. Implement `kb_arena/strategies/knowledge_graph.py` — Strategy 4
 9. Write 50 Tier 2-3 YAML questions
 10. Run benchmark: Strategy 1 vs Strategy 4 on Tiers 1-3
 
@@ -1194,11 +1386,11 @@ volumes:
 5. Build Recharts benchmark explorer page
 6. Generate architecture diagram for README
 7. Deploy: Vercel (frontend), Railway (API), Neo4j AuraDB free tier
-8. Publish pip package (`pip install docgraph-bench`)
+8. Publish pip package (`pip install kb-arena`)
 9. Write README with results table, quick start, architecture diagram
 10. Generate LinkedIn carousel images (6-8 slides)
 
-**Verification:** Live demo URL works. `pip install docgraph-bench && docgraph ingest ./my-docs/ && docgraph serve` works from scratch.
+**Verification:** Live demo URL works. `pip install kb-arena && kb-arena ingest ./my-docs/ && kb-arena serve` works from scratch.
 
 ### Phase 5: Launch
 
@@ -1237,24 +1429,24 @@ These are specific things that went wrong or required non-obvious solutions:
 If building this with an agent team, partition as follows:
 
 **Agent 1 (Lead / Orchestrator):** Models + CLI + settings + Docker Compose + README
-- Owns: `docgraph/models/`, `docgraph/cli.py`, `docgraph/settings.py`, `pyproject.toml`, `docker-compose.yml`
+- Owns: `kb_arena/models/`, `kb_arena/cli.py`, `kb_arena/settings.py`, `pyproject.toml`, `docker-compose.yml`
 - Pattern: cloudwright monorepo structure
 
 **Agent 2 (Ingestion):** Document parsers + pipeline
-- Owns: `docgraph/ingest/`, `datasets/*/raw/`
+- Owns: `kb_arena/ingest/`, `datasets/*/raw/`
 - Pattern: climate-money-ph 5-stage pipeline with JSONL intermediates
 
 **Agent 3 (Graph):** Neo4j schema, extraction, resolution, store, templates
-- Owns: `docgraph/graph/`, `cypher/`
+- Owns: `kb_arena/graph/`, `cypher/`
 - Pattern: paper-trail-ph graph stack (enums, UNWIND/MERGE, Jaro-Winkler)
 
 **Agent 4 (Strategies):** All 5 retrieval strategies
-- Owns: `docgraph/strategies/`
+- Owns: `kb_arena/strategies/`
 - Depends on: Agent 2 (ingestion models), Agent 3 (graph store)
 - Pattern: cloudcare intent routing for Strategy 5
 
 **Agent 5 (Benchmark):** Question design, evaluation, reporting
-- Owns: `docgraph/benchmark/`, `datasets/*/questions/`, `results/`
+- Owns: `kb_arena/benchmark/`, `datasets/*/questions/`, `results/`
 - Pattern: cloudwright YAML test cases with structural checks
 
 **Agent 6 (Frontend):** Next.js demo, graph viz, benchmark explorer
@@ -1267,7 +1459,7 @@ If building this with an agent team, partition as follows:
 
 ## What Makes This Different From Existing Work
 
-| Existing | DocGraph Bench |
+| Existing | KB Arena |
 |----------|---------------|
 | Microsoft GraphRAG | Library, no benchmark comparison against alternatives |
 | LightRAG | Single approach, no multi-strategy comparison |
@@ -1275,7 +1467,7 @@ If building this with an agent team, partition as follows:
 | Academic papers | Not reproducible, no live demo, no pip install |
 | Neo4j blog posts | Vendor-biased, single approach, no side-by-side |
 
-**DocGraph Bench is the first:**
+**KB Arena is the first:**
 - Multi-strategy benchmark on real documentation
 - With a live side-by-side chatbot demo
 - pip-installable so anyone can run it on their own docs
@@ -1309,7 +1501,7 @@ If building this with an agent team, partition as follows:
 ### Post 2 (Week after): The Knowledge Graph Extraction Pipeline
 - Technical deep-dive on how to convert messy docs into a clean knowledge graph
 - Show before (raw Confluence export) vs after (structured graph in Sigma.js)
-- CTA: "Run it on your own docs: pip install docgraph-bench"
+- CTA: "Run it on your own docs: pip install kb-arena"
 
 ### Post 3 (2 weeks after): The Cost Per Correct Answer
 - The metric no one talks about
