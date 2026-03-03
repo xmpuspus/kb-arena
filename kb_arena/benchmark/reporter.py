@@ -12,21 +12,36 @@ from pathlib import Path
 from kb_arena.models.benchmark import BenchmarkResult
 from kb_arena.settings import settings
 
-CORPUS_NAMES = ["aws-compute", "aws-storage", "aws-networking"]
 STRATEGY_NAMES = ["naive_vector", "contextual_vector", "qna_pairs", "knowledge_graph", "hybrid"]
 TIER_LABELS = {
     1: "Tier 1 - Factoid",
-    2: "Tier 2 - Multi-entity",
+    2: "Tier 2 - Procedural",
     3: "Tier 3 - Comparative",
     4: "Tier 4 - Relational",
-    5: "Tier 5 - Temporal",
+    5: "Tier 5 - Multi-hop",
 }
+
+
+def _discover_result_corpora() -> list[str]:
+    """Find all corpora that have result files, regardless of question availability."""
+    results_dir = Path(settings.results_path)
+    if not results_dir.exists():
+        return []
+    corpora = set()
+    for f in results_dir.glob("*.json"):
+        # Filenames follow pattern: {corpus}_{strategy}.json
+        for strat in STRATEGY_NAMES:
+            suffix = f"_{strat}.json"
+            if f.name.endswith(suffix):
+                corpora.add(f.name[: -len(suffix)])
+                break
+    return sorted(corpora)
 
 
 def _load_results(corpus: str) -> list[BenchmarkResult]:
     results_dir = Path(settings.results_path)
     loaded = []
-    corpora = CORPUS_NAMES if corpus == "all" else [corpus]
+    corpora = _discover_result_corpora() if corpus == "all" else [corpus]
     for corp in corpora:
         for strat in STRATEGY_NAMES:
             path = results_dir / f"{corp}_{strat}.json"

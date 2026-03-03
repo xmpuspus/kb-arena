@@ -1,7 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { STRATEGIES, STRATEGY_LABELS, STRATEGY_COLORS, CORPORA, type Strategy } from "@/lib/api";
+import { STRATEGIES, STRATEGY_LABELS, STRATEGY_COLORS, CORPORA, fetchCorpora, type CorpusInfo, type Strategy } from "@/lib/api";
 
 const TIER_LABELS = [
   "Tier 1 — Factoid",
@@ -35,6 +36,10 @@ const STRATEGY_DESCS: Record<Strategy, string> = {
 };
 
 export default function Home() {
+  const [corpora, setCorpora] = useState<CorpusInfo[]>(CORPORA);
+
+  useEffect(() => { fetchCorpora().then(setCorpora); }, []);
+
   return (
     <div className="max-w-5xl mx-auto px-6 py-12 space-y-16">
       {/* Hero */}
@@ -118,7 +123,7 @@ export default function Home() {
       <section className="space-y-4">
         <h2 className="text-xl font-semibold" style={{ color: "var(--foreground)" }}>5 difficulty tiers, auto-generated or hand-crafted</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {CORPORA.map((c) => (
+          {corpora.map((c) => (
             <div
               key={c.value}
               className="rounded-lg border p-4"
@@ -126,7 +131,7 @@ export default function Home() {
             >
               <h3 className="text-sm font-semibold mb-2" style={{ color: "var(--foreground)" }}>{c.label}</h3>
               <p className="text-xs" style={{ color: "var(--muted)" }}>
-                {c.value === "aws-compute" ? "75 questions" : c.value === "aws-storage" ? "65 questions" : "60 questions"}
+                {c.questionCount != null ? `${c.questionCount} questions` : "—"}
               </p>
             </div>
           ))}

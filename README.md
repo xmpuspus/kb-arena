@@ -2,9 +2,9 @@
 
 Which retrieval architecture works best for your documentation?
 
-KB Arena benchmarks 5 retrieval strategies — naive vector, contextual vector, Q&A pairs, knowledge graph, and hybrid — on **your** documentation. Bring your docs in any format, run the pipeline, get empirical results. Ships with 3 AWS documentation corpora as a built-in example.
+KB Arena benchmarks 5 retrieval strategies — naive vector, contextual vector, Q&A pairs, knowledge graph, and hybrid — on **your** documentation. Bring your docs in any format, run the pipeline, get empirical results. Ships with an AWS Compute corpus (75 questions across 5 difficulty tiers) as a built-in example.
 
-![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-279-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue)
+![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-367-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ---
 
@@ -131,7 +131,7 @@ The compose file starts Neo4j (port 7474/7687), the FastAPI backend (port 8000),
 
 ## Using the Built-in AWS Example
 
-Three AWS corpora ship ready to use (Compute, Storage, Networking — 200 questions total):
+The AWS Compute corpus ships ready to use (75 questions across 5 difficulty tiers):
 
 ```bash
 kb-arena ingest ./datasets/aws-compute/raw/ --corpus aws-compute
@@ -182,10 +182,10 @@ Questions are organized into 5 difficulty tiers:
 | Tier | Type | Hops | Where vector RAG breaks |
 |------|------|------|--------------------------|
 | 1 | Lookup | 1 | All strategies competitive |
-| 2 | How-To | 1 | Vector drops to ~60% |
-| 3 | Comparison | 2-3 | Vector drops to ~30%, graph dominates |
-| 4 | Integration | 3-4 | Only graph answers correctly |
-| 5 | Architecture | 3-5 | Only graph + provenance answers |
+| 2 | Procedural | 1-2 | Vector drops to ~60% |
+| 3 | Comparative | 2-3 | Vector drops to ~30%, graph dominates |
+| 4 | Relational | 3-4 | Only graph answers correctly |
+| 5 | Multi-hop | 3-5 | Only graph + provenance answers |
 
 Use `kb-arena generate-questions` to auto-generate questions from your docs, or write them by hand in YAML.
 
@@ -214,7 +214,7 @@ No per-domain configuration needed. The LLM maps your documentation concepts to 
 | `benchmark` | Run evaluation. Options: `--corpus`, `--strategy`, `--tier` |
 | `report` | Generate report. Options: `--corpus`, `--output` |
 | `serve` | Launch API + frontend. Options: `--host`, `--port` |
-| `health` | Check Neo4j, ChromaDB, corpora, question counts |
+| `health` | Pipeline status — per-corpus progress, service connectivity, API keys |
 
 All commands are independently re-runnable. Each stage writes to disk so you can re-run any step without repeating earlier ones.
 
@@ -243,7 +243,7 @@ All prefixed with `KB_ARENA_`. Loaded from `.env` or environment.
 # Install with dev dependencies
 pip install -e '.[dev]'
 
-# Run tests (279 tests)
+# Run tests (367 tests)
 pytest tests/ -v --ignore=tests/live
 
 # Lint + format
@@ -267,7 +267,7 @@ cd web && npm install && npx next build
 | Frontend | Next.js 14 + Tailwind + Recharts |
 | Models | Pydantic v2 |
 | CLI | Typer + Rich |
-| Testing | pytest (279 tests) |
+| Testing | pytest (367 tests) |
 
 ---
 

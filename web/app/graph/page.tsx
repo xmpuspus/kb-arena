@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from "react";
 import GraphViewer, { type GraphNode, type GraphEdge } from "@/components/GraphViewer";
-import { CORPORA, fetchCorpora } from "@/lib/api";
+import { CORPORA, fetchCorpora, fetchGraphData, type CorpusInfo } from "@/lib/api";
 
-// AWS services knowledge graph — extracted using universal schema
+// Fallback data shown when Neo4j is not connected
 const SAMPLE_NODES: GraphNode[] = [
   { id: "lambda", label: "Lambda", type: "Topic", properties: { category: "Compute" } },
   { id: "api-gw", label: "API Gateway", type: "Topic", properties: { category: "Networking" } },
@@ -66,17 +66,50 @@ const SAMPLE_EDGES: GraphEdge[] = [
   { id: "e30", source: "vpc", target: "nat-gw", label: "CONTAINS" },
 ];
 
+function apiToGraphNodes(data: { id: string; name: string; type: string; description?: string }[]): GraphNode[] {
+  return data.map((n) => {
+    const props: Record<string, string> = {};
+    if (n.description) props.description = n.description;
+    return { id: n.id, label: n.name, type: n.type, properties: props };
+  });
+}
+
+function apiToGraphEdges(data: { source: string; target: string; type: string }[]): GraphEdge[] {
+  return data.map((e, i) => ({
+    id: `e${i}`,
+    source: e.source,
+    target: e.target,
+    label: e.type,
+  }));
+}
+
 export default function GraphPage() {
   const [corpus, setCorpus] = useState("aws-compute");
-  const [nodes] = useState<GraphNode[]>(SAMPLE_NODES);
-  const [edges] = useState<GraphEdge[]>(SAMPLE_EDGES);
-  const [corpora, setCorpora] = useState(CORPORA);
+  const [nodes, setNodes] = useState<GraphNode[]>(SAMPLE_NODES);
+  const [edges, setEdges] = useState<GraphEdge[]>(SAMPLE_EDGES);
+  const [corpora, setCorpora] = useState<CorpusInfo[]>(CORPORA);
+  const [connected, setConnected] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => { fetchCorpora().then(setCorpora); }, []);
 
   useEffect(() => {
-    fetchCorpora().then(setCorpora);
-  }, []);
+    setLoading(true);
+    fetchGraphData(corpus).then((data) => {
+      setConnected(data.connected);
+      if (data.connected && data.nodes.length > 0) {
+        setNodes(apiToGraphNodes(data.nodes));
+        setEdges(apiToGraphEdges(data.edges));
+      } else {
+        setNodes(SAMPLE_NODES);
+        setEdges(SAMPLE_EDGES);
+      }
+      setLoading(false);
+    });
+  }, [corpus]);
 
   const maxDegree = Math.max(
+    0,
     ...nodes.map((n) => edges.filter((e) => e.source === n.id || e.target === n.id).length),
   );
 
@@ -110,6 +143,25 @@ export default function GraphPage() {
           ))}
         </select>
       </div>
+
+      {/* Status banner */}
+      {!connected && !loading && (
+        <div
+          className="px-3 py-2 rounded-lg text-xs"
+          style={{ background: "var(--border)", color: "var(--muted)" }}
+        >
+          Showing sample data — Neo4j not connected. Run <code className="mono">docker compose up -d neo4j</code> and <code className="mono">kb-arena build-graph --corpus {corpus}</code> to see your real graph.
+        </div>
+      )}
+
+      {loading && (
+        <div
+          className="px-3 py-2 rounded-lg text-xs"
+          style={{ background: "var(--border)", color: "var(--muted)" }}
+        >
+          Loading graph data...
+        </div>
+      )}
 
       {/* Stats bar */}
       <div className="flex gap-6">
@@ -148,9 +200,6 @@ export default function GraphPage() {
           Entities and relationships are extracted using a universal schema — Topics, Components, Processes, Configs,
           and Constraints, connected by DEPENDS_ON, CONTAINS, CONNECTS_TO, TRIGGERS, CONFIGURES, ALTERNATIVE_TO,
           and EXTENDS relationships. The graph is stored in Neo4j and queried with Cypher templates matched to question intent.
-        </p>
-        <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>
-          Showing sample data from the AWS documentation corpus. Connect to Neo4j to explore the full graph.
         </p>
       </div>
     </div>

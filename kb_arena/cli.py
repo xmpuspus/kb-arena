@@ -19,9 +19,7 @@ console = Console()
 @app.command()
 def ingest(
     path: str = typer.Argument(..., help="Path to raw documents directory"),
-    corpus: str = typer.Option(
-        "custom", help="Corpus name: aws-compute, aws-storage, aws-networking, custom"
-    ),
+    corpus: str = typer.Option("custom", help="Corpus name (e.g. aws-compute, my-docs)"),
     format: str = typer.Option("auto", help="Parser format: auto, markdown, html, sec-edgar"),
 ):
     """Stage 1: Parse raw documents into unified Document model.
@@ -160,37 +158,29 @@ def generate_questions(
 
 @app.command()
 def health():
-    """Quick check — Neo4j connectivity, ChromaDB collections, question counts."""
+    """Pipeline status — per-corpus progress, service connectivity, API keys."""
     import asyncio
+    from pathlib import Path
 
-    from kb_arena.benchmark.questions import discover_corpora, load_all_questions
     from kb_arena.settings import settings
 
     console.print("[bold]KB Arena Health Check[/bold]\n")
 
-    # Corpora
-    corpora = discover_corpora()
-    corpus_list = ", ".join(corpora) or "none"
-    console.print(f"  Corpora discovered: [green]{len(corpora)}[/green] ({corpus_list})")
+    # API keys
+    has_anthropic = bool(settings.anthropic_api_key)
+    has_openai = bool(settings.openai_api_key)
+    console.print("  API Keys:")
+    ant_status = "[green]set[/green]" if has_anthropic else "[red]missing[/red]"
+    oai_status = "[green]set[/green]" if has_openai else "[red]missing[/red]"
+    console.print(f"    Anthropic: {ant_status}")
+    if not has_anthropic:
+        console.print("               (needed for graph, question gen, benchmark)")
+    console.print(f"    OpenAI:    {oai_status}")
+    if not has_openai:
+        console.print("               (needed for embeddings / vector strategies)")
+    console.print()
 
-    # Questions
-    try:
-        all_q = load_all_questions()
-        console.print(f"  Questions loaded: [green]{len(all_q)}[/green]")
-    except Exception as exc:
-        console.print(f"  Questions: [red]error — {exc}[/red]")
-
-    # ChromaDB
-    try:
-        import chromadb
-
-        chroma = chromadb.PersistentClient(path=settings.chroma_path)
-        collections = chroma.list_collections()
-        console.print(f"  ChromaDB collections: [green]{len(collections)}[/green]")
-    except Exception as exc:
-        console.print(f"  ChromaDB: [red]unavailable — {exc}[/red]")
-
-    # Neo4j
+    # Services
     async def check_neo4j():
         try:
             import neo4j
@@ -206,8 +196,73 @@ def health():
             return False
 
     neo4j_ok = asyncio.run(check_neo4j())
-    status = "[green]connected[/green]" if neo4j_ok else "[yellow]unavailable[/yellow]"
-    console.print(f"  Neo4j: {status}")
+    console.print("  Services:")
+    neo_status = "[green]connected[/green]" if neo4j_ok else "[yellow]unavailable[/yellow]"
+    console.print(f"    Neo4j:    {neo_status}")
+    if not neo4j_ok:
+        console.print("              (needed for graph + hybrid strategies)")
+
+    try:
+        import chromadb
+
+        chroma = chromadb.PersistentClient(path=settings.chroma_path)
+        collections = chroma.list_collections()
+        console.print(f"    ChromaDB: [green]{len(collections)} collection(s)[/green]")
+    except Exception:
+        console.print("    ChromaDB: [yellow]unavailable[/yellow]")
+    console.print()
+
+    # Per-corpus pipeline status
+    datasets_dir = Path(settings.datasets_path)
+    results_dir = Path(settings.results_path)
+
+    if not datasets_dir.exists():
+        console.print("  No datasets/ directory found.\n")
+        return
+
+    corpus_dirs = sorted(
+        d for d in datasets_dir.iterdir() if d.is_dir() and not d.name.startswith(".")
+    )
+
+    if not corpus_dirs:
+        console.print("  No corpora found. Run: [bold]kb-arena init-corpus my-docs[/bold]\n")
+        return
+
+    console.print("  Corpora:")
+    for d in corpus_dirs:
+        name = d.name
+        raw_count = (
+            sum(1 for _ in (d / "raw").glob("*") if _.is_file() and _.name != ".gitkeep")
+            if (d / "raw").is_dir()
+            else 0
+        )
+        has_processed = (d / "processed").is_dir() and any((d / "processed").glob("*.jsonl"))
+        question_count = 0
+        if (d / "questions").is_dir():
+            for qf in (d / "questions").glob("*.yaml"):
+                try:
+                    question_count += qf.read_text().count("- id:")
+                except OSError:
+                    pass
+        has_vectors = False
+        try:
+            if collections:
+                has_vectors = any(name in c.name for c in collections)
+        except Exception:
+            pass
+        result_count = len(list(results_dir.glob(f"{name}_*.json"))) if results_dir.exists() else 0
+
+        raw_s = f"[green]{raw_count} doc(s)[/green]" if raw_count else "[dim]empty[/dim]"
+        proc_s = "[green]yes[/green]" if has_processed else "[dim]no[/dim]"
+        vec_s = "[green]yes[/green]" if has_vectors else "[dim]no[/dim]"
+        graph_s = "[green]yes[/green]" if neo4j_ok else "[dim]no[/dim]"
+        q_s = f"[green]{question_count}[/green]" if question_count else "[dim]0[/dim]"
+        r_s = f"[green]{result_count} strategy(ies)[/green]" if result_count else "[dim]none[/dim]"
+
+        console.print(f"    [bold]{name}[/bold]")
+        console.print(f"      raw: {raw_s}  processed: {proc_s}")
+        console.print(f"      vectors: {vec_s}  graph: {graph_s}")
+        console.print(f"      questions: {q_s}  results: {r_s}")
     console.print()
 
 

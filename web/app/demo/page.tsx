@@ -178,6 +178,16 @@ export default function DemoPage() {
         </div>
       </div>
 
+      {/* Pre-computed example note */}
+      {trigger === 0 && selectedStrategies.length > 0 && (
+        <div
+          className="px-3 py-2 rounded-lg text-xs"
+          style={{ background: "var(--border)", color: "var(--muted)" }}
+        >
+          Showing a pre-computed example. Submit a query to get live results from your data.
+        </div>
+      )}
+
       {/* Chat panels grid */}
       {selectedStrategies.length === 0 ? (
         <div className="text-center py-16">

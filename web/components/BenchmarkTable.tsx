@@ -165,7 +165,7 @@ export default function BenchmarkTable({ rows }: Props) {
         </tbody>
       </table>
       <p className="px-3 py-1.5 text-xs" style={{ color: "var(--muted)", background: "var(--background)" }}>
-        200 questions across 3 AWS documentation corpora. Run <code className="mono">kb-arena benchmark</code> to regenerate with your data.
+        Results from your benchmark runs. Run <code className="mono">kb-arena benchmark</code> to regenerate with different corpora or strategies.
       </p>
     </div>
   );

@@ -237,16 +237,34 @@ async def chat_stream(body: ChatRequest, request: Request) -> EventSourceRespons
 
 @app.get("/api/corpora")
 async def list_corpora() -> dict:
-    """Discover available corpora from the datasets directory."""
+    """Discover available corpora with pipeline status from the datasets directory."""
     from pathlib import Path
 
     datasets_dir = Path(settings.datasets_path)
+    results_dir = Path(settings.results_path)
     corpora = []
     if datasets_dir.exists():
         for d in sorted(datasets_dir.iterdir()):
-            if d.is_dir() and (d / "processed").is_dir():
-                label = d.name.replace("-", " ").title()
-                corpora.append({"value": d.name, "label": label})
+            if not d.is_dir() or d.name.startswith("."):
+                continue
+            has_processed = (d / "processed").is_dir() and any((d / "processed").glob("*.jsonl"))
+            total_questions = 0
+            if (d / "questions").is_dir():
+                for qf in (d / "questions").glob("*.yaml"):
+                    try:
+                        total_questions += qf.read_text().count("- id:")
+                    except OSError:
+                        pass
+            has_results = results_dir.exists() and any(results_dir.glob(f"{d.name}_*.json"))
+            corpora.append(
+                {
+                    "value": d.name,
+                    "label": d.name.replace("-", " ").title(),
+                    "questionCount": total_questions,
+                    "hasProcessed": has_processed,
+                    "hasResults": has_results,
+                }
+            )
     return {"corpora": corpora}
 
 
@@ -340,6 +358,72 @@ async def graph_stats(request: Request) -> dict:
         "top_hubs": [{"fqn": fqn, "centrality": round(c, 4)} for fqn, c in top_hubs],
         "community_count": len(communities),
     }
+
+
+@app.get("/api/graph/data")
+async def graph_data(request: Request, corpus: str = "all", limit: int = 200) -> dict:
+    """Return graph nodes and edges from Neo4j for visualization."""
+    if request.app.state.neo4j is None:
+        return {"nodes": [], "edges": [], "connected": False}
+
+    driver = request.app.state.neo4j
+    limit = min(limit, 500)
+
+    # Fetch nodes
+    node_query = (
+        "MATCH (n) "
+        + ("WHERE n.corpus = $corpus " if corpus != "all" else "")
+        + "RETURN n.fqn AS id, n.name AS name, labels(n)[0] AS type, "
+        "n.description AS description LIMIT $limit"
+    )
+    params = {"limit": limit}
+    if corpus != "all":
+        params["corpus"] = corpus
+
+    nodes = []
+    async with driver.session() as session:
+        result = await session.run(node_query, params)
+        records = await result.data()
+        await result.consume()
+        for r in records:
+            nodes.append(
+                {
+                    "id": r["id"] or r["name"],
+                    "name": r["name"] or r["id"],
+                    "type": r["type"] or "Topic",
+                    "description": r.get("description", ""),
+                }
+            )
+
+    # Fetch edges between those nodes
+    node_ids = {n["id"] for n in nodes}
+    edges = []
+    if node_ids:
+        edge_query = (
+            "MATCH (a)-[r]->(b) "
+            + ("WHERE a.corpus = $corpus " if corpus != "all" else "")
+            + "RETURN a.fqn AS source, type(r) AS type, b.fqn AS target "
+            "LIMIT $edge_limit"
+        )
+        edge_params = {"edge_limit": limit * 2}
+        if corpus != "all":
+            edge_params["corpus"] = corpus
+
+        async with driver.session() as session:
+            result = await session.run(edge_query, edge_params)
+            records = await result.data()
+            await result.consume()
+            for r in records:
+                if r["source"] in node_ids and r["target"] in node_ids:
+                    edges.append(
+                        {
+                            "source": r["source"],
+                            "target": r["target"],
+                            "type": r["type"],
+                        }
+                    )
+
+    return {"nodes": nodes, "edges": edges, "connected": True}
 
 
 @app.get("/health")

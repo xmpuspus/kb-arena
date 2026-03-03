@@ -67,16 +67,22 @@ export const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
     "Routes by intent \u2014 vector path for lookups, graph path for integration queries, both paths fused via RRF for how-to questions.",
 };
 
-export const DEFAULT_CORPORA = [
+export interface CorpusInfo {
+  value: string;
+  label: string;
+  questionCount?: number;
+  hasProcessed?: boolean;
+  hasResults?: boolean;
+}
+
+export const DEFAULT_CORPORA: CorpusInfo[] = [
   { value: "aws-compute", label: "AWS Compute" },
-  { value: "aws-storage", label: "AWS Storage" },
-  { value: "aws-networking", label: "AWS Networking" },
 ];
 
 // Kept for backward compatibility — components that don't fetch dynamically
 export const CORPORA = DEFAULT_CORPORA;
 
-export async function fetchCorpora(): Promise<{ value: string; label: string }[]> {
+export async function fetchCorpora(): Promise<CorpusInfo[]> {
   try {
     const res = await fetch(`${API_URL}/api/corpora`);
     if (!res.ok) return DEFAULT_CORPORA;
@@ -84,6 +90,22 @@ export async function fetchCorpora(): Promise<{ value: string; label: string }[]
     return data.corpora?.length ? data.corpora : DEFAULT_CORPORA;
   } catch {
     return DEFAULT_CORPORA;
+  }
+}
+
+export interface GraphData {
+  nodes: { id: string; name: string; type: string; description?: string }[];
+  edges: { source: string; target: string; type: string }[];
+  connected: boolean;
+}
+
+export async function fetchGraphData(corpus: string = "all"): Promise<GraphData> {
+  try {
+    const res = await fetch(`${API_URL}/api/graph/data?corpus=${corpus}`);
+    if (!res.ok) return { nodes: [], edges: [], connected: false };
+    return await res.json();
+  } catch {
+    return { nodes: [], edges: [], connected: false };
   }
 }
 
