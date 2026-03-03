@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import ChatPanel, { type DemoResult } from "@/components/ChatPanel";
-import { STRATEGIES, STRATEGY_LABELS, CORPORA, type Strategy, type Message } from "@/lib/api";
+import { STRATEGIES, STRATEGY_LABELS, CORPORA, fetchCorpora, type Strategy, type Message } from "@/lib/api";
 
 const DEMO_QUESTION = "How do I set up a Lambda function behind API Gateway with VPC access to an RDS database?";
 
@@ -47,10 +47,13 @@ const DEMO_RESULTS: Partial<Record<Strategy, DemoResult>> = {
 export default function DemoPage() {
   const [query, setQuery] = useState(DEMO_QUESTION);
   const [corpus, setCorpus] = useState("aws-compute");
+  const [corpora, setCorpora] = useState(CORPORA);
   const [selectedStrategies, setSelectedStrategies] = useState<Strategy[]>([...STRATEGIES]);
   const [trigger, setTrigger] = useState(0);
   const [history, setHistory] = useState<Message[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { fetchCorpora().then(setCorpora); }, []);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -88,7 +91,7 @@ export default function DemoPage() {
           Strategy comparison
         </h1>
         <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
-          Ask a question about AWS documentation and see how each retrieval strategy responds side-by-side.
+          Ask a question about your documentation and see how each retrieval strategy responds side-by-side.
         </p>
       </div>
 
@@ -124,7 +127,7 @@ export default function DemoPage() {
             className="px-3 py-2 rounded-lg border text-sm shrink-0"
             style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
           >
-            {CORPORA.map((c) => (
+            {corpora.map((c) => (
               <option key={c.value} value={c.value}>{c.label}</option>
             ))}
           </select>
@@ -132,7 +135,7 @@ export default function DemoPage() {
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Ask a question about AWS documentation..."
+            placeholder="Ask a question about your documentation..."
             className="flex-1 px-4 py-2 rounded-lg border text-sm outline-none"
             style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
           />

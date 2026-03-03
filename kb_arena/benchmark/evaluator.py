@@ -6,10 +6,13 @@ Enhanced with entity coverage and source attribution scoring.
 from __future__ import annotations
 
 import json
+import logging
 import re
 
 from kb_arena.llm.client import LLMClient
 from kb_arena.models.benchmark import Constraints, GroundTruth, Score
+
+logger = logging.getLogger(__name__)
 
 JUDGE_SYSTEM_PROMPT = """You are an expert evaluator for a retrieval benchmark.
 
@@ -150,8 +153,8 @@ async def evaluate(
             score.accuracy = float(parsed.get("accuracy", score.accuracy))
             score.completeness = float(parsed.get("completeness", score.completeness))
             score.faithfulness = float(parsed.get("faithfulness", score.faithfulness))
-    except Exception:
+    except Exception as exc:
         # Structural score stands if judge fails
-        pass
+        logger.warning("LLM judge failed, using structural score only: %s", exc)
 
     return score

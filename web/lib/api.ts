@@ -26,11 +26,79 @@ export const STRATEGY_COLORS: Record<Strategy, string> = {
   hybrid: "#f59e0b",
 };
 
-export const CORPORA = [
+export const TIER_INFO: Record<number, { label: string; description: string }> = {
+  1: {
+    label: "Lookup",
+    description:
+      "Single fact retrieval from one document. Example: 'What is the default timeout?'",
+  },
+  2: {
+    label: "How-To",
+    description:
+      "Step-by-step procedure within one topic. Example: 'How do I enable server-side encryption?'",
+  },
+  3: {
+    label: "Comparison",
+    description:
+      "Choosing between two options or configurations. Example: 'Compare hot storage vs cold archive for compliance.'",
+  },
+  4: {
+    label: "Integration",
+    description:
+      "Cross-topic dependencies requiring 3\u20134 connected components. Example: 'What permissions does service A need for B and C?'",
+  },
+  5: {
+    label: "Architecture",
+    description:
+      "Full system design spanning 3\u20135+ topics. Example: 'How does a request flow from ingress through processing to storage?'",
+  },
+};
+
+export const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
+  naive_vector:
+    "Chunks documents, embeds with text-embedding-3-large, retrieves top-k by cosine similarity. Fast and simple, but no cross-topic understanding.",
+  contextual_vector:
+    "Same as Naive Vector, but prepends parent topic context to each chunk before embedding. Better at disambiguating domain-specific terms.",
+  qna_pairs:
+    "LLM pre-generates question-answer pairs from each doc page at index time. Direct question-to-answer matching, but misses novel cross-topic questions.",
+  knowledge_graph:
+    "Extracts entities and relationships into Neo4j. Queries via Cypher templates. Excels at multi-hop dependency chains.",
+  hybrid:
+    "Routes by intent \u2014 vector path for lookups, graph path for integration queries, both paths fused via RRF for how-to questions.",
+};
+
+export const DEFAULT_CORPORA = [
   { value: "aws-compute", label: "AWS Compute" },
   { value: "aws-storage", label: "AWS Storage" },
   { value: "aws-networking", label: "AWS Networking" },
 ];
+
+// Kept for backward compatibility — components that don't fetch dynamically
+export const CORPORA = DEFAULT_CORPORA;
+
+export async function fetchCorpora(): Promise<{ value: string; label: string }[]> {
+  try {
+    const res = await fetch(`${API_URL}/api/corpora`);
+    if (!res.ok) return DEFAULT_CORPORA;
+    const data = await res.json();
+    return data.corpora?.length ? data.corpora : DEFAULT_CORPORA;
+  } catch {
+    return DEFAULT_CORPORA;
+  }
+}
+
+export async function fetchBenchmarkResults(
+  corpus: string = "all"
+): Promise<{ strategy: Strategy; tiers: number[]; latencyMs: number; costUsd: number }[]> {
+  try {
+    const res = await fetch(`${API_URL}/api/benchmark/results?corpus=${corpus}`);
+    if (!res.ok) return MOCK_BENCHMARK_DATA;
+    const data = await res.json();
+    return data.results?.length ? data.results : MOCK_BENCHMARK_DATA;
+  } catch {
+    return MOCK_BENCHMARK_DATA;
+  }
+}
 
 export interface Source {
   title: string;
@@ -85,6 +153,8 @@ export async function* streamChat(
 
   const decoder = new TextDecoder();
   let buffer = "";
+  let eventType = "";
+  let dataLine = "";
 
   while (true) {
     const { done, value } = await reader.read();
@@ -93,9 +163,6 @@ export async function* streamChat(
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split("\n");
     buffer = lines.pop() ?? "";
-
-    let eventType = "";
-    let dataLine = "";
 
     for (const line of lines) {
       if (line.startsWith("event:")) {

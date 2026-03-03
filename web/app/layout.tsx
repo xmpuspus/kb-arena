@@ -3,9 +3,9 @@ import "./globals.css";
 import Nav from "@/components/Nav";
 
 export const metadata: Metadata = {
-  title: "KB Arena — Knowledge Graph vs Vector RAG Benchmark",
+  title: "KB Arena — Knowledge Base Benchmark",
   description:
-    "Benchmark 5 retrieval strategies on real documentation. Knowledge graphs vs vector RAG, side-by-side.",
+    "Benchmark 5 retrieval strategies on your documentation. Find which KB architecture works best for your data.",
 };
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
             GitHub
           </a>
           <span className="mx-2">·</span>
-          <span>KB Arena — Knowledge Graph Benchmark</span>
+          <span>KB Arena — Knowledge Base Benchmark</span>
         </footer>
       </body>
     </html>

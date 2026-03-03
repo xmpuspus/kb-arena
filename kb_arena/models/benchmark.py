@@ -27,7 +27,7 @@ class Question(BaseModel):
     """A benchmark question with ground truth and evaluation constraints."""
 
     id: str
-    tier: int = Field(ge=1, le=5)
+    tier: int = Field(ge=1, le=10)
     type: str  # factoid, comparison, relational, temporal, causal
     hops: int = Field(ge=1, le=5)
     question: str

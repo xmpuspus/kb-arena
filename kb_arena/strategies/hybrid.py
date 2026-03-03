@@ -11,10 +11,13 @@ Re-ranking: Sonnet scores each chunk 0-1, top 5 passed to final generation.
 from __future__ import annotations
 
 import json
+import logging
 
 from kb_arena.models.document import Document
 from kb_arena.models.graph import GraphContext
 from kb_arena.strategies.base import AnswerResult, Strategy
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "You are a documentation assistant with access to both a knowledge graph and a vector index.\n"
@@ -113,8 +116,8 @@ class HybridStrategy(Strategy):
             try:
                 intent = await self._router.classify(question, history)
                 return intent.value
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Intent router failed, using keyword fallback: %s", exc)
 
         # Inline keyword fallback (mirrors router logic)
         q = question.lower()

@@ -18,7 +18,7 @@ _VALID_LLM_RESPONSE = {
             "id": "aws.lambda.invoke",
             "name": "InvokeFunction",
             "fqn": "aws.lambda.invoke",
-            "type": "APIAction",
+            "type": "Process",
             "description": "Invokes an AWS Lambda function.",
             "properties": {},
             "aliases": [],
@@ -27,7 +27,7 @@ _VALID_LLM_RESPONSE = {
             "id": "aws.iam.execution-role",
             "name": "ExecutionRole",
             "fqn": "aws.iam.execution-role",
-            "type": "Policy",
+            "type": "Constraint",
             "description": "IAM role that Lambda assumes for execution.",
             "properties": {},
             "aliases": [],
@@ -37,7 +37,7 @@ _VALID_LLM_RESPONSE = {
         {
             "source_fqn": "aws.lambda.invoke",
             "target_fqn": "aws.iam.execution-role",
-            "type": "ASSUMES",
+            "type": "DEPENDS_ON",
             "properties": {},
         }
     ],
@@ -49,7 +49,7 @@ def test_validate_result_accepts_valid_types():
     assert len(result.entities) == 2
     assert len(result.relationships) == 1
     assert result.entities[0].fqn == "aws.lambda.invoke"
-    assert result.relationships[0].type == "ASSUMES"
+    assert result.relationships[0].type == "DEPENDS_ON"
 
 
 def test_validate_result_rejects_unknown_node_type():

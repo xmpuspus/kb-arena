@@ -75,50 +75,9 @@ class IntentRouter:
             r"\benable\b",
             r"\battach\b",
         ],
-        QueryIntent.FACTOID: [
-            # AWS compute
-            r"\b(?:AWS )?Lambda\b",
-            r"\b(?:Amazon )?EC2\b",
-            r"\b(?:Amazon )?ECS\b",
-            r"\b(?:AWS )?Fargate\b",
-            r"\b(?:AWS )?Batch\b",
-            r"\bStep Functions\b",
-            r"\bElastic Beanstalk\b",
-            r"\bAuto Scaling\b",
-            r"\bEKS\b",
-            # AWS storage
-            r"\b(?:Amazon )?S3\b",
-            r"\b(?:Amazon )?EBS\b",
-            r"\b(?:Amazon )?EFS\b",
-            r"\b(?:Amazon )?FSx\b",
-            r"\bGlacier\b",
-            r"\bStorage Gateway\b",
-            # AWS networking
-            r"\b(?:Amazon )?VPC\b",
-            r"\bRoute 53\b",
-            r"\bCloudFront\b",
-            r"\b(?:Application )?ALB\b",
-            r"\b(?:Network )?NLB\b",
-            r"\bAPI Gateway\b",
-            r"\bDirect Connect\b",
-            r"\bElastic Load Balancing\b",
-            r"\bWAF\b",
-            # AWS identity & security
-            r"\b(?:AWS )?IAM\b",
-            r"\b(?:AWS )?ACM\b",
-            r"\b(?:AWS )?KMS\b",
-            r"\bSecrets Manager\b",
-            # AWS database & messaging
-            r"\bDynamoDB\b",
-            r"\b(?:Amazon )?RDS\b",
-            r"\b(?:Amazon )?Aurora\b",
-            r"\b(?:Amazon )?SQS\b",
-            r"\b(?:Amazon )?SNS\b",
-            # AWS operations
-            r"\bCloudWatch\b",
-            r"\bCloudFormation\b",
-            r"\bCloudTrail\b",
-        ],
+        # Factoid: no domain-specific keywords — falls through to LLM Stage 2
+        # or regex Stage 3 ("what is", "define", etc.) for classification.
+        QueryIntent.FACTOID: [],
     }
 
     def __init__(self, llm=None):

@@ -10,7 +10,7 @@ from rich.console import Console
 
 app = typer.Typer(
     name="kb-arena",
-    help="Benchmark knowledge graphs vs vector RAG on real documentation.",
+    help="Benchmark retrieval strategies (vector, graph, hybrid) on your documentation.",
     no_args_is_help=True,
 )
 console = Console()
@@ -35,8 +35,8 @@ def ingest(
 
 @app.command()
 def build_graph(
-    corpus: str = typer.Option("aws-compute", help="Corpus to build graph for"),
-    schema: str = typer.Option("auto", help="Schema: auto, aws"),
+    corpus: str = typer.Option(..., help="Corpus to build graph for"),
+    schema: str = typer.Option("auto", help="Schema: auto"),
 ):
     """Stage 2: Extract entities/relationships, build Neo4j graph.
 
@@ -51,7 +51,7 @@ def build_graph(
 
 @app.command()
 def build_vectors(
-    corpus: str = typer.Option("aws-compute", help="Corpus to build vectors for"),
+    corpus: str = typer.Option(..., help="Corpus to build vectors for"),
     strategy: str = typer.Option("all", help="Strategy: all, naive, contextual, qna"),
 ):
     """Stage 3: Build vector indexes for strategies 1-3.
@@ -67,7 +67,7 @@ def build_vectors(
 
 @app.command()
 def benchmark(
-    corpus: str = typer.Option("all", help="Corpus: all, aws-compute, aws-storage, aws-networking"),
+    corpus: str = typer.Option("all", help="Corpus name, or 'all' to run all discovered corpora"),
     strategy: str = typer.Option(
         "all",
         help="Strategy: all, naive_vector, contextual_vector, qna_pairs, knowledge_graph, hybrid",
@@ -117,14 +117,45 @@ def serve(
 
 
 @app.command()
-def download(
-    corpus: str = typer.Argument(
-        ..., help="Corpus to download: aws-compute, aws-storage, aws-networking"
-    ),
+def init_corpus(
+    name: str = typer.Argument(..., help="Name for the new corpus (e.g. my-docs)"),
 ):
-    """Download raw dataset files for a corpus."""
-    console.print(f"[bold]Downloading {corpus} dataset...[/bold]")
-    console.print("[yellow]Dataset download not yet implemented[/yellow]")
+    """Scaffold a new corpus directory structure.
+
+    Creates datasets/{name}/ with raw/, processed/, questions/ subdirectories.
+    """
+    from pathlib import Path
+
+    base = Path("datasets") / name
+    if base.exists():
+        console.print(f"[yellow]Corpus directory already exists: {base}[/yellow]")
+        return
+
+    for subdir in ["raw", "processed", "questions"]:
+        (base / subdir).mkdir(parents=True, exist_ok=True)
+
+    console.print(f"[green]Created corpus scaffold:[/green] {base}/")
+    console.print("  raw/         ← drop your documents here")
+    console.print("  processed/   ← ingest output goes here")
+    console.print("  questions/   ← benchmark questions (YAML)")
+    console.print()
+    console.print(f"Next: [bold]kb-arena ingest {base}/raw/ --corpus {name}[/bold]")
+
+
+@app.command()
+def generate_questions(
+    corpus: str = typer.Option(..., help="Corpus to generate questions for"),
+    count: int = typer.Option(50, help="Total questions to generate (distributed across tiers)"),
+):
+    """Auto-generate benchmark questions from ingested documents using LLM.
+
+    Reads processed JSONL, generates questions per tier, writes YAML.
+    """
+    import asyncio
+
+    from kb_arena.benchmark.question_gen import run_question_generation
+
+    asyncio.run(run_question_generation(corpus=corpus, count=count))
 
 
 @app.command()
@@ -132,10 +163,15 @@ def health():
     """Quick check — Neo4j connectivity, ChromaDB collections, question counts."""
     import asyncio
 
-    from kb_arena.benchmark.questions import load_all_questions
+    from kb_arena.benchmark.questions import discover_corpora, load_all_questions
     from kb_arena.settings import settings
 
     console.print("[bold]KB Arena Health Check[/bold]\n")
+
+    # Corpora
+    corpora = discover_corpora()
+    corpus_list = ", ".join(corpora) or "none"
+    console.print(f"  Corpora discovered: [green]{len(corpora)}[/green] ({corpus_list})")
 
     # Questions
     try:

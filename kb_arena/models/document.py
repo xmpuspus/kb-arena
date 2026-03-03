@@ -59,7 +59,7 @@ class Document(BaseModel):
 
     id: str
     source: str  # file path or URL
-    corpus: str  # "aws-compute" | "aws-storage" | "aws-networking"
+    corpus: str  # e.g. "aws-compute", "my-docs"
     title: str
     sections: list[Section] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)

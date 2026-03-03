@@ -54,40 +54,32 @@ def test_get_schema_aws_storage():
     assert rel_enum is RelType
 
 
-def test_get_schema_unknown_corpus_raises():
-    with pytest.raises(ValueError, match="Unknown corpus"):
-        get_schema("nonexistent-corpus")
+def test_get_schema_unknown_corpus_returns_universal():
+    node_enum, rel_enum = get_schema("nonexistent-corpus")
+    assert node_enum is NodeType
+    assert rel_enum is RelType
 
 
-def test_all_aws_node_types_are_valid():
+def test_all_universal_node_types_are_valid():
     expected = {
-        "Service",
-        "Resource",
-        "Policy",
-        "Feature",
-        "Configuration",
-        "Limit",
-        "APIAction",
-        "ARNPattern",
+        "Topic",
+        "Component",
+        "Process",
+        "Config",
+        "Constraint",
     }
     assert set(node_type_values("aws-compute")) == expected
 
 
-def test_all_aws_rel_types_are_valid():
+def test_all_universal_rel_types_are_valid():
     expected = {
         "DEPENDS_ON",
-        "INVOKES",
-        "CONNECTS_TO",
-        "ASSUMES",
         "CONTAINS",
-        "PROTECTS",
-        "ROUTES_TO",
-        "LOGS_TO",
+        "CONNECTS_TO",
         "TRIGGERS",
-        "DEPLOYED_IN",
-        "MANAGES",
-        "READS_FROM",
-        "WRITES_TO",
+        "CONFIGURES",
+        "ALTERNATIVE_TO",
+        "EXTENDS",
     }
     assert set(rel_type_values("aws-compute")) == expected
 
@@ -108,9 +100,9 @@ def _make_entity(name: str, type_str: str, eid: str | None = None) -> Entity:
 
 def test_extracted_entities_match_node_schema():
     entities = [
-        _make_entity("Lambda", "Service"),
-        _make_entity("InvokeFunction", "APIAction"),
-        _make_entity("ExecutionRole", "Policy"),
+        _make_entity("Lambda", "Topic"),
+        _make_entity("InvokeFunction", "Process"),
+        _make_entity("ExecutionRole", "Constraint"),
     ]
     for entity in entities:
         assert valid_node_type("aws-compute", entity.type)
@@ -118,9 +110,9 @@ def test_extracted_entities_match_node_schema():
 
 def test_extracted_relationships_match_rel_schema():
     relationships = [
-        Relationship(source_fqn="lambda", target_fqn="s3", type="READS_FROM"),
-        Relationship(source_fqn="lambda", target_fqn="cloudwatch", type="LOGS_TO"),
-        Relationship(source_fqn="lambda", target_fqn="execution-role", type="ASSUMES"),
+        Relationship(source_fqn="lambda", target_fqn="s3", type="CONNECTS_TO"),
+        Relationship(source_fqn="lambda", target_fqn="cloudwatch", type="CONNECTS_TO"),
+        Relationship(source_fqn="lambda", target_fqn="execution-role", type="DEPENDS_ON"),
     ]
     for rel in relationships:
         assert valid_rel_type("aws-compute", rel.type)
@@ -129,11 +121,11 @@ def test_extracted_relationships_match_rel_schema():
 def test_extraction_result_schema():
     result = ExtractionResult(
         entities=[
-            _make_entity("Lambda", "Service"),
-            _make_entity("InvokeFunction", "APIAction"),
+            _make_entity("Lambda", "Topic"),
+            _make_entity("InvokeFunction", "Process"),
         ],
         relationships=[
-            Relationship(source_fqn="lambda", target_fqn="invoke-function", type="INVOKES")
+            Relationship(source_fqn="lambda", target_fqn="invoke-function", type="TRIGGERS")
         ],
         document_id="aws-compute-lambda",
         section_id="lambda-configuration",
@@ -150,8 +142,8 @@ def test_extraction_result_schema():
 
 def test_resolver_merges_near_identical_entities():
     entities = [
-        _make_entity("SecurityGroup", "Resource", "e1"),
-        _make_entity("SecurityGroup()", "Resource", "e2"),  # trailing ()
+        _make_entity("SecurityGroup", "Component", "e1"),
+        _make_entity("SecurityGroup()", "Component", "e2"),  # trailing ()
     ]
     merged, review = resolve_entities(entities)
     # The pair should merge — jaro-winkler of normalized forms is high
@@ -160,8 +152,8 @@ def test_resolver_merges_near_identical_entities():
 
 def test_resolver_does_not_merge_different_types():
     entities = [
-        _make_entity("invoke", "APIAction", "e1"),
-        _make_entity("invoke", "Feature", "e2"),
+        _make_entity("invoke", "Process", "e1"),
+        _make_entity("invoke", "Component", "e2"),
     ]
     merged, _ = resolve_entities(entities)
     assert len(merged) == 0
@@ -169,8 +161,8 @@ def test_resolver_does_not_merge_different_types():
 
 def test_resolver_longer_name_is_canonical():
     entities = [
-        _make_entity("LambdaFunction", "Service", "e1"),
-        _make_entity("LambdaFunctionConfig", "Service", "e2"),
+        _make_entity("LambdaFunction", "Topic", "e1"),
+        _make_entity("LambdaFunctionConfig", "Topic", "e2"),
     ]
     merged, _ = resolve_entities(entities)
     if merged:
@@ -182,8 +174,8 @@ def test_resolver_longer_name_is_canonical():
 def test_resolver_returns_review_queue_for_borderline():
     # Two similar but not identical names — should go to review queue
     entities = [
-        _make_entity("InvokeFunction", "APIAction", "e1"),
-        _make_entity("InvokeAsync", "APIAction", "e2"),
+        _make_entity("InvokeFunction", "Process", "e1"),
+        _make_entity("InvokeAsync", "Process", "e2"),
     ]
     merged, review = resolve_entities(entities)
     # These should at least appear somewhere (merged or review)
@@ -193,8 +185,8 @@ def test_resolver_returns_review_queue_for_borderline():
 
 def test_resolver_skips_short_names():
     entities = [
-        _make_entity("S3", "Service", "e1"),
-        _make_entity("EC", "Service", "e2"),
+        _make_entity("S3", "Topic", "e1"),
+        _make_entity("EC", "Topic", "e2"),
     ]
     # Normalized "S3" < 3 chars — should be skipped, no merge
     merged, review = resolve_entities(entities)
@@ -203,9 +195,9 @@ def test_resolver_skips_short_names():
 
 def test_resolver_absorbed_entity_not_reprocessed():
     entities = [
-        _make_entity("SecurityGroup", "Resource", "e1"),
-        _make_entity("SecurityGroup()", "Resource", "e2"),
-        _make_entity("NATGateway", "Resource", "e3"),
+        _make_entity("SecurityGroup", "Component", "e1"),
+        _make_entity("SecurityGroup()", "Component", "e2"),
+        _make_entity("NATGateway", "Component", "e3"),
     ]
     merged, _ = resolve_entities(entities)
     # Only e1/e2 should merge; e3 is distinct and unaffected
@@ -245,8 +237,8 @@ async def test_neo4j_store_loads_nodes_before_edges(mock_neo4j_driver):
         {"source_fqn": "lambda", "target_fqn": "invoke-function", "properties": {}},
     ]
 
-    await store.load_nodes(nodes, NodeType.SERVICE)
-    await store.load_edges(edges, RelType.INVOKES)
+    await store.load_nodes(nodes, NodeType.TOPIC)
+    await store.load_edges(edges, RelType.TRIGGERS)
 
     session = mock_neo4j_driver.session.return_value.__aenter__.return_value
     calls = session.run.call_args_list
@@ -266,7 +258,7 @@ async def test_neo4j_store_consumes_results(mock_neo4j_driver):
     store = Neo4jStore(driver=mock_neo4j_driver)
     nodes = [{"fqn": "s3", "name": "Amazon S3", "description": ""}]
 
-    await store.load_nodes(nodes, NodeType.SERVICE)
+    await store.load_nodes(nodes, NodeType.TOPIC)
 
     session = mock_neo4j_driver.session.return_value.__aenter__.return_value
     result = session.run.return_value
@@ -281,7 +273,7 @@ async def test_neo4j_store_batches_large_node_list(mock_neo4j_driver):
     # More than batch_size=1000 nodes → multiple UNWIND calls
     nodes = [{"fqn": f"api.{i}", "name": f"API_{i}", "description": ""} for i in range(1200)]
 
-    await store.load_nodes(nodes, NodeType.API_ACTION)
+    await store.load_nodes(nodes, NodeType.PROCESS)
 
     session = mock_neo4j_driver.session.return_value.__aenter__.return_value
     # Should have at least 2 batch calls for 1200 nodes
@@ -293,7 +285,7 @@ async def test_neo4j_store_empty_nodes_skipped(mock_neo4j_driver):
     from kb_arena.graph.neo4j_store import Neo4jStore
 
     store = Neo4jStore(driver=mock_neo4j_driver)
-    result = await store.load_nodes([], NodeType.SERVICE)
+    result = await store.load_nodes([], NodeType.TOPIC)
     assert result == 0
     session = mock_neo4j_driver.session.return_value.__aenter__.return_value
     assert not session.run.called
@@ -305,7 +297,7 @@ async def test_neo4j_store_execute_query(mock_neo4j_driver):
 
     store = Neo4jStore(driver=mock_neo4j_driver)
     session = mock_neo4j_driver.session.return_value.__aenter__.return_value
-    session.run.return_value.data.return_value = [{"fqn": "lambda", "label": "Service"}]
+    session.run.return_value.data.return_value = [{"fqn": "lambda", "label": "Topic"}]
 
     rows = await store.execute_query("MATCH (n) RETURN n.fqn AS fqn, labels(n)[0] AS label")
     assert isinstance(rows, list)

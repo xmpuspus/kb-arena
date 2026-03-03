@@ -1,7 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { STRATEGY_LABELS, type Strategy } from "@/lib/api";
+import {
+  STRATEGY_LABELS,
+  STRATEGY_DESCRIPTIONS,
+  TIER_INFO,
+  type Strategy,
+} from "@/lib/api";
+import InfoTip from "@/components/InfoTip";
 
 interface Row {
   strategy: Strategy;
@@ -73,7 +79,31 @@ export default function BenchmarkTable({ rows }: Props) {
         className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap"
         style={{ color: active ? "var(--accent)" : "var(--muted)" }}
       >
-        {label} {active ? (sortDir === "asc" ? "↑" : "↓") : ""}
+        {label} {active ? (sortDir === "asc" ? "\u2191" : "\u2193") : ""}
+      </th>
+    );
+  }
+
+  function TierTh({ tierNum }: { tierNum: number }) {
+    const k = `tier${tierNum}` as SortKey;
+    const active = sortKey === k;
+    const info = TIER_INFO[tierNum];
+    return (
+      <th
+        onClick={() => handleSort(k)}
+        className="px-3 py-2 text-center cursor-pointer select-none"
+        style={{ color: active ? "var(--accent)" : "var(--muted)" }}
+      >
+        <div
+          className="text-[10px] font-medium uppercase tracking-wider"
+          style={{ color: "var(--muted)", opacity: 0.7 }}
+        >
+          Tier {tierNum} {active ? (sortDir === "asc" ? "\u2191" : "\u2193") : ""}
+        </div>
+        <div className="text-xs font-semibold flex items-center justify-center gap-0.5">
+          {info?.label ?? `T${tierNum}`}
+          {info && <InfoTip text={info.description} />}
+        </div>
       </th>
     );
   }
@@ -85,7 +115,7 @@ export default function BenchmarkTable({ rows }: Props) {
           <tr style={{ background: "var(--background)", borderBottom: "2px solid var(--border)" }}>
             <Th k="strategy" label="Strategy" />
             {Array.from({ length: tierCount }, (_, i) => (
-              <Th key={i} k={`tier${i + 1}`} label={`Tier ${i + 1}`} />
+              <TierTh key={i} tierNum={i + 1} />
             ))}
             <Th k="avg" label="Avg %" />
             <Th k="latencyMs" label="Latency" />
@@ -95,7 +125,6 @@ export default function BenchmarkTable({ rows }: Props) {
         <tbody>
           {sorted.map((row) => {
             const a = avg(row.tiers);
-            // costPerCorrect available: a > 0 ? (row.costUsd / (a / 100)).toFixed(4) : "—"
             return (
               <tr
                 key={row.strategy}
@@ -103,7 +132,10 @@ export default function BenchmarkTable({ rows }: Props) {
                 style={{ borderColor: "var(--border)" }}
               >
                 <td className="px-3 py-2 font-medium" style={{ color: "var(--foreground)" }}>
-                  {STRATEGY_LABELS[row.strategy]}
+                  <span className="inline-flex items-center gap-0.5">
+                    {STRATEGY_LABELS[row.strategy]}
+                    <InfoTip text={STRATEGY_DESCRIPTIONS[row.strategy]} align="left" />
+                  </span>
                 </td>
                 {row.tiers.map((t, i) => (
                   <td key={i} className="px-3 py-2 mono text-center">

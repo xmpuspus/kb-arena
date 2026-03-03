@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from kb_arena.benchmark.evaluator import evaluate
-from kb_arena.benchmark.questions import load_questions
+from kb_arena.benchmark.questions import discover_corpora, load_questions
 from kb_arena.llm.client import LLMClient
 from kb_arena.models.benchmark import (
     AnswerRecord,
@@ -28,7 +28,6 @@ from kb_arena.strategies.base import Strategy
 console = Console()
 
 STRATEGY_NAMES = ["naive_vector", "contextual_vector", "qna_pairs", "knowledge_graph", "hybrid"]
-CORPUS_NAMES = ["aws-compute", "aws-storage", "aws-networking"]
 
 RETRY_BACKOFF_S = 1.0
 
@@ -139,19 +138,6 @@ async def _run_one(
         )
 
 
-def _parse_tier(question_id: str) -> int:
-    """Parse tier from question_id like 'aws-compute-t1-001' or 'aws-networking-t3-012'."""
-    try:
-        return int(question_id.split("-t")[1].split("-")[0])
-    except (IndexError, ValueError):
-        return 0
-
-
-def _parse_type(question_id: str, questions_map: dict[str, str]) -> str:
-    """Look up question type from the questions map."""
-    return questions_map.get(question_id, "unknown")
-
-
 def _aggregate(
     bench: BenchmarkResult,
     questions_map: dict[str, str],
@@ -182,8 +168,11 @@ def _aggregate(
     response_lengths: list[int] = []
 
     for rec in bench.records:
-        tier = _parse_tier(rec.question_id)
-        qtype = _parse_type(rec.question_id, questions_map)
+        try:
+            tier = int(rec.question_id.split("-t")[1].split("-")[0])
+        except (IndexError, ValueError):
+            tier = 0
+        qtype = questions_map.get(rec.question_id, "unknown")
 
         # Per-tier accuracy
         accuracy_by_tier.setdefault(tier, []).append(rec.score.accuracy)
@@ -266,7 +255,7 @@ async def run_benchmark(
     results_dir = Path(settings.results_path)
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    corpora = CORPUS_NAMES if corpus == "all" else [corpus]
+    corpora = discover_corpora() if corpus == "all" else [corpus]
     strategies = _load_strategies(strategy)
 
     if not strategies:

@@ -107,13 +107,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="KB Arena API",
-    description="Benchmark 5 retrieval strategies on real documentation.",
+    description="Benchmark retrieval strategies on your documentation.",
     version="0.1.0",
     lifespan=lifespan,
 )
 
 # CORS — allow configurable origins, never wildcard in production
-_cors_origins = getattr(settings, "cors_origins", None) or ["http://localhost:3000"]
+_cors_origins = getattr(settings, "cors_origins", None) or [
+    "http://localhost:3000",
+    "http://localhost:3001",
+]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
@@ -230,6 +233,83 @@ async def chat_stream(body: ChatRequest, request: Request) -> EventSourceRespons
         }
 
     return EventSourceResponse(event_generator())
+
+
+@app.get("/api/corpora")
+async def list_corpora() -> dict:
+    """Discover available corpora from the datasets directory."""
+    from pathlib import Path
+
+    datasets_dir = Path(settings.datasets_path)
+    corpora = []
+    if datasets_dir.exists():
+        for d in sorted(datasets_dir.iterdir()):
+            if d.is_dir() and (d / "processed").is_dir():
+                label = d.name.replace("-", " ").title()
+                corpora.append({"value": d.name, "label": label})
+    return {"corpora": corpora}
+
+
+@app.get("/api/benchmark/results")
+async def benchmark_results(corpus: str = "all") -> dict:
+    """Load benchmark results from the results directory."""
+    import json
+    from pathlib import Path
+
+    results_dir = Path(settings.results_path)
+    if not results_dir.exists():
+        return {"results": [], "source": "none"}
+
+    all_results = []
+    for f in sorted(results_dir.glob("*.json")):
+        if corpus != "all" and corpus not in f.name:
+            continue
+        try:
+            data = json.loads(f.read_text())
+            all_results.append(data)
+        except (json.JSONDecodeError, OSError):
+            continue
+
+    if not all_results:
+        return {"results": [], "source": "none"}
+
+    # Aggregate per-strategy across all loaded result files
+    from collections import defaultdict
+
+    strategy_tiers: dict[str, dict[int, list[float]]] = defaultdict(lambda: defaultdict(list))
+    strategy_latency: dict[str, list[float]] = defaultdict(list)
+    strategy_cost: dict[str, list[float]] = defaultdict(list)
+
+    for result in all_results:
+        strategy = result.get("strategy", "")
+        for rec in result.get("records", []):
+            try:
+                tier = int(rec.get("question_id", "").split("-t")[1].split("-")[0])
+            except (IndexError, ValueError):
+                tier = 0
+            score = rec.get("score", {})
+            strategy_tiers[strategy][tier].append(score.get("accuracy", 0))
+            strategy_latency[strategy].append(rec.get("latency_ms", 0))
+            strategy_cost[strategy].append(rec.get("cost_usd", 0))
+
+    rows = []
+    for strat, tiers in strategy_tiers.items():
+        tier_avgs = []
+        for t in range(1, 6):
+            vals = tiers.get(t, [])
+            tier_avgs.append(round(sum(vals) / len(vals) * 100) if vals else 0)
+        latencies = strategy_latency[strat]
+        costs = strategy_cost[strat]
+        rows.append(
+            {
+                "strategy": strat,
+                "tiers": tier_avgs,
+                "latencyMs": round(sum(latencies) / len(latencies)) if latencies else 0,
+                "costUsd": round(sum(costs) / len(costs), 4) if costs else 0,
+            }
+        )
+
+    return {"results": rows, "source": "file"}
 
 
 @app.get("/strategies")

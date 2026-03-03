@@ -1,0 +1,13 @@
+.git
+.github
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+node_modules
+web/node_modules
+web/.next
+.env
+*.egg-info
+chroma_data
+results

@@ -42,7 +42,7 @@ def _make_mock_strategy(
 
 @pytest.fixture
 def app_client():
-    from kb_arena.chatbot.api import app
+    from kb_arena.chatbot.api import _rate_store, app
 
     strategies = {
         "naive_vector": _make_mock_strategy("naive_vector", "Naive vector answer"),
@@ -51,6 +51,8 @@ def app_client():
         "knowledge_graph": _make_mock_strategy("knowledge_graph", "Knowledge graph answer"),
         "hybrid": _make_mock_strategy("hybrid", "Hybrid answer"),
     }
+
+    _rate_store.clear()
 
     with TestClient(app, raise_server_exceptions=False) as client:
         app.state.strategies = strategies

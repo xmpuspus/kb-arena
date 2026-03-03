@@ -1,19 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import BenchmarkTable from "@/components/BenchmarkTable";
 import TierChart from "@/components/TierChart";
-import { MOCK_BENCHMARK_DATA, CORPORA } from "@/lib/api";
+import {
+  MOCK_BENCHMARK_DATA,
+  CORPORA,
+  fetchBenchmarkResults,
+  fetchCorpora,
+} from "@/lib/api";
 
 type ViewMode = "table" | "chart" | "both";
 
 export default function BenchmarkPage() {
   const [corpus, setCorpus] = useState("all");
   const [view, setView] = useState<ViewMode>("both");
+  const [rows, setRows] = useState(MOCK_BENCHMARK_DATA);
+  const [source, setSource] = useState<"mock" | "file">("mock");
+  const [corpora, setCorpora] = useState(CORPORA);
 
-  // In a real deployment, this would fetch from /api/benchmark/results
-  // For now, use mock data with a clear label
-  const rows = MOCK_BENCHMARK_DATA;
+  useEffect(() => {
+    fetchCorpora().then(setCorpora);
+  }, []);
+
+  useEffect(() => {
+    fetchBenchmarkResults(corpus).then((data) => {
+      setRows(data);
+      setSource(data === MOCK_BENCHMARK_DATA ? "mock" : "file");
+    });
+  }, [corpus]);
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
@@ -38,7 +53,7 @@ export default function BenchmarkPage() {
             style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
           >
             <option value="all">All corpora</option>
-            {CORPORA.map((c) => (
+            {corpora.map((c) => (
               <option key={c.value} value={c.value}>{c.label}</option>
             ))}
           </select>
@@ -59,6 +74,12 @@ export default function BenchmarkPage() {
             </button>
           ))}
         </div>
+
+        {source === "mock" && (
+          <span className="text-xs px-2 py-1 rounded border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
+            Sample data — run <code className="mono">kb-arena benchmark</code> to generate real results
+          </span>
+        )}
       </div>
 
       {/* Content */}
@@ -88,8 +109,8 @@ export default function BenchmarkPage() {
         <h3 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>Methodology</h3>
         <div className="text-xs leading-relaxed space-y-1" style={{ color: "var(--muted)" }}>
           <p>
-            Each question about AWS services is sent to all 5 strategies. Answers are evaluated through a 4-pass pipeline:
-            structural checks (must_mention / must_not_claim), entity coverage against AWS documentation,
+            Each question is sent to all 5 strategies. Answers are evaluated through a 4-pass pipeline:
+            structural checks (must_mention / must_not_claim), entity coverage against source documentation,
             source attribution, and LLM-as-judge scoring for accuracy, completeness, and faithfulness.
           </p>
           <p>
@@ -97,9 +118,9 @@ export default function BenchmarkPage() {
             Latency score inverts p95 so lower is better.
           </p>
           <p>
-            Tiers: 1 = factoid (single AWS service lookup), 2 = procedural (how-to with one service),
-            3 = comparative (service A vs B), 4 = relational (cross-service dependencies),
-            5 = multi-hop (3+ services, architecture patterns).
+            Tiers: 1 = lookup (single fact retrieval), 2 = how-to (procedure within one topic),
+            3 = comparison (option A vs B), 4 = integration (cross-topic dependencies),
+            5 = architecture (3+ topics, system design).
           </p>
         </div>
       </div>

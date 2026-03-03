@@ -354,7 +354,7 @@ class TestQuestionLoading:
         with pytest.raises(Exception):
             Question(
                 id="bad",
-                tier=6,
+                tier=11,
                 type="factoid",
                 hops=1,
                 question="?",

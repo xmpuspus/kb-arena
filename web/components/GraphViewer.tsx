@@ -23,21 +23,13 @@ interface Props {
 }
 
 const TYPE_COLORS: Record<string, { fill: string; glow: string }> = {
-  // AWS node types
-  Service:   { fill: "#2563eb", glow: "#3b82f6" },
-  Resource:  { fill: "#059669", glow: "#10b981" },
-  Policy:    { fill: "#d97706", glow: "#f59e0b" },
-  Feature:   { fill: "#7c3aed", glow: "#8b5cf6" },
-  // Generic node types
-  Module:    { fill: "#2563eb", glow: "#3b82f6" },
-  Class:     { fill: "#059669", glow: "#10b981" },
-  Function:  { fill: "#d97706", glow: "#f59e0b" },
-  Method:    { fill: "#7c3aed", glow: "#8b5cf6" },
-  Variable:  { fill: "#dc2626", glow: "#ef4444" },
-  Exception: { fill: "#db2777", glow: "#ec4899" },
-  Constant:  { fill: "#0891b2", glow: "#06b6d4" },
-  Parameter: { fill: "#65a30d", glow: "#84cc16" },
-  Default:   { fill: "#475569", glow: "#64748b" },
+  // Universal documentation schema types
+  Topic:      { fill: "#2563eb", glow: "#3b82f6" },
+  Component:  { fill: "#059669", glow: "#10b981" },
+  Process:    { fill: "#d97706", glow: "#f59e0b" },
+  Config:     { fill: "#7c3aed", glow: "#8b5cf6" },
+  Constraint: { fill: "#dc2626", glow: "#ef4444" },
+  Default:    { fill: "#475569", glow: "#64748b" },
 };
 
 function getColor(type: string) {
@@ -736,7 +728,8 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
     return () => observer.disconnect();
   }, []);
 
-  const typeEntries = Object.entries(TYPE_COLORS).filter(([k]) => k !== "Default");
+  const activeTypes = useMemo(() => new Set(nodes.map((n) => n.type)), [nodes]);
+  const typeEntries = Object.entries(TYPE_COLORS).filter(([k]) => k !== "Default" && activeTypes.has(k));
 
   return (
     <div className="flex flex-col h-full gap-3">

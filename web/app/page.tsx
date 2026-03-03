@@ -27,11 +27,11 @@ function StrategyCard({ label, desc, color }: { label: string; desc: string; col
 }
 
 const STRATEGY_DESCS: Record<Strategy, string> = {
-  naive_vector: "Embed AWS doc pages as chunks, retrieve by cosine similarity. Baseline approach — fast, simple, no cross-service awareness.",
-  contextual_vector: "Embed chunks with parent AWS service context prepended. Better at disambiguating service-specific terms across 200+ AWS services.",
-  qna_pairs: "Pre-generate Q&A pairs from AWS docs using an LLM, then embed and retrieve the pairs. High precision on common AWS questions.",
-  knowledge_graph: "Extract AWS services, resources, and dependencies into Neo4j. Query with Cypher templates matched to question intent. Best on multi-service architectures.",
-  hybrid: "Route by intent: factoid → vector, cross-service → graph, complex → both with Reciprocal Rank Fusion. Adapts per question.",
+  naive_vector: "Embed doc pages as chunks, retrieve by cosine similarity. Baseline approach — fast, simple, no cross-topic awareness.",
+  contextual_vector: "Embed chunks with parent topic context prepended. Better at disambiguating domain-specific terms across large documentation sets.",
+  qna_pairs: "Pre-generate Q&A pairs from docs using an LLM, then embed and retrieve the pairs. High precision on common domain questions.",
+  knowledge_graph: "Extract entities, components, and dependencies into Neo4j. Query with Cypher templates matched to question intent. Best on multi-topic architectures.",
+  hybrid: "Route by intent: factoid → vector, cross-topic → graph, complex → both with Reciprocal Rank Fusion. Adapts per question.",
 };
 
 export default function Home() {
@@ -43,7 +43,7 @@ export default function Home() {
           KB Arena
         </h1>
         <p className="text-lg leading-relaxed max-w-3xl" style={{ color: "var(--muted)" }}>
-          Benchmark knowledge graphs vs vector RAG on AWS documentation. 200 questions, 5 strategies, 3 AWS corpora — empirical evidence for which retrieval architecture works.
+          Which retrieval architecture works best for your documentation? 5 strategies, tiered difficulty questions — empirical evidence so you don&apos;t have to guess.
         </p>
         <div className="flex gap-3 pt-2">
           <Link
@@ -77,9 +77,9 @@ export default function Home() {
         <h2 className="text-xl font-semibold" style={{ color: "var(--foreground)" }}>How it works</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {[
-            { step: "1", title: "Same question", desc: "Each question about AWS services — from simple lookups to multi-service dependency chains — is sent to all 5 strategies simultaneously." },
-            { step: "2", title: "4-pass evaluation", desc: "Structural checks, entity coverage, source attribution against AWS docs, then LLM-as-judge scoring." },
-            { step: "3", title: "Ranked report", desc: "Accuracy by tier, latency percentiles, reliability rates, and cross-strategy composite ranking across AWS documentation." },
+            { step: "1", title: "Same question", desc: "Each question — from simple lookups to multi-topic dependency chains — is sent to all 5 strategies simultaneously." },
+            { step: "2", title: "4-pass evaluation", desc: "Structural checks, entity coverage, source attribution against your docs, then LLM-as-judge scoring." },
+            { step: "3", title: "Ranked report", desc: "Accuracy by tier, latency percentiles, reliability rates, and cross-strategy composite ranking across your documentation." },
           ].map((item) => (
             <div
               key={item.step}
@@ -116,7 +116,7 @@ export default function Home() {
 
       {/* Question tiers */}
       <section className="space-y-4">
-        <h2 className="text-xl font-semibold" style={{ color: "var(--foreground)" }}>200 questions across 5 difficulty tiers on AWS docs</h2>
+        <h2 className="text-xl font-semibold" style={{ color: "var(--foreground)" }}>5 difficulty tiers, auto-generated or hand-crafted</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {CORPORA.map((c) => (
             <div

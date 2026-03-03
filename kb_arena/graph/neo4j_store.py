@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,27 @@ from kb_arena.graph.schema import NodeType, RelType
 from kb_arena.settings import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _prepare_for_neo4j(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Serialize non-primitive values for Neo4j property storage.
+
+    Neo4j properties must be primitives or arrays of primitives.
+    Dicts get serialized to JSON strings; lists of dicts get serialized too.
+    """
+    prepared = []
+    for record in records:
+        clean = {}
+        for k, v in record.items():
+            if isinstance(v, dict):
+                clean[k] = json.dumps(v) if v else ""
+            elif isinstance(v, list) and v and isinstance(v[0], dict):
+                clean[k] = json.dumps(v)
+            else:
+                clean[k] = v
+        prepared.append(clean)
+    return prepared
+
 
 BATCH_SIZE = 1000
 
@@ -81,14 +103,15 @@ class Neo4jStore:
             return 0
 
         created = 0
+        safe_nodes = _prepare_for_neo4j(nodes)
         query = f"""
         UNWIND $records AS record
         MERGE (n:{label.value} {{fqn: record.fqn}})
         SET n += record
         """
         async with self._driver.session() as session:
-            for i in range(0, len(nodes), BATCH_SIZE):
-                batch = nodes[i : i + BATCH_SIZE]
+            for i in range(0, len(safe_nodes), BATCH_SIZE):
+                batch = safe_nodes[i : i + BATCH_SIZE]
                 result = await session.run(query, records=batch)
                 summary = await result.consume()
                 created += summary.counters.nodes_created
@@ -108,16 +131,19 @@ class Neo4jStore:
             return 0
 
         created = 0
+        safe_edges = _prepare_for_neo4j(edges)
         query = f"""
         UNWIND $records AS record
         MATCH (a {{fqn: record.source_fqn}})
         MATCH (b {{fqn: record.target_fqn}})
         MERGE (a)-[r:{rel_type.value}]->(b)
-        SET r += record.properties
+        SET r.source_section_id = record.source_section_id,
+            r.extraction_confidence = record.extraction_confidence,
+            r.properties = record.properties
         """
         async with self._driver.session() as session:
-            for i in range(0, len(edges), BATCH_SIZE):
-                batch = edges[i : i + BATCH_SIZE]
+            for i in range(0, len(safe_edges), BATCH_SIZE):
+                batch = safe_edges[i : i + BATCH_SIZE]
                 result = await session.run(query, records=batch)
                 summary = await result.consume()
                 created += summary.counters.relationships_created

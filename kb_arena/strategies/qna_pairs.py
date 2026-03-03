@@ -26,7 +26,7 @@ Rules:
 - Questions should be what a developer would actually ask
 - Include at least one multi-hop question referencing concepts from other sections
 - Answers must be grounded ONLY in the provided text
-- Return valid JSON: [{"question": "...", "answer": "...", "section_ref": "..."}]
+- Return valid JSON: [{{"question": "...", "answer": "...", "section_ref": "..."}}]
 - No explanations outside the JSON
 
 Section heading: {heading}
@@ -75,7 +75,7 @@ class QnAPairStrategy(Strategy):
     def _get_collection(self):
         if self._collection is None:
             ef = OpenAIEmbeddingFunction(
-                api_key=settings.anthropic_api_key or "sk-placeholder",
+                api_key=settings.openai_api_key or settings.anthropic_api_key,
                 model_name=settings.embedding_model,
             )
             self._collection = self._get_client().get_or_create_collection(

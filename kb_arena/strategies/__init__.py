@@ -84,15 +84,40 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
 def get_strategy(name: str):
     """Instantiate a strategy by name. Used by the benchmark runner."""
     import chromadb
+    from neo4j import AsyncGraphDatabase
 
     cls = STRATEGY_REGISTRY.get(name)
     if cls is None:
         raise ValueError(f"Unknown strategy: {name}. Available: {list(STRATEGY_REGISTRY)}")
 
     # Vector-backed strategies need a ChromaDB client
-    if name in ("naive_vector", "contextual_vector", "qna_pairs", "hybrid"):
+    if name in ("naive_vector", "contextual_vector", "qna_pairs"):
         chroma = chromadb.PersistentClient(path=settings.chroma_path)
         return cls(chroma_client=chroma)
+
+    # Graph-backed strategies need an async Neo4j driver
+    if name == "knowledge_graph":
+        try:
+            driver = AsyncGraphDatabase.driver(
+                settings.neo4j_uri,
+                auth=(settings.neo4j_user, settings.neo4j_password),
+            )
+            return cls(neo4j_driver=driver)
+        except Exception as e:
+            logger.warning("Neo4j not available for %s: %s — using mock fallback", name, e)
+            return cls()
+
+    # Hybrid needs both
+    if name == "hybrid":
+        chroma = chromadb.PersistentClient(path=settings.chroma_path)
+        try:
+            driver = AsyncGraphDatabase.driver(
+                settings.neo4j_uri,
+                auth=(settings.neo4j_user, settings.neo4j_password),
+            )
+            return cls(chroma_client=chroma, neo4j_driver=driver)
+        except Exception:
+            return cls(chroma_client=chroma)
 
     return cls()
 

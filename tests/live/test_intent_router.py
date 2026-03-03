@@ -28,19 +28,19 @@ def router_with_llm(live_llm_client):
 @pytest.mark.parametrize(
     "query,expected",
     [
-        ("Compare Deployment vs StatefulSet", QueryIntent.COMPARISON),
-        ("What is the difference between Pods and Containers?", QueryIntent.COMPARISON),
+        ("Compare Lambda vs Fargate", QueryIntent.COMPARISON),
+        ("What is the difference between S3 and EFS?", QueryIntent.COMPARISON),
         ("A vs B, which is better?", QueryIntent.COMPARISON),
         ("X versus Y", QueryIntent.COMPARISON),
-        ("What depends on kube-proxy?", QueryIntent.RELATIONAL),
-        ("What does json.loads require?", QueryIntent.RELATIONAL),
-        ("How does X affect Y?", QueryIntent.RELATIONAL),
-        ("How do I configure TLS for an Ingress?", QueryIntent.PROCEDURAL),
-        ("How can I install Python?", QueryIntent.PROCEDURAL),
-        ("Steps to configure RBAC", QueryIntent.PROCEDURAL),
-        ("Setup a new project", QueryIntent.PROCEDURAL),
-        ("Implement a retry mechanism", QueryIntent.PROCEDURAL),
-        ("Create a Kubernetes cluster", QueryIntent.PROCEDURAL),
+        ("What depends on API Gateway?", QueryIntent.RELATIONAL),
+        ("What does Lambda require?", QueryIntent.RELATIONAL),
+        ("How does VPC affect Lambda?", QueryIntent.RELATIONAL),
+        ("How do I configure TLS for CloudFront?", QueryIntent.PROCEDURAL),
+        ("How can I set up an S3 bucket?", QueryIntent.PROCEDURAL),
+        ("Steps to configure IAM roles", QueryIntent.PROCEDURAL),
+        ("Setup a new VPC", QueryIntent.PROCEDURAL),
+        ("Implement a retry mechanism for SQS", QueryIntent.PROCEDURAL),
+        ("Create an ECS cluster", QueryIntent.PROCEDURAL),
     ],
 )
 async def test_keyword_stage_catches_pattern(router_no_llm, query, expected):
@@ -64,11 +64,11 @@ async def test_keyword_stage_is_fast(router_no_llm):
 @pytest.mark.parametrize(
     "query,expected",
     [
-        ("What is a Pod?", QueryIntent.FACTOID),
-        ("Tell me about Python's asyncio", QueryIntent.EXPLORATORY),
-        ("What is json.loads?", QueryIntent.FACTOID),
-        ("Explain the GIL", QueryIntent.EXPLORATORY),
-        ("What does the os module do?", QueryIntent.FACTOID),
+        ("What is an EC2 instance?", QueryIntent.FACTOID),
+        ("Tell me about AWS Lambda cold starts", QueryIntent.EXPLORATORY),
+        ("What is the default timeout for Lambda?", QueryIntent.FACTOID),
+        ("Explain how VPC peering works", QueryIntent.EXPLORATORY),
+        ("What does CloudWatch monitor?", QueryIntent.FACTOID),
     ],
 )
 async def test_llm_stage_classifies_correctly(router_with_llm, query, expected):
@@ -80,7 +80,7 @@ async def test_llm_stage_latency(router_with_llm):
     """LLM classification should complete in under 5 seconds."""
     # Use a query that doesn't match keyword patterns
     t0 = time.perf_counter()
-    await router_with_llm.classify("Tell me about asyncio event loops")
+    await router_with_llm.classify("Tell me about Lambda execution environments")
     elapsed_ms = (time.perf_counter() - t0) * 1000
     assert elapsed_ms < 5000, f"LLM classification too slow: {elapsed_ms:.0f}ms"
 
@@ -89,16 +89,16 @@ async def test_llm_stage_latency(router_with_llm):
 
 
 async def test_ambiguous_query_returns_valid_intent(router_with_llm):
-    result = await router_with_llm.classify("json")
+    result = await router_with_llm.classify("Lambda")
     assert isinstance(result, QueryIntent)
 
 
 async def test_query_with_history_context(router_with_llm):
     history = [
-        {"role": "user", "content": "Tell me about Python dictionaries"},
-        {"role": "assistant", "content": "Dictionaries are key-value stores..."},
+        {"role": "user", "content": "Tell me about S3 bucket policies"},
+        {"role": "assistant", "content": "S3 bucket policies are JSON-based access control..."},
     ]
-    result = await router_with_llm.classify("What about sets?", history=history)
+    result = await router_with_llm.classify("What about lifecycle rules?", history=history)
     assert isinstance(result, QueryIntent)
 
 
@@ -109,12 +109,12 @@ async def test_empty_string_fallback(router_no_llm):
 
 
 async def test_single_word_query(router_with_llm):
-    result = await router_with_llm.classify("json")
+    result = await router_with_llm.classify("Lambda")
     assert isinstance(result, QueryIntent)
 
 
 async def test_very_long_query(router_with_llm):
-    long_query = "What is json.loads " + "and also " * 50 + "how does it work?"
+    long_query = "What is Lambda " + "and also " * 50 + "how does it work?"
     result = await router_with_llm.classify(long_query)
     assert isinstance(result, QueryIntent)
 
@@ -124,11 +124,11 @@ async def test_very_long_query(router_with_llm):
 
 async def test_all_intents_reachable(router_with_llm):
     queries_and_expected = [
-        ("What is json.loads?", QueryIntent.FACTOID),
-        ("Compare list vs tuple", QueryIntent.COMPARISON),
-        ("What depends on os.path?", QueryIntent.RELATIONAL),
-        ("How do I read a CSV?", QueryIntent.PROCEDURAL),
-        ("Tell me about Python asyncio", QueryIntent.EXPLORATORY),
+        ("What is the default Lambda timeout?", QueryIntent.FACTOID),
+        ("Compare S3 vs EFS", QueryIntent.COMPARISON),
+        ("What depends on API Gateway?", QueryIntent.RELATIONAL),
+        ("How do I create a VPC?", QueryIntent.PROCEDURAL),
+        ("Tell me about AWS Lambda cold starts", QueryIntent.EXPLORATORY),
     ]
     seen_intents = set()
     for query, expected in queries_and_expected:
@@ -145,7 +145,7 @@ async def test_all_intents_reachable(router_with_llm):
 async def test_comparison_keyword_fast_path(router_no_llm):
     """'vs' keyword should not hit the LLM at all."""
     t0 = time.perf_counter()
-    result = await router_no_llm.classify("json vs pickle performance")
+    result = await router_no_llm.classify("Lambda vs Fargate performance")
     elapsed_ms = (time.perf_counter() - t0) * 1000
     assert result == QueryIntent.COMPARISON
     assert elapsed_ms < 50, f"Should be sub-50ms keyword scan, got {elapsed_ms:.1f}ms"
@@ -153,7 +153,7 @@ async def test_comparison_keyword_fast_path(router_no_llm):
 
 async def test_procedural_keyword_fast_path(router_no_llm):
     t0 = time.perf_counter()
-    result = await router_no_llm.classify("How do I install ChromaDB?")
+    result = await router_no_llm.classify("How do I install the AWS CLI?")
     elapsed_ms = (time.perf_counter() - t0) * 1000
     assert result == QueryIntent.PROCEDURAL
     assert elapsed_ms < 50
@@ -161,5 +161,5 @@ async def test_procedural_keyword_fast_path(router_no_llm):
 
 async def test_router_no_llm_returns_fallback_for_what(router_no_llm):
     # "What is X?" has no keyword pattern — falls through to regex fallback
-    result = await router_no_llm.classify("What is json.loads?")
+    result = await router_no_llm.classify("What is an EC2 instance?")
     assert result == QueryIntent.FACTOID  # regex fallback catches "what"

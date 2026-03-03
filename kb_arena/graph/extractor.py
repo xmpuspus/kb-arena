@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 
 from kb_arena.graph.neo4j_store import Neo4jStore
@@ -38,7 +39,7 @@ Output ONLY valid JSON matching this schema:
     {{
       "id": "<unique_id>",
       "name": "<display name>",
-      "fqn": "<fully qualified name, e.g. aws.lambda.invoke>",
+      "fqn": "<fully qualified name, dot-separated, e.g. aws.lambda or react.usestate>",
       "type": "<one of the allowed node types>",
       "description": "<one sentence>",
       "properties": {{}},
@@ -57,7 +58,7 @@ Output ONLY valid JSON matching this schema:
 
 Rules:
 - Use ONLY the allowed types listed above. Any other type will be rejected.
-- fqn must be globally unique and dot-separated (e.g. aws.lambda.invoke, not just invoke)
+- fqn must be globally unique and dot-separated
 - Omit entities with no clear type match
 - Omit relationships where either endpoint fqn is not in the entity list
 """
@@ -132,7 +133,9 @@ async def _extract_section(
     text = _section_text(section)
     try:
         raw_json = await llm.extract(text=text, system_prompt=system_prompt)
-        raw = json.loads(raw_json)
+        # Strip markdown fences if present (LLM often wraps JSON in ```json ... ```)
+        cleaned = re.sub(r"```(?:json)?\s*", "", raw_json).strip().rstrip("`").strip()
+        raw = json.loads(cleaned)
     except (json.JSONDecodeError, Exception) as exc:
         logger.warning("Extraction failed for section %s: %s", section.id, exc)
         return ExtractionResult(section_id=section.id)
@@ -166,9 +169,8 @@ async def extract_document(doc: Document, llm: LLMClient, system_prompt: str) ->
     )
 
 
-async def run_extraction(corpus: str = "aws-compute", schema: str = "auto") -> None:
+async def run_extraction(corpus: str = "custom", schema: str = "auto") -> None:
     """Orchestrate: load processed JSONL → extract → resolve → load to Neo4j."""
-    # Validate corpus has a known schema
     get_schema(corpus)
 
     processed_dir = Path(settings.datasets_path) / corpus / "processed"
@@ -181,16 +183,13 @@ async def run_extraction(corpus: str = "aws-compute", schema: str = "auto") -> N
     system_prompt = _build_system_prompt(corpus)
     store = await Neo4jStore.connect()
 
-    # Load schema DDL
+    # Load schema DDL — corpus-specific if available, otherwise default
     cypher_dir = Path("cypher")
-    schema_map = {
-        "aws-compute": cypher_dir / "schema_aws.cypher",
-        "aws-storage": cypher_dir / "schema_aws.cypher",
-        "aws-networking": cypher_dir / "schema_aws.cypher",
-    }
-    if schema_file := schema_map.get(corpus):
-        if schema_file.exists():
-            await store.load_schema(schema_file)
+    schema_file = cypher_dir / f"schema_{corpus}.cypher"
+    if not schema_file.exists():
+        schema_file = cypher_dir / "schema_default.cypher"
+    if schema_file.exists():
+        await store.load_schema(schema_file)
 
     node_enum, rel_enum = get_schema(corpus)
     all_entities: list[Entity] = []

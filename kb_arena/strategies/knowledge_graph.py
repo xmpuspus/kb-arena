@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 
+from kb_arena.graph.schema import node_type_values, rel_type_values
 from kb_arena.models.document import Document
 from kb_arena.models.graph import GraphContext
 from kb_arena.strategies.base import AnswerResult, Strategy
@@ -35,7 +36,7 @@ LIMIT 50
 """
 
 DEPENDENCY_CHAIN = """
-MATCH path = (source)-[:DEPENDS_ON|INVOKES|CONNECTS_TO|ASSUMES|TRIGGERS*1..4]->(dep)
+MATCH path = (source)-[:DEPENDS_ON|CONNECTS_TO|TRIGGERS|EXTENDS|CONFIGURES*1..4]->(dep)
 WHERE source.fqn = $start
 WITH path, dep, length(path) AS depth
 RETURN dep.name AS name, dep.fqn AS fqn, labels(dep)[0] AS type, depth,
@@ -68,13 +69,13 @@ The context contains entities, relationships, and paths extracted from the graph
 Answer the question accurately using the graph context provided.
 Be specific about relationships and dependencies. If the graph context is incomplete, say so."""
 
-CYPHER_GEN_PROMPT = """You are a Neo4j Cypher expert. The graph contains AWS documentation entities.
+CYPHER_GEN_PROMPT_TEMPLATE = """\
+You are a Neo4j Cypher expert. The graph contains documentation entities.
 
-Node types: Service, Resource, Policy, Feature, Configuration, Limit, APIAction, ARNPattern
-Relationship types: DEPENDS_ON, INVOKES, CONNECTS_TO, ASSUMES, CONTAINS, PROTECTS,
-ROUTES_TO, LOGS_TO, TRIGGERS, DEPLOYED_IN, MANAGES, READS_FROM, WRITES_TO
+Node types: {node_types}
+Relationship types: {rel_types}
 
-Write a Cypher query to answer: {question}
+Write a Cypher query to answer: {{question}}
 
 Rules:
 - Return only the Cypher query, no explanation
@@ -102,22 +103,22 @@ def _mock_graph_context() -> GraphContext:
     return GraphContext(
         nodes=[
             {
-                "id": "lambda",
-                "name": "AWS Lambda",
-                "type": "Service",
-                "description": "Serverless compute service",
+                "id": "example-topic",
+                "name": "Example Topic",
+                "type": "Topic",
+                "description": "A primary subject in the documentation",
             },
             {
-                "id": "iam-execution-role",
-                "name": "IAM Execution Role",
-                "type": "Policy",
-                "description": "IAM role assumed by Lambda during execution",
+                "id": "example-component",
+                "name": "Example Component",
+                "type": "Component",
+                "description": "A building block that depends on the topic",
             },
         ],
         edges=[
-            {"source": "lambda", "target": "iam-execution-role", "type": "ASSUMES"},
+            {"source": "example-component", "target": "example-topic", "type": "DEPENDS_ON"},
         ],
-        query_path=["lambda", "iam-execution-role"],
+        query_path=["example-topic", "example-component"],
         cypher_used="MOCK — Neo4j not connected",
     )
 
@@ -202,7 +203,7 @@ class KnowledgeGraphStrategy(Strategy):
         if self._driver is None:
             return []
         async with self._driver.session() as session:
-            result = await session.run(cypher, **params)
+            result = await session.run(cypher, parameters=params)
             records = await result.data()
             await result.consume()
         return records
@@ -221,13 +222,13 @@ class KnowledgeGraphStrategy(Strategy):
         return "fulltext"
 
     def _extract_entities(self, question: str) -> list[str]:
-        """Heuristic: extract likely entity names (quoted or CamelCase or dotted or AWS-style)."""
+        """Heuristic: extract likely entity names (quoted, CamelCase, dotted, or hyphenated)."""
         entities = []
         # Quoted names
         entities.extend(re.findall(r'["\']([^"\']+)["\']', question))
         # Dotted paths like s3.put_object or aws.lambda
         entities.extend(re.findall(r"\b([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+)\b", question))
-        # AWS hyphenated service names like api-gateway, step-functions, aws-lambda
+        # Hyphenated names like api-gateway, step-functions
         entities.extend(re.findall(r"\b([a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+)\b", question))
         # CamelCase names like Lambda, DynamoDB, CloudWatch
         entities.extend(re.findall(r"\b([A-Z][a-zA-Z0-9]+)\b", question))
@@ -239,7 +240,7 @@ class KnowledgeGraphStrategy(Strategy):
         primary = entities[0] if entities else ""
         secondary = entities[1] if len(entities) > 1 else ""
 
-        allowed_rels = ["DEPENDS_ON", "INVOKES", "CONNECTS_TO", "ASSUMES", "CONTAINS", "TRIGGERS"]
+        allowed_rels = rel_type_values("")
 
         if intent == "comparison" and primary and secondary:
             cypher = COMPARISON_QUERY
@@ -264,7 +265,11 @@ class KnowledgeGraphStrategy(Strategy):
     async def _generate_cypher(self, question: str) -> tuple[list[dict], str]:
         """Text-to-Cypher fallback for novel queries."""
         llm = self._get_llm()
-        prompt = CYPHER_GEN_PROMPT.format(question=question)
+        cypher_gen_prompt = CYPHER_GEN_PROMPT_TEMPLATE.format(
+            node_types=", ".join(node_type_values("")),
+            rel_types=", ".join(rel_type_values("")),
+        )
+        prompt = cypher_gen_prompt.format(question=question)
         raw_cypher = await llm.extract(text=prompt, system_prompt="Output only Cypher. No prose.")
         cypher = _extract_cypher(raw_cypher)
 

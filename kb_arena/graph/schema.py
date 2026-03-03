@@ -1,53 +1,36 @@
-"""Node and relationship type enums per corpus, with validation helpers."""
+"""Universal node and relationship type enums, with validation helpers.
+
+The schema is domain-agnostic — 5 node types and 7 relationship types that
+cover the structure of any documentation corpus. AWS services map to Topic,
+resources to Component, policies to Constraint, etc.
+"""
 
 from __future__ import annotations
 
 from enum import StrEnum
 
-# ── AWS documentation schema ──────────────────────────────────────────────────
-
 
 class NodeType(StrEnum):
-    SERVICE = "Service"  # AWS service (Lambda, S3, EC2)
-    RESOURCE = "Resource"  # Infrastructure resource (VPC, Subnet, Security Group)
-    POLICY = "Policy"  # IAM policies, bucket policies, resource policies
-    FEATURE = "Feature"  # Service feature (versioning, encryption, auto-scaling)
-    CONFIGURATION = "Configuration"  # Config items (timeout, memory, runtime)
-    LIMIT = "Limit"  # Service limits/quotas
-    API_ACTION = "APIAction"  # AWS API actions (PutObject, InvokeFunction)
-    ARN_PATTERN = "ARNPattern"  # ARN format patterns
+    TOPIC = "Topic"  # Primary subject (AWS Lambda, a framework, a concept)
+    COMPONENT = "Component"  # Sub-element or building block (Lambda layer, subnet)
+    PROCESS = "Process"  # Procedure, workflow, or operation (deploy, configure)
+    CONFIG = "Config"  # Setting, option, parameter (timeout, retention period)
+    CONSTRAINT = "Constraint"  # Limit, requirement, or prerequisite (quotas, min versions)
 
 
 class RelType(StrEnum):
     DEPENDS_ON = "DEPENDS_ON"
-    INVOKES = "INVOKES"
-    CONNECTS_TO = "CONNECTS_TO"
-    ASSUMES = "ASSUMES"  # Role assumption
     CONTAINS = "CONTAINS"
-    PROTECTS = "PROTECTS"  # Security group -> resource
-    ROUTES_TO = "ROUTES_TO"
-    LOGS_TO = "LOGS_TO"
+    CONNECTS_TO = "CONNECTS_TO"
     TRIGGERS = "TRIGGERS"
-    DEPLOYED_IN = "DEPLOYED_IN"
-    MANAGES = "MANAGES"
-    READS_FROM = "READS_FROM"
-    WRITES_TO = "WRITES_TO"
-
-
-# ── Corpus dispatch ───────────────────────────────────────────────────────────
-
-_CORPUS_SCHEMA: dict[str, tuple[type, type]] = {
-    "aws-compute": (NodeType, RelType),
-    "aws-storage": (NodeType, RelType),
-    "aws-networking": (NodeType, RelType),
-}
+    CONFIGURES = "CONFIGURES"
+    ALTERNATIVE_TO = "ALTERNATIVE_TO"
+    EXTENDS = "EXTENDS"
 
 
 def get_schema(corpus: str) -> tuple[type, type]:
-    """Return (NodeType enum, RelType enum) for the given corpus."""
-    if corpus not in _CORPUS_SCHEMA:
-        raise ValueError(f"Unknown corpus '{corpus}'. Valid: {list(_CORPUS_SCHEMA)}")
-    return _CORPUS_SCHEMA[corpus]
+    """Return (NodeType enum, RelType enum). Same universal schema for all corpora."""
+    return (NodeType, RelType)
 
 
 def valid_node_type(corpus: str, type_str: str) -> bool:

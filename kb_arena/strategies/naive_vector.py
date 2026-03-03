@@ -68,7 +68,7 @@ class NaiveVectorStrategy(Strategy):
     def _get_collection(self):
         if self._collection is None:
             ef = OpenAIEmbeddingFunction(
-                api_key=settings.anthropic_api_key or "sk-placeholder",
+                api_key=settings.openai_api_key or settings.anthropic_api_key,
                 model_name=settings.embedding_model,
             )
             self._collection = self._get_client().get_or_create_collection(

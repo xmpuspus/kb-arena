@@ -10,7 +10,7 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
-import { STRATEGY_LABELS, STRATEGY_COLORS, type Strategy } from "@/lib/api";
+import { STRATEGY_LABELS, STRATEGY_COLORS, TIER_INFO, type Strategy } from "@/lib/api";
 
 interface Row {
   strategy: Strategy;
@@ -25,7 +25,8 @@ export default function TierChart({ rows }: Props) {
   const tierCount = rows[0]?.tiers.length ?? 5;
 
   const data = Array.from({ length: tierCount }, (_, i) => {
-    const point: Record<string, string | number> = { tier: `Tier ${i + 1}` };
+    const label = TIER_INFO[i + 1]?.label ?? `Tier ${i + 1}`;
+    const point: Record<string, string | number> = { tier: `T${i + 1} ${label}` };
     for (const row of rows) {
       point[row.strategy] = row.tiers[i] ?? 0;
     }
@@ -64,6 +65,7 @@ export default function TierChart({ rows }: Props) {
             dataKey={row.strategy}
             fill={STRATEGY_COLORS[row.strategy]}
             radius={[2, 2, 0, 0]}
+            isAnimationActive={false}
           />
         ))}
       </BarChart>
