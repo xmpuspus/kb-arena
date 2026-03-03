@@ -83,9 +83,9 @@ def sample_document(sample_section):
 def sample_documents(sample_document):
     """Multiple documents for batch testing."""
     s3_doc = Document(
-        id="aws-storage-s3",
+        id="aws-compute-s3",
         source="https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html",
-        corpus="aws-storage",
+        corpus="aws-compute",
         title="Amazon S3 User Guide",
         sections=[
             Section(

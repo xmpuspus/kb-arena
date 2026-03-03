@@ -25,6 +25,7 @@ services:
       - KB_ARENA_NEO4J_PASSWORD=kbarena1
       - KB_ARENA_CHROMA_PATH=/data/chroma
       - KB_ARENA_ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - KB_ARENA_OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       neo4j:
         condition: service_healthy

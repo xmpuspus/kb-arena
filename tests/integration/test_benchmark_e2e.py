@@ -449,11 +449,11 @@ def test_reporter_summary_accuracy_overall_is_average():
 def test_reporter_handles_multiple_corpora():
     results = [
         _make_bench_result("aws-compute", "naive_vector", {1: 0.7}),
-        _make_bench_result("aws-networking", "naive_vector", {1: 0.5}),
+        _make_bench_result("test-corpus", "naive_vector", {1: 0.5}),
     ]
     md = _build_markdown(results)
     assert "aws-compute" in md
-    assert "aws-networking" in md
+    assert "test-corpus" in md
 
 
 def test_reporter_writes_files(tmp_path, monkeypatch):

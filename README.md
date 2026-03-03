@@ -4,7 +4,7 @@ Which retrieval architecture works best for your documentation?
 
 KB Arena benchmarks 5 retrieval strategies — naive vector, contextual vector, Q&A pairs, knowledge graph, and hybrid — on **your** documentation. Bring your docs in any format, run the pipeline, get empirical results. Ships with an AWS Compute corpus (75 questions across 5 difficulty tiers) as a built-in example.
 
-![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-367-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue)
+![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-279-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ![KB Arena Demo](docs/demo.gif)
 
@@ -185,9 +185,9 @@ Questions are organized into 5 difficulty tiers:
 |------|------|------|--------------------------|
 | 1 | Lookup | 1 | All strategies competitive |
 | 2 | Procedural | 1-2 | Vector drops to ~60% |
-| 3 | Comparative | 2-3 | Vector drops to ~30%, graph dominates |
-| 4 | Relational | 3-4 | Only graph answers correctly |
-| 5 | Multi-hop | 3-5 | Only graph + provenance answers |
+| 3 | Comparative | 2-3 | Vector drops to ~30%, structured strategies lead |
+| 4 | Relational | 3-4 | Requires structured data (graph or Q&A pairs) |
+| 5 | Multi-hop | 3-5 | Requires multi-source synthesis |
 
 Use `kb-arena generate-questions` to auto-generate questions from your docs, or write them by hand in YAML.
 
@@ -245,7 +245,7 @@ All prefixed with `KB_ARENA_`. Loaded from `.env` or environment.
 # Install with dev dependencies
 pip install -e '.[dev]'
 
-# Run tests (367 tests)
+# Run tests (279 tests)
 pytest tests/ -v --ignore=tests/live
 
 # Lint + format
@@ -269,7 +269,7 @@ cd web && npm install && npx next build
 | Frontend | Next.js 14 + Tailwind + Recharts |
 | Models | Pydantic v2 |
 | CLI | Typer + Rich |
-| Testing | pytest (367 tests) |
+| Testing | pytest (279 tests) |
 
 ---
 

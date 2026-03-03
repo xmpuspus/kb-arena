@@ -57,5 +57,14 @@ datasets/*/raw/*.txt
 datasets/*/processed/*.jsonl
 !datasets/*/processed/.gitkeep
 
+# Benchmark results (generated, not committed)
+results/*.json
+!results/.gitkeep
+
+# Internal project files
+CLAUDE.md
+BUILD_PROMPT.md
+PLAN.md
+
 # Claude Code
 .claude/

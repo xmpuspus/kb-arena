@@ -155,7 +155,7 @@ def test_chat_response_has_latency_ms(app_client):
     )
     data = r.json()
     assert "latency_ms" in data
-    assert isinstance(data["latency_ms"], (int, float))
+    assert isinstance(data["latency_ms"], int | float)
 
 
 def test_chat_response_has_tokens_used(app_client):

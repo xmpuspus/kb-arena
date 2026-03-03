@@ -311,13 +311,13 @@ def sec_parser(tmp_path):
 
 def test_sec_returns_one_document(sec_parser):
     parser, path = sec_parser
-    docs = parser.parse(path, "aws-storage")
+    docs = parser.parse(path, "test-corpus")
     assert len(docs) == 1
 
 
 def test_sec_item_sections_extracted(sec_parser):
     parser, path = sec_parser
-    doc = parser.parse(path, "aws-storage")[0]
+    doc = parser.parse(path, "test-corpus")[0]
     assert len(doc.sections) >= 2
     titles = [s.title for s in doc.sections]
     assert any("Business" in t or "1" in t for t in titles)
@@ -326,14 +326,14 @@ def test_sec_item_sections_extracted(sec_parser):
 
 def test_sec_table_extracted(sec_parser):
     parser, path = sec_parser
-    doc = parser.parse(path, "aws-storage")[0]
+    doc = parser.parse(path, "test-corpus")[0]
     all_tables = [t for s in doc.sections for t in s.tables]
     assert len(all_tables) >= 1
 
 
 def test_sec_named_entities_in_metadata(sec_parser):
     parser, path = sec_parser
-    doc = parser.parse(path, "aws-storage")[0]
+    doc = parser.parse(path, "test-corpus")[0]
     assert "named_entities" in doc.metadata
     entities = doc.metadata["named_entities"]
     assert len(entities.get("dollar_amounts", [])) >= 1
@@ -341,7 +341,7 @@ def test_sec_named_entities_in_metadata(sec_parser):
 
 def test_sec_heading_path(sec_parser):
     parser, path = sec_parser
-    doc = parser.parse(path, "aws-storage")[0]
+    doc = parser.parse(path, "test-corpus")[0]
     for section in doc.sections:
         assert len(section.heading_path) >= 1
         assert "10-K" in section.heading_path or any(section.heading_path)

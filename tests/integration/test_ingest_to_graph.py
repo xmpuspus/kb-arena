@@ -48,8 +48,8 @@ def test_get_schema_aws_compute():
     assert rel_enum is RelType
 
 
-def test_get_schema_aws_storage():
-    node_enum, rel_enum = get_schema("aws-storage")
+def test_get_schema_other_corpus():
+    node_enum, rel_enum = get_schema("test-corpus")
     assert node_enum is NodeType
     assert rel_enum is RelType
 

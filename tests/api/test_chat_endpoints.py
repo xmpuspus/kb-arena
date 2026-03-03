@@ -32,7 +32,7 @@ def test_factoid_has_tokens_used(client):
 
 def test_factoid_has_cost_usd(client):
     r = client.post("/chat", json={"query": "What is json?", "strategy": "naive_vector"})
-    assert isinstance(r.json()["cost_usd"], (int, float))
+    assert isinstance(r.json()["cost_usd"], int | float)
 
 
 @pytest.mark.parametrize(
