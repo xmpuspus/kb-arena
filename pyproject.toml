@@ -39,7 +39,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest==8.3.4", "ruff==0.8.6", "pytest-asyncio==0.24.0"]
-datasets = ["requests==2.32.3"]
 
 [project.scripts]
 kb-arena = "kb_arena.cli:app"
@@ -51,7 +50,7 @@ Repository = "https://github.com/xmpuspus/kb-arena"
 Issues = "https://github.com/xmpuspus/kb-arena/issues"
 
 [tool.hatch.build.targets.sdist]
-exclude = ["results/", "docs/", "datasets/", "web/", "tests/", "cypher/", "scripts/", ".github/", "**/.gitkeep"]
+exclude = ["results/", "docs/", "datasets/", "web/", "tests/", "cypher/", ".github/", "**/.gitkeep"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["kb_arena"]

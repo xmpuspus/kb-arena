@@ -233,9 +233,20 @@ All prefixed with `KB_ARENA_`. Loaded from `.env` or environment.
 | `NEO4J_URI` | `bolt://localhost:7687` | No | Neo4j connection |
 | `NEO4J_USER` | `neo4j` | No | Neo4j username |
 | `NEO4J_PASSWORD` | `kbarena1` | No | Neo4j password |
+| `CHROMA_PATH` | `./chroma_data` | No | ChromaDB storage path |
+| `EMBEDDING_MODEL` | `text-embedding-3-large` | No | OpenAI embedding model |
+| `EMBEDDING_DIMENSIONS` | `3072` | No | Embedding vector dimensions |
 | `GENERATE_MODEL` | `claude-sonnet-4-6` | No | Generation model |
 | `FAST_MODEL` | `claude-haiku-4-5-20251001` | No | Classification model |
+| `HOST` | `0.0.0.0` | No | Server bind address |
+| `PORT` | `8000` | No | Server port |
+| `DEBUG` | `false` | No | Debug mode |
+| `BENCHMARK_TEMPERATURE` | `0.0` | No | LLM temperature for benchmarks |
 | `BENCHMARK_MAX_CONCURRENT` | `5` | No | Parallel benchmark queries |
+| `BENCHMARK_QUERY_TIMEOUT_S` | `120` | No | Per-query timeout (seconds) |
+| `BENCHMARK_MAX_RETRIES` | `2` | No | Retry count on failures |
+| `DATASETS_PATH` | `./datasets` | No | Datasets directory |
+| `RESULTS_PATH` | `./results` | No | Results output directory |
 
 ---
 
