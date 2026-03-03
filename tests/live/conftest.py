@@ -26,11 +26,11 @@ def live_llm_client(live_settings):
 
 
 @pytest.fixture(scope="session")
-def live_openai_key():
-    """Return the raw OpenAI API key from the environment (no KB_ARENA_ prefix)."""
-    key = os.environ.get("OPENAI_API_KEY", "")
+def live_openai_key(live_settings):
+    """Return the OpenAI API key from settings (.env with KB_ARENA_ prefix)."""
+    key = live_settings.openai_api_key or os.environ.get("OPENAI_API_KEY", "")
     if not key:
-        pytest.skip("OPENAI_API_KEY not set in environment")
+        pytest.skip("KB_ARENA_OPENAI_API_KEY / OPENAI_API_KEY not set")
     return key
 
 

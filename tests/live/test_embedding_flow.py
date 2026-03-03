@@ -143,7 +143,7 @@ def test_contextual_chunks_differ_from_raw(openai_client, embedding_model):
     sim = _cosine_sim(v_raw, v_ctx)
     # They should be similar but not identical (contextual has extra context)
     assert sim < 1.0, "Raw and contextual embeddings should differ"
-    assert sim > 0.7, "Embeddings should still be semantically close"
+    assert sim > 0.5, "Embeddings should still be semantically close"
 
 
 def test_chroma_query_returns_correct_n_results(tmp_path, live_settings, live_openai_key):

@@ -1,0 +1,2738 @@
+{
+  "corpus": "aws-compute",
+  "strategy": "naive_vector",
+  "total_questions": 75,
+  "records": [
+    {
+      "question_id": "compute-t1-011",
+      "strategy": "naive_vector",
+      "answer": "The provided context does not contain any information about Amazon Lightsail. I cannot answer this question based solely on the available context.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.3333333333333333,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "Lightsail"
+        ]
+      },
+      "latency_ms": 3670.4159160144627,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "api-gateway",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 146
+    },
+    {
+      "question_id": "compute-t3-006",
+      "strategy": "naive_vector",
+      "answer": "The provided context does not contain enough information to answer this question fully. The context only briefly mentions that ECS Auto Scaling supports **target tracking, step scaling, and scheduled scaling** (not predictive scaling), but provides **no details** about how these policies work or how they compare to one another.\n\nTo get a complete comparison of those scaling policy types, I'd recommend consulting the AWS Auto Scaling documentation directly.",
+      "score": {
+        "accuracy": 0.1,
+        "completeness": 0.05,
+        "faithfulness": 0.8,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "Target Tracking",
+          "Predictive Scaling"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Target Tracking",
+          "Step Scaling",
+          "Predictive Scaling"
+        ]
+      },
+      "latency_ms": 4850.284291023854,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "api-gateway",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 460
+    },
+    {
+      "question_id": "compute-t1-015",
+      "strategy": "naive_vector",
+      "answer": "## ECS Task Definition\n\nBased on the provided context, a **task definition is a blueprint for your application**.\n\nHowever, the context provided is **limited in detail** regarding the specific key parameters a task definition specifies. The documentation mentions task definitions exist as a foundational concept but focuses more on other ECS components like services, networking, and Fargate.\n\n### What the context does indicate related to tasks:\n\n- Tasks run with **vCPU and memory** allocations (referenced in Fargate pricing)\n- Each task gets its **own ENI (Elastic Network Interface)** with a private IP in your VPC subnet\n- Tasks have **security groups** applied at the task level\n- Each Fargate task runs in its **own kernel** for task-level isolation\n\n### What I cannot fully answer from this context:\n\nThe context does **not provide a comprehensive list** of key task definition parameters (such as container image, port mappings, environment variables, IAM roles, etc.). To get complete details on all key parameters, I would recommend consulting the **official AWS ECS documentation** directly.\n\n> If you can provide additional context about task definition settings, I can give a more complete answer.",
+      "score": {
+        "accuracy": 0.3,
+        "completeness": 0.2,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.3333333333333333,
+        "structural_pass": true,
+        "mentions_found": [
+          "container image"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "task definition"
+        ]
+      },
+      "latency_ms": 7239.32487500133,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1213
+    },
+    {
+      "question_id": "compute-t3-010",
+      "strategy": "naive_vector",
+      "answer": "## Lambda@Edge vs CloudFront Functions Comparison\n\nBased on the provided context, I **cannot fully answer** this question. The documentation only briefly mentions **CloudFront (Lambda@Edge)** as one of the services that can trigger Lambda functions, but provides **no details** about:\n\n- How Lambda@Edge works specifically\n- What CloudFront Functions are\n- A comparison between the two\n\n---\n\n### What the context *does* tell us:\n\n- Lambda@Edge is listed as a valid **trigger source** for AWS Lambda alongside API Gateway, ALB, Cognito, and Alexa\n- Lambda is described as running *\"in response to events\"* and automatically managing compute resources\n- Cold start factors (runtime init, handler init, VPC ENI attachment) would be **relevant considerations** for Lambda@Edge, but the context doesn't explicitly apply them to edge scenarios\n\n---\n\n### Recommendation\n\nTo properly compare Lambda@Edge and CloudFront Functions, you would need additional documentation covering:\n- Execution limits and runtime support for each\n- Supported CloudFront event types (viewer request/response, origin request/response)\n- Latency and cold start characteristics at edge locations\n- Pricing differences\n\nPlease refer to the **AWS CloudFront developer documentation** for a complete comparison.",
+      "score": {
+        "accuracy": 0.05,
+        "completeness": 0.05,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "CloudFront Functions",
+          "Lambda@Edge",
+          "edge locations"
+        ]
+      },
+      "latency_ms": 7143.854875001125,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1277
+    },
+    {
+      "question_id": "compute-t5-005",
+      "strategy": "naive_vector",
+      "answer": "## ECS Fargate + App Mesh + Cloud Map + X-Ray: Service Mesh with Distributed Tracing\n\nBased on the provided context, here is how these services work together:\n\n---\n\n### The Architecture Stack\n\n| Layer | Service | Role |\n|-------|---------|------|\n| **Compute** | ECS Fargate | Runs microservice tasks (serverless, no EC2 to manage) |\n| **Service Mesh** | App Mesh | Controls service-to-service communication |\n| **Service Discovery** | Cloud Map (DNS) | Lets services find each other by name |\n| **Tracing** | X-Ray | Traces requests across microservices |\n\n---\n\n### How They Connect\n\n1. **ECS Fargate** runs each microservice as isolated tasks (task-level kernel isolation), forming the compute foundation for your microservices\n\n2. **Cloud Map** provides DNS-based service discovery so microservices can locate each other without hardcoded endpoints — integrated via ECS Service Discovery\n\n3. **App Mesh** acts as the service mesh layer, managing traffic flow, retries, and routing rules between those discovered services\n\n4. **X-Ray** provides distributed tracing, allowing you to track a single request as it travels across multiple microservices\n\n---\n\n### Important Caveat\n\nThe context confirms these services **exist and integrate with ECS**, but does **not provide detailed implementation specifics** such as:\n- How the Envoy sidecar proxy is configured for App Mesh\n- Exact X-Ray daemon sidecar setup within tasks\n- Step-by-step Cloud Map registration flow\n\nFor full implementation details, AWS documentation beyond this context would be needed.",
+      "score": {
+        "accuracy": 0.45,
+        "completeness": 0.35,
+        "faithfulness": 0.85,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "Envoy",
+          "Cloud Map"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "App Mesh",
+          "Cloud Map",
+          "Envoy sidecar",
+          "X-Ray",
+          "ECS Fargate"
+        ]
+      },
+      "latency_ms": 10034.09195796121,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1553
+    },
+    {
+      "question_id": "compute-t1-019",
+      "strategy": "naive_vector",
+      "answer": "## Lambda Concurrency\n\nThe provided context does **not contain a complete explanation of Lambda concurrency** or a direct comparison between reserved and provisioned concurrency. The context only partially covers these topics.\n\n### What the context does tell us:\n\n**Provisioned Concurrency:**\n- Keeps a **requested number of execution environments initialized and ready** to respond\n- Designed for **latency-sensitive workloads** to avoid cold starts\n- Costs **$0.0000041667/GB-second** (plus standard duration charges)\n\n### What's missing from the context:\n\nThe context does **not provide information about**:\n- A general definition of Lambda concurrency\n- How **reserved concurrency** works\n- A direct comparison between reserved vs. provisioned concurrency\n\n---\n\nTo properly answer your full question, I would need additional context covering reserved concurrency (which limits the maximum concurrent executions for a function) and the broader concept of concurrency in Lambda. I can only confirm details about **Provisioned Concurrency** based on what was provided.",
+      "score": {
+        "accuracy": 0.3,
+        "completeness": 0.2,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "reserved concurrency",
+          "provisioned concurrency"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "reserved concurrency",
+          "provisioned concurrency",
+          "cold start"
+        ]
+      },
+      "latency_ms": 6497.499709017575,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1069
+    },
+    {
+      "question_id": "compute-t3-014",
+      "strategy": "naive_vector",
+      "answer": "## Lambda Provisioned Concurrency vs. SnapStart\n\nBased on the provided context, I can only fully address **Provisioned Concurrency** — **SnapStart is not mentioned** in the provided documentation, so I cannot make a direct comparison between the two strategies.\n\n### What the Context Says About Provisioned Concurrency\n\n- **How it works:** Keeps a requested number of execution environments **pre-initialized and ready to respond**\n- **Purpose:** Eliminates cold starts for latency-sensitive workloads\n- **Cost:** $0.0000041667/GB-second (in addition to standard duration pricing of $0.0000033334/GB-second)\n\n### Cold Start Factors It Addresses\n\nProvisioned Concurrency mitigates all contributing cold start factors mentioned in the context:\n- Runtime initialization\n- Handler initialization\n- VPC ENI attachment delays (1–10 seconds)\n\n---\n\n**I cannot accurately describe SnapStart or compare the two strategies** based solely on the provided context. To get a complete comparison, I'd recommend consulting the [AWS Lambda documentation on SnapStart](https://docs.aws.amazon.com/lambda/latest/dg/snapstart.html) directly, as that topic falls outside the scope of the provided material.",
+      "score": {
+        "accuracy": 0.4,
+        "completeness": 0.3,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "Provisioned Concurrency",
+          "SnapStart"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Provisioned Concurrency",
+          "SnapStart",
+          "cold start"
+        ]
+      },
+      "latency_ms": 6189.98762499541,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1185
+    },
+    {
+      "question_id": "compute-t2-003",
+      "strategy": "naive_vector",
+      "answer": "## Configuring Lambda to Access VPC Resources\n\n### Steps to Set Up VPC Access\n\n1. **Attach the function to your VPC** by specifying:\n   - `SubnetIds` — the subnets where Lambda will operate\n   - `SecurityGroupIds` — to control network access\n\n2. **Lambda automatically creates ENIs** (Elastic Network Interfaces) in your specified subnets, giving the function a private IP to communicate with VPC resources like RDS or ElastiCache.\n\n3. **Assign the correct IAM execution role** — attach the `AWSLambdaVPCAccessExecutionRole` managed policy, which grants the required EC2 permissions:\n   - `ec2:CreateNetworkInterface`\n   - `ec2:DescribeNetworkInterfaces`\n   - `ec2:DeleteNetworkInterface`\n\n---\n\n### ⚠️ Important Caveat: Internet Access\n\nOnce inside a VPC, your Lambda function **loses internet access by default**. To restore it, you have two options:\n\n| Option | Use Case |\n|--------|----------|\n| **NAT Gateway** | General internet access (costs $0.045/hr + $0.045/GB) |\n| **VPC Endpoints** | Access specific AWS services (S3, DynamoDB, SQS) without internet |\n\n---\n\n### Summary\nAttaching Lambda to a VPC enables access to private resources, but requires careful planning around IAM permissions and outbound connectivity.",
+      "score": {
+        "accuracy": 0.85,
+        "completeness": 0.8,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "ENI",
+          "NAT Gateway"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Lambda",
+          "VPC",
+          "ENI",
+          "NAT Gateway"
+        ]
+      },
+      "latency_ms": 6073.778499965556,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "ecs-fargate",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1223
+    },
+    {
+      "question_id": "compute-t2-011",
+      "strategy": "naive_vector",
+      "answer": "The provided context does not contain information about AWS Elastic Beanstalk or deploying applications using a Dockerfile with environment variable configuration in that context.\n\nThe context only covers topics related to **ECS/containers, API Gateway stages, Lambda performance optimization, and Lambda environment variables**. It does not address Elastic Beanstalk deployment workflows.\n\nI cannot accurately answer your question based solely on the provided context.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.6666666666666666,
+        "structural_pass": true,
+        "mentions_found": [
+          "Dockerfile"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Elastic Beanstalk",
+          "Dockerfile"
+        ]
+      },
+      "latency_ms": 3115.9217079984955,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "api-gateway",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 469
+    },
+    {
+      "question_id": "compute-t2-007",
+      "strategy": "naive_vector",
+      "answer": "Based on the provided context, I can only partially answer this question.\n\nThe context confirms that **SQS is a supported Lambda trigger**, but it does **not contain details** about:\n\n- How to configure SQS as an event source mapping\n- Batch size or batching window settings\n- Partial batch failure handling (e.g., `ReportBatchItemFailures`)\n- Dead-letter queue configuration for failed messages\n\nThe context simply lists SQS as one of the services that can trigger Lambda, without providing implementation details for batch processing or partial failure handling.\n\n**To fully answer your question, you would need additional documentation** covering Lambda Event Source Mappings for SQS, specifically topics like `FunctionResponseTypes`, batch size configuration, and returning `batchItemFailures` in the function response.",
+      "score": {
+        "accuracy": 0.1,
+        "completeness": 0.05,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.75,
+        "structural_pass": true,
+        "mentions_found": [
+          "batchItemFailures"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Lambda",
+          "SQS",
+          "batchItemFailures"
+        ]
+      },
+      "latency_ms": 5330.274624982849,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "api-gateway",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 823
+    },
+    {
+      "question_id": "compute-t4-007",
+      "strategy": "naive_vector",
+      "answer": "## EC2 Auto Scaling Lifecycle Hooks + EventBridge + Lambda\n\nThe provided context **does not contain enough information** to answer this question accurately.\n\nThe context covers:\n- Some Lambda triggers (S3, SNS, CloudWatch Events/EventBridge, etc.)\n- ECS service scaling and load balancing\n- Lambda cold starts\n- A general Lambda definition\n\n**What's missing:**\n- EC2 Auto Scaling lifecycle hooks are not described\n- How lifecycle hooks emit events to EventBridge is not covered\n- The specific integration pattern between these three services is not documented in the provided context\n\n---\n\n**What I can confirm from context:**\n- Lambda *can* be triggered by **CloudWatch Events / EventBridge** (mentioned in the trigger list)\n- Lambda is event-driven and \"runs code in response to events\"\n\nTo properly answer your question, you would need documentation covering EC2 Auto Scaling lifecycle hook states (`Pending:Wait`, `Terminating:Wait`), how they publish to EventBridge, and how Lambda responds and calls `CompleteLifecycleAction`. That information is not present here.",
+      "score": {
+        "accuracy": 0.1,
+        "completeness": 0.1,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "lifecycle hook",
+          "CompleteLifecycleAction"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "lifecycle hook",
+          "EventBridge",
+          "Lambda",
+          "CompleteLifecycleAction"
+        ]
+      },
+      "latency_ms": 6192.253958957735,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "ecs-fargate",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1070
+    },
+    {
+      "question_id": "compute-t2-015",
+      "strategy": "naive_vector",
+      "answer": "The provided context does not contain information about AWS Compute Optimizer or how to enable and use its recommendations to right-size EC2 instances.\n\nThe context only covers **ECS, Fargate, Lambda optimization tips, ECR, and related AWS container/monitoring services**. You would need to consult AWS Compute Optimizer documentation directly for guidance on that topic.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 0.8,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.6666666666666666,
+        "structural_pass": true,
+        "mentions_found": [
+          "right-size"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Compute Optimizer",
+          "right-size"
+        ]
+      },
+      "latency_ms": 2702.8440419817343,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 371
+    },
+    {
+      "question_id": "compute-t4-003",
+      "strategy": "naive_vector",
+      "answer": "## ALB, ECS Services, and Cloud Map in Microservices\n\n### How They Work Together\n\nBased on the provided context, here is how these components integrate:\n\n**ECS Service as the Foundation**\n- Each microservice runs as an ECS service, which maintains a **desired count of tasks** and handles task lifecycle management\n\n**ALB Integration**\n- The ECS service registers tasks as targets in an **ALB target group**\n- The ALB handles **HTTP/HTTPS routing**, directing incoming requests to healthy tasks\n- As ECS scales tasks up/down, they are automatically registered/deregistered from the target group\n\n**Cloud Map (Service Discovery) Integration**\n- AWS Cloud Map provides **DNS-based service discovery** for service-to-service communication\n- When tasks start, ECS registers them with Cloud Map, making them discoverable by other services internally\n\n---\n\n### Typical Traffic Flow\n\n```\nExternal Traffic:  Client → ALB → Target Group → ECS Tasks\nInternal Traffic:  Service A → Cloud Map DNS → Service B Tasks\n```\n\n---\n\n### Key Distinction\n\n| Concern | Solution |\n|---|---|\n| External/edge routing | ALB + Target Groups |\n| Internal service-to-service | Cloud Map DNS discovery |\n\n---\n\n> **Important caveat:** The provided context confirms these integrations exist but does not detail the specific configuration mechanics (e.g., listener rules, health check settings). For deeper implementation details, AWS documentation would be needed.",
+      "score": {
+        "accuracy": 0.72,
+        "completeness": 0.55,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.5,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "ALB target group",
+          "ECS service"
+        ]
+      },
+      "latency_ms": 10042.944708024152,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1431
+    },
+    {
+      "question_id": "compute-t1-008",
+      "strategy": "naive_vector",
+      "answer": "Based on the provided context, I cannot answer this question. The context does not contain any information about **AWS Batch**. It only covers:\n\n- Amazon ECS and AWS Fargate\n- ECS launch types (Fargate vs. EC2)\n- ECS services and load balancing\n- AWS Lambda (briefly mentioned)\n\nTo learn about AWS Batch, I'd recommend consulting the official AWS documentation or an AWS Batch-specific resource.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.3333333333333333,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "AWS Batch"
+        ]
+      },
+      "latency_ms": 2657.875625009183,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 395
+    },
+    {
+      "question_id": "compute-t1-004",
+      "strategy": "naive_vector",
+      "answer": "## AWS Fargate\n\nBased on the provided context, **AWS Fargate is a serverless compute engine for containers that works with Amazon ECS**.\n\n### What it eliminates compared to EC2:\n\nWhen running containers on **EC2 launch type**, you are responsible for:\n- Managing the EC2 instances in your cluster\n- Controlling instance types, AMIs, and capacity\n\nWith **Fargate**, this overhead is removed:\n- **No EC2 instances to manage** — AWS manages the infrastructure entirely\n- You get **task-level isolation**, where each task runs in its own kernel\n\n### Additional Fargate benefits:\n- **Pay per vCPU and memory per second** (vs. paying for entire EC2 instances)\n- Best suited for **microservices, batch jobs, and serverless containers**\n\nIn short, Fargate eliminates the need to provision, configure, and manage the underlying server infrastructure, shifting that responsibility to AWS.",
+      "score": {
+        "accuracy": 0.8,
+        "completeness": 0.75,
+        "faithfulness": 0.85,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "serverless"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Fargate",
+          "ECS",
+          "serverless"
+        ]
+      },
+      "latency_ms": 4524.8535420396365,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 878
+    },
+    {
+      "question_id": "compute-t2-019",
+      "strategy": "naive_vector",
+      "answer": "## AWS Batch with Spot Compute Environments\n\nBased on the provided context, **I don't have enough information to answer this question accurately.**\n\nThe context covers:\n- ECS EC2 vs Fargate launch types\n- Lambda cold start optimization\n- ECS service integrations (load balancers, auto scaling)\n\nIt does **not contain any information about**:\n- AWS Batch configuration\n- Job array setup\n- Batch compute environment definitions\n- Retry strategies for Batch jobs\n\n---\n\n### Recommendation\nTo find accurate guidance on this topic, I'd suggest consulting:\n- The **AWS Batch Developer Guide** (docs.aws.amazon.com)\n- AWS documentation on **Job Arrays** and **Spot Instance integration with Batch**\n\nI'd rather acknowledge the gap than provide potentially inaccurate configuration details.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.75,
+        "structural_pass": true,
+        "mentions_found": [
+          "job array"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "AWS Batch",
+          "job array",
+          "Spot compute environment"
+        ]
+      },
+      "latency_ms": 5417.713916976936,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 781
+    },
+    {
+      "question_id": "compute-t1-012",
+      "strategy": "naive_vector",
+      "answer": "Based on the provided context, I can only partially answer your question.\n\nThe context mentions **Application Load Balancer** several times, noting it provides **HTTP/HTTPS routing** to tasks (in the context of ECS services) and can serve as a **trigger for AWS Lambda**. It is also listed as an integration point for ECS services.\n\nHowever, the context **does not contain enough information** to explain what an ALB fully is or specify what **network layer** it operates at (though HTTP/HTTPS would imply Layer 7, this detail is not explicitly stated in the provided context).",
+      "score": {
+        "accuracy": 0.4,
+        "completeness": 0.2,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.6666666666666666,
+        "structural_pass": true,
+        "mentions_found": [
+          "Layer 7"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "ALB",
+          "Layer 7"
+        ]
+      },
+      "latency_ms": 3613.019082986284,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 577
+    },
+    {
+      "question_id": "compute-t3-003",
+      "strategy": "naive_vector",
+      "answer": "## ALB, NLB, and GWLB Differences\n\nBased on the provided context, I can only partially answer this question.\n\n### What the context covers:\n\n| Load Balancer | Use Case |\n|--------------|----------|\n| **ALB** | HTTP/HTTPS routing to ECS tasks; also a Lambda invocation trigger |\n| **NLB** | TCP/UDP high-performance routing to ECS tasks |\n\n### What's missing from the context:\n\nThe provided documentation **does not include information about Gateway Load Balancer (GWLB)** — its use cases, architecture, or how it compares to ALB and NLB.\n\n### From the context only:\n- **ALB** is suited for **HTTP/HTTPS** workloads with application-layer routing\n- **NLB** is suited for **TCP/UDP** workloads requiring **high performance**\n- Both integrate with **ECS services** for task routing\n\nFor a complete comparison including GWLB (which is typically used for **third-party network appliances like firewalls and intrusion detection systems**), I'd recommend consulting the official AWS documentation, as that detail is outside the scope of the provided context.",
+      "score": {
+        "accuracy": 0.45,
+        "completeness": 0.3,
+        "faithfulness": 0.85,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "ALB",
+          "NLB",
+          "Gateway Load Balancer"
+        ]
+      },
+      "latency_ms": 5909.2977499822155,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "api-gateway",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1050
+    },
+    {
+      "question_id": "compute-t1-001",
+      "strategy": "naive_vector",
+      "answer": "## AWS Lambda Overview\n\nBased on the provided context:\n\n**What it is:** AWS Lambda is a **serverless compute service** that:\n- Runs your code in response to **events**\n- Automatically manages the underlying compute resources\n\n**How it executes code:**\n\nLambda functions run within an **execution environment**, and each function has an **execution role** (an IAM role) that grants it permission to access AWS services and resources.\n\nKey aspects of execution include:\n\n- **Triggers:** Lambda can be invoked by many AWS services (specific services weren't detailed in the provided context)\n- **Cold Starts:** When Lambda needs to create a *new* execution environment, a cold start occurs, which involves:\n  1. Runtime initialization (loading the runtime, JIT compilation for Java/.NET)\n  2. Handler initialization (loading libraries, establishing connections)\n  3. Optionally, VPC ENI attachment (adding 1–10 seconds for VPC-connected functions)\n- **Environment Variables:** Functions can access runtime information via standard APIs, such as the function name, version, AWS Region, and log group\n\n---\n\n> **Note:** The provided context doesn't include deeper details about Lambda's full execution lifecycle (e.g., warm reuse, concurrency model), so a complete picture is limited to what's described above.",
+      "score": {
+        "accuracy": 0.5,
+        "completeness": 0.4,
+        "faithfulness": 0.8,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.6666666666666666,
+        "structural_pass": true,
+        "mentions_found": [
+          "serverless",
+          "function"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Lambda",
+          "function"
+        ]
+      },
+      "latency_ms": 5992.600166006014,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1304
+    },
+    {
+      "question_id": "compute-t1-016",
+      "strategy": "naive_vector",
+      "answer": "## Lambda Layers\n\nBased on the provided context:\n\n**Lambda Layers** are a feature that lets you **package libraries and dependencies separately from your function code**.\n\n### Key Details:\n- A function can use **up to 5 layers**\n- Layers are extracted to the **`/opt` directory** in the execution environment\n\n### Purpose:\nTheir primary purpose is to allow you to separate reusable libraries and dependencies from your core function code. This promotes:\n- **Reusability** – the same layer can be shared across multiple functions\n- **Cleaner packaging** – keeping function code lightweight by offloading dependencies\n\n---\n\n*Note: The provided context does not contain additional details beyond the above (e.g., versioning, sharing across accounts, or supported runtimes).*",
+      "score": {
+        "accuracy": 0.85,
+        "completeness": 0.6,
+        "faithfulness": 0.95,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.6666666666666666,
+        "structural_pass": true,
+        "mentions_found": [
+          "layers",
+          "/opt"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Lambda Layers",
+          "/opt"
+        ]
+      },
+      "latency_ms": 4119.879083009437,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 771
+    },
+    {
+      "question_id": "compute-t5-002",
+      "strategy": "naive_vector",
+      "answer": "The provided context does not contain information about EKS, Pod Identity (IRSA), Karpenter, EBS CSI driver, or Kubernetes PersistentVolumeClaims. The context covers ECS (Elastic Container Service) concepts such as Fargate, EC2 launch types, ECS services, and related AWS integrations.\n\nI cannot accurately answer your question based solely on the provided context.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 0.8,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.6,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "EBS CSI driver",
+          "Karpenter",
+          "PersistentVolumeClaim"
+        ]
+      },
+      "latency_ms": 3353.3170000300743,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 365
+    },
+    {
+      "question_id": "compute-t3-007",
+      "strategy": "naive_vector",
+      "answer": "## Lambda Container Images vs ZIP Deployment Packages\n\nThe provided context **does not contain sufficient information** to fully answer this question. Specifically, the context lacks:\n\n- **Size limits** for either container images or ZIP deployment packages\n- A **direct comparison** of cold start behavior between the two deployment methods\n\n### What the Context Does Tell Us (Partially Relevant)\n\nRegarding cold starts generally, contributing factors include:\n- Runtime initialization\n- Handler initialization\n- VPC ENI attachment\n\nAnd mitigation strategies include:\n- Keeping **deployment packages small** (implying size affects cold start)\n- Using Provisioned Concurrency\n- Using arm64/Graviton2\n\n---\n\nTo get a complete answer to your question, I'd recommend consulting the [AWS Lambda documentation](https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-package.html) directly, which covers the **250 MB limit for ZIP packages**, the **10 GB limit for container images**, and how image size can influence cold start latency.",
+      "score": {
+        "accuracy": 0.2,
+        "completeness": 0.15,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.75,
+        "structural_pass": true,
+        "mentions_found": [
+          "10 GB",
+          "250 MB"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "ZIP deployment",
+          "container image",
+          "cold start"
+        ]
+      },
+      "latency_ms": 5758.000125002582,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "ecs-fargate",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1035
+    },
+    {
+      "question_id": "compute-t3-015",
+      "strategy": "naive_vector",
+      "answer": "Based on the provided context, I cannot fully answer this question.\n\nThe context only briefly mentions:\n- **Application Load Balancer (ALB)**: HTTP/HTTPS routing to tasks\n- **Network Load Balancer (NLB)**: TCP/UDP high-performance routing\n\nHowever, the context contains **no information about EC2 Classic Load Balancer** — including its features, how it differs from ALB/NLB, or when it was deprecated.\n\nTo get a complete answer on this topic, you would need to consult AWS documentation or other sources covering the full load balancer comparison.",
+      "score": {
+        "accuracy": 0.2,
+        "completeness": 0.1,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "deprecated"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Classic Load Balancer",
+          "ALB",
+          "NLB"
+        ]
+      },
+      "latency_ms": 3047.3398330505006,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "api-gateway",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 548
+    },
+    {
+      "question_id": "compute-t5-006",
+      "strategy": "naive_vector",
+      "answer": "## Genomics Secondary Analysis Pipeline: AWS Services Integration\n\nThe provided context **does not contain enough information** to fully answer this question. The context only covers limited topics:\n\n---\n\n## What the Context *Can* Address\n\n### Lambda Optimization (partial relevance)\n- Keep deployment packages small\n- Initialize SDK clients outside the handler\n- Use arm64/Graviton2 for faster initialization\n- Use Provisioned Concurrency\n\n### ECS Launch Type Options (partial relevance)\n**Fargate** — serverless containers, task-level isolation, good for microservices/batch jobs\n**EC2 Launch Type** — supports Spot Instances for cost savings, GPU workloads, full instance control\n\n### Lambda Triggers (partial relevance)\nLambda can be triggered by **SQS, Kinesis, DynamoDB Streams** — which could theoretically support pipeline event-driven stages\n\n---\n\n## What the Context Does NOT Cover\n\nThe context provides **no information** on:\n- ❌ AWS Batch (job queues, compute environments, array jobs)\n- ❌ Step Functions (state machines, error handling, branching)\n- ❌ S3 (data staging, event notifications, lifecycle policies)\n- ❌ Fault tolerance patterns specific to genomics\n- ❌ Result aggregation strategies\n\n---\n\n**To answer your question accurately, additional documentation on AWS Batch, Step Functions, and S3 would be required.**",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.6666666666666666,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "AWS Batch",
+          "Step Functions",
+          "S3",
+          "Lambda"
+        ]
+      },
+      "latency_ms": 7050.610790960491,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1334
+    },
+    {
+      "question_id": "compute-t1-020",
+      "strategy": "naive_vector",
+      "answer": "## Network Load Balancer (NLB)\n\nBased on the provided context, I can only give you **limited information** about NLB.\n\n### What the Context States About NLB:\nNLB is described as providing **TCP/UDP high-performance routing** to ECS tasks when integrated with an ECS service.\n\n### What the Context Does NOT Cover:\nThe context does **not contain enough information** to fully answer:\n- A complete definition of NLB\n- Detailed use cases for NLB\n- A thorough comparison of when to choose NLB over ALB\n\n### What Can Be Inferred from Context:\nFrom the brief mention, NLB vs ALB appears to differ in:\n| Feature | NLB | ALB |\n|---------|-----|-----|\n| Protocol | TCP/UDP | HTTP/HTTPS |\n| Focus | High performance | Routing rules |\n\n---\n\nFor a complete answer on NLB vs ALB trade-offs, I'd recommend consulting the **AWS documentation** or an expanded knowledge source, as the provided context only briefly references NLB in the context of ECS service integrations.",
+      "score": {
+        "accuracy": 0.3,
+        "completeness": 0.2,
+        "faithfulness": 0.8,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.3333333333333333,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "NLB"
+        ]
+      },
+      "latency_ms": 5768.589874962345,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 956
+    },
+    {
+      "question_id": "compute-t3-011",
+      "strategy": "naive_vector",
+      "answer": "## ECS Rolling vs. CodeDeploy Blue/Green Deployments\n\nThe provided context **does not contain sufficient information** to fully answer this question. The context covers ECS service integrations, Fargate, API Gateway stages, and EC2 launch types, but does **not describe rolling deployments or CodeDeploy Blue/Green deployment strategies** for ECS.\n\n### What the context does support:\n\nFrom the available information, I can only note that:\n\n- ECS services maintain a **desired count of tasks**, which is relevant to how deployments replace running tasks\n- ECS integrates with **Application Load Balancers and Network Load Balancers**, which are components used in Blue/Green deployments to shift traffic between target groups\n\n### What's missing from the context:\n\nTo properly answer your question, the context would need to cover:\n- How rolling deployments incrementally replace tasks and their failure behavior\n- How CodeDeploy Blue/Green provisions a parallel (\"green\") environment\n- Rollback mechanisms for each strategy (e.g., automatic rollback triggers, traffic shifting controls)\n- Risk profiles such as mixed-version traffic during rolling updates\n\n---\n\n**Recommendation:** Consult the [AWS ECS Deployment Types documentation](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/deployment-types.html) for an accurate comparison of these strategies.",
+      "score": {
+        "accuracy": 0.1,
+        "completeness": 0.1,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "automatic rollback"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "rolling deployment",
+          "Blue/Green deployment",
+          "CodeDeploy"
+        ]
+      },
+      "latency_ms": 7767.892709001899,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "api-gateway",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1365
+    },
+    {
+      "question_id": "compute-t2-004",
+      "strategy": "naive_vector",
+      "answer": "Based on the provided context, **I cannot answer this question**.\n\nThe context provided covers Lambda topics such as cold starts, concurrency, IAM execution roles, and API Gateway integration, but it contains **no information about AWS Step Functions**, state machines, retry logic configuration, or error handling workflows.\n\nTo answer your question accurately, you would need documentation specifically covering Step Functions concepts like:\n- State machine definition (Amazon States Language)\n- `Retry` and `Catch` fields in task states\n- Step Functions integration with Lambda\n\nI'd recommend checking the **AWS Step Functions Developer Guide** for that information.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "Retry",
+          "Catch"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Step Functions",
+          "Task state",
+          "Retry",
+          "Catch"
+        ]
+      },
+      "latency_ms": 3884.477958024945,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "api-gateway",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 669
+    },
+    {
+      "question_id": "compute-t2-008",
+      "strategy": "naive_vector",
+      "answer": "## Blue/Green Deployment on ECS with CodeDeploy\n\nThe provided context **does not contain specific information** about Blue/Green deployments on ECS using CodeDeploy or zero-downtime release configurations.\n\n### What the context does mention related to your question:\n\n- ECS services maintain a **desired count of tasks**\n- ECS integrates with **Application Load Balancer** (HTTP/HTTPS routing) and **Network Load Balancer** (TCP/UDP routing)\n- ECS integrates with **Auto Scaling** (target tracking, step scaling, scheduled scaling)\n- API Gateway has **Canary deployments** that route a percentage of traffic to a new deployment — though this applies to API Gateway stages, not ECS/CodeDeploy directly\n\n### To fully answer your question, you would need documentation covering:\n- CodeDeploy deployment group configuration for ECS\n- `appspec.yaml` structure for ECS Blue/Green\n- ALB listener and target group (blue/green) setup\n- Traffic shifting hooks (BeforeAllowTraffic, AfterAllowTraffic)\n- Rollback triggers and alarms\n\nI'd recommend consulting the **AWS CodeDeploy documentation for ECS** and the **ECS Blue/Green deployment guide** directly for accurate implementation steps.",
+      "score": {
+        "accuracy": 0.1,
+        "completeness": 0.05,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "CodeDeploy",
+          "target group"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "ECS",
+          "CodeDeploy",
+          "Blue/Green",
+          "target group"
+        ]
+      },
+      "latency_ms": 6100.52162501961,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "ecs-fargate",
+        "api-gateway",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1179
+    },
+    {
+      "question_id": "compute-t4-008",
+      "strategy": "naive_vector",
+      "answer": "Based on the provided context, I can only partially answer this question.\n\nThe context confirms that with **EC2 launch type**, you:\n- Manage your own EC2 instances in the cluster\n- Can **use Spot Instances for cost savings**\n- Have full control over instance types and capacity\n\nThe context also mentions that ECS services support **Auto Scaling** (target tracking, step scaling, or scheduled scaling).\n\nHowever, the context **does not contain enough detail** to fully explain how capacity providers, Auto Scaling groups, and managed scaling specifically work together mechanically — for example, how managed scaling policies interact with Spot Instance interruptions, how capacity provider weights are configured, or how the cluster auto-scales in response to task placement demands.\n\nFor a complete answer on that topic, I'd recommend consulting the [AWS ECS Capacity Providers documentation](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/cluster-capacity-providers.html) directly.",
+      "score": {
+        "accuracy": 0.2,
+        "completeness": 0.1,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.5,
+        "structural_pass": true,
+        "mentions_found": [
+          "capacity provider"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "capacity provider",
+          "managed scaling"
+        ]
+      },
+      "latency_ms": 5588.607790996321,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 997
+    },
+    {
+      "question_id": "compute-t2-012",
+      "strategy": "naive_vector",
+      "answer": "The provided context does not contain information about EC2 Instance Connect or Session Manager. The context only covers Lambda VPC configuration, ECS/Fargate networking, ENIs, NAT Gateways, and related AWS services.\n\nI cannot accurately answer your question based on the available context.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.6666666666666666,
+        "structural_pass": true,
+        "mentions_found": [
+          "Session Manager"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "EC2 Instance Connect",
+          "Session Manager"
+        ]
+      },
+      "latency_ms": 2486.3225830486044,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "ecs-fargate",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 290
+    },
+    {
+      "question_id": "compute-t4-004",
+      "strategy": "naive_vector",
+      "answer": "## Lambda to DynamoDB Without Internet Access\n\nBased on the provided context, here's how these components work together:\n\n### 1. Execution Role (Identity-Based Permissions)\nThe Lambda function's **execution role** must grant permission to call DynamoDB. This IAM role controls *what AWS services the function is allowed to access*.\n\nAdditionally, to operate inside a VPC, the execution role needs the **`AWSLambdaVPCAccessExecutionRole`** managed policy, which grants the EC2 permissions required to:\n- Create/Describe/Delete **Elastic Network Interfaces (ENIs)** in your subnets\n\n### 2. VPC Configuration\n- The function is attached to your VPC by specifying **SubnetIds and SecurityGroupIds**\n- Lambda creates **ENIs** in your subnets so the function can reach VPC resources\n- However, **Lambda functions in a VPC have no internet access by default** — so DynamoDB (a public AWS endpoint) would be unreachable without a solution\n\n### 3. VPC Endpoints (The Missing Link)\nRather than routing through the internet or a costly NAT Gateway, a **VPC Endpoint for DynamoDB** allows the function to reach DynamoDB *privately within the AWS network*, without internet access.\n\n---\n\n### The Complete Flow\n```\nLambda Function\n    → (ENIs via execution role's VPC permissions)\n    → Private Subnet\n    → VPC Endpoint for DynamoDB\n    → DynamoDB (execution role authorizes the API calls)\n```\n\n### Important Caveat\nThe context covers the **execution role** and **VPC endpoints** clearly, but does **not provide information about resource-based policies** on DynamoDB specifically — so that part of your question cannot be answered from the provided context alone.",
+      "score": {
+        "accuracy": 0.65,
+        "completeness": 0.6,
+        "faithfulness": 0.85,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.25,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "DynamoDB"
+        ]
+      },
+      "latency_ms": 9484.590708976611,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "api-gateway",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1650
+    },
+    {
+      "question_id": "compute-t1-005",
+      "strategy": "naive_vector",
+      "answer": "## Amazon EKS vs Self-Managed Kubernetes\n\nBased on the provided context, **I cannot answer this question**. The documentation provided covers Amazon ECS (Elastic Container Service) and AWS Fargate, but contains **no information about Amazon EKS (Elastic Kubernetes Service)** or comparisons with self-managed Kubernetes.\n\nTo get accurate information about EKS and how it differs from self-managed Kubernetes, I'd recommend consulting the **official AWS EKS documentation** at docs.aws.amazon.com.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.6666666666666666,
+        "structural_pass": true,
+        "mentions_found": [
+          "managed"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "EKS",
+          "Kubernetes"
+        ]
+      },
+      "latency_ms": 2659.4001250341535,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 496
+    },
+    {
+      "question_id": "compute-t1-009",
+      "strategy": "naive_vector",
+      "answer": "Based on the provided context, I cannot answer this question. The context does not contain any information about **AWS Step Functions** or the types of state machines it supports. The context only covers Lambda triggers, Amazon ECS, AWS Fargate, and a brief description of AWS Lambda.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.3333333333333333,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "Step Functions"
+        ]
+      },
+      "latency_ms": 2114.632499986328,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "ecs-fargate",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 284
+    },
+    {
+      "question_id": "compute-t2-020",
+      "strategy": "naive_vector",
+      "answer": "## Scaling ECS Service Based on SQS Queue Depth\n\nThe provided context does **not contain enough information** to fully answer this question. The context only briefly mentions:\n\n- That ECS Auto Scaling supports \"Target tracking, step scaling, or scheduled scaling\"\n- That SQS exists as a Lambda trigger source\n\nHowever, the context **does not cover**:\n- How to configure CloudWatch alarms\n- How to connect CloudWatch alarms to ECS Auto Scaling policies\n- How to use SQS queue depth metrics (e.g., `ApproximateNumberOfMessagesVisible`) as a scaling trigger\n- The specific steps to wire these services together\n\nFor a complete answer on this topic, I'd recommend consulting:\n- AWS documentation on **ECS Service Auto Scaling**\n- AWS documentation on **CloudWatch Alarms with custom metrics**\n- AWS guidance on **scaling ECS based on SQS queue depth**",
+      "score": {
+        "accuracy": 0.1,
+        "completeness": 0.05,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.75,
+        "structural_pass": true,
+        "mentions_found": [
+          "ApproximateNumberOfMessagesVisible"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "SQS",
+          "ECS",
+          "ApproximateNumberOfMessagesVisible"
+        ]
+      },
+      "latency_ms": 4802.1363749867305,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 847
+    },
+    {
+      "question_id": "compute-t5-001",
+      "strategy": "naive_vector",
+      "answer": "# Globally Distributed Serverless API Architecture\n\n## Core Components & Their Roles\n\n| Component | Role |\n|-----------|------|\n| **Route 53** | DNS-level traffic routing & health-based failover |\n| **CloudFront** | Global edge caching, Lambda@Edge, TLS termination |\n| **API Gateway** | Regional API endpoints (REST/HTTP) per region |\n| **Lambda** | Compute, deployed per region with Provisioned Concurrency |\n| **DynamoDB Global Tables** | Multi-region active-active data replication |\n\n---\n\n## Architecture Blueprint\n\n```\nUser Request\n     │\n     ▼\nRoute 53 (Latency-based or Geolocation routing)\n     │\n     ├──► CloudFront Distribution (global edge)\n     │         │\n     │         ├── Lambda@Edge (auth, request manipulation)\n     │         │\n     │         └──► Regional API Gateway (us-east-1 / eu-west-1 / ap-southeast-1)\n     │                    │\n     │                    └──► Lambda (Provisioned Concurrency, arm64/Graviton2)\n     │                              │\n     │                              └──► DynamoDB Global Table (local replica)\n     │\n     └── Health Checks → Failover triggers\n```\n\n---\n\n## Traffic Routing Strategy\n\n### Route 53 Configuration\n- **Primary strategy**: Latency-based routing → directs users to lowest-latency regional endpoint\n- **Failover**: Health checks on each regional API Gateway endpoint; unhealthy region is automatically removed from DNS\n- **Geolocation routing** (optional): Force specific regions for data residency compliance (e.g., GDPR)\n\n### CloudFront Layer\n- Acts as a **single global entry point** with a unified domain (e.g., `api.example.com`)\n- Routes to regional **API Gateway origins** based on edge location\n- **Lambda@Edge** handles:\n  - Cognito token validation at the edge (avoid Lambda cold starts for auth)\n  - Request header manipulation before hitting API Gateway\n  - Cache-control logic for GET responses\n\n### API Gateway Stages\n- Each region runs its own API Gateway with **matching stage structure** (`prod`, `staging`)\n- Stage variables point to **regional Lambda aliases** (e.g., `prod` alias → stable version)\n- **Canary deployments** per region: shift 10% traffic to new Lambda version, validate, then promote\n\n---\n\n## Data Consistency with DynamoDB Global Tables\n\n### Replication Model\n- **Active-active**: writes accepted in any region, replicated asynchronously (~1 second typical lag)\n- Each Lambda writes to its **local regional replica** for lowest latency\n\n### Consistency Trade-offs & Handling\n\n```\nStrong Consistency  ←──────────────────→  Eventual Consistency\n(single region read)                      (cross-region replication)\n```\n\n| Read Pattern | Approach |\n|---|---|\n| Read-your-own-writes | Write + read in **same region** |\n| Cross-region reads | Accept eventual consistency or use **conditional writes** |\n| Critical operations | Use **DynamoDB transactions** within a single region |\n| Conflict resolution | Last-writer-wins (timestamp-based, built into Global Tables) |\n\n**Practical pattern**: Use a `version` attribute + conditional expressions to detect and reject stale writes.\n\n---\n\n## Failover Behavior\n\n### Failure Scenario Walkthrough\n\n```\n1. us-east-1 API Gateway becomes unhealthy\n        │\n2. Route 53 health check fails (within ~30s)\n        │\n3. DNS TTL expires → traffic shifts to eu-west-1\n        │\n4. eu-west-1 Lambda reads from local DynamoDB replica\n   (data may be seconds behind — eventual consistency window)\n        │\n5. us-east-1 recovers → Route 53 re-adds to rotation\n```\n\n### Key Failover Considerations\n- **DNS TTL**: Set low (60s) to minimize failover delay, but not zero (DNS caching behavior)\n- **Provisioned Concurrency**: Pre-warm Lambda in all regions — eliminates cold starts during traffic surge after failover\n- **DynamoDB**: No failover needed — Global Tables are inherently multi-region; the replica is always available\n\n---\n\n## Cold Start Mitigation (Per Context)\n\n- **Provisioned Concurrency** on Lambda aliases in every region\n- **arm64/Graviton2** for faster initialization\n- **SDK clients initialized outside the handler** (reused across invocations)\n- **Small deployment packages** to reduce init time\n\n---\n\n## Key Limitations to Acknowledge\n\n> ⚠️ **Not covered in provided context** — inferred from general architecture knowledge:\n> - Specific Route 53 health check configuration details\n> - DynamoDB Global Tables replication SLA specifics\n> - Exact CloudFront-to-API Gateway origin configuration syntax\n\nThese would require additional AWS documentation references for precise implementation details.\n\n---\n\n## Summary Decision Matrix\n\n| Concern | Solution |\n|---|---|\n| Global low latency | CloudFront + Latency-based Route 53 |\n| Regional isolation | Per-region API Gateway + Lambda |\n| Data availability | DynamoDB Global Tables (active-active) |\n| Consistency | Same-region read-after-write; eventual cross-region |\n| Failover speed | Route 53 health checks + low TTL |\n| Cold start on failover | Provisioned Concurrency in all regions |\n| Safe deployments | Canary releases via API Gateway stage + Lambda aliases |",
+      "score": {
+        "accuracy": 0.88,
+        "completeness": 0.92,
+        "faithfulness": 0.85,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "Global Tables"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Lambda",
+          "API Gateway",
+          "DynamoDB Global Tables",
+          "CloudFront",
+          "Route 53"
+        ]
+      },
+      "latency_ms": 29157.538583036512,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "api-gateway",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 5065
+    },
+    {
+      "question_id": "compute-t2-016",
+      "strategy": "naive_vector",
+      "answer": "## Configuring Lambda with AWS Secrets Manager (Cached Credentials)\n\nThe provided context **does not contain enough information** to fully answer this question.\n\nThe context covers related Lambda topics, but **does not specifically address**:\n- How to integrate AWS Secrets Manager with Lambda\n- Caching mechanisms for secrets (e.g., the AWS Secrets Manager caching library)\n- Step-by-step configuration for database credential retrieval\n\n---\n\n### What the context *does* suggest as relevant considerations:\n\n1. **IAM Permissions** – Your Lambda's execution role would need permissions to call Secrets Manager (the context notes the execution role \"grants the function permission to access AWS services and resources\")\n\n2. **VPC Access** – If your database is in a VPC, you'd need to attach Lambda to that VPC via `SubnetIds` and `SecurityGroupIds`\n\n3. **Performance Tip** – The context recommends *initializing SDK clients outside the handler*, which aligns with a caching pattern (initialize the Secrets Manager client once, outside the handler)\n\n---\n\nFor a complete answer, I'd recommend consulting the **AWS Secrets Manager documentation**, specifically the **AWS Secrets Manager caching client for Python/Java**, which is not covered in the provided context.",
+      "score": {
+        "accuracy": 0.2,
+        "completeness": 0.2,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.75,
+        "structural_pass": true,
+        "mentions_found": [
+          "caching"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Secrets Manager",
+          "Lambda",
+          "caching"
+        ]
+      },
+      "latency_ms": 6831.296249991283,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "api-gateway",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1263
+    },
+    {
+      "question_id": "compute-t1-013",
+      "strategy": "naive_vector",
+      "answer": "Based on the provided context, I cannot fully answer this question. The context does not contain information about EC2 On-Demand, Reserved, and Spot pricing models comparisons.\n\nThe only pricing-related information in the context refers to **AWS Lambda** provisioned concurrency and duration costs, and there is only a brief mention that EC2 launch type for ECS **\"can use Spot Instances for cost savings\"** — but no details about the pricing models themselves are provided.\n\nTo get accurate information about EC2 pricing models, I'd recommend checking the [AWS EC2 Pricing page](https://aws.amazon.com/ec2/pricing/) directly.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.6666666666666666,
+        "structural_pass": true,
+        "mentions_found": [
+          "Spot"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "On-Demand",
+          "Spot Instance"
+        ]
+      },
+      "latency_ms": 4003.2000839710236,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 626
+    },
+    {
+      "question_id": "compute-t3-008",
+      "strategy": "naive_vector",
+      "answer": "Based on the provided context, I cannot fully answer this question. The context does not contain information about **Elastic Beanstalk**, **App Runner**, or **Lightsail**.\n\nThe context only covers:\n- **ECS with AWS Fargate** (serverless container orchestration)\n- **AWS Lambda** (serverless functions)\n- Related integrations like API Gateway, CloudWatch, ECR, etc.\n\nTo compare Elastic Beanstalk, App Runner, and Lightsail for minimal-overhead web application deployment, I would need documentation specifically covering those services. I recommend consulting the **official AWS documentation** or AWS's service comparison resources for an accurate answer.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "Lightsail",
+          "Elastic Beanstalk",
+          "App Runner"
+        ]
+      },
+      "latency_ms": 3352.5788330007344,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 655
+    },
+    {
+      "question_id": "compute-t3-004",
+      "strategy": "naive_vector",
+      "answer": "## ECS vs EKS Comparison\n\nBased on the provided context, I can only speak to **ECS specifically** — the context does not contain any information about **EKS (Elastic Kubernetes Service)**, so a direct comparison cannot be made accurately.\n\n## What the Context Covers About ECS for Microservices\n\nECS does appear well-suited for a greenfield microservices project based on the provided information:\n\n- **Fargate launch type** eliminates EC2 management overhead, ideal for getting started quickly\n- **App Mesh integration** provides a service mesh purpose-built for microservices\n- **Service discovery** via AWS Cloud Map for DNS-based inter-service communication\n- **Auto Scaling** with multiple strategies (target tracking, step, scheduled)\n- **Load balancing** options (ALB for HTTP/HTTPS routing)\n- **Observability** through CloudWatch Container Insights and X-Ray distributed tracing\n\n---\n\n> ⚠️ **Limitation of this answer**: To properly compare ECS vs EKS for your use case, you would need additional context covering EKS features, Kubernetes capabilities, operational complexity, and ecosystem considerations. I'd recommend consulting AWS documentation directly for that comparison.",
+      "score": {
+        "accuracy": 0.3,
+        "completeness": 0.2,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "Kubernetes"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "ECS",
+          "EKS",
+          "Kubernetes"
+        ]
+      },
+      "latency_ms": 5805.1689169951715,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1187
+    },
+    {
+      "question_id": "compute-t4-011",
+      "strategy": "naive_vector",
+      "answer": "## Observability for Lambda-Based APIs: What the Context Supports\n\nBased on the provided context, I can only partially address this question.\n\n### What the Context Confirms\n\n**X-Ray** is mentioned as providing **distributed tracing** for Lambda functions — this is a direct integration listed as a Lambda operational tool.\n\n**CloudWatch** is mentioned for **logs, metrics, and Container Insights** as part of the Lambda ecosystem.\n\n**API Gateway** is confirmed as a Lambda trigger, completing the request chain.\n\n---\n\n### What the Context Does NOT Cover\n\nThe context does **not contain information** about:\n\n- **CloudWatch Application Signals** — not mentioned at all\n- **Lambda Powertools** — not mentioned at all\n- How these three tools integrate or complement each other\n- Specific observability patterns or architectures combining them\n\n---\n\n### What I Can Reasonably State from Context\n\nThe context establishes that a Lambda-based API involves:\n- **API Gateway** → triggers Lambda\n- **CloudWatch** → captures logs and metrics\n- **X-Ray** → provides distributed tracing\n\nThis suggests a basic observability foundation, but the **full picture of how Application Signals and Powertools fit into this** goes beyond what the provided context supports.\n\n> To answer your question accurately and completely, additional documentation on CloudWatch Application Signals and Lambda Powertools would be needed.",
+      "score": {
+        "accuracy": 0.3,
+        "completeness": 0.2,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.75,
+        "structural_pass": true,
+        "mentions_found": [
+          "X-Ray",
+          "Powertools"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "X-Ray",
+          "Lambda Powertools",
+          "Application Signals"
+        ]
+      },
+      "latency_ms": 8081.960250041448,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "ecs-fargate",
+        "api-gateway",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1403
+    },
+    {
+      "question_id": "compute-t3-012",
+      "strategy": "naive_vector",
+      "answer": "Based on the provided context, I **cannot answer this question**. The context does not contain any information about AWS Batch or AWS Step Functions.\n\nThe context only covers:\n- **Amazon ECS / AWS Fargate** (container orchestration and serverless compute for containers)\n- **AWS Lambda triggers** (SQS, SNS, S3, DynamoDB Streams, etc.)\n\nTo compare AWS Batch and Step Functions for multi-step pipeline orchestration, I'd recommend consulting the official AWS documentation for those specific services.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.6666666666666666,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "AWS Batch",
+          "Step Functions"
+        ]
+      },
+      "latency_ms": 3046.68212501565,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 500
+    },
+    {
+      "question_id": "compute-t1-017",
+      "strategy": "naive_vector",
+      "answer": "## AWS CloudWatch in the Context of ECS/Containers\n\nBased on the provided context, **CloudWatch** is mentioned only briefly as a monitoring service that handles:\n\n- **Logs**\n- **Metrics**\n- **Container Insights**\n\nThe context does **not contain enough information** to fully answer your question about what CloudWatch monitors specifically for **EC2 instances**. The documentation provided focuses on ECS and Fargate, with only a high-level reference to CloudWatch as an integrated AWS service.\n\nWhat I can confirm from the context is that CloudWatch is one of the key AWS services that integrates with ECS for observability purposes, but detailed EC2-specific monitoring capabilities are **not covered in the provided context**.",
+      "score": {
+        "accuracy": 0.1,
+        "completeness": 0.05,
+        "faithfulness": 0.8,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.3333333333333333,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "CloudWatch"
+        ]
+      },
+      "latency_ms": 3994.0346659859642,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 729
+    },
+    {
+      "question_id": "compute-t5-003",
+      "strategy": "naive_vector",
+      "answer": "## Limitations of My Answer\n\nThe provided context is **fragmentary** and does not contain enough information to fully answer this question. I can only address what the context explicitly covers, and will clearly flag gaps.\n\n---\n\n## What the Context Supports\n\n### Components Mentioned\n\n| Component | What Context Says |\n|-----------|------------------|\n| **Lambda triggers** | Can be triggered by **SQS** (listed as a trigger source) |\n| **ECS Fargate** | No EC2 to manage, pay per vCPU/memory per second, task-level isolation, good for batch jobs |\n| **SQS** | Listed as a Lambda trigger |\n| **Step Functions** | **Not mentioned at all** in the provided context |\n\n---\n\n## Partial Architecture (Context-Supported Only)\n\nBased strictly on the context:\n\n- **SQS → Lambda**: SQS can trigger Lambda directly for incoming image job messages\n- **ECS Fargate for heavy processing**: Suited for large-file batch jobs given per-second billing and task isolation\n- **ECS Auto Scaling**: Can handle bursty traffic via target tracking or step scaling\n\n---\n\n## What the Context Cannot Answer\n\n- How **Step Functions** orchestrates the pipeline or handles partial failures\n- Specific **cost optimization** strategies\n- How large files are passed between services\n- Retry/failure handling patterns\n\n**For a complete answer, additional documentation on Step Functions, S3, and pipeline orchestration patterns would be needed.**",
+      "score": {
+        "accuracy": 0.15,
+        "completeness": 0.1,
+        "faithfulness": 0.8,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.8,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "Lambda",
+          "Step Functions",
+          "ECS Fargate",
+          "SQS"
+        ]
+      },
+      "latency_ms": 9229.340707999654,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "ecs-fargate",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1411
+    },
+    {
+      "question_id": "compute-t2-001",
+      "strategy": "naive_vector",
+      "answer": "The provided context does not contain enough information to answer this question. The context mentions that ECS services support Auto Scaling with target tracking policies, and that EC2 launch type allows you to manage EC2 instances in your cluster, but it does **not include any details** about:\n\n- How to configure an EC2 Auto Scaling group\n- How to set up a target tracking scaling policy\n- How to define a 50% CPU utilization target\n\nYou would need to consult AWS documentation on **EC2 Auto Scaling** and **Target Tracking Scaling Policies** for a complete answer.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.5,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "Auto Scaling Group",
+          "Target Tracking"
+        ]
+      },
+      "latency_ms": 3838.9372079982422,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 569
+    },
+    {
+      "question_id": "compute-t5-007",
+      "strategy": "naive_vector",
+      "answer": "## Honest Assessment\n\n**The provided context does not contain enough information to answer this question.**\n\nThe query asks specifically about:\n\n- **EKS** (Elastic Kubernetes Service) — not mentioned in the context\n- **Karpenter** (node autoscaler) — not mentioned in the context\n- **Graviton instances in Kubernetes** — only a brief mention of `arm64/Graviton2` exists, but only in the context of Lambda cold start optimization, not Kubernetes\n- **Spot interruption handling** — not mentioned in the context\n- **Mixed CPU-architecture Kubernetes workloads** — not covered\n\n## What the Context *Does* Cover\n\nThe provided context only addresses:\n- **ECS with Fargate vs. EC2 launch types**\n- **ECS service scaling and load balancing**\n- **Lambda cold start optimization** (where the arm64/Graviton2 tip appears)\n\n---\n\n**To properly answer your question, you would need documentation covering EKS node groups, Karpenter provisioner/NodePool configuration, multi-arch node selectors/tolerations, and EC2 Spot interruption handling (e.g., Node Termination Handler).** Those topics are outside the scope of the provided context.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "Graviton",
+          "Spot interruption"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Karpenter",
+          "Graviton",
+          "Spot interruption",
+          "arm64",
+          "NodePool"
+        ]
+      },
+      "latency_ms": 7989.523625001311,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1123
+    },
+    {
+      "question_id": "compute-t4-005",
+      "strategy": "naive_vector",
+      "answer": "Based on the provided context, I cannot answer this question adequately.\n\nThe context does not contain any information about **EKS**, **OIDC providers**, **IRSA (IAM Roles for Service Accounts)**, or **Kubernetes service accounts**. The context only covers:\n\n- Lambda execution roles\n- ECS agent permissions for ECR/CloudWatch\n- Lambda authorizers\n- Brief mentions of AWS services like ECR, CloudWatch, Secrets Manager, App Mesh, and X-Ray\n\nTo answer your question about how EKS OIDC, IRSA, and Kubernetes service accounts work together, you would need documentation specifically covering EKS IAM integration, which is not present in the provided context.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "OIDC",
+          "service account"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "IRSA",
+          "OIDC provider",
+          "Kubernetes service account",
+          "IAM role"
+        ]
+      },
+      "latency_ms": 3032.570959010627,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "api-gateway",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 655
+    },
+    {
+      "question_id": "compute-t2-005",
+      "strategy": "naive_vector",
+      "answer": "The provided context does not contain information about EKS (Elastic Kubernetes Service), Cluster Autoscaler, or managed node groups.\n\nThe context only covers:\n- **ECS** service configurations (load balancers, service discovery, auto scaling)\n- **ECS launch types** (EC2 vs. Fargate)\n- **Lambda** cold start optimizations and Provisioned Concurrency\n\nI cannot accurately answer your question about EKS Cluster Autoscaler configuration based on the available context. I'd recommend consulting the **AWS EKS documentation** or Kubernetes Cluster Autoscaler documentation for that information.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 0.8,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.75,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "EKS",
+          "Cluster Autoscaler",
+          "managed node group"
+        ]
+      },
+      "latency_ms": 3779.5906249666587,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 590
+    },
+    {
+      "question_id": "compute-t4-001",
+      "strategy": "naive_vector",
+      "answer": "## EC2 Secure Access to S3 and RDS: How the Components Work Together\n\nBased on the provided context, I can partially answer this question, but the context has **significant gaps** regarding EC2 instance profiles specifically. Here's what I can and cannot confirm:\n\n---\n\n### What the Context Supports\n\n**IAM Roles for Permissions**\n- Every function/compute resource needs an **execution role (IAM role)** that grants permission to access AWS services like S3, DynamoDB, etc.\n- This role defines *what AWS services* the resource can call\n\n**VPC Security Groups for Network Access**\n- Security groups are applied at the resource level to control network traffic\n- For RDS access specifically, the compute resource and RDS instance must be in the same VPC, with security groups permitting the connection\n\n---\n\n### What the Context Does NOT Cover\n\nThe provided context **does not contain enough information** to fully explain:\n- How **EC2 instance profiles** work (the context only mentions IAM roles in the context of Lambda)\n- The specific mechanism of attaching IAM roles to EC2 instances\n- EC2-to-S3 or EC2-to-RDS access patterns specifically\n\n---\n\n### Honest Recommendation\n\nTo fully answer your question, you would need additional documentation covering:\n1. EC2 instance profiles and role attachment\n2. S3 bucket policies\n3. RDS security group configuration for EC2 access\n\nThe context provided is primarily **Lambda and ECS-focused**, not EC2-specific.",
+      "score": {
+        "accuracy": 0.2,
+        "completeness": 0.15,
+        "faithfulness": 0.8,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.25,
+        "structural_pass": true,
+        "mentions_found": [
+          "instance profile",
+          "security group"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "RDS security group"
+        ]
+      },
+      "latency_ms": 7840.339582995512,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "ecs-fargate",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1454
+    },
+    {
+      "question_id": "compute-t4-009",
+      "strategy": "naive_vector",
+      "answer": "Based on the provided context, I cannot fully answer this question.\n\nThe context only mentions **SQS** as a Lambda trigger source and lists some Lambda trigger services (S3, SNS, EventBridge, DynamoDB Streams, etc.), but it does **not contain information about**:\n\n- Lambda function destinations\n- Dead-letter queue (DLQ) configuration for Lambda\n- CloudWatch alarms integration with Lambda error handling\n- Asynchronous Lambda processing reliability patterns\n\nTo properly answer how these three components work together, I would need documentation covering Lambda's asynchronous invocation model, destination configuration, and error handling mechanisms — none of which are present in the provided context.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.5,
+        "structural_pass": true,
+        "mentions_found": [
+          "Destinations"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "DLQ",
+          "CloudWatch alarm"
+        ]
+      },
+      "latency_ms": 4278.495415986981,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "ecs-fargate",
+        "api-gateway",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 707
+    },
+    {
+      "question_id": "compute-t2-009",
+      "strategy": "naive_vector",
+      "answer": "## CloudWatch Container Insights for ECS\n\nBased on the provided context, I can only give you a **partial answer** — the context confirms the relationship between these services but does not contain detailed configuration steps.\n\n### What the Context Confirms\n\n- **CloudWatch** integrates with ECS for **logs, metrics, and Container Insights**\n- **ECR, Secrets Manager, App Mesh, and X-Ray** are listed as ECS integrations alongside CloudWatch\n\n### What the Context Does NOT Cover\n\nThe context does **not include**:\n- Step-by-step instructions for enabling Container Insights on an ECS cluster\n- How to configure specific memory usage metrics\n- How to create CloudWatch alarms on those metrics\n- Any CLI commands, console steps, or API calls for this configuration\n\n---\n\n### Recommendation\n\nTo get accurate configuration guidance, consult:\n- The **AWS CloudWatch Container Insights documentation**\n- The **Amazon ECS Developer Guide** section on monitoring\n- AWS CLI reference for `aws ecs update-cluster-settings` (which is used to enable Container Insights)\n\nI would rather direct you to the correct source than provide configuration details not supported by the provided context.",
+      "score": {
+        "accuracy": 0.2,
+        "completeness": 0.1,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.75,
+        "structural_pass": true,
+        "mentions_found": [
+          "Container Insights"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Container Insights",
+          "ECS",
+          "CloudWatch"
+        ]
+      },
+      "latency_ms": 7336.866625002585,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1181
+    },
+    {
+      "question_id": "compute-t1-002",
+      "strategy": "naive_vector",
+      "answer": "Based on the provided context, I cannot fully answer this question. The context only briefly mentions EC2 instances in relation to **ECS EC2 launch type**, noting that:\n\n- You can manage **instance types** and AMIs in your cluster\n- Specific instance types may be needed for GPUs or Windows containers\n- Spot Instances can be used for cost savings\n\nHowever, the context does **not contain detailed information** about what EC2 instance types are or how they are categorized. You would need additional documentation specifically covering EC2 instance types to get a complete answer to that question.",
+      "score": {
+        "accuracy": 0.05,
+        "completeness": 0.05,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.6666666666666666,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "EC2",
+          "instance type"
+        ]
+      },
+      "latency_ms": 3946.485083026346,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 598
+    },
+    {
+      "question_id": "compute-t2-017",
+      "strategy": "naive_vector",
+      "answer": "The provided context does not contain enough information to answer this question. While the context mentions that ALB supports HTTP/HTTPS routing to ECS tasks and lists ALB as a Lambda trigger, it does not include any details about:\n\n- Configuring HTTPS termination on ALB\n- Setting up HTTP-to-HTTPS redirect rules\n- SSL/TLS certificate configuration on ALB listeners\n\nYou would need to consult AWS ALB documentation specifically covering listener rules and SSL termination configuration.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.5,
+        "structural_pass": true,
+        "mentions_found": [
+          "redirect"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "ALB",
+          "redirect rule"
+        ]
+      },
+      "latency_ms": 4102.379208023194,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "api-gateway",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 488
+    },
+    {
+      "question_id": "compute-t2-013",
+      "strategy": "naive_vector",
+      "answer": "## Building an Event-Driven Pipeline with S3 and Lambda\n\nBased on the provided context, here is what can be confirmed:\n\n### Core Components\n- **S3** can trigger Lambda via **object events** (e.g., when a file is uploaded)\n- **Lambda** is a serverless compute service that **runs code in response to events** and automatically manages underlying compute resources\n\n### How It Works (from context)\n1. A file is uploaded to an S3 bucket\n2. S3 generates an **object event**\n3. That event **triggers your Lambda function**\n4. Lambda receives the event and processes the uploaded file automatically\n\n---\n\n### ⚠️ Limitations of This Answer\nThe provided context does **not** contain enough detail to fully explain:\n- How to **configure** the S3 event notification (bucket policies, notification settings)\n- The **exact structure** of the S3 event object passed to Lambda\n- Specific **response format** requirements for S3-triggered Lambda (only API Gateway's response format is briefly mentioned)\n- Error handling, retries, or IAM permissions required\n\n### Recommendation\nFor a complete implementation guide, consult the **AWS Lambda Developer Guide** and **S3 Event Notifications documentation**, which would cover the configuration steps and event payload structure in detail.",
+      "score": {
+        "accuracy": 0.3,
+        "completeness": 0.2,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.5,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "S3 event notification",
+          "Lambda"
+        ]
+      },
+      "latency_ms": 7974.3467919761315,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "api-gateway",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1270
+    },
+    {
+      "question_id": "compute-t1-010",
+      "strategy": "naive_vector",
+      "answer": "Based on the provided context, **I cannot answer this question**. The context does not contain any information about AWS App Runner — it only covers services such as AWS Fargate, AWS Lambda, Amazon ECS, and Amazon API Gateway.\n\nTo get accurate information about AWS App Runner, I would recommend consulting the official [AWS documentation](https://docs.aws.amazon.com/apprunner/).",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.3333333333333333,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "App Runner"
+        ]
+      },
+      "latency_ms": 2374.2243330343626,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "api-gateway",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 380
+    },
+    {
+      "question_id": "compute-t1-006",
+      "strategy": "naive_vector",
+      "answer": "Based on the provided context, I cannot fully answer this question. The context does not contain information specifically about **EC2 Auto Scaling** or its core scaling policies.\n\nThe context only briefly mentions **ECS Service Auto Scaling** in passing, noting three scaling policy types:\n- **Target tracking**\n- **Step scaling**\n- **Scheduled scaling**\n\nHowever, these are referenced in the context of ECS services, not EC2 Auto Scaling specifically. I cannot provide an accurate, complete answer about EC2 Auto Scaling and its core policies without risking providing information beyond what the provided context contains.",
+      "score": {
+        "accuracy": 0.2,
+        "completeness": 0.2,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.6666666666666666,
+        "structural_pass": true,
+        "mentions_found": [
+          "Target Tracking"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Target Tracking",
+          "scaling policy"
+        ]
+      },
+      "latency_ms": 3930.85412500659,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 624
+    },
+    {
+      "question_id": "compute-t3-005",
+      "strategy": "naive_vector",
+      "answer": "The provided context does not contain information about Step Functions Standard Workflow or Express Workflow comparisons. The context only covers topics such as Lambda triggers, cold starts, API Gateway integration, and WebSocket connections.\n\nTo answer your question accurately, I would need documentation specifically about AWS Step Functions workflow types.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.0,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": []
+      },
+      "latency_ms": 2285.6515829917043,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "api-gateway",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 360
+    },
+    {
+      "question_id": "compute-t3-001",
+      "strategy": "naive_vector",
+      "answer": "## Comparison Based on Available Context\n\nThe provided context only contains information about **ECS Fargate** and briefly mentions **Lambda**. There is **no information about EKS Fargate** in the context, so a complete three-way comparison cannot be made.\n\n---\n\n## What the Context Supports\n\n### ECS Fargate (well-documented in context)\n- No EC2 instances to manage — AWS handles infrastructure\n- Pay per vCPU and memory **per second**\n- Task-level kernel isolation\n- Integrates with ALB/NLB, Auto Scaling, Service Discovery, X-Ray, and App Mesh\n- Well-suited for **microservices and batch jobs**\n\n### AWS Lambda (limited info in context)\n- Runs code **in response to events**\n- Automatically manages compute resources\n- The context does **not describe it as container-focused** or detail microservice patterns\n\n---\n\n## What I Cannot Answer\n\nThe context does **not provide**:\n- Any information about **EKS Fargate**\n- A direct comparison between these three services\n- Lambda's container image support or cold start behavior\n\n---\n\n## Recommendation\n\nTo get an accurate comparison of all three options, I'd suggest consulting the official AWS documentation or a source that explicitly covers EKS Fargate, as that information is **outside the scope of the provided context**.",
+      "score": {
+        "accuracy": 0.2,
+        "completeness": 0.2,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "cold start"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Lambda",
+          "ECS Fargate",
+          "EKS Fargate"
+        ]
+      },
+      "latency_ms": 7640.786083997227,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1274
+    },
+    {
+      "question_id": "compute-t3-009",
+      "strategy": "naive_vector",
+      "answer": "The provided context doesn't contain information about EC2 instance store (ephemeral storage) or EBS volumes. The context focuses on **ECS, Fargate, Lambda pricing, and related AWS container services** — it doesn't cover EC2 storage options or data persistence mechanisms.\n\nTo answer your question accurately, I'd need documentation specifically covering EC2 storage types. I recommend checking the **AWS EC2 documentation** on storage for a reliable comparison of instance store vs. EBS volumes.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 0.8,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "ephemeral"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "instance store",
+          "EBS",
+          "ephemeral"
+        ]
+      },
+      "latency_ms": 3302.5198340183124,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 496
+    },
+    {
+      "question_id": "compute-t1-014",
+      "strategy": "naive_vector",
+      "answer": "## Lambda's Execution Model\n\nAWS Lambda is a **serverless compute service** that runs code in response to events and automatically manages the underlying compute resources. It can be triggered by many AWS services.\n\n---\n\n## What Happens During a Cold Start\n\nA cold start occurs when **Lambda needs to create a new execution environment**. This involves several contributing factors:\n\n1. **Runtime Initialization** — Loading the runtime and JIT compilation (particularly impactful for Java/.NET runtimes)\n2. **Handler Initialization** — Loading libraries and establishing connections\n3. **VPC ENI Attachment** — If the function is connected to a VPC, this adds an additional **1–10 seconds** of latency\n\n---\n\n## Mitigating Cold Starts\n\n**Provisioned Concurrency** can be used to keep a requested number of execution environments *pre-initialized and ready to respond*, making it the recommended solution for **latency-sensitive workloads**.\n\n---\n\n> **Note:** The provided context does not include full details on Lambda's broader execution lifecycle (e.g., warm starts, environment reuse), so this answer is limited to what was available.",
+      "score": {
+        "accuracy": 0.65,
+        "completeness": 0.55,
+        "faithfulness": 0.8,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "cold start",
+          "Provisioned Concurrency"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "cold start",
+          "Provisioned Concurrency",
+          "warm start"
+        ]
+      },
+      "latency_ms": 6540.029083029367,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1137
+    },
+    {
+      "question_id": "compute-t1-018",
+      "strategy": "naive_vector",
+      "answer": "The provided context does not contain information about EKS (Elastic Kubernetes Service) or managed node groups. The context only covers **ECS (Elastic Container Service)** and **AWS Fargate**.\n\nI cannot accurately answer your question about EKS managed node groups based on the available context.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.6666666666666666,
+        "structural_pass": true,
+        "mentions_found": [
+          "managed node group"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "managed node group",
+          "EKS"
+        ]
+      },
+      "latency_ms": 2164.27783400286,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 297
+    },
+    {
+      "question_id": "compute-t5-004",
+      "strategy": "naive_vector",
+      "answer": "## Honest Assessment\n\n**The provided context does not contain sufficient information to fully answer this question.**\n\nThe context only includes brief, fragmented mentions of a few relevant services:\n\n- **ALB**: Mentioned as HTTP/HTTPS routing to ECS tasks\n- **CloudFront**: Mentioned only as a Lambda trigger source (Lambda@Edge)\n- **Auto Scaling**: Mentioned briefly in ECS service context (target tracking, step scaling, scheduled scaling)\n- **Route 53**: **Not mentioned at all** in the provided context\n\n### What the Context Cannot Support:\n\n- How Route 53 health checks and routing policies (failover, latency-based) enable multi-region failover\n- How EC2 Auto Scaling groups are configured across regions\n- CloudFront's role in origin failover or caching behavior\n- Data replication strategies (e.g., RDS cross-region read replicas, DynamoDB Global Tables)\n- Active-passive architecture design patterns\n- Stateful session handling across regions\n\n---\n\n### Recommendation\n\nTo answer this question accurately, you would need documentation covering:\n\n1. **Route 53 failover routing policies and health checks**\n2. **CloudFront origin groups and failover configuration**\n3. **EC2 Auto Scaling multi-region patterns**\n4. **Database replication options** (RDS, DynamoDB Global Tables)\n\nProviding an answer beyond what the context contains would risk introducing inaccurate information.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.8,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "EC2 Auto Scaling",
+          "ALB",
+          "CloudFront",
+          "Route 53"
+        ]
+      },
+      "latency_ms": 7776.4964159578085,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "api-gateway",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1386
+    },
+    {
+      "question_id": "compute-t4-012",
+      "strategy": "naive_vector",
+      "answer": "## ECS Task Networking, ALB, and AWS PrivateLink Together\n\n**Important caveat:** The provided context covers ECS networking and ALB integration, but **does not contain information about AWS PrivateLink**. I can only accurately address the ECS + ALB portion.\n\n---\n\n## What the Context Supports\n\n### ECS Task Networking (awsvpc mode)\nEach task gets its **own ENI with a private IP** in your VPC subnet, with:\n- Task-level security group enforcement\n- Private IP-based communication between tasks\n- Network isolation at the task level\n\n### ALB Integration with ECS Service\nThe ECS service integrates with an **Application Load Balancer** for HTTP/HTTPS routing to tasks, enabling:\n- The ALB routes traffic to individual task private IPs via their ENIs\n- Security groups on tasks can be scoped to **only allow traffic from the ALB**, not the open internet\n- Tasks can remain in **private subnets** (no public IP needed), with the ALB in a public or internal configuration\n\n### Secure Internal Pattern (from context)\nFor internal-only exposure:\n- Place tasks in **private subnets** (no public IP assigned)\n- Use a **NAT Gateway** only if tasks need outbound internet access\n- ALB can be configured as **internal-facing**, keeping traffic within the VPC\n\n---\n\n## What the Context Cannot Answer\n\nThe context **does not describe AWS PrivateLink**, so I cannot accurately explain:\n- How PrivateLink endpoint services integrate with ALB\n- Cross-account or cross-VPC exposure via PrivateLink\n- PrivateLink-specific security or DNS behavior\n\nFor that portion, please consult the official AWS PrivateLink documentation.",
+      "score": {
+        "accuracy": 0.3,
+        "completeness": 0.25,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.5,
+        "structural_pass": true,
+        "mentions_found": [
+          "awsvpc",
+          "PrivateLink"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "awsvpc",
+          "PrivateLink"
+        ]
+      },
+      "latency_ms": 9291.692874976434,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1606
+    },
+    {
+      "question_id": "compute-t3-013",
+      "strategy": "naive_vector",
+      "answer": "The provided context does not contain information about EC2 placement groups (Cluster, Spread, or Partition). The context focuses on ECS launch types (EC2 vs. Fargate), ECS service integrations, task networking, and Lambda optimization tips.\n\nI cannot accurately answer your question about placement group differences based solely on the available context.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "Cluster",
+          "Spread"
+        ],
+        "false_claims": [],
+        "entities_found": []
+      },
+      "latency_ms": 2565.930082986597,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 356
+    },
+    {
+      "question_id": "compute-t2-006",
+      "strategy": "naive_vector",
+      "answer": "The provided context does not contain enough information to answer this question. While the context briefly mentions that EC2 launch type \"can use Spot Instances for cost savings,\" it does not cover how to configure Spot Instance interruption handling in an Auto Scaling group or strategies to minimize downtime from interruptions.\n\nYou would need to consult AWS documentation on **EC2 Auto Scaling with Spot Instances**, which covers topics like mixed instance policies, capacity rebalancing, and interruption notice handling — none of which are addressed in the provided context.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.75,
+        "structural_pass": true,
+        "mentions_found": [
+          "interruption notice",
+          "capacity rebalancing"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Spot Instance",
+          "interruption notice",
+          "capacity rebalancing"
+        ]
+      },
+      "latency_ms": 3500.118958996609,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "ecs-fargate",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 581
+    },
+    {
+      "question_id": "compute-t4-006",
+      "strategy": "naive_vector",
+      "answer": "## Honest Assessment\n\nThe provided context **does not contain enough information** to fully answer this question.\n\n## What the Context Does Cover\n\nThe context only mentions:\n- **SQS** as one of Lambda's triggers/event sources\n- **Lambda** as a serverless compute service that runs code in response to events\n\n## What's Missing\n\nThe context contains **no information** about:\n- **Step Functions** (not mentioned at all)\n- The **saga pattern** or compensating transactions\n- Distributed transaction coordination\n- How these services would be architecturally combined for this use case\n\n## Recommendation\n\nTo answer this question accurately, you would need documentation covering:\n- AWS Step Functions workflows and state machines\n- Saga pattern implementation guidance\n- Error handling and compensation logic across services\n\nI cannot provide a reliable answer on this topic from the given context without risking inaccuracy.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.8,
+        "structural_pass": true,
+        "mentions_found": [
+          "compensating"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Step Functions",
+          "SQS",
+          "Lambda",
+          "compensating transaction"
+        ]
+      },
+      "latency_ms": 5573.507082997821,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "api-gateway",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 923
+    },
+    {
+      "question_id": "compute-t5-008",
+      "strategy": "naive_vector",
+      "answer": "## Event-Driven Orchestration with AWS Services\n\nBased on the provided context, I can give you a **partial answer** — the context confirms several integration points but does not cover Step Functions or aggregation patterns in detail.\n\n---\n\n## What the Context Confirms\n\n### Trigger Sources (Fan-Out Inputs)\nLambda can be triggered by:\n- **EventBridge/CloudWatch Events** → route events to Lambda based on rules\n- **SNS** → topic messages trigger Lambda (fan-out to multiple subscribers)\n- **SQS** → queue messages trigger Lambda with **at-least-once processing** guarantees\n\n### Basic Fan-Out Pattern\n```\nEventBridge Rule\n      ↓\n   SNS Topic\n   ↙    ↘\nSQS-A  SQS-B    ← Lambda polls each queue\n  ↓      ↓\nLambda  Lambda\n```\n\n---\n\n## What the Context Does NOT Cover\n\nThe provided context **lacks sufficient information** to fully answer:\n\n- **Step Functions** — not mentioned at all\n- **Aggregation patterns** (e.g., scatter-gather, result collection)\n- **Exactly-once vs. at-least-once** processing specifics for SQS+Lambda\n- **Orchestration vs. choreography** trade-offs\n- **Dead-letter queue (DLQ)** handling\n\n---\n\n## Honest Summary\n\n| Component | Context Support |\n|-----------|----------------|\n| Lambda + SQS trigger | ✅ Confirmed |\n| Lambda + SNS trigger | ✅ Confirmed |\n| Lambda + EventBridge trigger | ✅ Confirmed |\n| Step Functions orchestration | ❌ Not in context |\n| Aggregation patterns | ❌ Not in context |\n\nTo fully answer this question, you would need documentation covering **Step Functions**, **SQS visibility timeouts/DLQ**, and **Lambda concurrency/retry behavior**.",
+      "score": {
+        "accuracy": 0.25,
+        "completeness": 0.2,
+        "faithfulness": 0.85,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.8333333333333334,
+        "structural_pass": true,
+        "mentions_found": [
+          "fan-out"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "EventBridge",
+          "SNS",
+          "SQS",
+          "Lambda",
+          "Step Functions"
+        ]
+      },
+      "latency_ms": 9804.896708985325,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "api-gateway",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1587
+    },
+    {
+      "question_id": "compute-t2-002",
+      "strategy": "naive_vector",
+      "answer": "# Deploying a Containerized Application on ECS Fargate with Load Balancer & Auto Scaling\n\nBased on the provided context, here is what can be confirmed:\n\n---\n\n## Core Components Required\n\n### 1. Container Image\n- Store your container image in **ECR** (Elastic Container Registry), AWS's private container image registry.\n\n### 2. ECS Service Configuration\nThe ECS service maintains a **desired count of tasks** and should be configured with:\n\n- **Application Load Balancer** — for HTTP/HTTPS routing to your tasks\n- **Network Load Balancer** — if you need TCP/UDP high-performance routing instead\n\n### 3. Fargate as the Compute Engine\nConfigure your tasks to run on **AWS Fargate**, which provides:\n- No EC2 instances to manage (AWS handles infrastructure)\n- **Pay per vCPU and memory per second**\n- Task-level isolation (each task runs in its own kernel)\n\n### 4. Auto Scaling\nAttach auto scaling to your ECS service using one of these policies:\n- **Target tracking scaling**\n- **Step scaling**\n- **Scheduled scaling**\n\n---\n\n## Supporting Integrations to Add\n\n| Purpose | AWS Service |\n|---|---|\n| Logs & Metrics | CloudWatch / Container Insights |\n| Secrets/Config | Secrets Manager or Parameter Store |\n| Tracing | X-Ray |\n| Service Discovery | AWS Cloud Map (DNS-based) |\n\n---\n\n## ⚠️ Limitation of This Answer\nThe provided context confirms **what components to use** but does **not include step-by-step deployment instructions** (e.g., task definition configuration, CLI commands, or console steps). For detailed procedures, refer to the [AWS ECS documentation](https://docs.aws.amazon.com/ecs/).",
+      "score": {
+        "accuracy": 0.5,
+        "completeness": 0.45,
+        "faithfulness": 0.8,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.6,
+        "structural_pass": true,
+        "mentions_found": [
+          "task definition"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "ECS",
+          "Fargate",
+          "task definition"
+        ]
+      },
+      "latency_ms": 8276.13625000231,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1597
+    },
+    {
+      "question_id": "compute-t4-002",
+      "strategy": "naive_vector",
+      "answer": "## ECS Permissions Architecture: No Hardcoded Credentials\n\nHere's how the three components work together based on the provided context:\n\n---\n\n### 1. ECR Image Pulls (Execution Role)\nThe **ECS agent** (not the container itself) pulls images from ECR using permissions granted at the infrastructure level:\n- `ecr:GetAuthorizationToken`\n- `ecr:BatchGetImage`\n- `ecr:GetDownloadUrlForLayer`\n\nThis happens **before** the container starts — the agent authenticates to ECR and pulls the image on the task's behalf.\n\n---\n\n### 2. Secrets Injection (Execution Role + Secrets Manager/Parameter Store)\n- **Secrets Manager / Parameter Store** integrates with ECS to **inject secrets as environment variables** at container startup\n- The ECS agent retrieves secrets using its execution-level permissions and passes them into the container environment\n- The application receives credentials automatically — **no hardcoding required**\n\n---\n\n### 3. Runtime Application Permissions (Task Role)\nOnce the container is running, the **task role** governs what the *application inside the container* can do (e.g., access S3, DynamoDB, SQS). This is separate from the execution role.\n\n---\n\n### The Key Separation\n\n| Concern | Mechanism | Who Uses It |\n|---|---|---|\n| Pull container image | ECR permissions (execution role) | ECS Agent |\n| Inject secrets | Secrets Manager/Parameter Store | ECS Agent → Container env vars |\n| App-level AWS access | Task Role | Application inside container |\n\n---\n\n### Why This Works Without Hardcoding\n- The ECS agent and task role use **IAM-based temporary credentials** automatically\n- Secrets are **injected at runtime** rather than baked into images or code\n- Each layer of permission is **scoped to its specific purpose**, following least privilege\n\n> **Note:** The context confirms these integrations exist but does not detail the exact IAM role attachment mechanism (execution role vs. task role distinction is implied but not explicitly named in the provided context).",
+      "score": {
+        "accuracy": 0.82,
+        "completeness": 0.75,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.75,
+        "structural_pass": true,
+        "mentions_found": [
+          "task role"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "task role",
+          "ECR",
+          "Secrets Manager"
+        ]
+      },
+      "latency_ms": 10699.474832974374,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1986
+    },
+    {
+      "question_id": "compute-t4-010",
+      "strategy": "naive_vector",
+      "answer": "The provided context does not contain information about EKS (Elastic Kubernetes Service), Kubernetes network policies, VPC CNI security groups for pods, or namespace RBAC. The context covers ECS task networking, Lambda VPC integration, and related AWS service integrations, but does not address EKS or Kubernetes security concepts.\n\nI cannot accurately answer this question based solely on the provided context.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.5,
+        "structural_pass": true,
+        "mentions_found": [
+          "Security Groups for Pods"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Security Groups for Pods",
+          "RBAC"
+        ]
+      },
+      "latency_ms": 2666.963708004914,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 411
+    },
+    {
+      "question_id": "compute-t2-010",
+      "strategy": "naive_vector",
+      "answer": "## Lambda Function URLs with IAM Authentication\n\nBased on the provided context, **there is insufficient information** to fully answer this question. The context does not cover Lambda Function URLs specifically.\n\nHowever, I can share what the context *does* tell us that's relevant:\n\n### What the Context Covers\n\n**IAM Authentication for AWS services:**\n- Callers sign requests with **AWS Signature v4**\n- API Gateway validates the signature against IAM policies\n- Best suited for **service-to-service calls within AWS**\n\n**Lambda Execution Role:**\n- Every Lambda function has an execution role (IAM role) granting it permissions to access AWS services/resources\n\n### What's Missing from the Context\nThe context does not contain information about:\n- Lambda Function URLs (the `*.lambda-url.*.on.aws` endpoints)\n- How to configure `AuthType: AWS_IAM` on a Function URL\n- CORS configuration for Function URLs\n- The specific setup steps for exposing a function as a direct HTTPS endpoint\n\n### Recommendation\nTo answer your question accurately, you would need documentation covering:\n- Lambda Function URL configuration\n- `AuthType` options (`AWS_IAM` vs `NONE`)\n- Resource-based policies for Function URLs\n\nPlease consult the [AWS Lambda Function URLs documentation](https://docs.aws.amazon.com/lambda/latest/dg/lambda-urls.html) directly for this topic.",
+      "score": {
+        "accuracy": 0.2,
+        "completeness": 0.15,
+        "faithfulness": 0.9,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.6666666666666666,
+        "structural_pass": true,
+        "mentions_found": [
+          "CORS"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Lambda Function URL",
+          "IAM authentication"
+        ]
+      },
+      "latency_ms": 6456.340167031158,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "api-gateway",
+        "lambda-overview"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 1350
+    },
+    {
+      "question_id": "compute-t2-014",
+      "strategy": "naive_vector",
+      "answer": "The provided context does not contain information about EC2 Image Builder or configuring hardened Amazon Linux AMIs with CIS benchmarks. The context only covers topics such as ECS launch types (EC2 and Fargate), ECR, CloudWatch, IAM permissions for ECS agents, Lambda optimization, and related AWS container/serverless services.\n\nTo answer your question accurately, I would need documentation specifically about **EC2 Image Builder** and **CIS benchmark configurations**, which is not present in the provided context.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.5,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "EC2 Image Builder",
+          "CIS"
+        ]
+      },
+      "latency_ms": 3433.181957982015,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 517
+    },
+    {
+      "question_id": "compute-t1-003",
+      "strategy": "naive_vector",
+      "answer": "## Amazon ECS Overview\n\n**Amazon Elastic Container Service (ECS)** is a **container orchestration service** that manages the deployment and running of containers.\n\n---\n\n## Supported Launch Types\n\nECS supports two launch types:\n\n### 1. EC2 Launch Type\n- You **manage the EC2 instances** in your cluster\n- Provides full control over instance types, AMIs, and capacity\n- Supports Spot Instances for cost savings\n- **Best for:** workloads needing GPUs, specific instance types, or Windows containers\n\n### 2. AWS Fargate (Serverless)\n- **No EC2 instances to manage** — AWS handles the infrastructure\n- Billing is per vCPU and memory per second\n- Each task runs in its own kernel (task-level isolation)\n- **Best for:** microservices, batch jobs, serverless containers\n\n---\n\nThe key distinction is **control vs. convenience**: EC2 launch type gives you infrastructure control, while Fargate abstracts it away entirely.",
+      "score": {
+        "accuracy": 0.95,
+        "completeness": 0.75,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.6666666666666666,
+        "structural_pass": true,
+        "mentions_found": [
+          "Fargate"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "ECS",
+          "Fargate"
+        ]
+      },
+      "latency_ms": 4314.571499999147,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 911
+    },
+    {
+      "question_id": "compute-t2-018",
+      "strategy": "naive_vector",
+      "answer": "The provided context does not contain information about configuring EC2 user data scripts for bootstrapping instances. The context covers topics like ECS launch types (EC2 vs Fargate), Lambda configuration, VPC networking for Lambda and ECS tasks, but does not address EC2 user data scripts.\n\nYou would need to consult AWS EC2 documentation or a different knowledge source for that specific topic.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.3333333333333333,
+        "structural_pass": true,
+        "mentions_found": [
+          "user data"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "user data"
+        ]
+      },
+      "latency_ms": 2748.838124971371,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 397
+    },
+    {
+      "question_id": "compute-t1-007",
+      "strategy": "naive_vector",
+      "answer": "The provided context does not contain any information about AWS Elastic Beanstalk. The context only covers Amazon ECS, AWS Fargate, AWS Lambda, and Amazon API Gateway. I cannot accurately answer your question based solely on the available context.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 0.3333333333333333,
+        "structural_pass": true,
+        "mentions_found": [],
+        "false_claims": [],
+        "entities_found": [
+          "Elastic Beanstalk"
+        ]
+      },
+      "latency_ms": 2237.0812919689342,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "api-gateway",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 247
+    },
+    {
+      "question_id": "compute-t3-002",
+      "strategy": "naive_vector",
+      "answer": "Based on the provided context, I cannot fully answer this question. The context does not contain detailed information comparing **EC2 Reserved Instances**, **Savings Plans**, and **Spot Instances**.\n\nThe only relevant mention in the context is a brief note that EC2 launch type for ECS **\"Can use Spot Instances for cost savings\"**, but there is no breakdown or comparison of these three pricing/purchasing models.\n\nTo get a complete answer on this topic, I'd recommend consulting the **AWS EC2 pricing documentation** or AWS Cost Optimization resources directly.",
+      "score": {
+        "accuracy": 0.0,
+        "completeness": 0.0,
+        "faithfulness": 1.0,
+        "source_attribution": 0.0,
+        "entity_coverage": 1.0,
+        "structural_pass": true,
+        "mentions_found": [
+          "Savings Plans"
+        ],
+        "false_claims": [],
+        "entities_found": [
+          "Reserved Instance",
+          "Savings Plans",
+          "Spot Instance"
+        ]
+      },
+      "latency_ms": 3645.2485420159064,
+      "retrieval_latency_ms": 0.0,
+      "generation_latency_ms": 0.0,
+      "tokens_used": 0,
+      "cost_usd": 0.0,
+      "sources": [
+        "lambda-overview",
+        "ecs-fargate"
+      ],
+      "is_error": false,
+      "is_empty": false,
+      "error_message": "",
+      "attempt_count": 1,
+      "response_length": 563
+    }
+  ],
+  "accuracy_by_tier": {
+    "1": 0.27,
+    "3": 0.13333333333333333,
+    "5": 0.21625,
+    "2": 0.1275,
+    "4": 0.27416666666666667
+  },
+  "completeness_by_tier": {
+    "1": 0.20750000000000002,
+    "3": 0.09666666666666666,
+    "5": 0.19625,
+    "2": 0.10250000000000001,
+    "4": 0.225
+  },
+  "faithfulness_by_tier": {
+    "1": 0.9199999999999999,
+    "3": 0.9233333333333333,
+    "5": 0.86875,
+    "2": 0.925,
+    "4": 0.9208333333333334
+  },
+  "accuracy_by_type": {
+    "factoid": 0.27,
+    "comparative": 0.13333333333333333,
+    "multihop": 0.21625,
+    "procedural": 0.1275,
+    "relational": 0.27416666666666667
+  },
+  "avg_latency_ms": 5600.4708382929675,
+  "latency": {
+    "avg_ms": 5600.4708382929675,
+    "p50_ms": 4850.284291023854,
+    "p95_ms": 10034.09195796121,
+    "p99_ms": 29157.538583036512,
+    "min_ms": 2114.632499986328,
+    "max_ms": 29157.538583036512
+  },
+  "latency_by_tier": {
+    "1": {
+      "avg_ms": 4118.142424954567,
+      "p50_ms": 3994.0346659859642,
+      "p95_ms": 7239.32487500133,
+      "p99_ms": 7239.32487500133,
+      "min_ms": 2114.632499986328,
+      "max_ms": 7239.32487500133
+    },
+    "3": {
+      "avg_ms": 4820.748213938593,
+      "p50_ms": 4850.284291023854,
+      "p95_ms": 7767.892709001899,
+      "p99_ms": 7767.892709001899,
+      "min_ms": 2285.6515829917043,
+      "max_ms": 7767.892709001899
+    },
+    "5": {
+      "avg_ms": 10549.476973741548,
+      "p50_ms": 9229.340707999654,
+      "p95_ms": 29157.538583036512,
+      "p99_ms": 29157.538583036512,
+      "min_ms": 3353.3170000300743,
+      "max_ms": 29157.538583036512
+    },
+    "2": {
+      "avg_ms": 4909.601174996351,
+      "p50_ms": 4802.1363749867305,
+      "p95_ms": 8276.13625000231,
+      "p99_ms": 8276.13625000231,
+      "min_ms": 2486.3225830486044,
+      "max_ms": 8276.13625000231
+    },
+    "4": {
+      "avg_ms": 6897.783489495244,
+      "p50_ms": 7840.339582995512,
+      "p95_ms": 10699.474832974374,
+      "p99_ms": 10699.474832974374,
+      "min_ms": 2666.963708004914,
+      "max_ms": 10699.474832974374
+    }
+  },
+  "reliability": {
+    "total_queries": 75,
+    "successful_queries": 75,
+    "error_count": 0,
+    "empty_count": 0,
+    "timeout_count": 0,
+    "error_rate": 0.0,
+    "empty_rate": 0.0,
+    "success_rate": 1.0,
+    "avg_faithfulness": 0.9166666666666666,
+    "avg_source_attribution": 0.0,
+    "avg_entity_coverage": 0.6924444444444444,
+    "avg_response_length": 940.28
+  },
+  "total_cost_usd": 0.0,
+  "cost_per_correct": 0.0
+}
