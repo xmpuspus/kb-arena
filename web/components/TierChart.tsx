@@ -56,8 +56,16 @@ export default function TierChart({ rows }: Props) {
           ]}
         />
         <Legend
-          formatter={(key) => STRATEGY_LABELS[key as Strategy] ?? key}
-          wrapperStyle={{ color: "var(--muted)", fontSize: 12 }}
+          content={() => (
+            <div style={{ display: "flex", justifyContent: "center", gap: 16, color: "var(--muted)", fontSize: 12 }}>
+              {rows.map((row) => (
+                <span key={row.strategy} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: STRATEGY_COLORS[row.strategy] }} />
+                  {STRATEGY_LABELS[row.strategy] ?? row.strategy}
+                </span>
+              ))}
+            </div>
+          )}
         />
         {rows.map((row) => (
           <Bar
