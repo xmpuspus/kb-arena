@@ -6,6 +6,8 @@ KB Arena benchmarks 5 retrieval strategies — naive vector, contextual vector, 
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-367-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue)
 
+![KB Arena Demo](docs/demo.gif)
+
 ---
 
 ## Quick Start — I Just Have My Docs
