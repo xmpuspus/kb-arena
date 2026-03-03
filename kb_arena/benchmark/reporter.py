@@ -9,8 +9,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from rich.console import Console
+
 from kb_arena.models.benchmark import BenchmarkResult
 from kb_arena.settings import settings
+
+console = Console()
 
 STRATEGY_NAMES = ["naive_vector", "contextual_vector", "qna_pairs", "knowledge_graph", "hybrid"]
 TIER_LABELS = {
@@ -313,7 +317,7 @@ def generate_report(corpus: str = "all", output: str | None = None) -> None:
     """Load results JSON files and generate markdown report + summary.json."""
     results = _load_results(corpus)
     if not results:
-        print(f"No results found in {settings.results_path}. Run benchmark first.")
+        console.print(f"No results found in {settings.results_path}. Run benchmark first.")
         return
 
     markdown = _build_markdown(results)
@@ -324,9 +328,9 @@ def generate_report(corpus: str = "all", output: str | None = None) -> None:
     # Write markdown
     out_path = Path(output) if output else results_dir / "report.md"
     out_path.write_text(markdown)
-    print(f"Report written to {out_path}")
+    console.print(f"Report written to {out_path}")
 
     # Write summary JSON alongside the report
     summary_path = out_path.parent / "summary.json"
     summary_path.write_text(json.dumps(summary, indent=2))
-    print(f"Summary written to {summary_path}")
+    console.print(f"Summary written to {summary_path}")

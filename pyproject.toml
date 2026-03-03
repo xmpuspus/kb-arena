@@ -25,7 +25,6 @@ dependencies = [
     "rich==13.9.4",
     "pydantic==2.10.4",
     "pydantic-settings==2.7.1",
-    "httpx==0.28.1",
     "anthropic==0.42.0",
     "neo4j==5.27.0",
     "chromadb==0.5.23",
@@ -52,7 +51,7 @@ Repository = "https://github.com/xmpuspus/kb-arena"
 Issues = "https://github.com/xmpuspus/kb-arena/issues"
 
 [tool.hatch.build.targets.sdist]
-exclude = ["results/", "docs/", "datasets/", "web/", "tests/", "cypher/", "scripts/", ".github/"]
+exclude = ["results/", "docs/", "datasets/", "web/", "tests/", "cypher/", "scripts/", ".github/", "**/.gitkeep"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["kb_arena"]
