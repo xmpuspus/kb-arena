@@ -51,6 +51,12 @@ Documentation = "https://github.com/xmpuspus/kb-arena/tree/main/docs"
 Repository = "https://github.com/xmpuspus/kb-arena"
 Issues = "https://github.com/xmpuspus/kb-arena/issues"
 
+[tool.hatch.build.targets.sdist]
+exclude = ["results/", "docs/", "datasets/", "web/", "tests/", "cypher/", "scripts/", ".github/"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["kb_arena"]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100
