@@ -82,8 +82,8 @@ class CypherGenerator:
 
         # LLM attempt
         try:
-            raw = await self._llm.extract(text=query, system_prompt=self._system_prompt)
-            cypher = raw.strip()
+            resp = await self._llm.extract(text=query, system_prompt=self._system_prompt)
+            cypher = resp.text.strip()
             # Strip markdown fences if the model wrapped them
             if cypher.startswith("```"):
                 cypher = re.sub(r"^```[a-z]*\n?", "", cypher)

@@ -23,27 +23,8 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup, Tag
 
+from kb_arena.ingest.parsers.utils import read_text, slugify, token_count, unique_id
 from kb_arena.models.document import Document, Section, Table
-
-
-def _slugify(text: str) -> str:
-    text = re.sub(r"[^\w\s/-]", "", text.lower().strip())
-    return re.sub(r"\s+", "-", text) or "section"
-
-
-def _unique_id(slug: str, seen: set[str]) -> str:
-    candidate = slug
-    n = 1
-    while candidate in seen:
-        candidate = f"{slug}-{n}"
-        n += 1
-    seen.add(candidate)
-    return candidate
-
-
-def _token_count(text: str) -> int:
-    return int(len(text.split()) * 1.3)
-
 
 # 10-K item header patterns
 _ITEM_HEADER = re.compile(
@@ -107,11 +88,7 @@ def _text_is_item_header(text: str) -> re.Match | None:
 
 class SecEdgarParser:
     def parse(self, path: Path, corpus: str) -> list[Document]:
-        try:
-            text = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            text = path.read_text(encoding="latin-1")
-
+        text = read_text(path)
         soup = BeautifulSoup(text, "html.parser")
         source = str(path)
 
@@ -147,9 +124,8 @@ class SecEdgarParser:
                 content_parts.append(tag.get_text(separator=" ", strip=True))
                 tables.extend(_extract_tables(tag))
             content = " ".join(content_parts).strip()
-            _extract_named_entities(content)  # side-effect: NER cache
-            sid = _unique_id(
-                _slugify(f"item-{current_item_num}-{current_title}"),
+            sid = unique_id(
+                slugify(f"item-{current_item_num}-{current_title}"),
                 seen_ids,
             )
             sections.append(
@@ -194,8 +170,7 @@ class SecEdgarParser:
         # Fallback: if no Item headers found, treat whole doc as one section
         if not sections:
             full_text = body.get_text(separator=" ", strip=True)
-            _extract_named_entities(full_text)  # side-effect: NER cache
-            sid = _unique_id(_slugify(path.stem), seen_ids)
+            sid = unique_id(slugify(path.stem), seen_ids)
             sections.append(
                 Section(
                     id=sid,
@@ -212,12 +187,12 @@ class SecEdgarParser:
 
         return [
             Document(
-                id=_slugify(path.stem),
+                id=slugify(path.stem),
                 source=source,
                 corpus=corpus,
                 title=doc_title,
                 sections=sections,
                 metadata={"named_entities": global_entities},
-                raw_token_count=_token_count(full_text),
+                raw_token_count=token_count(full_text),
             )
         ]

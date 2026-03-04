@@ -73,6 +73,8 @@ export interface CorpusInfo {
   questionCount?: number;
   hasProcessed?: boolean;
   hasResults?: boolean;
+  hasQaPairs?: boolean;
+  qaPairCount?: number;
 }
 
 export const DEFAULT_CORPORA: CorpusInfo[] = [

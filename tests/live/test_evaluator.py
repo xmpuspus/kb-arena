@@ -141,13 +141,13 @@ async def test_judge_parses_json_output(live_llm_client):
 
     from kb_arena.benchmark.evaluator import JUDGE_SYSTEM_PROMPT
 
-    raw = await live_llm_client.judge(
+    resp = await live_llm_client.judge(
         answer="json.loads parses a JSON string.",
         reference="json.loads converts a JSON string to a Python object.",
         system_prompt=JUDGE_SYSTEM_PROMPT,
     )
-    m = re.search(r"\{[^}]+\}", raw, re.DOTALL)
-    assert m, f"No JSON object in judge output: {raw}"
+    m = re.search(r"\{[^}]+\}", resp.text, re.DOTALL)
+    assert m, f"No JSON object in judge output: {resp.text}"
     parsed = json.loads(m.group())
     assert "accuracy" in parsed
     assert "completeness" in parsed
@@ -255,6 +255,6 @@ async def test_five_wrong_answers_all_caught(live_llm_client):
         score = await evaluate(
             pair["answer"], pair["ground_truth"], pair["constraints"], llm=live_llm_client
         )
-        assert (
-            score.accuracy <= 0.6
-        ), f"Wrong answer scored too high: {score.accuracy}\nAnswer: {pair['answer']}"
+        assert score.accuracy <= 0.6, (
+            f"Wrong answer scored too high: {score.accuracy}\nAnswer: {pair['answer']}"
+        )

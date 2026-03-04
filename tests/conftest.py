@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from kb_arena.llm.client import LLMResponse
 from kb_arena.models.document import CodeBlock, CrossRef, Document, Section, Table
 
 
@@ -151,7 +152,19 @@ def mock_llm_client():
     """Mock LLM client for testing without API calls."""
     client = AsyncMock()
     client.classify.return_value = "factoid"
-    client.generate.return_value = "This is a generated answer."
-    client.extract.return_value = '{"entities": [], "relationships": []}'
-    client.judge.return_value = '{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}'
+    client.generate.return_value = LLMResponse(
+        text="This is a generated answer.", input_tokens=100, output_tokens=50, cost_usd=0.00055
+    )
+    client.extract.return_value = LLMResponse(
+        text='{"entities": [], "relationships": []}',
+        input_tokens=200,
+        output_tokens=30,
+        cost_usd=0.00105,
+    )
+    client.judge.return_value = LLMResponse(
+        text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}',
+        input_tokens=300,
+        output_tokens=20,
+        cost_usd=0.00120,
+    )
     return client

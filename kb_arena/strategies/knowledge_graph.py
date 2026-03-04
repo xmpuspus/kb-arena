@@ -270,8 +270,8 @@ class KnowledgeGraphStrategy(Strategy):
             rel_types=", ".join(rel_type_values("")),
         )
         prompt = cypher_gen_prompt.format(question=question)
-        raw_cypher = await llm.extract(text=prompt, system_prompt="Output only Cypher. No prose.")
-        cypher = _extract_cypher(raw_cypher)
+        resp = await llm.extract(text=prompt, system_prompt="Output only Cypher. No prose.")
+        cypher = _extract_cypher(resp.text)
 
         try:
             records = await self._run_cypher(cypher, {"query": question})
@@ -311,19 +311,27 @@ class KnowledgeGraphStrategy(Strategy):
         sources = [s for s in sources if s]
 
         llm = self._get_llm()
-        answer = await llm.generate(
+        resp = await llm.generate(
             query=question,
             context=context,
             system_prompt=SYSTEM_PROMPT,
         )
 
-        latency_ms = self._record_metrics(start, sources=sources, graph_context=graph_ctx)
+        latency_ms = self._record_metrics(
+            start,
+            tokens=resp.total_tokens,
+            cost=resp.cost_usd,
+            sources=sources,
+            graph_context=graph_ctx,
+        )
         return AnswerResult(
-            answer=answer,
+            answer=resp.text,
             sources=sources,
             graph_context=graph_ctx,
             strategy=self.name,
             latency_ms=latency_ms,
+            tokens_used=resp.total_tokens,
+            cost_usd=resp.cost_usd,
         )
 
     async def stream_answer(self, question: str, history: list[dict] | None = None):

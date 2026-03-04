@@ -137,7 +137,7 @@ Documentation excerpts:
 
 Return a JSON array of {count} question objects. Nothing else — just the JSON array."""
 
-    response = await llm.generate(
+    resp = await llm.generate(
         query=user_prompt,
         context="",
         system_prompt=SYSTEM_PROMPT,
@@ -146,7 +146,7 @@ Return a JSON array of {count} question objects. Nothing else — just the JSON 
     )
 
     # Extract JSON from response (handle markdown code blocks)
-    json_match = re.search(r"\[[\s\S]*\]", response)
+    json_match = re.search(r"\[[\s\S]*\]", resp.text)
     if not json_match:
         raise ValueError(f"No JSON array found in LLM response for tier {tier}")
 

@@ -199,7 +199,7 @@ export default function DemoPage() {
         <div className={`grid ${gridCols} gap-4`}>
           {selectedStrategies.map((s) => (
             <ChatPanel
-              key={s}
+              key={`${s}-${trigger}`}
               strategy={s}
               query={query}
               corpus={corpus}

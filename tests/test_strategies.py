@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from kb_arena.generate.qna import parse_qna_json as _parse_qna_json
 from kb_arena.models.document import Section
 from kb_arena.strategies.base import AnswerResult
 from kb_arena.strategies.contextual_vector import (
@@ -16,7 +17,7 @@ from kb_arena.strategies.contextual_vector import (
 )
 from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy, _mock_graph_context
 from kb_arena.strategies.naive_vector import NaiveVectorStrategy, _chunk_text
-from kb_arena.strategies.qna_pairs import QnAPairStrategy, _parse_qna_json
+from kb_arena.strategies.qna_pairs import QnAPairStrategy
 
 # --- Chunking helpers ---
 

@@ -4,9 +4,22 @@ Which retrieval architecture works best for your documentation?
 
 KB Arena benchmarks 5 retrieval strategies — naive vector, contextual vector, Q&A pairs, knowledge graph, and hybrid — on **your** documentation. Bring your docs in any format, run the pipeline, get empirical results. Ships with an AWS Compute corpus (75 questions across 5 difficulty tiers) as a built-in example.
 
-![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-279-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue)
+![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-419-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ![KB Arena Demo](docs/demo.gif)
+
+---
+
+## Try It in 10 Seconds
+
+No API keys. No Docker. Just explore real benchmark results:
+
+```bash
+pip install kb-arena
+kb-arena demo
+```
+
+This launches the dashboard with pre-computed results from the AWS Compute corpus (75 questions, 5 strategies, 5 difficulty tiers).
 
 ---
 
@@ -26,6 +39,12 @@ That's it. No Neo4j expertise needed. No graph database experience required. KB 
 
 ```bash
 pip install kb-arena
+
+# Optional: install format-specific parsers
+pip install kb-arena[pdf]        # PDF support (PyMuPDF)
+pip install kb-arena[docx]       # Word documents (mammoth)
+pip install kb-arena[web]        # Web scraping (httpx)
+pip install kb-arena[all-formats] # All of the above
 ```
 
 ### Step 2: Set API keys
@@ -76,10 +95,14 @@ kb-arena init-corpus my-docs
 
 # Drop your docs into the raw/ directory
 cp ~/my-documentation/*.md datasets/my-docs/raw/
-# Also works: .html, .rst, .txt files — the parser auto-detects format
+# Supports: .md, .html, .txt, .pdf, .docx, .csv, .tsv — auto-detected
 
 # Parse into the unified Document model (JSONL intermediate files)
 kb-arena ingest datasets/my-docs/raw/ --corpus my-docs
+
+# Or ingest directly from a URL or GitHub repo
+kb-arena ingest https://docs.example.com --corpus my-docs
+kb-arena ingest github:owner/repo --corpus my-docs
 
 # Build the knowledge graph in Neo4j (entities + relationships)
 kb-arena build-graph --corpus my-docs
@@ -165,6 +188,63 @@ kb-arena serve
 
 ---
 
+## Documentation Tools
+
+Beyond benchmarking, KB Arena includes three standalone tools that work on any documentation corpus.
+
+### Q&A Generator
+
+Generate Q&A pairs from your docs — use them for chatbot training, FAQ pages, or search indexes. Only needs an Anthropic key (no embeddings, no vector DB).
+
+```bash
+kb-arena generate-qa --corpus my-docs
+# Outputs: datasets/my-docs/qa-pairs/qa_pairs.jsonl
+```
+
+![Q&A Generator](docs/demo-generate-qa.gif)
+
+### Docs Gap Analyzer
+
+Find what's missing in your documentation before your users complain about it. Generates Q&A pairs per section, self-evaluates them, and classifies each section as strong (>=70%), weak (30-70%), or gap (<30%).
+
+```bash
+kb-arena audit --corpus my-docs
+```
+
+![Docs Audit](docs/demo-audit.gif)
+
+### Fix My Docs
+
+Get actionable recommendations with draft content to improve your docs. Runs the audit internally, then generates prioritized fixes for weak and gap sections.
+
+```bash
+kb-arena fix --corpus my-docs --max-fixes 5
+```
+
+![Fix My Docs](docs/demo-fix.gif)
+
+Pipeline: `generate-qa` → `audit` → `fix` — each command builds on the previous. Or run them independently.
+
+---
+
+## Benchmark Results (AWS Compute Corpus)
+
+Real numbers from 75 questions across 5 difficulty tiers, evaluated with a 4-pass system (structural checks + LLM-as-judge):
+
+| Strategy | Overall | T1 Lookup | T2 How-To | T3 Comparison | T4 Integration | T5 Architecture | Avg Latency | Cost |
+|---|---|---|---|---|---|---|---|---|
+| **Q&A Pairs** | **81.5%** | 80% | 85% | **83%** | 80% | 77% | 8.4s | $0.48 |
+| Knowledge Graph | 70.3% | 72% | 72% | 68% | 74% | 62% | 18.9s | $1.28 |
+| Hybrid | 64.3% | 37% | 83% | 55% | **88%** | **70%** | 39.5s | $3.00 |
+| Naive Vector | 19.5% | 27% | 13% | 12% | 27% | 20% | 5.7s | $0.33 |
+| Contextual Vector | 16.0% | 26% | 12% | 7% | 24% | 7% | 4.7s | $0.29 |
+
+**Key takeaway:** Q&A pairs dominate overall because pre-generated answers sidestep retrieval failures. But the hybrid strategy wins at integration (T4) questions where structured graph traversal matters. Pure vector RAG — what most teams ship — scores under 20%. Cost ranges from $0.29 (contextual vector) to $3.00 (hybrid) for the full 75-question benchmark.
+
+These are results from the built-in AWS Compute corpus. Your mileage will vary — that's the whole point of running it on your own docs.
+
+---
+
 ## The 5 Strategies
 
 | # | Strategy | How it works | Best at |
@@ -181,15 +261,31 @@ kb-arena serve
 
 Questions are organized into 5 difficulty tiers:
 
-| Tier | Type | Hops | Where vector RAG breaks |
-|------|------|------|--------------------------|
-| 1 | Lookup | 1 | All strategies competitive |
-| 2 | Procedural | 1-2 | Vector drops to ~60% |
-| 3 | Comparative | 2-3 | Vector drops to ~30%, structured strategies lead |
-| 4 | Relational | 3-4 | Requires structured data (graph or Q&A pairs) |
-| 5 | Multi-hop | 3-5 | Requires multi-source synthesis |
+| Tier | Type | Hops | What it tests |
+|------|------|------|---------------|
+| 1 | Lookup | 1 | Single-fact lookup from one document |
+| 2 | How-To | 1-2 | Multi-step processes, configuration sequences |
+| 3 | Comparison | 2-3 | Comparing alternatives, trade-offs between options |
+| 4 | Integration | 3-4 | Dependencies and connections between concepts |
+| 5 | Architecture | 3-5 | Cross-document synthesis, transitive reasoning |
 
 Use `kb-arena generate-questions` to auto-generate questions from your docs, or write them by hand in YAML.
+
+---
+
+## Supported Formats
+
+| Format | Extensions / Input | Optional Dep | Notes |
+|--------|-------------------|--------------|-------|
+| Markdown | `.md`, `.markdown`, `.rst` | — | Heading hierarchy, code blocks, tables |
+| HTML | `.html`, `.htm` | — | Strips nav/footer, extracts structure |
+| Plain text | `.txt`, `.text` | — | ALL CAPS heading detection |
+| PDF | `.pdf` | `kb-arena[pdf]` | Font-size heading detection, table extraction |
+| Word | `.docx` | `kb-arena[docx]` | Converts to HTML, then extracts structure |
+| CSV / TSV | `.csv`, `.tsv` | — | Auto-detects delimiter, groups rows into sections |
+| Web URL | `https://...` | `kb-arena[web]` | Crawls same-domain pages; uses `/llms.txt` if available |
+| GitHub | `github:owner/repo` | — | Shallow clones and ingests all doc files |
+| SEC EDGAR | `--format sec-edgar` | — | 10-K/10-Q filing parser |
 
 ---
 
@@ -208,12 +304,16 @@ No per-domain configuration needed. The LLM maps your documentation concepts to 
 
 | Command | Description |
 |---|---|
+| `demo` | Launch dashboard with pre-computed results (no API keys needed) |
 | `init-corpus <name>` | Scaffold `datasets/{name}/` directories |
-| `ingest <path>` | Parse docs into JSONL. Options: `--corpus`, `--format` |
+| `ingest <path>` | Parse docs into JSONL. Accepts files, dirs, URLs, `github:owner/repo`. Options: `--corpus`, `--format` |
 | `build-graph` | Extract entities/rels into Neo4j. Options: `--corpus` |
 | `build-vectors` | Build ChromaDB indexes. Options: `--corpus`, `--strategy` |
 | `generate-questions` | Auto-generate benchmark questions. Options: `--corpus`, `--count` |
 | `benchmark` | Run evaluation. Options: `--corpus`, `--strategy`, `--tier` |
+| `generate-qa` | Generate Q&A pairs from your docs as JSONL. Options: `--corpus`, `--output` |
+| `audit` | Find documentation gaps — classifies sections as strong/weak/gap. Options: `--corpus`, `--output`, `--max-sections` |
+| `fix` | Generate fix recommendations with draft content. Options: `--corpus`, `--max-fixes`, `--output` |
 | `report` | Generate report. Options: `--corpus`, `--output` |
 | `serve` | Launch API + frontend. Options: `--host`, `--port` |
 | `health` | Pipeline status — per-corpus progress, service connectivity, API keys |
@@ -256,8 +356,8 @@ All prefixed with `KB_ARENA_`. Loaded from `.env` or environment.
 # Install with dev dependencies
 pip install -e '.[dev]'
 
-# Run tests (279 tests)
-pytest tests/ -v --ignore=tests/live
+# Run tests
+pytest tests/ -v --ignore=tests/live  # 419 tests
 
 # Lint + format
 ruff check . && ruff format --check .
@@ -280,7 +380,7 @@ cd web && npm install && npx next build
 | Frontend | Next.js 14 + Tailwind + Recharts |
 | Models | Pydantic v2 |
 | CLI | Typer + Rich |
-| Testing | pytest (279 tests) |
+| Testing | pytest (419 tests) |
 
 ---
 

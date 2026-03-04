@@ -10,29 +10,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from kb_arena.ingest.parsers.utils import read_text, slugify, token_count, unique_id
 from kb_arena.models.document import CodeBlock, CrossRef, Document, Section, Table
-
-
-def _slugify(text: str) -> str:
-    text = text.lower().strip()
-    text = re.sub(r"[^\w\s/-]", "", text)
-    text = re.sub(r"\s+", "-", text)
-    return text or "section"
-
-
-def _unique_id(slug: str, seen: set[str]) -> str:
-    candidate = slug
-    n = 1
-    while candidate in seen:
-        candidate = f"{slug}-{n}"
-        n += 1
-    seen.add(candidate)
-    return candidate
-
-
-def _token_count(text: str) -> int:
-    return int(len(text.split()) * 1.3)
-
 
 # ---------------------------------------------------------------------------
 # Markdown parser
@@ -130,7 +109,7 @@ def _parse_markdown(text: str, source: str, corpus: str) -> list[Document]:
 
     # Build heading stack to compute heading_path
     doc_title = sections_raw[0][1] if sections_raw else Path(source).stem
-    doc_id = _slugify(Path(source).stem)
+    doc_id = slugify(Path(source).stem)
 
     seen_ids: set[str] = set()
     sections: list[Section] = []
@@ -145,7 +124,7 @@ def _parse_markdown(text: str, source: str, corpus: str) -> list[Document]:
         content = "\n".join(_strip_code_and_tables(body_lines)).strip()
         code_blocks = _parse_md_code_blocks(body_lines)
         tables = _parse_md_tables(body_lines)
-        section_id = _unique_id(_slugify(title), seen_ids)
+        section_id = unique_id(slugify(title), seen_ids)
 
         sections.append(
             Section(
@@ -162,12 +141,12 @@ def _parse_markdown(text: str, source: str, corpus: str) -> list[Document]:
 
     full_text = " ".join(s.content for s in sections)
     doc = Document(
-        id=_slugify(doc_id),
+        id=slugify(doc_id),
         source=source,
         corpus=corpus,
         title=doc_title,
         sections=sections,
-        raw_token_count=_token_count(full_text),
+        raw_token_count=token_count(full_text),
     )
     return [doc]
 
@@ -362,7 +341,7 @@ def _parse_rst(text: str, source: str, corpus: str) -> list[Document]:
         links = _extract_rst_xrefs("\n".join(body_lines))
         code_blocks = _extract_rst_code_blocks(body_lines)
         tables = _extract_rst_grid_tables(body_lines)
-        section_id = _unique_id(_slugify(title), seen_ids)
+        section_id = unique_id(slugify(title), seen_ids)
 
         sections.append(
             Section(
@@ -380,12 +359,12 @@ def _parse_rst(text: str, source: str, corpus: str) -> list[Document]:
     full_text = " ".join(s.content for s in sections)
     return [
         Document(
-            id=_slugify(Path(source).stem),
+            id=slugify(Path(source).stem),
             source=source,
             corpus=corpus,
             title=doc_title,
             sections=sections,
-            raw_token_count=_token_count(full_text),
+            raw_token_count=token_count(full_text),
         )
     ]
 
@@ -397,11 +376,7 @@ def _parse_rst(text: str, source: str, corpus: str) -> list[Document]:
 
 class MarkdownParser:
     def parse(self, path: Path, corpus: str) -> list[Document]:
-        try:
-            text = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            text = path.read_text(encoding="latin-1")
-
+        text = read_text(path)
         source = str(path)
         if path.suffix.lower() == ".rst":
             return _parse_rst(text, source, corpus)

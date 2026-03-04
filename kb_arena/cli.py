@@ -5,6 +5,8 @@ Each command is independently runnable and re-runnable.
 
 from __future__ import annotations
 
+from typing import Optional
+
 import typer
 from rich.console import Console
 
@@ -16,19 +18,60 @@ app = typer.Typer(
 console = Console()
 
 
+def _preflight(
+    needs_anthropic: bool = False,
+    needs_openai: bool = False,
+    needs_neo4j: bool = False,
+) -> None:
+    """Check required services/keys upfront with actionable error messages."""
+    from kb_arena.settings import settings
+
+    errors: list[str] = []
+    if needs_anthropic and not settings.anthropic_api_key:
+        errors.append("Anthropic API key required. Set KB_ARENA_ANTHROPIC_API_KEY in .env")
+    if needs_openai and not settings.openai_api_key:
+        errors.append(
+            "OpenAI API key required (for embeddings). Set KB_ARENA_OPENAI_API_KEY in .env"
+        )
+    if errors:
+        for e in errors:
+            console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
+
 @app.command()
 def ingest(
-    path: str = typer.Argument(..., help="Path to raw documents directory"),
+    path: str = typer.Argument(
+        ...,
+        help="Path, URL, or github:owner/repo to ingest",
+    ),
     corpus: str = typer.Option("custom", help="Corpus name (e.g. aws-compute, my-docs)"),
-    format: str = typer.Option("auto", help="Parser format: auto, markdown, html, sec-edgar"),
+    format: str = typer.Option(
+        "auto",
+        help="Parser: auto, markdown, html, sec-edgar, pdf, docx, plaintext, web, csv, github",
+    ),
 ):
     """Stage 1: Parse raw documents into unified Document model.
 
+    Supports local files/dirs, URLs (auto-detected), and github:owner/repo.
     Writes JSONL to datasets/{corpus}/processed/
     """
-    from kb_arena.ingest.pipeline import run_ingest
+    # Auto-detect source type
+    detected_format = format
+    if format == "auto":
+        if path.startswith(("http://", "https://")):
+            detected_format = "web"
+        elif path.startswith("github:"):
+            detected_format = "github"
 
-    run_ingest(path=path, corpus=corpus, format=format)
+    if detected_format in ("web", "github"):
+        from kb_arena.ingest.pipeline import run_ingest_special
+
+        run_ingest_special(source=path, corpus=corpus, format=detected_format)
+    else:
+        from kb_arena.ingest.pipeline import run_ingest
+
+        run_ingest(path=path, corpus=corpus, format=format)
 
 
 @app.command()
@@ -41,6 +84,8 @@ def build_graph(
     Requires: ingest completed. Writes to Neo4j.
     """
     import asyncio
+
+    _preflight(needs_anthropic=True)
 
     from kb_arena.graph.extractor import run_extraction
 
@@ -57,6 +102,8 @@ def build_vectors(
     Requires: ingest completed. Writes to ChromaDB.
     """
     import asyncio
+
+    _preflight(needs_openai=True)
 
     from kb_arena.strategies import build_vector_indexes
 
@@ -78,6 +125,8 @@ def benchmark(
     """
     import asyncio
 
+    _preflight(needs_anthropic=True, needs_openai=True)
+
     from kb_arena.benchmark.runner import run_benchmark
 
     asyncio.run(run_benchmark(corpus=corpus, strategy=strategy, tier=tier))
@@ -86,7 +135,7 @@ def benchmark(
 @app.command()
 def report(
     corpus: str = typer.Option("all", help="Corpus to generate report for"),
-    output: str | None = typer.Option(None, help="Output file path"),
+    output: Optional[str] = typer.Option(None, help="Output file path"),  # noqa: UP045
 ):
     """Generate benchmark report from results JSON."""
     from kb_arena.benchmark.reporter import generate_report
@@ -151,9 +200,144 @@ def generate_questions(
     """
     import asyncio
 
+    _preflight(needs_anthropic=True)
+
     from kb_arena.benchmark.question_gen import run_question_generation
 
     asyncio.run(run_question_generation(corpus=corpus, count=count))
+
+
+@app.command()
+def demo(
+    host: str = typer.Option("0.0.0.0", help="Host to bind to"),
+    port: int = typer.Option(8000, help="Port to listen on"),
+):
+    """Launch the demo with pre-computed aws-compute benchmark results.
+
+    No API keys, no Docker, no setup needed — just explore real results.
+    """
+    import webbrowser
+    from pathlib import Path
+    from threading import Timer
+
+    results_dir = Path("results")
+    result_files = list(results_dir.glob("aws-compute_*.json")) if results_dir.exists() else []
+
+    if not result_files:
+        console.print(
+            "[red]No aws-compute results found.[/red]\n"
+            "The demo requires pre-computed benchmark results in results/.\n"
+            "Clone the full repo: [bold]git clone https://github.com/your-org/kb-arena[/bold]"
+        )
+        raise typer.Exit(1)
+
+    console.print(f"[green]Found {len(result_files)} benchmark result(s)[/green]")
+
+    import socket
+
+    actual_port = port
+    for candidate in range(port, port + 20):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if s.connect_ex(("localhost", candidate)) != 0:
+                actual_port = candidate
+                break
+    else:
+        console.print(f"[red]No available port in range {port}-{port + 19}[/red]")
+        raise typer.Exit(1)
+
+    if actual_port != port:
+        console.print(f"[yellow]Port {port} in use, using {actual_port}[/yellow]")
+
+    console.print(f"Starting API server on http://localhost:{actual_port}")
+    console.print(f"API docs at http://localhost:{actual_port}/docs\n")
+
+    # Open the frontend if it's running, otherwise open API docs
+    def open_browser():
+        for fe_port in (3000, 3001):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                if s.connect_ex(("localhost", fe_port)) == 0:
+                    console.print(f"[green]Frontend detected on port {fe_port}[/green]")
+                    webbrowser.open(f"http://localhost:{fe_port}/benchmark")
+                    return
+        webbrowser.open(f"http://localhost:{actual_port}/docs")
+
+    Timer(1.5, open_browser).start()
+
+    import uvicorn
+
+    uvicorn.run("kb_arena.chatbot.api:app", host=host, port=actual_port)
+
+
+@app.command()
+def generate_qa(
+    corpus: str = typer.Option(..., help="Corpus to generate Q&A pairs for"),
+    output: Optional[str] = typer.Option(None, help="Output JSONL path"),  # noqa: UP045
+):
+    """Generate Q&A pairs from your documentation.
+
+    Reads processed JSONL, generates 3-5 Q&A pairs per section using LLM,
+    writes results as JSONL. Only needs Anthropic key (no embeddings).
+    """
+    import asyncio
+
+    _preflight(needs_anthropic=True)
+
+    from kb_arena.generate.cli_runner import run_generate_qa
+
+    asyncio.run(run_generate_qa(corpus=corpus, output=output))
+
+
+@app.command()
+def audit(
+    corpus: str = typer.Option(..., help="Corpus to audit"),
+    output: Optional[str] = typer.Option(None, help="Output JSON path"),  # noqa: UP045
+    max_sections: int = typer.Option(50, help="Max sections to audit"),
+):
+    """Find gaps in your documentation.
+
+    Generates Q&A pairs per section, self-evaluates them, and classifies
+    sections as strong (>=70%), weak (30-70%), or gap (<30%).
+    """
+    import asyncio
+
+    _preflight(needs_anthropic=True)
+
+    from kb_arena.audit.analyzer import run_audit
+    from kb_arena.audit.display import display_audit_report
+
+    report = asyncio.run(run_audit(corpus=corpus, max_sections=max_sections))
+    display_audit_report(report, output=output)
+
+
+@app.command()
+def fix(
+    corpus: str = typer.Option(..., help="Corpus to fix"),
+    max_fixes: int = typer.Option(10, help="Max fix recommendations"),
+    output: Optional[str] = typer.Option(None, help="Output markdown path"),  # noqa: UP045
+):
+    """Generate fix recommendations for weak documentation.
+
+    Runs audit internally, then generates actionable recommendations
+    with draft content for sections scoring below 70%.
+    """
+    import asyncio
+
+    _preflight(needs_anthropic=True)
+
+    from kb_arena.audit.analyzer import run_audit
+    from kb_arena.audit.display import display_fix_report
+    from kb_arena.audit.fixer import generate_fixes
+    from kb_arena.llm.client import LLMClient
+    from kb_arena.strategies import load_documents
+
+    async def _run():
+        report = await run_audit(corpus=corpus)
+        documents = load_documents(corpus)
+        llm = LLMClient()
+        return await generate_fixes(report, documents, llm, max_fixes=max_fixes)
+
+    fix_report = asyncio.run(_run())
+    display_fix_report(fix_report, output=output)
 
 
 @app.command()
@@ -174,10 +358,16 @@ def health():
     oai_status = "[green]set[/green]" if has_openai else "[red]missing[/red]"
     console.print(f"    Anthropic: {ant_status}")
     if not has_anthropic:
-        console.print("               (needed for graph, question gen, benchmark)")
+        console.print(
+            "               [dim]Set KB_ARENA_ANTHROPIC_API_KEY in .env"
+            " (needed for graph, question gen, benchmark)[/dim]"
+        )
     console.print(f"    OpenAI:    {oai_status}")
     if not has_openai:
-        console.print("               (needed for embeddings / vector strategies)")
+        console.print(
+            "               [dim]Set KB_ARENA_OPENAI_API_KEY in .env"
+            " (needed for embeddings / vector strategies)[/dim]"
+        )
     console.print()
 
     # Services
@@ -200,7 +390,10 @@ def health():
     neo_status = "[green]connected[/green]" if neo4j_ok else "[yellow]unavailable[/yellow]"
     console.print(f"    Neo4j:    {neo_status}")
     if not neo4j_ok:
-        console.print("              (needed for graph + hybrid strategies)")
+        console.print(
+            "              [dim]Run: docker compose up neo4j -d"
+            " (needed for graph + hybrid strategies)[/dim]"
+        )
 
     try:
         import chromadb
@@ -251,6 +444,11 @@ def health():
         except Exception:
             pass
         result_count = len(list(results_dir.glob(f"{name}_*.json"))) if results_dir.exists() else 0
+        qa_pairs_path = d / "qa-pairs" / "qa_pairs.jsonl"
+        qa_pair_count = 0
+        if qa_pairs_path.exists():
+            lines = qa_pairs_path.read_text().splitlines()
+            qa_pair_count = sum(1 for line in lines if line.strip())
 
         raw_s = f"[green]{raw_count} doc(s)[/green]" if raw_count else "[dim]empty[/dim]"
         proc_s = "[green]yes[/green]" if has_processed else "[dim]no[/dim]"
@@ -258,11 +456,12 @@ def health():
         graph_s = "[green]yes[/green]" if neo4j_ok else "[dim]no[/dim]"
         q_s = f"[green]{question_count}[/green]" if question_count else "[dim]0[/dim]"
         r_s = f"[green]{result_count} strategy(ies)[/green]" if result_count else "[dim]none[/dim]"
+        qa_s = f"[green]{qa_pair_count} pairs[/green]" if qa_pair_count else "[dim]none[/dim]"
 
         console.print(f"    [bold]{name}[/bold]")
         console.print(f"      raw: {raw_s}  processed: {proc_s}")
         console.print(f"      vectors: {vec_s}  graph: {graph_s}")
-        console.print(f"      questions: {q_s}  results: {r_s}")
+        console.print(f"      questions: {q_s}  results: {r_s}  qa-pairs: {qa_s}")
     console.print()
 
 

@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
 from kb_arena.chatbot.session import SessionMemory
+from kb_arena.chatbot.tools_api import router as tools_router
 from kb_arena.models.api import ChatRequest, ChatResponse, ErrorDetail, ErrorResponse
 from kb_arena.settings import settings
 
@@ -124,6 +125,8 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+app.include_router(tools_router)
 
 
 @app.exception_handler(Exception)
@@ -256,6 +259,16 @@ async def list_corpora() -> dict:
                     except OSError:
                         pass
             has_results = results_dir.exists() and any(results_dir.glob(f"{d.name}_*.json"))
+            qa_path = d / "qa-pairs" / "qa_pairs.jsonl"
+            has_qa_pairs = qa_path.exists()
+            qa_pair_count = 0
+            if has_qa_pairs:
+                try:
+                    qa_pair_count = sum(
+                        1 for line in qa_path.read_text().splitlines() if line.strip()
+                    )
+                except OSError:
+                    pass
             corpora.append(
                 {
                     "value": d.name,
@@ -263,6 +276,8 @@ async def list_corpora() -> dict:
                     "questionCount": total_questions,
                     "hasProcessed": has_processed,
                     "hasResults": has_results,
+                    "hasQaPairs": has_qa_pairs,
+                    "qaPairCount": qa_pair_count,
                 }
             )
     return {"corpora": corpora}

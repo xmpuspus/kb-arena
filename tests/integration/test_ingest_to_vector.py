@@ -178,7 +178,11 @@ async def test_naive_vector_query_references_source(md_corpus):
     mock_chroma.get_or_create_collection.return_value = collection
 
     mock_llm = AsyncMock()
-    mock_llm.generate.return_value = "Lambda timeout is configured via the AWS CLI or Console."
+    from kb_arena.llm.client import LLMResponse
+
+    mock_llm.generate.return_value = LLMResponse(
+        text="Lambda timeout is configured via the AWS CLI or Console."
+    )
 
     strategy = NaiveVectorStrategy(chroma_client=mock_chroma)
     strategy._llm = mock_llm
@@ -207,7 +211,11 @@ async def test_naive_vector_query_uses_context_from_retrieval(md_corpus):
     mock_chroma.get_or_create_collection.return_value = collection
 
     mock_llm = AsyncMock()
-    mock_llm.generate.return_value = "Security groups control inbound and outbound traffic."
+    from kb_arena.llm.client import LLMResponse
+
+    mock_llm.generate.return_value = LLMResponse(
+        text="Security groups control inbound and outbound traffic."
+    )
 
     strategy = NaiveVectorStrategy(chroma_client=mock_chroma)
     strategy._llm = mock_llm
@@ -243,7 +251,9 @@ async def test_naive_vector_deduplicates_sources():
     mock_chroma.get_or_create_collection.return_value = collection
 
     mock_llm = AsyncMock()
-    mock_llm.generate.return_value = "answer"
+    from kb_arena.llm.client import LLMResponse
+
+    mock_llm.generate.return_value = LLMResponse(text="answer")
 
     strategy = NaiveVectorStrategy(chroma_client=mock_chroma)
     strategy._llm = mock_llm
@@ -283,7 +293,11 @@ async def test_full_pipeline_e2e(md_corpus):
     mock_chroma.get_or_create_collection.return_value = collection
 
     mock_llm = AsyncMock()
-    mock_llm.generate.return_value = "Use bucket policies to control access to S3 resources."
+    from kb_arena.llm.client import LLMResponse
+
+    mock_llm.generate.return_value = LLMResponse(
+        text="Use bucket policies to control access to S3 resources."
+    )
 
     strategy = NaiveVectorStrategy(chroma_client=mock_chroma)
     await strategy.build_index(docs)

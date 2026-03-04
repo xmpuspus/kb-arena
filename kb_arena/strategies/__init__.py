@@ -24,7 +24,7 @@ STRATEGY_REGISTRY: dict[str, type] = {
 }
 
 
-def _load_documents(corpus: str) -> list[Document]:
+def load_documents(corpus: str) -> list[Document]:
     """Load processed JSONL documents for a corpus."""
     base = Path(settings.datasets_path)
     if corpus == "all":
@@ -56,7 +56,7 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
     import chromadb
 
     chroma = chromadb.PersistentClient(path=settings.chroma_path)
-    documents = _load_documents(corpus)
+    documents = load_documents(corpus)
 
     if not documents:
         logger.warning("No documents found for corpus=%s — skipping index build", corpus)
@@ -131,4 +131,5 @@ __all__ = [
     "KnowledgeGraphStrategy",
     "HybridStrategy",
     "build_vector_indexes",
+    "load_documents",
 ]

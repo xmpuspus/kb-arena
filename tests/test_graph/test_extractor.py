@@ -100,7 +100,9 @@ def test_validate_result_drops_dangling_relationships():
 @pytest.mark.asyncio
 async def test_extract_document_calls_llm_per_section(sample_document):
     mock_llm = AsyncMock()
-    mock_llm.extract.return_value = json.dumps(_VALID_LLM_RESPONSE)
+    from kb_arena.llm.client import LLMResponse
+
+    mock_llm.extract.return_value = LLMResponse(text=json.dumps(_VALID_LLM_RESPONSE))
 
     from kb_arena.graph.extractor import _build_system_prompt
 
@@ -114,7 +116,9 @@ async def test_extract_document_calls_llm_per_section(sample_document):
 @pytest.mark.asyncio
 async def test_extract_document_handles_bad_json(sample_document):
     mock_llm = AsyncMock()
-    mock_llm.extract.return_value = "not json at all"
+    from kb_arena.llm.client import LLMResponse
+
+    mock_llm.extract.return_value = LLMResponse(text="not json at all")
 
     from kb_arena.graph.extractor import _build_system_prompt
 

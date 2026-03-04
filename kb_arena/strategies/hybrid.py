@@ -37,13 +37,13 @@ async def _rerank_passages(llm, question: str, passages: list[str]) -> list[tupl
     scored = []
     for passage in passages:
         try:
-            raw = await llm.generate(
+            resp = await llm.generate(
                 query="",
                 context="",
                 system_prompt=RERANK_PROMPT.format(question=question, passage=passage[:1000]),
                 max_tokens=50,
             )
-            data = json.loads(raw.strip())
+            data = json.loads(resp.text.strip())
             score = float(data.get("score", 0.5))
         except Exception:
             score = 0.5
@@ -146,6 +146,8 @@ class HybridStrategy(Strategy):
         sources: list[str] = []
         graph_ctx: GraphContext | None = None
         passages: list[str] = []
+        total_tokens = 0
+        total_cost = 0.0
 
         if intent in ("comparison", "relational"):
             # Graph-primary
@@ -153,20 +155,25 @@ class HybridStrategy(Strategy):
             answer = graph_result.answer
             sources = graph_result.sources
             graph_ctx = graph_result.graph_context
+            total_tokens = graph_result.tokens_used
+            total_cost = graph_result.cost_usd
 
         elif intent in ("factoid", "exploratory"):
             # Vector-primary
             vector_result = await self._get_vector().query(question, top_k=top_k)
             answer = vector_result.answer
             sources = vector_result.sources
+            total_tokens = vector_result.tokens_used
+            total_cost = vector_result.cost_usd
 
         else:
             # Procedural — fuse both
             vector_result = await self._get_vector().query(question, top_k=top_k)
             graph_result = await self._get_graph().query(question, top_k=top_k)
+            total_tokens = vector_result.tokens_used + graph_result.tokens_used
+            total_cost = vector_result.cost_usd + graph_result.cost_usd
 
             # Collect raw context chunks for re-ranking
-            # (Use the answers as synthetic passages if raw chunks aren't available)
             raw_passages = []
             if vector_result.answer:
                 raw_passages.append(vector_result.answer)
@@ -189,21 +196,28 @@ class HybridStrategy(Strategy):
                 passages = raw_passages
 
             context = "\n\n---\n\n".join(passages)
-            answer = await llm.generate(
+            resp = await llm.generate(
                 query=question,
                 context=context,
                 system_prompt=SYSTEM_PROMPT,
             )
+            answer = resp.text
+            total_tokens += resp.total_tokens
+            total_cost += resp.cost_usd
             sources = _merge_sources(vector_result.sources, graph_result.sources)
             graph_ctx = graph_result.graph_context
 
-        latency_ms = self._record_metrics(start, sources=sources, graph_context=graph_ctx)
+        latency_ms = self._record_metrics(
+            start, tokens=total_tokens, cost=total_cost, sources=sources, graph_context=graph_ctx
+        )
         return AnswerResult(
             answer=answer,
             sources=sources,
             graph_context=graph_ctx,
             strategy=self.name,
             latency_ms=latency_ms,
+            tokens_used=total_tokens,
+            cost_usd=total_cost,
         )
 
     async def stream_answer(self, question: str, history: list[dict] | None = None):

@@ -6,12 +6,56 @@ Sonnet for generation, extraction, evaluation.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import anthropic
 
 from kb_arena.settings import settings
 
 GENERATE_MODEL = settings.generate_model
 FAST_MODEL = settings.fast_model
+
+# Per-million-token pricing (USD). Update when Anthropic changes pricing.
+_MODEL_PRICING: dict[str, dict[str, float]] = {
+    "haiku": {"input": 0.80, "output": 4.00},
+    "sonnet": {"input": 3.00, "output": 15.00},
+    "opus": {"input": 15.00, "output": 75.00},
+}
+
+
+def _compute_cost(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cache_creation_tokens: int = 0,
+    cache_read_tokens: int = 0,
+) -> float:
+    """Estimate USD cost from token counts and model name."""
+    pricing = _MODEL_PRICING["sonnet"]  # default
+    for tier, p in _MODEL_PRICING.items():
+        if tier in model:
+            pricing = p
+            break
+
+    input_cost = input_tokens * pricing["input"] / 1_000_000
+    output_cost = output_tokens * pricing["output"] / 1_000_000
+    cache_create_cost = cache_creation_tokens * pricing["input"] * 1.25 / 1_000_000
+    cache_read_cost = cache_read_tokens * pricing["input"] * 0.1 / 1_000_000
+    return input_cost + output_cost + cache_create_cost + cache_read_cost
+
+
+@dataclass
+class LLMResponse:
+    """Result from an LLM call, including text and usage metrics."""
+
+    text: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
 
 
 class LLMClient:
@@ -35,8 +79,8 @@ class LLMClient:
             ctx = "\n".join(f"{t['role']}: {t['content'][:500]}" for t in turns)
             user_content = f"Conversation:\n{ctx}\n\nCurrent query: {query}"
 
-        result = await self._call(FAST_MODEL, system_prompt, user_content, max_tokens=100, **kwargs)
-        result = result.strip().lower()
+        resp = await self._call(FAST_MODEL, system_prompt, user_content, max_tokens=100, **kwargs)
+        result = resp.text.strip().lower()
 
         if allowed_values:
             for v in allowed_values:
@@ -52,7 +96,7 @@ class LLMClient:
         context: str,
         system_prompt: str,
         **kwargs,
-    ) -> str:
+    ) -> LLMResponse:
         """Full generation call. Sonnet."""
         user_content = f"Context:\n{context}\n\nQuery: {query}" if context else query
         return await self._call(GENERATE_MODEL, system_prompt, user_content, **kwargs)
@@ -62,7 +106,7 @@ class LLMClient:
         text: str,
         system_prompt: str,
         **kwargs,
-    ) -> str:
+    ) -> LLMResponse:
         """Entity/relationship extraction. Sonnet, structured output."""
         return await self._call(GENERATE_MODEL, system_prompt, text, **kwargs)
 
@@ -72,7 +116,7 @@ class LLMClient:
         reference: str,
         system_prompt: str,
         **kwargs,
-    ) -> str:
+    ) -> LLMResponse:
         """LLM-as-judge evaluation. Sonnet."""
         user_content = f"Reference answer:\n{reference}\n\nCandidate answer:\n{answer}"
         return await self._call(
@@ -86,7 +130,7 @@ class LLMClient:
         user: str,
         max_tokens: int = 4096,
         **kwargs,
-    ) -> str:
+    ) -> LLMResponse:
         """Core API call with cache_control on system prompt."""
         response = await self.client.messages.create(
             model=model,
@@ -102,7 +146,19 @@ class LLMClient:
             max_tokens=max_tokens,
             **kwargs,
         )
-        return response.content[0].text
+        usage = response.usage
+        input_tokens = usage.input_tokens
+        output_tokens = usage.output_tokens
+        cache_creation = getattr(usage, "cache_creation_input_tokens", 0) or 0
+        cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+        cost = _compute_cost(model, input_tokens, output_tokens, cache_creation, cache_read)
+
+        return LLMResponse(
+            text=response.content[0].text,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost,
+        )
 
     async def stream(
         self,

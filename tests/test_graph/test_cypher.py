@@ -103,7 +103,9 @@ def test_validate_cypher_rejects_plain_text():
 @pytest.mark.asyncio
 async def test_generator_uses_llm_when_valid():
     mock_llm = AsyncMock()
-    mock_llm.extract.return_value = "MATCH (n {fqn: $fqn}) RETURN n"
+    from kb_arena.llm.client import LLMResponse
+
+    mock_llm.extract.return_value = LLMResponse(text="MATCH (n {fqn: $fqn}) RETURN n")
 
     gen = CypherGenerator(mock_llm, "aws-compute")
     cypher, params = await gen.generate("find Lambda", {"fqn": "lambda"})
@@ -115,7 +117,9 @@ async def test_generator_uses_llm_when_valid():
 @pytest.mark.asyncio
 async def test_generator_falls_back_on_invalid_llm_output():
     mock_llm = AsyncMock()
-    mock_llm.extract.return_value = "This is not Cypher at all."
+    from kb_arena.llm.client import LLMResponse
+
+    mock_llm.extract.return_value = LLMResponse(text="This is not Cypher at all.")
 
     gen = CypherGenerator(mock_llm, "aws-compute")
     # "deprecat" keyword → DEPRECATION_CHAIN template

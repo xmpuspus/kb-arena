@@ -7,31 +7,15 @@ Higher upfront cost, near-zero runtime cost once built.
 
 from __future__ import annotations
 
-import json
-import re
-
 import chromadb
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 
+from kb_arena.generate.qna import generate_pairs_for_section
 from kb_arena.models.document import Document, Section
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
 
 COLLECTION_NAME = "qna_pairs"
-
-QNA_GENERATION_PROMPT = """You are a technical documentation expert. \
-Generate 3-5 question-answer pairs from this documentation section.
-
-Rules:
-- Questions should be what a developer would actually ask
-- Include at least one multi-hop question referencing concepts from other sections
-- Answers must be grounded ONLY in the provided text
-- Return valid JSON: [{{"question": "...", "answer": "...", "section_ref": "..."}}]
-- No explanations outside the JSON
-
-Section heading: {heading}
-Section content:
-{content}"""
 
 ANSWER_PROMPT = (
     "You are a documentation assistant. A user asked a question"
@@ -39,19 +23,6 @@ ANSWER_PROMPT = (
     "Lightly rephrase the answer to directly address the user's phrasing."
     " Keep it factual and concise."
 )
-
-
-def _parse_qna_json(raw: str) -> list[dict]:
-    """Extract JSON array from LLM output that may have markdown fences."""
-    # Strip markdown code fences if present
-    raw = re.sub(r"```(?:json)?\s*", "", raw).strip().rstrip("`").strip()
-    try:
-        data = json.loads(raw)
-        if isinstance(data, list):
-            return data
-    except json.JSONDecodeError:
-        pass
-    return []
 
 
 class QnAPairStrategy(Strategy):
@@ -94,26 +65,7 @@ class QnAPairStrategy(Strategy):
 
     async def _generate_pairs(self, section: Section, doc_id: str) -> list[dict]:
         """Ask Sonnet to generate 3-5 QnA pairs for a section."""
-        heading = " > ".join(section.heading_path) if section.heading_path else section.title
-        content = section.content
-
-        # Include code examples in generation context
-        if section.code_blocks:
-            code_snippet = section.code_blocks[0].code[:500]
-            content = f"{content}\n\nExample:\n{code_snippet}"
-
-        prompt = QNA_GENERATION_PROMPT.format(heading=heading, content=content[:2000])
-        llm = self._get_llm()
-        raw = await llm.extract(text=prompt, system_prompt="Return only valid JSON. No prose.")
-        pairs = _parse_qna_json(raw)
-
-        # Attach provenance to each pair
-        for pair in pairs:
-            pair["source_id"] = doc_id
-            pair["section_id"] = section.id
-            pair.setdefault("section_ref", heading)
-
-        return pairs
+        return await generate_pairs_for_section(section, doc_id, self._get_llm())
 
     async def build_index(self, documents: list[Document]) -> None:
         """Generate QnA pairs for every section, embed questions, store answers as metadata."""
@@ -188,23 +140,32 @@ class QnAPairStrategy(Strategy):
         # Otherwise do a light rephrase to address the user's phrasing
         matched_q = matched_questions[0] if matched_questions else ""
         answer = best_answer
+        total_tokens = 0
+        total_cost = 0.0
         if best_answer and matched_q and matched_q.lower() != question.lower():
             llm = self._get_llm()
             context = (
                 f"User question: {question}\nMatched question: {matched_q}"
                 f"\nPre-generated answer: {best_answer}"
             )
-            answer = await llm.generate(
+            resp = await llm.generate(
                 query=question,
                 context=context,
                 system_prompt=ANSWER_PROMPT,
                 max_tokens=500,
             )
+            answer = resp.text
+            total_tokens = resp.total_tokens
+            total_cost = resp.cost_usd
 
-        latency_ms = self._record_metrics(start, sources=sources)
+        latency_ms = self._record_metrics(
+            start, tokens=total_tokens, cost=total_cost, sources=sources
+        )
         return AnswerResult(
             answer=answer,
             sources=sources,
             strategy=self.name,
             latency_ms=latency_ms,
+            tokens_used=total_tokens,
+            cost_usd=total_cost,
         )

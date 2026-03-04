@@ -239,7 +239,11 @@ async def test_evaluate_calls_llm_on_structural_pass():
     constraints = Constraints(must_mention=["Lambda"], must_not_claim=[])
     ground_truth = GroundTruth(answer="Lambda runs code without servers.")
     mock_llm = AsyncMock()
-    mock_llm.judge.return_value = '{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}'
+    from kb_arena.llm.client import LLMResponse
+
+    mock_llm.judge.return_value = LLMResponse(
+        text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}'
+    )
 
     score = await evaluate(
         "Lambda lets you run code without provisioning servers.",

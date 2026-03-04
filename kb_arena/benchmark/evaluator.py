@@ -141,13 +141,13 @@ async def evaluate(
 
     # Pass 4: LLM-as-judge
     try:
-        raw = await llm.judge(
+        resp = await llm.judge(
             answer=answer,
             reference=ground_truth.answer,
             system_prompt=JUDGE_SYSTEM_PROMPT,
         )
         # Extract JSON — tolerate markdown fences
-        json_match = re.search(r"\{[^}]+\}", raw, re.DOTALL)
+        json_match = re.search(r"\{[^}]+\}", resp.text, re.DOTALL)
         if json_match:
             parsed = json.loads(json_match.group())
             score.accuracy = float(parsed.get("accuracy", score.accuracy))

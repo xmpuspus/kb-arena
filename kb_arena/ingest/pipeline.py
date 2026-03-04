@@ -15,6 +15,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
 from kb_arena.ingest.parsers import PARSERS
 from kb_arena.models.document import Document
+from kb_arena.settings import settings
 
 console = Console()
 log = logging.getLogger(__name__)
@@ -26,6 +27,12 @@ _EXT_MAP: dict[str, str] = {
     ".rst": "markdown",  # MarkdownParser handles RST
     ".html": "html",
     ".htm": "html",
+    ".pdf": "pdf",
+    ".docx": "docx",
+    ".txt": "plaintext",
+    ".text": "plaintext",
+    ".csv": "csv",
+    ".tsv": "csv",
 }
 
 
@@ -41,20 +48,20 @@ def run_ingest(path: str, corpus: str = "custom", format: str = "auto") -> None:
         raise SystemExit(1)
 
     # Collect files — if path is a file, wrap it; otherwise glob recursively
+    supported_exts = set(_EXT_MAP.keys())
     if src.is_file():
+        if src.suffix.lower() not in supported_exts and format == "auto":
+            console.print(f"[yellow]Unsupported file type: {src.suffix}[/yellow]")
+            return
         files = [src]
     else:
-        files = [
-            f
-            for f in src.rglob("*")
-            if f.is_file() and f.suffix.lower() in {".md", ".markdown", ".rst", ".html", ".htm"}
-        ]
+        files = [f for f in src.rglob("*") if f.is_file() and f.suffix.lower() in supported_exts]
 
     if not files:
         console.print(f"[yellow]No supported files found in {src}[/yellow]")
         return
 
-    out_dir = Path("datasets") / corpus / "processed"
+    out_dir = Path(settings.datasets_path) / corpus / "processed"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "documents.jsonl"
 
@@ -95,5 +102,55 @@ def run_ingest(path: str, corpus: str = "custom", format: str = "auto") -> None:
 
     console.print(
         f"[green]Done.[/green] {total_docs} documents, {total_sections} sections "
+        f"→ [bold]{out_path}[/bold]"
+    )
+
+
+def run_ingest_special(
+    source: str,
+    corpus: str = "custom",
+    format: str = "web",
+    max_depth: int = 3,
+    max_pages: int = 50,
+) -> None:
+    """Ingest from URL or GitHub repo source."""
+    out_dir = Path(settings.datasets_path) / corpus / "processed"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "documents.jsonl"
+
+    parser_cls = PARSERS.get(format)
+    if parser_cls is None:
+        console.print(f"[red]No parser for format: {format}[/red]")
+        raise SystemExit(1)
+
+    console.print(f"Ingesting from [bold]{source}[/bold] as [bold]{format}[/bold]...")
+
+    try:
+        if format == "web":
+            parser = parser_cls(max_depth=max_depth, max_pages=max_pages)
+        else:
+            parser = parser_cls()
+
+        docs: list[Document] = parser.parse(Path(source), corpus)
+    except ImportError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise SystemExit(1) from None
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Failed to ingest: {exc}[/red]")
+        raise SystemExit(1) from None
+
+    if not docs:
+        console.print("[yellow]No documents extracted from source.[/yellow]")
+        return
+
+    total_sections = 0
+    with out_path.open("w", encoding="utf-8") as fout:
+        for doc in docs:
+            fout.write(doc.model_dump_json())
+            fout.write("\n")
+            total_sections += len(doc.sections)
+
+    console.print(
+        f"[green]Done.[/green] {len(docs)} documents, {total_sections} sections "
         f"→ [bold]{out_path}[/bold]"
     )

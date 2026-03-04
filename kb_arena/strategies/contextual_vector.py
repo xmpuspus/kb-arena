@@ -126,16 +126,20 @@ class ContextualVectorStrategy(Strategy):
         context = "\n\n---\n\n".join(chunks)
 
         llm = self._get_llm()
-        answer = await llm.generate(
+        resp = await llm.generate(
             query=question,
             context=context,
             system_prompt=SYSTEM_PROMPT,
         )
 
-        latency_ms = self._record_metrics(start, sources=sources)
+        latency_ms = self._record_metrics(
+            start, tokens=resp.total_tokens, cost=resp.cost_usd, sources=sources
+        )
         return AnswerResult(
-            answer=answer,
+            answer=resp.text,
             sources=sources,
             strategy=self.name,
             latency_ms=latency_ms,
+            tokens_used=resp.total_tokens,
+            cost_usd=resp.cost_usd,
         )

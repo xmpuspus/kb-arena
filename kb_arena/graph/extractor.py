@@ -132,9 +132,9 @@ async def _extract_section(
 ) -> ExtractionResult:
     text = _section_text(section)
     try:
-        raw_json = await llm.extract(text=text, system_prompt=system_prompt)
+        resp = await llm.extract(text=text, system_prompt=system_prompt)
         # Strip markdown fences if present (LLM often wraps JSON in ```json ... ```)
-        cleaned = re.sub(r"```(?:json)?\s*", "", raw_json).strip().rstrip("`").strip()
+        cleaned = re.sub(r"```(?:json)?\s*", "", resp.text).strip().rstrip("`").strip()
         raw = json.loads(cleaned)
     except (json.JSONDecodeError, Exception) as exc:
         logger.warning("Extraction failed for section %s: %s", section.id, exc)
