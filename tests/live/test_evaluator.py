@@ -255,6 +255,6 @@ async def test_five_wrong_answers_all_caught(live_llm_client):
         score = await evaluate(
             pair["answer"], pair["ground_truth"], pair["constraints"], llm=live_llm_client
         )
-        assert score.accuracy <= 0.6, (
-            f"Wrong answer scored too high: {score.accuracy}\nAnswer: {pair['answer']}"
-        )
+        assert (
+            score.accuracy <= 0.6
+        ), f"Wrong answer scored too high: {score.accuracy}\nAnswer: {pair['answer']}"

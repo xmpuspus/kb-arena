@@ -50,9 +50,9 @@ def _cosine_sim(a: list[float], b: list[float]) -> float:
 
 def test_embedding_dimensions(openai_client, embedding_model, expected_dims):
     vec = _embed(openai_client, "json.loads", embedding_model)
-    assert len(vec) == expected_dims, (
-        f"Expected {expected_dims} dims for {embedding_model}, got {len(vec)}"
-    )
+    assert (
+        len(vec) == expected_dims
+    ), f"Expected {expected_dims} dims for {embedding_model}, got {len(vec)}"
 
 
 def test_embedding_is_float_array(openai_client, embedding_model):

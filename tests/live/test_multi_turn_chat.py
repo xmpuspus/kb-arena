@@ -241,8 +241,8 @@ async def test_conversation_all_5_intents(live_llm_client):
     history = []
     for query, expected in zip(intent_queries, expected_intents):
         result = await router.classify(query, history=history)
-        assert result == expected, (
-            f"Query: {query!r} → expected {expected.value}, got {result.value}"
-        )
+        assert (
+            result == expected
+        ), f"Query: {query!r} → expected {expected.value}, got {result.value}"
         history.append({"role": "user", "content": query})
         history.append({"role": "assistant", "content": f"Answer about {query}"})
