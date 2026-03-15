@@ -105,10 +105,12 @@ def test_settings_default_embedding_model():
     assert "text-embedding" in s.embedding_model
 
 
-def test_settings_default_anthropic_api_key_empty():
+def test_settings_default_anthropic_api_key_empty(monkeypatch):
+    monkeypatch.delenv("KB_ARENA_ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     from kb_arena.settings import Settings
 
-    s = Settings()
+    s = Settings(_env_file=None)
     assert s.anthropic_api_key == ""
 
 

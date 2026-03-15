@@ -13,9 +13,7 @@ from pathlib import Path
 from kb_arena.ingest.parsers.utils import read_text, slugify, token_count, unique_id
 from kb_arena.models.document import CodeBlock, CrossRef, Document, Section, Table
 
-# ---------------------------------------------------------------------------
 # Markdown parser
-# ---------------------------------------------------------------------------
 
 _MD_HEADING = re.compile(r"^(#{1,6})\s+(.+)$")
 _MD_FENCE_OPEN = re.compile(r"^```(\w*)$")
@@ -151,9 +149,7 @@ def _parse_markdown(text: str, source: str, corpus: str) -> list[Document]:
     return [doc]
 
 
-# ---------------------------------------------------------------------------
 # RST parser
-# ---------------------------------------------------------------------------
 
 # RST heading underline chars in conventional order
 _RST_UNDERLINE_CHARS = set("=-~^\"'`:#*+<>_")
@@ -369,9 +365,7 @@ def _parse_rst(text: str, source: str, corpus: str) -> list[Document]:
     ]
 
 
-# ---------------------------------------------------------------------------
 # Public interface
-# ---------------------------------------------------------------------------
 
 
 class MarkdownParser:

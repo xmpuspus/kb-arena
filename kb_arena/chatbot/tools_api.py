@@ -211,7 +211,7 @@ async def run_fix_stream(body: FixRequest, request: Request) -> EventSourceRespo
     async def event_generator() -> AsyncIterator[dict]:
         yield {"event": "phase", "data": json.dumps({"phase": "audit"})}
 
-        # Phase 1: Audit
+        # Audit sections to find weak/gap coverage
         audits: list[SectionAudit] = []
         strong_list, weak_list, gap_list = [], [], []
         total_questions = 0
@@ -270,7 +270,7 @@ async def run_fix_stream(body: FixRequest, request: Request) -> EventSourceRespo
             ),
         }
 
-        # Phase 2: Fix
+        # Generate fix recommendations for weak/gap sections
         yield {"event": "phase", "data": json.dumps({"phase": "fix"})}
 
         documents = load_documents(body.corpus)
