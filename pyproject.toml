@@ -9,7 +9,7 @@ description = "Benchmark retrieval strategies on your documentation — find whi
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
-authors = [{ name = "Xavier Puspus", email = "xavier@xmpuspus.dev" }]
+authors = [{ name = "Xavier Puspus", email = "36430014+xmpuspus@users.noreply.github.com" }]
 keywords = ["rag", "knowledge-graph", "benchmark", "neo4j", "chromadb", "llm", "retrieval", "evaluation", "vector-search", "rag-evaluation", "document-retrieval"]
 classifiers = [
     "Development Status :: 4 - Beta",
