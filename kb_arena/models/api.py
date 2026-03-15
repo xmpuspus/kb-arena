@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, Field, field_validator
 
 from kb_arena.models.graph import GraphContext
 
@@ -10,7 +12,7 @@ from kb_arena.models.graph import GraphContext
 class Message(BaseModel):
     """A single chat message."""
 
-    role: str  # "user" or "assistant"
+    role: Literal["user", "assistant"]
     content: str
 
 
@@ -21,6 +23,13 @@ class ChatRequest(BaseModel):
     strategy: str = "hybrid"
     history: list[Message] = Field(default_factory=list)
     corpus: str = "aws-compute"
+
+    @field_validator("corpus")
+    @classmethod
+    def validate_corpus(cls, v: str) -> str:
+        if ".." in v or "/" in v or "\\" in v or "\0" in v:
+            raise ValueError("Invalid corpus name")
+        return v
 
 
 class ChatResponse(BaseModel):

@@ -27,7 +27,14 @@ from kb_arena.strategies.base import Strategy
 
 console = Console()
 
-STRATEGY_NAMES = ["naive_vector", "contextual_vector", "qna_pairs", "knowledge_graph", "hybrid"]
+STRATEGY_NAMES = [
+    "naive_vector",
+    "contextual_vector",
+    "qna_pairs",
+    "knowledge_graph",
+    "hybrid",
+    "raptor",
+]
 
 RETRY_BACKOFF_S = 1.0
 
@@ -142,14 +149,9 @@ def _aggregate(
     bench: BenchmarkResult,
     questions_map: dict[str, str],
 ) -> BenchmarkResult:
-    """Compute all aggregate metrics from individual records.
-
-    Pure computation — no mutation of running totals.
-    """
     if not bench.records:
         return bench
 
-    # Buckets for per-tier and per-type aggregation
     accuracy_by_tier: dict[int, list[float]] = {}
     completeness_by_tier: dict[int, list[float]] = {}
     faithfulness_by_tier: dict[int, list[float]] = {}
@@ -174,13 +176,11 @@ def _aggregate(
             tier = 0
         qtype = questions_map.get(rec.question_id, "unknown")
 
-        # Per-tier accuracy
         accuracy_by_tier.setdefault(tier, []).append(rec.score.accuracy)
         completeness_by_tier.setdefault(tier, []).append(rec.score.completeness)
         faithfulness_by_tier.setdefault(tier, []).append(rec.score.faithfulness)
         latency_by_tier.setdefault(tier, []).append(rec.latency_ms)
 
-        # Per-type accuracy
         accuracy_by_type.setdefault(qtype, []).append(rec.score.accuracy)
 
         all_latencies.append(rec.latency_ms)
@@ -204,18 +204,15 @@ def _aggregate(
     n = len(bench.records)
     successful = n - error_count
 
-    # Accuracy by tier
     bench.accuracy_by_tier = {t: sum(v) / len(v) for t, v in accuracy_by_tier.items()}
     bench.completeness_by_tier = {t: sum(v) / len(v) for t, v in completeness_by_tier.items()}
     bench.faithfulness_by_tier = {t: sum(v) / len(v) for t, v in faithfulness_by_tier.items()}
     bench.accuracy_by_type = {t: sum(v) / len(v) for t, v in accuracy_by_type.items()}
 
-    # Latency
     bench.latency = LatencyStats.from_values(all_latencies)
     bench.avg_latency_ms = bench.latency.avg_ms
     bench.latency_by_tier = {t: LatencyStats.from_values(v) for t, v in latency_by_tier.items()}
 
-    # Reliability
     bench.reliability = ReliabilityStats(
         total_queries=n,
         successful_queries=successful,
@@ -231,7 +228,6 @@ def _aggregate(
         avg_response_length=sum(response_lengths) / n if n else 0.0,
     )
 
-    # Cost
     bench.total_cost_usd = total_cost
     bench.cost_per_correct = total_cost / correct if correct else 0.0
     bench.total_questions = n
@@ -280,11 +276,11 @@ async def run_benchmark(
             if not questions:
                 continue
 
-            # Build question type map for aggregation
             questions_map = {q.id: q.type for q in questions}
 
             total_tasks = len(strategies) * len(questions)
             task = progress.add_task(f"[cyan]{corp}", total=total_tasks)
+            cumulative_cost = 0.0
 
             for strat in strategies:
                 bench = BenchmarkResult(corpus=corp, strategy=strat.name)
@@ -297,10 +293,31 @@ async def run_benchmark(
                 for coro in asyncio.as_completed(coros):
                     rec = await coro
                     bench.records.append(rec)
+                    cumulative_cost += rec.cost_usd
+                    progress.update(
+                        task,
+                        description=f"[cyan]{corp} [dim]${cumulative_cost:.4f}[/dim]",
+                    )
                     progress.advance(task)
 
                 bench = _aggregate(bench, questions_map)
 
                 out_path = results_dir / f"{corp}_{strat.name}.json"
                 out_path.write_text(bench.model_dump_json(indent=2))
-                console.print(f"[green]Wrote {out_path}[/green]")
+
+                overall_acc = (
+                    sum(bench.accuracy_by_tier.values()) / len(bench.accuracy_by_tier)
+                    if bench.accuracy_by_tier
+                    else 0.0
+                )
+                console.print(
+                    f"  {strat.name}: {len(bench.records)} questions, "
+                    f"acc={overall_acc:.1%}, "
+                    f"${bench.total_cost_usd:.4f}, "
+                    f"avg {bench.avg_latency_ms:.0f}ms"
+                )
+
+            console.print(
+                f"[green]Done {corp}:[/green] {len(strategies)} strategies, "
+                f"${cumulative_cost:.4f} total"
+            )

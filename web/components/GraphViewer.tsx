@@ -130,7 +130,7 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
     );
   }, [nodes, search]);
 
-  // Initialize positions in circle
+  // Initialize positions — full circle on first load, incremental on live updates
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || nodes.length === 0) return;
@@ -140,17 +140,36 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
     const cy = H / 2;
     const r = Math.min(W, H) * 0.35;
 
-    for (let i = 0; i < nodes.length; i++) {
-      const angle = (2 * Math.PI * i) / nodes.length;
-      posRef.current.set(nodes[i].id, {
-        x: cx + Math.cos(angle) * r,
-        y: cy + Math.sin(angle) * r,
-      });
-      velRef.current.set(nodes[i].id, { vx: 0, vy: 0 });
+    const isFirstLoad = posRef.current.size === 0;
+    if (isFirstLoad) {
+      for (let i = 0; i < nodes.length; i++) {
+        const angle = (2 * Math.PI * i) / nodes.length;
+        posRef.current.set(nodes[i].id, {
+          x: cx + Math.cos(angle) * r,
+          y: cy + Math.sin(angle) * r,
+        });
+        velRef.current.set(nodes[i].id, { vx: 0, vy: 0 });
+      }
+      simState.current = { alpha: 1, stabilized: false };
+      entryStart.current = performance.now();
+    } else {
+      // Only initialize nodes that don't already have positions
+      let hasNew = false;
+      for (const node of nodes) {
+        if (!posRef.current.has(node.id)) {
+          posRef.current.set(node.id, {
+            x: cx + (Math.random() - 0.5) * 80,
+            y: cy + (Math.random() - 0.5) * 80,
+          });
+          velRef.current.set(node.id, { vx: 0, vy: 0 });
+          hasNew = true;
+        }
+      }
+      if (hasNew) {
+        simState.current.alpha = Math.max(simState.current.alpha, 0.4);
+        simState.current.stabilized = false;
+      }
     }
-
-    simState.current = { alpha: 1, stabilized: false };
-    entryStart.current = performance.now();
     dirty.current = true;
   }, [nodes]);
 

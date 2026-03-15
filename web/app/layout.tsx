@@ -5,7 +5,7 @@ import Nav from "@/components/Nav";
 export const metadata: Metadata = {
   title: "KB Arena — Knowledge Base Benchmark",
   description:
-    "Benchmark 5 retrieval strategies on your documentation. Find which KB architecture works best for your data.",
+    "Benchmark 6 retrieval strategies on your documentation. Find which KB architecture works best for your data.",
 };
 
 export default function RootLayout({

@@ -6,6 +6,7 @@ Neo4j unavailability is handled gracefully — strategy falls back to mock data.
 
 from __future__ import annotations
 
+import asyncio as _asyncio
 import json
 import logging
 import time
@@ -17,12 +18,28 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, field_validator
 from sse_starlette.sse import EventSourceResponse
 
 from kb_arena.chatbot.session import SessionMemory
 from kb_arena.chatbot.tools_api import router as tools_router
 from kb_arena.models.api import ChatRequest, ChatResponse, ErrorDetail, ErrorResponse
 from kb_arena.settings import settings
+
+# Per-corpus queues for streaming graph build events to SSE clients
+_graph_build_queues: dict[str, _asyncio.Queue] = {}
+
+
+class _GraphBuildRequest(BaseModel):
+    corpus: str
+
+    @field_validator("corpus")
+    @classmethod
+    def _validate(cls, v: str) -> str:
+        if ".." in v or "/" in v or "\\" in v or "\0" in v:
+            raise ValueError("Invalid corpus name")
+        return v
+
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +74,7 @@ async def lifespan(app: FastAPI):
     from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
     from kb_arena.strategies.naive_vector import NaiveVectorStrategy
     from kb_arena.strategies.qna_pairs import QnAPairStrategy
+    from kb_arena.strategies.raptor import RaptorStrategy
 
     # LLM client (shared across strategies)
     llm = LLMClient()
@@ -98,6 +116,7 @@ async def lifespan(app: FastAPI):
             chroma_client=chroma,
             router=router,
         ),
+        "raptor": RaptorStrategy(chroma_client=chroma),
     }
 
     yield
@@ -439,6 +458,61 @@ async def graph_data(request: Request, corpus: str = "all", limit: int = 200) ->
                     )
 
     return {"nodes": nodes, "edges": edges, "connected": True}
+
+
+@app.post("/api/graph/build")
+async def trigger_graph_build(body: _GraphBuildRequest) -> dict:
+    """Trigger graph build for a corpus. Events streamed via /api/graph/build/stream/{corpus}."""
+    corpus = body.corpus
+    queue: _asyncio.Queue = _asyncio.Queue()
+    _graph_build_queues[corpus] = queue
+
+    async def _callback(event: dict | None) -> None:
+        await queue.put(event)
+
+    async def _run() -> None:
+        from kb_arena.graph.extractor import run_extraction
+
+        try:
+            await run_extraction(corpus=corpus, event_callback=_callback)
+        except Exception as exc:
+            await queue.put({"type": "error", "data": {"message": str(exc)}})
+        finally:
+            await queue.put(None)  # sentinel — signals stream end
+
+    _asyncio.create_task(_run())
+    return {"status": "started", "corpus": corpus}
+
+
+@app.get("/api/graph/build/stream/{corpus}")
+async def graph_build_stream(corpus: str) -> EventSourceResponse:
+    """SSE stream of graph build events for a corpus."""
+    queue = _graph_build_queues.get(corpus)
+    if queue is None:
+
+        async def _empty() -> AsyncIterator[dict]:
+            yield {
+                "event": "error",
+                "data": json.dumps(
+                    {"message": "No build in progress. POST to /api/graph/build first."}
+                ),
+            }
+
+        return EventSourceResponse(_empty())
+
+    async def event_generator() -> AsyncIterator[dict]:
+        while True:
+            try:
+                event = await _asyncio.wait_for(queue.get(), timeout=30.0)
+            except TimeoutError:
+                yield {"event": "heartbeat", "data": "{}"}
+                continue
+            if event is None:  # sentinel — build complete
+                break
+            yield {"event": event["type"], "data": json.dumps(event["data"])}
+        _graph_build_queues.pop(corpus, None)
+
+    return EventSourceResponse(event_generator())
 
 
 @app.get("/health")

@@ -5,6 +5,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from rich.console import Console
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
+
 from kb_arena.models.document import Document
 from kb_arena.settings import settings
 from kb_arena.strategies.contextual_vector import ContextualVectorStrategy
@@ -12,8 +15,10 @@ from kb_arena.strategies.hybrid import HybridStrategy
 from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
 from kb_arena.strategies.naive_vector import NaiveVectorStrategy
 from kb_arena.strategies.qna_pairs import QnAPairStrategy
+from kb_arena.strategies.raptor import RaptorStrategy
 
 logger = logging.getLogger(__name__)
+_console = Console()
 
 STRATEGY_REGISTRY: dict[str, type] = {
     "naive_vector": NaiveVectorStrategy,
@@ -21,6 +26,7 @@ STRATEGY_REGISTRY: dict[str, type] = {
     "qna_pairs": QnAPairStrategy,
     "knowledge_graph": KnowledgeGraphStrategy,
     "hybrid": HybridStrategy,
+    "raptor": RaptorStrategy,
 }
 
 
@@ -48,12 +54,14 @@ def load_documents(corpus: str) -> list[Document]:
 
 
 async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> None:
-    """Build vector indexes for strategies 1-3.
+    """Build vector indexes for strategies 1-3 plus RAPTOR.
 
     Called by the CLI build-vectors command.
     Loads processed JSONL, instantiates each strategy, calls build_index().
     """
     import chromadb
+
+    from kb_arena.llm.client import LLMClient
 
     chroma = chromadb.PersistentClient(path=settings.chroma_path)
     documents = load_documents(corpus)
@@ -62,11 +70,16 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
         logger.warning("No documents found for corpus=%s — skipping index build", corpus)
         return
 
+    llm = LLMClient()
+    raptor = RaptorStrategy(chroma_client=chroma)
+    raptor._llm = llm
+
     # Only vector-backed strategies need explicit build_index()
     buildable = {
         "naive_vector": NaiveVectorStrategy(chroma_client=chroma),
         "contextual_vector": ContextualVectorStrategy(chroma_client=chroma),
         "qna_pairs": QnAPairStrategy(chroma_client=chroma),
+        "raptor": raptor,
     }
 
     targets = (
@@ -75,10 +88,23 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
         else {name: inst for name, inst in buildable.items() if name == strategy}
     )
 
-    for name, inst in targets.items():
-        logger.info("Building index: %s (%d documents)", name, len(documents))
-        await inst.build_index(documents)
-        logger.info("Done: %s", name)
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("{task.completed}/{task.total} strategies"),
+        console=_console,
+    ) as progress:
+        task = progress.add_task("Building vector indexes", total=len(targets))
+        for name, inst in targets.items():
+            progress.update(task, description=f"Building [bold]{name}[/bold]")
+            await inst.build_index(documents)
+            progress.advance(task)
+
+    _console.print(
+        f"[green]Done.[/green] Built {len(targets)} vector index(es) "
+        f"from {len(documents)} documents"
+    )
 
 
 def get_strategy(name: str):
@@ -91,7 +117,7 @@ def get_strategy(name: str):
         raise ValueError(f"Unknown strategy: {name}. Available: {list(STRATEGY_REGISTRY)}")
 
     # Vector-backed strategies need a ChromaDB client
-    if name in ("naive_vector", "contextual_vector", "qna_pairs"):
+    if name in ("naive_vector", "contextual_vector", "qna_pairs", "raptor"):
         chroma = chromadb.PersistentClient(path=settings.chroma_path)
         return cls(chroma_client=chroma)
 
@@ -130,6 +156,7 @@ __all__ = [
     "QnAPairStrategy",
     "KnowledgeGraphStrategy",
     "HybridStrategy",
+    "RaptorStrategy",
     "build_vector_indexes",
     "load_documents",
 ]

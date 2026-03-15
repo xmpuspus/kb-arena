@@ -307,8 +307,8 @@ def test_invalid_strategy_returns_400_or_422(client):
     assert r.status_code in (400, 422)
 
 
-def test_wrong_history_role_still_accepted(client):
-    """Pydantic accepts any string for role — API doesn't validate enum."""
+def test_wrong_history_role_rejected(client):
+    """Role is constrained to Literal['user', 'assistant'] — invalid roles get 422."""
     r = client.post(
         "/chat",
         json={
@@ -317,7 +317,7 @@ def test_wrong_history_role_still_accepted(client):
             "history": [{"role": "system", "content": "Be helpful."}],
         },
     )
-    assert r.status_code == 200
+    assert r.status_code == 422
 
 
 def test_empty_history_message_content(client):

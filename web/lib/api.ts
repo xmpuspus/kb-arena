@@ -6,6 +6,7 @@ export const STRATEGIES = [
   "qna_pairs",
   "knowledge_graph",
   "hybrid",
+  "raptor",
 ] as const;
 
 export type Strategy = (typeof STRATEGIES)[number];
@@ -16,6 +17,7 @@ export const STRATEGY_LABELS: Record<Strategy, string> = {
   qna_pairs: "QnA Pairs",
   knowledge_graph: "Knowledge Graph",
   hybrid: "Hybrid",
+  raptor: "RAPTOR",
 };
 
 export const STRATEGY_COLORS: Record<Strategy, string> = {
@@ -24,6 +26,7 @@ export const STRATEGY_COLORS: Record<Strategy, string> = {
   qna_pairs: "#8b5cf6",
   knowledge_graph: "#22c55e",
   hybrid: "#f59e0b",
+  raptor: "#ef4444",
 };
 
 export const TIER_INFO: Record<number, { label: string; description: string }> = {
@@ -65,6 +68,8 @@ export const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
     "Extracts entities and relationships into Neo4j. Queries via Cypher templates. Excels at multi-hop dependency chains.",
   hybrid:
     "Routes by intent \u2014 vector path for lookups, graph path for integration queries, both paths fused via RRF for how-to questions.",
+  raptor:
+    "Builds a recursive tree of LLM cluster summaries (L0 chunks \u2192 L1 summaries \u2192 L2). Queries all levels simultaneously for superior Tier 4/5 multi-hop performance.",
 };
 
 export interface CorpusInfo {
@@ -108,6 +113,83 @@ export async function fetchGraphData(corpus: string = "all"): Promise<GraphData>
     return await res.json();
   } catch {
     return { nodes: [], edges: [], connected: false };
+  }
+}
+
+export type GraphBuildEvent =
+  | { type: "started"; corpus: string; total_sections: number }
+  | { type: "entity"; id: string; name: string; nodeType: string }
+  | { type: "relationship"; source: string; target: string; relType: string }
+  | { type: "section_done"; doc_id: string; entities_count: number; rels_count: number }
+  | { type: "complete"; total_entities: number; total_relationships: number }
+  | { type: "error"; message: string }
+  | { type: "heartbeat" };
+
+export async function triggerGraphBuild(corpus: string): Promise<{ status: string }> {
+  const res = await fetch(`${API_URL}/api/graph/build`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ corpus }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function* streamGraphBuild(
+  corpus: string,
+  signal?: AbortSignal
+): AsyncGenerator<GraphBuildEvent> {
+  const response = await fetch(`${API_URL}/api/graph/build/stream/${corpus}`, { signal });
+  if (!response.ok) {
+    yield { type: "error", message: `HTTP ${response.status}` };
+    return;
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    yield { type: "error", message: "No response body" };
+    return;
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let eventType = "";
+  let dataLine = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const rawLine of lines) {
+      const line = rawLine.replace(/\r$/, "");
+      if (line.startsWith("event:")) {
+        eventType = line.slice(6).trim();
+      } else if (line.startsWith("data:")) {
+        dataLine = line.slice(5).trim();
+      } else if (line === "" && eventType && dataLine) {
+        try {
+          const parsed = JSON.parse(dataLine);
+          if (eventType === "entity")
+            yield { type: "entity", id: parsed.id, name: parsed.name, nodeType: parsed.type };
+          else if (eventType === "relationship")
+            yield { type: "relationship", source: parsed.source, target: parsed.target, relType: parsed.type };
+          else if (eventType === "started")
+            yield { type: "started", corpus: parsed.corpus, total_sections: parsed.total_sections };
+          else if (eventType === "section_done")
+            yield { type: "section_done", doc_id: parsed.doc_id, entities_count: parsed.entities_count, rels_count: parsed.rels_count };
+          else if (eventType === "complete")
+            yield { type: "complete", total_entities: parsed.total_entities, total_relationships: parsed.total_relationships };
+          else if (eventType === "error")
+            yield { type: "error", message: parsed.message };
+          else if (eventType === "heartbeat")
+            yield { type: "heartbeat" };
+        } catch { /* skip malformed SSE */ }
+        eventType = "";
+        dataLine = "";
+      }
+    }
   }
 }
 
@@ -256,5 +338,11 @@ export const MOCK_BENCHMARK_DATA = [
     tiers: [88, 85, 81, 74, 65],
     latencyMs: 1050,
     costUsd: 0.0038,
+  },
+  {
+    strategy: "raptor" as Strategy,
+    tiers: [91, 88, 85, 79, 71],
+    latencyMs: 1240,
+    costUsd: 0.0045,
   },
 ];

@@ -5,8 +5,6 @@ Each command is independently runnable and re-runnable.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import typer
 from rich.console import Console
 
@@ -17,13 +15,40 @@ app = typer.Typer(
 )
 console = Console()
 
+# Pipeline: init-corpus -> ingest -> build-graph/build-vectors ->
+# generate-questions -> benchmark -> report -> serve
+_PIPELINE_NEXT: dict[str, str] = {
+    "ingest": "kb-arena build-graph --corpus {corpus} && kb-arena build-vectors --corpus {corpus}",
+    "build_graph": "kb-arena build-vectors --corpus {corpus}",
+    "build_vectors": "kb-arena generate-questions --corpus {corpus} --count 50",
+    "generate_questions": "kb-arena benchmark --corpus {corpus}",
+    "benchmark": "kb-arena report --corpus {corpus}",
+    "report": "kb-arena serve",
+}
+
+
+def _next_step(command: str, corpus: str = "") -> None:
+    hint = _PIPELINE_NEXT.get(command)
+    if hint:
+        console.print(f"\nNext: [bold]{hint.format(corpus=corpus)}[/bold]")
+
+
+def _cli_error(code: str, message: str, fmt: str = "rich") -> None:
+    if fmt == "json":
+        import json
+        import sys
+
+        sys.stderr.write(json.dumps({"error": {"code": code, "message": message}}) + "\n")
+    else:
+        console.print(f"[red]{message}[/red]")
+    raise typer.Exit(1)
+
 
 def _preflight(
     needs_anthropic: bool = False,
     needs_openai: bool = False,
     needs_neo4j: bool = False,
 ) -> None:
-    """Check required services/keys upfront with actionable error messages."""
     from kb_arena.settings import settings
 
     errors: list[str] = []
@@ -50,19 +75,51 @@ def ingest(
         "auto",
         help="Parser: auto, markdown, html, sec-edgar, pdf, docx, plaintext, web, csv, github",
     ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview what would be ingested"),
 ):
     """Stage 1: Parse raw documents into unified Document model.
 
     Supports local files/dirs, URLs (auto-detected), and github:owner/repo.
     Writes JSONL to datasets/{corpus}/processed/
     """
-    # Auto-detect source type
+    from collections import Counter
+    from pathlib import Path
+
+    from kb_arena.ingest.pipeline import _EXT_MAP
+
     detected_format = format
     if format == "auto":
         if path.startswith(("http://", "https://")):
             detected_format = "web"
         elif path.startswith("github:"):
             detected_format = "github"
+
+    if dry_run:
+        console.print(f"[bold]Dry run: ingest {path} --corpus {corpus}[/bold]\n")
+        if detected_format in ("web", "github"):
+            console.print(f"  Source type: {detected_format}")
+            console.print("  Dry run not supported for web/github sources")
+            return
+        src = Path(path)
+        if not src.exists():
+            console.print(f"[red]  Path does not exist: {src}[/red]")
+            raise typer.Exit(1)
+        supported_exts = set(_EXT_MAP.keys())
+        if src.is_file():
+            files = [src]
+        else:
+            files = [
+                f for f in src.rglob("*") if f.is_file() and f.suffix.lower() in supported_exts
+            ]
+        ext_counts = Counter(f.suffix.lower() for f in files)
+        console.print(f"  Files found: {len(files)}")
+        for ext, count in sorted(ext_counts.items()):
+            parser = _EXT_MAP.get(ext, "unknown")
+            console.print(f"    {ext}: {count} ({parser} parser)")
+        out_path = Path("datasets") / corpus / "processed" / "documents.jsonl"
+        console.print(f"  Output: {out_path}")
+        console.print("\n  Remove --dry-run to execute.")
+        return
 
     if detected_format in ("web", "github"):
         from kb_arena.ingest.pipeline import run_ingest_special
@@ -72,6 +129,8 @@ def ingest(
         from kb_arena.ingest.pipeline import run_ingest
 
         run_ingest(path=path, corpus=corpus, format=format)
+
+    _next_step("ingest", corpus)
 
 
 @app.command()
@@ -91,6 +150,8 @@ def build_graph(
 
     asyncio.run(run_extraction(corpus=corpus, schema=schema))
 
+    _next_step("build_graph", corpus)
+
 
 @app.command()
 def build_vectors(
@@ -109,6 +170,8 @@ def build_vectors(
 
     asyncio.run(build_vector_indexes(corpus=corpus, strategy=strategy))
 
+    _next_step("build_vectors", corpus)
+
 
 @app.command()
 def benchmark(
@@ -118,6 +181,7 @@ def benchmark(
         help="Strategy: all, naive_vector, contextual_vector, qna_pairs, knowledge_graph, hybrid",
     ),
     tier: int = typer.Option(0, help="Tier filter (0 = all tiers)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview what would be benchmarked"),
 ):
     """Stage 4: Run benchmark questions against specified strategies.
 
@@ -127,20 +191,68 @@ def benchmark(
 
     _preflight(needs_anthropic=True, needs_openai=True)
 
+    if dry_run:
+        from kb_arena.benchmark.questions import discover_corpora, load_questions
+        from kb_arena.benchmark.runner import STRATEGY_NAMES
+        from kb_arena.settings import settings
+
+        corpora = discover_corpora() if corpus == "all" else [corpus]
+        strategy_names = STRATEGY_NAMES if strategy == "all" else [strategy]
+
+        console.print("[bold]Dry run: benchmark[/bold]\n")
+        total_queries = 0
+        for corp in corpora:
+            try:
+                questions = load_questions(corp, tier=tier)
+            except FileNotFoundError:
+                console.print(f"  [yellow]{corp}: no questions found[/yellow]")
+                continue
+            n = len(questions)
+            corp_queries = n * len(strategy_names)
+            total_queries += corp_queries
+            console.print(
+                f"  {corp}: {n} questions x {len(strategy_names)} "
+                f"strategies = {corp_queries} queries"
+            )
+        console.print(f"\n  Strategies: {', '.join(strategy_names)}")
+        console.print(f"  Total queries: {total_queries}")
+        console.print(f"  Max concurrency: {settings.benchmark_max_concurrent}")
+        console.print(f"  Timeout per query: {settings.benchmark_query_timeout_s}s")
+        console.print("\n  Remove --dry-run to execute.")
+        return
+
     from kb_arena.benchmark.runner import run_benchmark
 
     asyncio.run(run_benchmark(corpus=corpus, strategy=strategy, tier=tier))
+
+    _next_step("benchmark", corpus)
 
 
 @app.command()
 def report(
     corpus: str = typer.Option("all", help="Corpus to generate report for"),
-    output: Optional[str] = typer.Option(None, help="Output file path"),  # noqa: UP045
+    output: str | None = typer.Option(None, help="Output file path"),  # noqa: UP045
+    format: str = typer.Option("rich", help="Output format: rich, json"),
 ):
     """Generate benchmark report from results JSON."""
+    if format == "json":
+        import json
+        import sys
+
+        from kb_arena.benchmark.reporter import _build_summary, _load_results
+
+        results = _load_results(corpus)
+        if not results:
+            _cli_error("NO_RESULTS", "No results found. Run benchmark first.", fmt="json")
+        summary = _build_summary(results)
+        sys.stdout.write(json.dumps(summary, indent=2) + "\n")
+        return
+
     from kb_arena.benchmark.reporter import generate_report
 
     generate_report(corpus=corpus, output=output)
+
+    _next_step("report")
 
 
 @app.command()
@@ -206,6 +318,8 @@ def generate_questions(
 
     asyncio.run(run_question_generation(corpus=corpus, count=count))
 
+    _next_step("generate_questions", corpus)
+
 
 @app.command()
 def demo(
@@ -224,10 +338,29 @@ def demo(
     result_files = list(results_dir.glob("aws-compute_*.json")) if results_dir.exists() else []
 
     if not result_files:
+        # Seed from bundled package data so `pip install kb-arena && kb-arena demo` just works
+        import importlib.resources
+
+        try:
+            bundled = importlib.resources.files("kb_arena") / "data"
+            bundled_files = [f for f in bundled.iterdir() if f.name.startswith("aws-compute_")]
+            if bundled_files:
+                results_dir.mkdir(exist_ok=True)
+                for f in bundled_files:
+                    dest = results_dir / f.name
+                    if not dest.exists():
+                        dest.write_bytes(f.read_bytes())
+                result_files = list(results_dir.glob("aws-compute_*.json"))
+                n = len(result_files)
+                console.print(f"[dim]Loaded {n} bundled result(s) into ./results/[/dim]")
+        except Exception:
+            pass
+
+    if not result_files:
         console.print(
             "[red]No aws-compute results found.[/red]\n"
             "The demo requires pre-computed benchmark results in results/.\n"
-            "Clone the full repo: [bold]git clone https://github.com/your-org/kb-arena[/bold]"
+            "Clone the full repo: [bold]git clone https://github.com/xmpuspus/kb-arena[/bold]"
         )
         raise typer.Exit(1)
 
@@ -251,7 +384,6 @@ def demo(
     console.print(f"Starting API server on http://localhost:{actual_port}")
     console.print(f"API docs at http://localhost:{actual_port}/docs\n")
 
-    # Open the frontend if it's running, otherwise open API docs
     def open_browser():
         for fe_port in (3000, 3001):
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -271,7 +403,7 @@ def demo(
 @app.command()
 def generate_qa(
     corpus: str = typer.Option(..., help="Corpus to generate Q&A pairs for"),
-    output: Optional[str] = typer.Option(None, help="Output JSONL path"),  # noqa: UP045
+    output: str | None = typer.Option(None, help="Output JSONL path"),  # noqa: UP045
 ):
     """Generate Q&A pairs from your documentation.
 
@@ -290,7 +422,7 @@ def generate_qa(
 @app.command()
 def audit(
     corpus: str = typer.Option(..., help="Corpus to audit"),
-    output: Optional[str] = typer.Option(None, help="Output JSON path"),  # noqa: UP045
+    output: str | None = typer.Option(None, help="Output JSON path"),  # noqa: UP045
     max_sections: int = typer.Option(50, help="Max sections to audit"),
 ):
     """Find gaps in your documentation.
@@ -313,7 +445,7 @@ def audit(
 def fix(
     corpus: str = typer.Option(..., help="Corpus to fix"),
     max_fixes: int = typer.Option(10, help="Max fix recommendations"),
-    output: Optional[str] = typer.Option(None, help="Output markdown path"),  # noqa: UP045
+    output: str | None = typer.Option(None, help="Output markdown path"),  # noqa: UP045
 ):
     """Generate fix recommendations for weak documentation.
 
@@ -341,18 +473,110 @@ def fix(
 
 
 @app.command()
-def health():
+def health(
+    format: str = typer.Option("rich", help="Output format: rich, json"),
+):
     """Pipeline status — per-corpus progress, service connectivity, API keys."""
     import asyncio
     from pathlib import Path
 
     from kb_arena.settings import settings
 
-    console.print("[bold]KB Arena Health Check[/bold]\n")
-
-    # API keys
     has_anthropic = bool(settings.anthropic_api_key)
     has_openai = bool(settings.openai_api_key)
+
+    async def check_neo4j():
+        try:
+            import neo4j
+
+            driver = neo4j.AsyncGraphDatabase.driver(
+                settings.neo4j_uri,
+                auth=(settings.neo4j_user, settings.neo4j_password),
+            )
+            await driver.verify_connectivity()
+            await driver.close()
+            return True
+        except Exception:
+            return False
+
+    neo4j_ok = asyncio.run(check_neo4j())
+
+    chroma_collections = 0
+    collections = []
+    try:
+        import chromadb
+
+        chroma = chromadb.PersistentClient(path=settings.chroma_path)
+        collections = chroma.list_collections()
+        chroma_collections = len(collections)
+    except Exception:
+        pass
+
+    datasets_dir = Path(settings.datasets_path)
+    results_dir = Path(settings.results_path)
+    corpora_data: dict[str, dict] = {}
+
+    if datasets_dir.exists():
+        corpus_dirs = sorted(
+            d for d in datasets_dir.iterdir() if d.is_dir() and not d.name.startswith(".")
+        )
+        for d in corpus_dirs:
+            name = d.name
+            raw_count = (
+                sum(1 for _ in (d / "raw").glob("*") if _.is_file() and _.name != ".gitkeep")
+                if (d / "raw").is_dir()
+                else 0
+            )
+            has_processed = (d / "processed").is_dir() and any((d / "processed").glob("*.jsonl"))
+            question_count = 0
+            if (d / "questions").is_dir():
+                for qf in (d / "questions").glob("*.yaml"):
+                    try:
+                        question_count += qf.read_text().count("- id:")
+                    except OSError:
+                        pass
+            has_vectors = False
+            try:
+                if collections:
+                    has_vectors = any(name in c.name for c in collections)
+            except Exception:
+                pass
+            result_count = (
+                len(list(results_dir.glob(f"{name}_*.json"))) if results_dir.exists() else 0
+            )
+            qa_pairs_path = d / "qa-pairs" / "qa_pairs.jsonl"
+            qa_pair_count = 0
+            if qa_pairs_path.exists():
+                lines = qa_pairs_path.read_text().splitlines()
+                qa_pair_count = sum(1 for line in lines if line.strip())
+
+            corpora_data[name] = {
+                "raw_docs": raw_count,
+                "processed": has_processed,
+                "vectors": has_vectors,
+                "graph": neo4j_ok,
+                "questions": question_count,
+                "results": result_count,
+                "qa_pairs": qa_pair_count,
+            }
+
+    if format == "json":
+        import json
+        import sys
+
+        health_data = {
+            "api_keys": {"anthropic": has_anthropic, "openai": has_openai},
+            "services": {
+                "neo4j": neo4j_ok,
+                "chromadb": chroma_collections,
+            },
+            "corpora": corpora_data,
+        }
+        sys.stdout.write(json.dumps(health_data, indent=2) + "\n")
+        return
+
+    console.print("[bold]KB Arena Health Check[/bold]\n")
+
     console.print("  API Keys:")
     ant_status = "[green]set[/green]" if has_anthropic else "[red]missing[/red]"
     oai_status = "[green]set[/green]" if has_openai else "[red]missing[/red]"
@@ -370,22 +594,6 @@ def health():
         )
     console.print()
 
-    # Services
-    async def check_neo4j():
-        try:
-            import neo4j
-
-            driver = neo4j.AsyncGraphDatabase.driver(
-                settings.neo4j_uri,
-                auth=(settings.neo4j_user, settings.neo4j_password),
-            )
-            await driver.verify_connectivity()
-            await driver.close()
-            return True
-        except Exception:
-            return False
-
-    neo4j_ok = asyncio.run(check_neo4j())
     console.print("  Services:")
     neo_status = "[green]connected[/green]" if neo4j_ok else "[yellow]unavailable[/yellow]"
     console.print(f"    Neo4j:    {neo_status}")
@@ -394,69 +602,31 @@ def health():
             "              [dim]Run: docker compose up neo4j -d"
             " (needed for graph + hybrid strategies)[/dim]"
         )
-
-    try:
-        import chromadb
-
-        chroma = chromadb.PersistentClient(path=settings.chroma_path)
-        collections = chroma.list_collections()
-        console.print(f"    ChromaDB: [green]{len(collections)} collection(s)[/green]")
-    except Exception:
+    if chroma_collections > 0:
+        console.print(f"    ChromaDB: [green]{chroma_collections} collection(s)[/green]")
+    else:
         console.print("    ChromaDB: [yellow]unavailable[/yellow]")
     console.print()
 
-    # Per-corpus pipeline status
-    datasets_dir = Path(settings.datasets_path)
-    results_dir = Path(settings.results_path)
-
-    if not datasets_dir.exists():
-        console.print("  No datasets/ directory found.\n")
-        return
-
-    corpus_dirs = sorted(
-        d for d in datasets_dir.iterdir() if d.is_dir() and not d.name.startswith(".")
-    )
-
-    if not corpus_dirs:
+    if not corpora_data:
         console.print("  No corpora found. Run: [bold]kb-arena init-corpus my-docs[/bold]\n")
         return
 
     console.print("  Corpora:")
-    for d in corpus_dirs:
-        name = d.name
-        raw_count = (
-            sum(1 for _ in (d / "raw").glob("*") if _.is_file() and _.name != ".gitkeep")
-            if (d / "raw").is_dir()
-            else 0
+    for name, data in corpora_data.items():
+        raw_s = (
+            f"[green]{data['raw_docs']} doc(s)[/green]" if data["raw_docs"] else "[dim]empty[/dim]"
         )
-        has_processed = (d / "processed").is_dir() and any((d / "processed").glob("*.jsonl"))
-        question_count = 0
-        if (d / "questions").is_dir():
-            for qf in (d / "questions").glob("*.yaml"):
-                try:
-                    question_count += qf.read_text().count("- id:")
-                except OSError:
-                    pass
-        has_vectors = False
-        try:
-            if collections:
-                has_vectors = any(name in c.name for c in collections)
-        except Exception:
-            pass
-        result_count = len(list(results_dir.glob(f"{name}_*.json"))) if results_dir.exists() else 0
-        qa_pairs_path = d / "qa-pairs" / "qa_pairs.jsonl"
-        qa_pair_count = 0
-        if qa_pairs_path.exists():
-            lines = qa_pairs_path.read_text().splitlines()
-            qa_pair_count = sum(1 for line in lines if line.strip())
-
-        raw_s = f"[green]{raw_count} doc(s)[/green]" if raw_count else "[dim]empty[/dim]"
-        proc_s = "[green]yes[/green]" if has_processed else "[dim]no[/dim]"
-        vec_s = "[green]yes[/green]" if has_vectors else "[dim]no[/dim]"
-        graph_s = "[green]yes[/green]" if neo4j_ok else "[dim]no[/dim]"
-        q_s = f"[green]{question_count}[/green]" if question_count else "[dim]0[/dim]"
-        r_s = f"[green]{result_count} strategy(ies)[/green]" if result_count else "[dim]none[/dim]"
-        qa_s = f"[green]{qa_pair_count} pairs[/green]" if qa_pair_count else "[dim]none[/dim]"
+        proc_s = "[green]yes[/green]" if data["processed"] else "[dim]no[/dim]"
+        vec_s = "[green]yes[/green]" if data["vectors"] else "[dim]no[/dim]"
+        graph_s = "[green]yes[/green]" if data["graph"] else "[dim]no[/dim]"
+        q_s = f"[green]{data['questions']}[/green]" if data["questions"] else "[dim]0[/dim]"
+        r_s = (
+            f"[green]{data['results']} strategy(ies)[/green]"
+            if data["results"]
+            else "[dim]none[/dim]"
+        )
+        qa_s = f"[green]{data['qa_pairs']} pairs[/green]" if data["qa_pairs"] else "[dim]none[/dim]"
 
         console.print(f"    [bold]{name}[/bold]")
         console.print(f"      raw: {raw_s}  processed: {proc_s}")

@@ -1,8 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import GraphViewer, { type GraphNode, type GraphEdge } from "@/components/GraphViewer";
-import { CORPORA, fetchCorpora, fetchGraphData, type CorpusInfo } from "@/lib/api";
+import {
+  CORPORA,
+  fetchCorpora,
+  fetchGraphData,
+  triggerGraphBuild,
+  streamGraphBuild,
+  type CorpusInfo,
+} from "@/lib/api";
 
 // Fallback data shown when Neo4j is not connected
 const SAMPLE_NODES: GraphNode[] = [
@@ -90,8 +97,54 @@ export default function GraphPage() {
   const [corpora, setCorpora] = useState<CorpusInfo[]>(CORPORA);
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [buildStatus, setBuildStatus] = useState<"idle" | "building" | "done" | "error">("idle");
+  const [buildProgress, setBuildProgress] = useState("");
+  const abortRef = useRef<AbortController>(new AbortController());
 
   useEffect(() => { fetchCorpora().then(setCorpora); }, []);
+
+  async function handleLiveBuild() {
+    abortRef.current = new AbortController();
+    setBuildStatus("building");
+    setBuildProgress("Starting...");
+    // Clear existing graph so nodes animate in fresh
+    setNodes([]);
+    setEdges([]);
+    try {
+      await triggerGraphBuild(corpus);
+      for await (const event of streamGraphBuild(corpus, abortRef.current.signal)) {
+        if (event.type === "started") {
+          setBuildProgress(`Extracting ${event.total_sections} sections...`);
+        } else if (event.type === "entity") {
+          setNodes((prev) => {
+            if (prev.find((n) => n.id === event.id)) return prev;
+            return [...prev, { id: event.id, label: event.name, type: event.nodeType, properties: {} }];
+          });
+        } else if (event.type === "relationship") {
+          setEdges((prev) => {
+            const id = `live-${prev.length}`;
+            return [...prev, { id, source: event.source, target: event.target, label: event.relType }];
+          });
+        } else if (event.type === "section_done") {
+          setBuildProgress(`Processing documents...`);
+        } else if (event.type === "complete") {
+          setConnected(true);
+          setBuildStatus("done");
+          setBuildProgress(`Complete: ${event.total_entities} entities, ${event.total_relationships} relationships`);
+        } else if (event.type === "error") {
+          setBuildStatus("error");
+          setBuildProgress(event.message);
+        }
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name !== "AbortError") {
+        setBuildStatus("error");
+        setBuildProgress(err.message);
+      }
+    } finally {
+      if (buildStatus === "building") setBuildStatus("idle");
+    }
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -132,16 +185,30 @@ export default function GraphPage() {
             Explore the entity dependency graph extracted from your documentation. Hover to highlight neighbors, drag to pan, scroll to zoom, double-click to focus.
           </p>
         </div>
-        <select
-          value={corpus}
-          onChange={(e) => setCorpus(e.target.value)}
-          className="px-3 py-1.5 rounded-lg border text-sm"
-          style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
-        >
-          {corpora.map((c) => (
-            <option key={c.value} value={c.value}>{c.label}</option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <select
+            value={corpus}
+            onChange={(e) => setCorpus(e.target.value)}
+            className="px-3 py-1.5 rounded-lg border text-sm"
+            style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
+          >
+            {corpora.map((c) => (
+              <option key={c.value} value={c.value}>{c.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleLiveBuild}
+            disabled={buildStatus === "building"}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+            style={{
+              background: buildStatus === "building" ? "var(--border)" : "var(--accent)",
+              color: buildStatus === "building" ? "var(--muted)" : "#fff",
+              cursor: buildStatus === "building" ? "not-allowed" : "pointer",
+            }}
+          >
+            {buildStatus === "building" ? "Building..." : "Build live"}
+          </button>
+        </div>
       </div>
 
       {/* Status banner */}
@@ -160,6 +227,18 @@ export default function GraphPage() {
           style={{ background: "var(--border)", color: "var(--muted)" }}
         >
           Loading graph data...
+        </div>
+      )}
+
+      {buildProgress && (
+        <div
+          className="px-3 py-2 rounded-lg text-xs"
+          style={{
+            background: buildStatus === "error" ? "#fef2f2" : buildStatus === "done" ? "#f0fdf4" : "var(--border)",
+            color: buildStatus === "error" ? "#dc2626" : buildStatus === "done" ? "#16a34a" : "var(--muted)",
+          }}
+        >
+          {buildProgress}
         </div>
       )}
 

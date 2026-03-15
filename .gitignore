@@ -57,6 +57,9 @@ datasets/*/raw/*.txt
 datasets/*/processed/*.jsonl
 !datasets/*/processed/.gitkeep
 
+# Generated Q&A pairs
+datasets/*/qa-pairs/
+
 # Benchmark results (user-generated results are not committed)
 results/*.json
 !results/aws-compute_*.json

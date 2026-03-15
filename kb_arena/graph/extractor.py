@@ -7,6 +7,9 @@ import logging
 import re
 from pathlib import Path
 
+from rich.console import Console
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+
 from kb_arena.graph.neo4j_store import Neo4jStore
 from kb_arena.graph.resolver import resolve_entities
 from kb_arena.graph.schema import (
@@ -22,6 +25,7 @@ from kb_arena.models.graph import Entity, ExtractionResult, Relationship
 from kb_arena.settings import settings
 
 logger = logging.getLogger(__name__)
+_console = Console()
 
 _SYSTEM_PROMPT_TEMPLATE = """You are a knowledge graph extraction engine for {corpus} documentation.
 
@@ -143,7 +147,9 @@ async def _extract_section(
     return _validate_result(raw, corpus, section.id)
 
 
-async def extract_document(doc: Document, llm: LLMClient, system_prompt: str) -> ExtractionResult:
+async def extract_document(
+    doc: Document, llm: LLMClient, system_prompt: str, event_callback=None
+) -> ExtractionResult:
     """Extract all entities/relationships from a document's sections."""
     all_entities: list[Entity] = []
     all_relationships: list[Relationship] = []
@@ -153,12 +159,30 @@ async def extract_document(doc: Document, llm: LLMClient, system_prompt: str) ->
         all_entities.extend(result.entities)
         all_relationships.extend(result.relationships)
 
-    # Entity resolution across the whole document
+        if event_callback:
+            for entity in result.entities:
+                await event_callback(
+                    {
+                        "type": "entity",
+                        "data": {"id": entity.id, "name": entity.name, "type": entity.type},
+                    }
+                )
+            for rel in result.relationships:
+                await event_callback(
+                    {
+                        "type": "relationship",
+                        "data": {
+                            "source": rel.source_fqn,
+                            "target": rel.target_fqn,
+                            "type": rel.type,
+                        },
+                    }
+                )
+
     merged_pairs, review_queue = resolve_entities(all_entities)
     if review_queue:
         logger.info("Document %s: %d entity pairs queued for review", doc.id, len(review_queue))
 
-    # Remove absorbed entities
     absorbed_ids = {pair[1] for pair in merged_pairs if pair[1] != pair[2]}
     deduped = [e for e in all_entities if e.id not in absorbed_ids]
 
@@ -169,7 +193,7 @@ async def extract_document(doc: Document, llm: LLMClient, system_prompt: str) ->
     )
 
 
-async def run_extraction(corpus: str = "custom", schema: str = "auto") -> None:
+async def run_extraction(corpus: str = "custom", schema: str = "auto", event_callback=None) -> None:
     """Orchestrate: load processed JSONL → extract → resolve → load to Neo4j."""
     get_schema(corpus)
 
@@ -195,17 +219,51 @@ async def run_extraction(corpus: str = "custom", schema: str = "auto") -> None:
     all_entities: list[Entity] = []
     all_relationships: list[Relationship] = []
 
-    total = len(jsonl_files)
-    for idx, jsonl_path in enumerate(jsonl_files, 1):
-        logger.info("[%d/%d] Extracting %s", idx, total, jsonl_path.name)
+    # Pre-scan to count total sections for progress
+    docs_to_process: list[Document] = []
+    for jsonl_path in jsonl_files:
         for line in jsonl_path.read_text().splitlines():
             line = line.strip()
             if not line:
                 continue
-            doc = Document.model_validate_json(line)
-            result = await extract_document(doc, llm, system_prompt)
+            docs_to_process.append(Document.model_validate_json(line))
+
+    total_sections = sum(len(d.sections) for d in docs_to_process)
+
+    if event_callback:
+        await event_callback(
+            {
+                "type": "started",
+                "data": {"corpus": corpus, "total_sections": total_sections},
+            }
+        )
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("{task.completed}/{task.total} sections"),
+        TimeElapsedColumn(),
+        console=_console,
+    ) as progress:
+        extract_task = progress.add_task(f"Extracting [bold]{corpus}[/bold]", total=total_sections)
+
+        for doc in docs_to_process:
+            result = await extract_document(doc, llm, system_prompt, event_callback=event_callback)
             all_entities.extend(result.entities)
             all_relationships.extend(result.relationships)
+            progress.advance(extract_task, advance=len(doc.sections))
+            if event_callback:
+                await event_callback(
+                    {
+                        "type": "section_done",
+                        "data": {
+                            "doc_id": doc.id,
+                            "entities_count": len(result.entities),
+                            "rels_count": len(result.relationships),
+                        },
+                    }
+                )
 
     # Group by type for batch loading — nodes first, then edges
     from collections import defaultdict
@@ -218,21 +276,47 @@ async def run_extraction(corpus: str = "custom", schema: str = "auto") -> None:
     for r in all_relationships:
         edges_by_type[r.type].append(r.model_dump())
 
-    for node_type_val, records in nodes_by_type.items():
-        try:
-            label = node_enum(node_type_val)
-            created = await store.load_nodes(records, label)
-            logger.info("Loaded %d %s nodes", created, node_type_val)
-        except ValueError:
-            logger.warning("Skipping unknown node type '%s'", node_type_val)
+    total_loads = len(nodes_by_type) + len(edges_by_type)
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("{task.completed}/{task.total} batches"),
+        console=_console,
+    ) as progress:
+        load_task = progress.add_task("Loading to Neo4j", total=total_loads)
 
-    for rel_type_val, records in edges_by_type.items():
-        try:
-            rel = rel_enum(rel_type_val)
-            created = await store.load_edges(records, rel)
-            logger.info("Loaded %d %s edges", created, rel_type_val)
-        except ValueError:
-            logger.warning("Skipping unknown rel type '%s'", rel_type_val)
+        for node_type_val, records in nodes_by_type.items():
+            try:
+                label = node_enum(node_type_val)
+                created = await store.load_nodes(records, label)
+                logger.info("Loaded %d %s nodes", created, node_type_val)
+            except ValueError:
+                logger.warning("Skipping unknown node type '%s'", node_type_val)
+            progress.advance(load_task)
+
+        for rel_type_val, records in edges_by_type.items():
+            try:
+                rel = rel_enum(rel_type_val)
+                created = await store.load_edges(records, rel)
+                logger.info("Loaded %d %s edges", created, rel_type_val)
+            except ValueError:
+                logger.warning("Skipping unknown rel type '%s'", rel_type_val)
+            progress.advance(load_task)
+
+    if event_callback:
+        await event_callback(
+            {
+                "type": "complete",
+                "data": {
+                    "total_entities": len(all_entities),
+                    "total_relationships": len(all_relationships),
+                },
+            }
+        )
 
     await store.close()
-    logger.info("Extraction complete for corpus '%s'", corpus)
+    _console.print(
+        f"[green]Done.[/green] {len(all_entities)} entities, "
+        f"{len(all_relationships)} relationships extracted for [bold]{corpus}[/bold]"
+    )

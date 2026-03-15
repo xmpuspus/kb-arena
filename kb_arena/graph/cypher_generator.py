@@ -14,6 +14,11 @@ logger = logging.getLogger(__name__)
 # Minimal Cypher syntax check — catches unterminated strings and bare MATCH-less queries.
 _CYPHER_SAFE_PATTERN = re.compile(r"\b(MATCH|CALL|RETURN|WITH|UNWIND)\b", re.IGNORECASE)
 
+# Reject write operations to defend against LLM-generated destructive queries (ASI05).
+_CYPHER_WRITE_PATTERN = re.compile(
+    r"\b(CREATE|DELETE|DETACH|SET|REMOVE|MERGE|DROP)\b", re.IGNORECASE
+)
+
 # Template keyword triggers — ordered by specificity
 _TEMPLATE_TRIGGERS: list[tuple[list[str], str]] = [
     (["deprecat"], "DEPRECATION_CHAIN"),
@@ -42,7 +47,9 @@ Rules:
 
 
 def _validate_cypher(cypher: str) -> bool:
-    """Minimal syntax check — does it contain at least one read clause?"""
+    """Check that query contains a read clause and no write operations."""
+    if _CYPHER_WRITE_PATTERN.search(cypher):
+        return False
     return bool(_CYPHER_SAFE_PATTERN.search(cypher))
 
 

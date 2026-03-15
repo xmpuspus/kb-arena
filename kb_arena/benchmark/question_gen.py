@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 
 import yaml
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
 from kb_arena.llm.client import LLMClient
 from kb_arena.settings import settings
@@ -73,7 +74,6 @@ Rules:
 
 
 def _load_doc_excerpts(corpus: str, max_chars: int = 50000) -> tuple[list[dict], str]:
-    """Load processed documents and return excerpts + source list."""
     processed_dir = Path(settings.datasets_path) / corpus / "processed"
     if not processed_dir.exists():
         raise FileNotFoundError(
@@ -91,7 +91,6 @@ def _load_doc_excerpts(corpus: str, max_chars: int = 50000) -> tuple[list[dict],
     if not docs:
         raise ValueError(f"No documents found in {processed_dir}")
 
-    # Build excerpts within token budget
     excerpts = []
     total_chars = 0
     for doc in docs:
@@ -125,7 +124,6 @@ async def _generate_tier_questions(
     corpus: str,
     count: int,
 ) -> list[dict]:
-    """Generate questions for a single tier."""
     user_prompt = f"""Generate exactly {count} questions at Tier {tier} ({tier_def["name"]}).
 
 Tier definition: {tier_def["desc"]}
@@ -152,7 +150,6 @@ Return a JSON array of {count} question objects. Nothing else — just the JSON 
 
     raw_questions = json.loads(json_match.group())
 
-    # Validate and format
     questions = []
     for i, q in enumerate(raw_questions[:count]):
         qid = f"{corpus}-t{tier}-{i + 1:03d}"
@@ -180,7 +177,6 @@ Return a JSON array of {count} question objects. Nothing else — just the JSON 
 
 
 async def run_question_generation(corpus: str, count: int = 50) -> None:
-    """Generate benchmark questions for a corpus and write YAML files."""
     from rich.console import Console
 
     console = Console()
@@ -193,7 +189,6 @@ async def run_question_generation(corpus: str, count: int = 50) -> None:
     questions_dir = Path(settings.datasets_path) / corpus / "questions"
     questions_dir.mkdir(parents=True, exist_ok=True)
 
-    # Distribute count across 5 tiers
     per_tier = count // 5
     remainder = count % 5
 
@@ -206,24 +201,38 @@ async def run_question_generation(corpus: str, count: int = 50) -> None:
     }
 
     total_generated = 0
-    for tier, tier_def in TIER_DEFS.items():
-        tier_count = per_tier + (1 if tier <= remainder else 0)
-        if tier_count == 0:
-            continue
+    active_tiers = [
+        (tier, tier_def, per_tier + (1 if tier <= remainder else 0))
+        for tier, tier_def in TIER_DEFS.items()
+        if per_tier + (1 if tier <= remainder else 0) > 0
+    ]
 
-        console.print(f"  Tier {tier} ({tier_def['name']}): generating {tier_count} questions...")
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("{task.completed}/{task.total} tiers"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Generating questions", total=len(active_tiers))
 
-        questions = await _generate_tier_questions(
-            llm, tier, tier_def, excerpt_text, corpus, tier_count
-        )
+        for tier, tier_def, tier_count in active_tiers:
+            progress.update(
+                task,
+                description=f"Tier {tier} [bold]{tier_def['name']}[/bold] ({tier_count} questions)",
+            )
 
-        # Write YAML
-        out_path = questions_dir / f"{tier_names[tier]}.yaml"
-        with open(out_path, "w") as f:
-            yaml.dump(questions, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            questions = await _generate_tier_questions(
+                llm, tier, tier_def, excerpt_text, corpus, tier_count
+            )
 
-        console.print(f"    Wrote {len(questions)} questions to {out_path}")
-        total_generated += len(questions)
+            out_path = questions_dir / f"{tier_names[tier]}.yaml"
+            with open(out_path, "w") as f:
+                yaml.dump(
+                    questions, f, default_flow_style=False, sort_keys=False, allow_unicode=True
+                )
+
+            total_generated += len(questions)
+            progress.advance(task)
 
     console.print(f"\n[green]Generated {total_generated} questions in {questions_dir}/[/green]")
-    console.print(f"Next: [bold]kb-arena benchmark --corpus {corpus}[/bold]")

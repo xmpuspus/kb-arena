@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sse_starlette.sse import EventSourceResponse
 
 from kb_arena.settings import settings
@@ -18,19 +18,32 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/tools", tags=["tools"])
 
 
+def _validate_corpus_name(v: str) -> str:
+    """Reject path traversal characters in corpus names."""
+    if ".." in v or "/" in v or "\\" in v or "\0" in v:
+        raise ValueError("Invalid corpus name")
+    return v
+
+
 class GenerateRequest(BaseModel):
     corpus: str
+
+    validate_corpus = field_validator("corpus")(_validate_corpus_name)
 
 
 class AuditRequest(BaseModel):
     corpus: str
     max_sections: int = Field(default=50, ge=1, le=500)
 
+    validate_corpus = field_validator("corpus")(_validate_corpus_name)
+
 
 class FixRequest(BaseModel):
     corpus: str
     max_sections: int = Field(default=50, ge=1, le=500)
     max_fixes: int = Field(default=10, ge=1, le=50)
+
+    validate_corpus = field_validator("corpus")(_validate_corpus_name)
 
 
 @router.post("/generate")
@@ -296,6 +309,7 @@ async def run_fix_stream(body: FixRequest, request: Request) -> EventSourceRespo
 @router.get("/qa-pairs")
 async def get_qa_pairs(corpus: str) -> dict:
     """Read stored Q&A pairs for a corpus."""
+    _validate_corpus_name(corpus)
     qa_path = Path(settings.datasets_path) / corpus / "qa-pairs" / "qa_pairs.jsonl"
     if not qa_path.exists():
         return {"pairs": [], "total": 0}

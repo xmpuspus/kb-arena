@@ -563,3 +563,48 @@ async def test_corpora_multiple_qa_pairs():
             result = await list_corpora()
 
     assert result["corpora"][0]["qaPairCount"] == 10
+
+
+# ── corpus path traversal validation ──
+
+
+class TestCorpusValidation:
+    """Corpus name validation rejects path traversal characters."""
+
+    def test_generate_rejects_traversal(self):
+        import pytest
+
+        from kb_arena.chatbot.tools_api import GenerateRequest
+
+        with pytest.raises(Exception):
+            GenerateRequest(corpus="../../etc")
+
+    def test_audit_rejects_traversal(self):
+        import pytest
+
+        from kb_arena.chatbot.tools_api import AuditRequest
+
+        with pytest.raises(Exception):
+            AuditRequest(corpus="../secrets")
+
+    def test_fix_rejects_slash(self):
+        import pytest
+
+        from kb_arena.chatbot.tools_api import FixRequest
+
+        with pytest.raises(Exception):
+            FixRequest(corpus="foo/bar")
+
+    def test_chat_rejects_traversal(self):
+        import pytest
+
+        from kb_arena.models.api import ChatRequest
+
+        with pytest.raises(Exception):
+            ChatRequest(query="test", corpus="../../etc")
+
+    def test_valid_corpus_accepted(self):
+        from kb_arena.chatbot.tools_api import GenerateRequest
+
+        req = GenerateRequest(corpus="aws-compute")
+        assert req.corpus == "aws-compute"

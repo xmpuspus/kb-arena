@@ -347,3 +347,92 @@ async def test_hybrid_procedural_fuses_both(mock_chroma_client, mock_neo4j_drive
     # Both sub-strategies should have been queried
     mock_vector.query.assert_called_once()
     mock_graph.query.assert_called_once()
+
+
+# --- RaptorStrategy ---
+
+
+@pytest.mark.asyncio
+async def test_raptor_build_index(mock_chroma_client, sample_documents):
+    """build_index should upsert L0 and attempt L1."""
+    import numpy as np
+
+    collection = mock_chroma_client.get_or_create_collection.return_value
+    n_chunks = sum(len(s.content.split()) // 512 + 1 for d in sample_documents for s in d.sections)
+    fake_ids = [f"chunk_{i}" for i in range(max(n_chunks, 3))]
+    fake_emb = np.random.rand(len(fake_ids), 8).tolist()
+    fake_docs = [f"chunk text {i}" for i in range(len(fake_ids))]
+    collection.get.return_value = {"ids": fake_ids, "embeddings": fake_emb, "documents": fake_docs}
+    collection.count.return_value = len(fake_ids)
+
+    from unittest.mock import AsyncMock
+
+    from kb_arena.llm.client import LLMResponse
+    from kb_arena.strategies.raptor import RaptorStrategy
+
+    mock_llm = AsyncMock()
+    mock_llm.generate.return_value = LLMResponse(
+        text="Cluster summary.", input_tokens=100, output_tokens=50, cost_usd=0.001
+    )
+
+    strategy = RaptorStrategy(chroma_client=mock_chroma_client)
+    strategy._llm = mock_llm
+
+    await strategy.build_index(sample_documents)
+    assert collection.upsert.called
+
+
+@pytest.mark.asyncio
+async def test_raptor_query(mock_chroma_client, mock_llm_client):
+    """query should search all levels and return AnswerResult."""
+    collection = mock_chroma_client.get_or_create_collection.return_value
+    collection.count.return_value = 3
+
+    from kb_arena.strategies.raptor import RaptorStrategy
+
+    strategy = RaptorStrategy(chroma_client=mock_chroma_client)
+    strategy._llm = mock_llm_client
+
+    result = await strategy.query("What is Lambda?")
+    assert result.strategy == "raptor"
+    assert isinstance(result.answer, str)
+    assert result.latency_ms >= 0
+
+
+@pytest.mark.asyncio
+async def test_raptor_query_empty_collection(mock_chroma_client, mock_llm_client):
+    """query on empty collection returns helpful message."""
+    collection = mock_chroma_client.get_or_create_collection.return_value
+    collection.count.return_value = 0
+
+    from kb_arena.strategies.raptor import RaptorStrategy
+
+    strategy = RaptorStrategy(chroma_client=mock_chroma_client)
+    strategy._llm = mock_llm_client
+
+    result = await strategy.query("What is Lambda?")
+    assert "build-vectors" in result.answer or "No indexed" in result.answer
+
+
+def test_cosine_kmeans_basic():
+    """K-means returns one assignment per embedding."""
+    import numpy as np
+
+    from kb_arena.strategies.raptor import _cosine_kmeans
+
+    rng = np.random.default_rng(42)
+    embeddings = rng.random((20, 8)).astype(np.float32)
+    assignments = _cosine_kmeans(embeddings, k=4)
+    assert len(assignments) == 20
+    assert all(0 <= a < 4 for a in assignments)
+
+
+def test_cosine_kmeans_fewer_than_k():
+    """When n <= k, each point is its own cluster."""
+    import numpy as np
+
+    from kb_arena.strategies.raptor import _cosine_kmeans
+
+    embeddings = np.random.rand(3, 8).astype(np.float32)
+    assignments = _cosine_kmeans(embeddings, k=5)
+    assert assignments == [0, 1, 2]

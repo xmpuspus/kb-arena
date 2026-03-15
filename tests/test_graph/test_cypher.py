@@ -97,6 +97,30 @@ def test_validate_cypher_rejects_plain_text():
     assert _validate_cypher("Here is your answer: Lambda runs code without servers.") is False
 
 
+def test_validate_cypher_rejects_create():
+    assert _validate_cypher("MATCH (n) CREATE (m) RETURN m") is False
+
+
+def test_validate_cypher_rejects_delete():
+    assert _validate_cypher("MATCH (n) DELETE n") is False
+
+
+def test_validate_cypher_rejects_detach_delete():
+    assert _validate_cypher("MATCH (n) DETACH DELETE n") is False
+
+
+def test_validate_cypher_rejects_set():
+    assert _validate_cypher("MATCH (n) SET n.name = 'evil' RETURN n") is False
+
+
+def test_validate_cypher_rejects_merge():
+    assert _validate_cypher("MERGE (n:Node {name: 'test'}) RETURN n") is False
+
+
+def test_validate_cypher_rejects_drop():
+    assert _validate_cypher("MATCH (n) DROP INDEX my_index") is False
+
+
 # ── CypherGenerator fallback ───────────────────────────────────────────────────
 
 
