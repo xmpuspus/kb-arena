@@ -34,6 +34,7 @@ STRATEGY_NAMES = [
     "knowledge_graph",
     "hybrid",
     "raptor",
+    "pageindex",
 ]
 
 RETRY_BACKOFF_S = 1.0

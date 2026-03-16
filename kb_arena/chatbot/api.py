@@ -73,6 +73,7 @@ async def lifespan(app: FastAPI):
     from kb_arena.strategies.hybrid import HybridStrategy
     from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
     from kb_arena.strategies.naive_vector import NaiveVectorStrategy
+    from kb_arena.strategies.pageindex import PageIndexStrategy
     from kb_arena.strategies.qna_pairs import QnAPairStrategy
     from kb_arena.strategies.raptor import RaptorStrategy
 
@@ -117,6 +118,7 @@ async def lifespan(app: FastAPI):
             router=router,
         ),
         "raptor": RaptorStrategy(chroma_client=chroma),
+        "pageindex": PageIndexStrategy(),
     }
 
     yield

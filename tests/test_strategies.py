@@ -1,4 +1,4 @@
-"""Tests for all 5 retrieval strategies."""
+"""Tests for all 7 retrieval strategies."""
 
 from __future__ import annotations
 

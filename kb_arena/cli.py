@@ -156,11 +156,13 @@ def build_graph(
 @app.command()
 def build_vectors(
     corpus: str = typer.Option(..., help="Corpus to build vectors for"),
-    strategy: str = typer.Option("all", help="Strategy: all, naive, contextual, qna"),
+    strategy: str = typer.Option(
+        "all", help="Strategy: all, naive_vector, contextual_vector, qna_pairs, raptor, pageindex"
+    ),
 ):
-    """Stage 3: Build vector indexes for strategies 1-3.
+    """Stage 3: Build indexes for vector strategies and PageIndex tree.
 
-    Requires: ingest completed. Writes to ChromaDB.
+    Requires: ingest completed. Writes to ChromaDB (vector) or JSON (pageindex).
     """
     import asyncio
 
@@ -178,7 +180,8 @@ def benchmark(
     corpus: str = typer.Option("all", help="Corpus name, or 'all' to run all discovered corpora"),
     strategy: str = typer.Option(
         "all",
-        help="Strategy: all, naive_vector, contextual_vector, qna_pairs, knowledge_graph, hybrid",
+        help="Strategy name or 'all'. Options: naive_vector, contextual_vector, "
+        "qna_pairs, knowledge_graph, hybrid, raptor, pageindex",
     ),
     tier: int = typer.Option(0, help="Tier filter (0 = all tiers)"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview what would be benchmarked"),

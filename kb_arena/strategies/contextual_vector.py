@@ -8,11 +8,11 @@ The "best practice" vector approach — shows how much metadata helps.
 from __future__ import annotations
 
 import chromadb
-from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 
 from kb_arena.models.document import Document, Section
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.strategies.embeddings import OpenAIEmbedding
 from kb_arena.strategies.naive_vector import CHUNK_TOKENS, OVERLAP_TOKENS, _chunk_text
 
 COLLECTION_NAME = "contextual_vector"
@@ -66,10 +66,7 @@ class ContextualVectorStrategy(Strategy):
 
     def _get_collection(self):
         if self._collection is None:
-            ef = OpenAIEmbeddingFunction(
-                api_key=settings.openai_api_key or settings.anthropic_api_key,
-                model_name=settings.embedding_model,
-            )
+            ef = OpenAIEmbedding()
             self._collection = self._get_client().get_or_create_collection(
                 name=COLLECTION_NAME,
                 embedding_function=ef,

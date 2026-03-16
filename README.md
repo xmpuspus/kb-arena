@@ -2,7 +2,7 @@
 
 Which retrieval architecture works best for your documentation?
 
-KB Arena benchmarks 6 retrieval strategies — naive vector, contextual vector, Q&A pairs, knowledge graph, hybrid, and RAPTOR — on **your** documentation. Bring your docs in any format, run the pipeline, get empirical results. Ships with an AWS Compute corpus (75 questions across 5 difficulty tiers) as a built-in example.
+KB Arena benchmarks 7 retrieval strategies — naive vector, contextual vector, Q&A pairs, knowledge graph, hybrid, RAPTOR, and PageIndex — on **your** documentation. Bring your docs in any format, run the pipeline, get empirical results. Ships with an AWS Compute corpus (75 questions across 5 difficulty tiers) as a built-in example.
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-454-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue)
 
@@ -19,7 +19,7 @@ pip install kb-arena
 kb-arena demo
 ```
 
-This launches the dashboard with pre-computed results from the AWS Compute corpus (75 questions, 6 strategies, 5 difficulty tiers).
+This launches the dashboard with pre-computed results from the AWS Compute corpus (75 questions, 7 strategies, 5 difficulty tiers).
 
 ---
 
@@ -85,7 +85,7 @@ volumes:
   neo4j_data:
 ```
 
-**Don't want Docker?** KB Arena still works — the 3 vector strategies run without Neo4j. Only the knowledge graph and hybrid strategies need it.
+**Don't want Docker?** KB Arena still works — the vector strategies, RAPTOR, and PageIndex run without Neo4j. Only the knowledge graph and hybrid strategies need it.
 
 ### Step 4: Run the pipeline
 
@@ -113,7 +113,7 @@ kb-arena build-vectors --corpus my-docs
 # Auto-generate benchmark questions from your docs (10 per difficulty tier)
 kb-arena generate-questions --corpus my-docs --count 50
 
-# Run the benchmark (each question x 6 strategies, 4-pass evaluation)
+# Run the benchmark (each question x 7 strategies, 4-pass evaluation)
 kb-arena benchmark --corpus my-docs
 
 # Launch the web UI to explore results
@@ -170,23 +170,25 @@ kb-arena serve
 
 ## Screenshots
 
-**Benchmark results** — Accuracy table by tier with grouped bar chart. Fetches real results from `kb-arena benchmark` or displays sample data.
+**Home** — Overview of the 7 strategies, difficulty tiers, and evaluation methodology.
 
-![Benchmark results](docs/screenshot-benchmark.png)
+![Home page](docs/screenshot-home.png)
 
-**Strategy comparison** — Ask the same question to all 6 strategies simultaneously. Compare answers, sources, latency, and cost.
+**Strategy comparison** — Ask the same question to all 7 strategies simultaneously. Compare answers, sources, latency, and cost side-by-side.
 
 ![Strategy comparison demo](docs/screenshot-demo.png)
 
-**Knowledge graph explorer** — Interactive force-directed visualization of entities extracted from your documentation. Hit **Build Live** to watch entities and relationships stream in as the extractor runs.
+**Benchmark results** — Accuracy table by tier with grouped bar chart.
+
+![Benchmark results](docs/screenshot-benchmark.png)
+
+**Knowledge graph** — Interactive force-directed visualization of entities extracted from your docs.
 
 ![Knowledge graph viewer](docs/screenshot-graph.png)
 
+**Live graph build** — Watch entities and relationships stream in as the extractor runs.
+
 ![Live graph animation](docs/demo-live-graph.gif)
-
-**Home page** — Overview of strategies, difficulty tiers, and evaluation methodology.
-
-![Home page](docs/screenshot-home.png)
 
 ---
 
@@ -205,9 +207,13 @@ kb-arena generate-qa --corpus my-docs
 # Outputs: datasets/my-docs/qa-pairs/qa_pairs.jsonl
 ```
 
-**CLI:** ![Q&A Generator](docs/demo-generate-qa.gif)
+**CLI**
 
-**Web UI:** ![Q&A Generator Web UI](docs/demo-tools-generate.gif)
+![Q&A Generator CLI](docs/demo-generate-qa.gif)
+
+**Web UI**
+
+![Q&A Generator Web UI](docs/demo-tools-generate.gif)
 
 ### Docs Gap Analyzer
 
@@ -217,9 +223,13 @@ Find what's missing in your documentation before your users complain about it. G
 kb-arena audit --corpus my-docs
 ```
 
-**CLI:** ![Docs Audit](docs/demo-audit.gif)
+**CLI**
 
-**Web UI:** ![Docs Audit Web UI](docs/demo-tools-audit.gif)
+![Docs Audit CLI](docs/demo-audit.gif)
+
+**Web UI**
+
+![Docs Audit Web UI](docs/demo-tools-audit.gif)
 
 ### Fix My Docs
 
@@ -229,9 +239,13 @@ Get actionable recommendations with draft content to improve your docs. Runs the
 kb-arena fix --corpus my-docs --max-fixes 5
 ```
 
-**CLI:** ![Fix My Docs](docs/demo-fix.gif)
+**CLI**
 
-**Web UI:** ![Fix My Docs Web UI](docs/demo-tools-fix.gif)
+![Fix My Docs CLI](docs/demo-fix.gif)
+
+**Web UI**
+
+![Fix My Docs Web UI](docs/demo-tools-fix.gif)
 
 Pipeline: `generate-qa` → `audit` → `fix` — each command builds on the previous. Or run them independently via CLI or the web UI.
 
@@ -243,20 +257,21 @@ Real numbers from 75 questions across 5 difficulty tiers, evaluated with a 4-pas
 
 | Strategy | Overall | T1 Lookup | T2 How-To | T3 Comparison | T4 Integration | T5 Architecture | Avg Latency | Cost |
 |---|---|---|---|---|---|---|---|---|
-| **Q&A Pairs** | **81.5%** | 80% | 85% | **83%** | 80% | 77% | 8.4s | $0.48 |
-| Knowledge Graph | 70.3% | 72% | 72% | 68% | 74% | 62% | 18.9s | $1.28 |
-| Hybrid | 64.3% | 37% | 83% | 55% | **88%** | **70%** | 39.5s | $3.00 |
-| RAPTOR | 22.8% | 32% | 17% | 15% | 31% | 19% | 6.9s | $0.71 |
-| Naive Vector | 19.5% | 27% | 13% | 12% | 27% | 20% | 5.7s | $0.33 |
-| Contextual Vector | 16.0% | 26% | 12% | 7% | 24% | 7% | 4.7s | $0.29 |
+| **Q&A Pairs** | **79.2%** | 79% | 85% | **83%** | **84%** | 66% | 9.0s | $0.48 |
+| Knowledge Graph | 71.5% | 72% | 69% | 61% | 77% | **79%** | 20.3s | $1.37 |
+| Hybrid | 64.7% | 39% | 81% | 61% | 80% | 62% | 41.5s | $3.02 |
+| RAPTOR | 25.3% | 30% | 16% | 15% | 36% | 30% | 7.2s | $0.69 |
+| Naive Vector | 20.7% | 27% | 15% | 14% | 26% | 22% | 6.4s | $0.33 |
+| Contextual Vector | 16.5% | 25% | 11% | 9% | 26% | 11% | 5.1s | $0.29 |
+| PageIndex | 14.3% | 19% | 12% | 7% | 21% | 12% | 10.9s | $0.29 |
 
-**Key takeaway:** Q&A pairs dominate overall because pre-generated answers sidestep retrieval failures. The hybrid strategy wins at integration (T4) questions where structured graph traversal matters. RAPTOR's hierarchical retrieval shows its strength at T1 and T4 but needs a larger corpus to unlock its full potential — the AWS example has only 3 source documents, which limits the number of useful cluster summaries the tree can form. Pure vector RAG — what most teams ship — scores under 20%. Cost ranges from $0.29 (contextual vector) to $3.00 (hybrid) for the full 75-question benchmark.
+**Key takeaway:** Q&A pairs dominate overall because pre-generated answers sidestep retrieval failures. Knowledge graph leads on architecture questions (T5: 79%) where structured graph traversal shines. The hybrid strategy adapts per question type but pays a latency/cost premium. PageIndex — the vectorless, reasoning-based approach — scores comparably to contextual vector at $0.29, demonstrating that LLM tree traversal is a viable alternative to embeddings on well-structured docs. RAPTOR's hierarchical retrieval shows strength at T4/T5 but needs a larger corpus. Pure vector RAG — what most teams ship — scores under 21%. Cost ranges from $0.29 (contextual vector / pageindex) to $3.02 (hybrid) for the full 75-question benchmark.
 
 These are results from the built-in AWS Compute corpus. Your mileage will vary — that's the whole point of running it on your own docs.
 
 ---
 
-## The 6 Strategies
+## The 7 Strategies
 
 | # | Strategy | How it works | Best at |
 |---|----------|-------------|---------|
@@ -266,6 +281,7 @@ These are results from the built-in AWS Compute corpus. Your mileage will vary �
 | 4 | **Knowledge Graph** | Entities → Neo4j → Cypher templates → generate | Multi-hop dependencies, cross-topic queries |
 | 5 | **Hybrid** | Intent routing → vector or graph or both (RRF) | Adapts per question type |
 | 6 | **RAPTOR** | Cluster chunks → LLM topic summaries → recursive tree → query all levels | Cross-document synthesis, broad topic questions |
+| 7 | **PageIndex** | Build tree index from doc structure → LLM beam search traversal → no vectors | Well-structured docs, reasoning over hierarchy |
 
 ---
 
@@ -320,7 +336,7 @@ No per-domain configuration needed. The LLM maps your documentation concepts to 
 | `init-corpus <name>` | Scaffold `datasets/{name}/` directories |
 | `ingest <path>` | Parse docs into JSONL. Accepts files, dirs, URLs, `github:owner/repo`. Options: `--corpus`, `--format`, `--dry-run` |
 | `build-graph` | Extract entities/rels into Neo4j. Options: `--corpus` |
-| `build-vectors` | Build ChromaDB indexes. Options: `--corpus`, `--strategy` |
+| `build-vectors` | Build vector indexes + PageIndex tree. Options: `--corpus`, `--strategy` |
 | `generate-questions` | Auto-generate benchmark questions. Options: `--corpus`, `--count` |
 | `benchmark` | Run evaluation. Options: `--corpus`, `--strategy`, `--tier`, `--dry-run` |
 | `generate-qa` | Generate Q&A pairs from your docs as JSONL. Options: `--corpus`, `--output` |
@@ -393,6 +409,8 @@ All prefixed with `KB_ARENA_`. Loaded from `.env` or environment.
 | `BENCHMARK_MAX_CONCURRENT` | `5` | No | Parallel benchmark queries |
 | `BENCHMARK_QUERY_TIMEOUT_S` | `120` | No | Per-query timeout (seconds) |
 | `BENCHMARK_MAX_RETRIES` | `2` | No | Retry count on failures |
+| `PAGEINDEX_BEAM_WIDTH` | `3` | No | Branches to explore per tree level |
+| `PAGEINDEX_MAX_DEPTH` | `4` | No | Maximum tree traversal depth |
 | `DATASETS_PATH` | `./datasets` | No | Datasets directory |
 | `RESULTS_PATH` | `./results` | No | Results output directory |
 

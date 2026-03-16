@@ -1,4 +1,4 @@
-"""Abstract base strategy — all 5 retrieval strategies implement this interface.
+"""Abstract base strategy — all 7 retrieval strategies implement this interface.
 
 The benchmark runner and chatbot API only interact via this interface.
 """

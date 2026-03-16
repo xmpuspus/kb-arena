@@ -12,26 +12,11 @@ import logging
 
 import chromadb
 import numpy as np
-from chromadb import Documents, EmbeddingFunction, Embeddings
 
 from kb_arena.models.document import Document
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
-
-
-class _OpenAIEmbeddingFunction(EmbeddingFunction[Documents]):
-    """Embedding function compatible with openai SDK v1 and v2."""
-
-    def __init__(self, api_key: str, model: str) -> None:
-        import openai
-
-        self._client = openai.OpenAI(api_key=api_key)
-        self._model = model
-
-    def __call__(self, input: Documents) -> Embeddings:  # type: ignore[override]
-        resp = self._client.embeddings.create(model=self._model, input=list(input))
-        return [e.embedding for e in sorted(resp.data, key=lambda x: x.index)]
-
+from kb_arena.strategies.embeddings import OpenAIEmbedding
 
 logger = logging.getLogger(__name__)
 
@@ -112,10 +97,7 @@ class RaptorStrategy(Strategy):
         return self._client
 
     def _get_collection(self, level: int):
-        ef = _OpenAIEmbeddingFunction(
-            api_key=settings.openai_api_key or settings.anthropic_api_key,
-            model=settings.embedding_model,
-        )
+        ef = OpenAIEmbedding()
         return self._get_client().get_or_create_collection(
             name=f"raptor_l{level}",
             embedding_function=ef,

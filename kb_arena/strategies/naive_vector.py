@@ -8,11 +8,11 @@ Deliberately simple — this is the strawman all others beat.
 from __future__ import annotations
 
 import chromadb
-from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 
 from kb_arena.models.document import Document
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.strategies.embeddings import OpenAIEmbedding
 
 CHUNK_TOKENS = 512
 OVERLAP_TOKENS = 50
@@ -67,10 +67,7 @@ class NaiveVectorStrategy(Strategy):
 
     def _get_collection(self):
         if self._collection is None:
-            ef = OpenAIEmbeddingFunction(
-                api_key=settings.openai_api_key or settings.anthropic_api_key,
-                model_name=settings.embedding_model,
-            )
+            ef = OpenAIEmbedding()
             self._collection = self._get_client().get_or_create_collection(
                 name=COLLECTION_NAME,
                 embedding_function=ef,

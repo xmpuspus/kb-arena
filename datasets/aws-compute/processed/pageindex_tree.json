@@ -1,0 +1,484 @@
+{
+  "corpus": "aws-compute",
+  "built_at": "2026-03-16T04:33:23.657523+00:00",
+  "documents": [
+    {
+      "id": "ecs-fargate",
+      "title": "Amazon ECS and AWS Fargate",
+      "summary": "**Amazon ECS and AWS Fargate** provides a comprehensive overview of running containerized applications on AWS, covering the core building blocks including launch types (EC2 vs. Fargate), task definitions, services, and networking configurations. It also addresses security through IAM roles and explores how ECS integrates with the broader AWS ecosystem, including ECR, CloudWatch, Secrets Manager, App Mesh, and X-Ray.",
+      "level": 0,
+      "content": null,
+      "source_doc": "datasets/aws-compute/raw/ecs-fargate.md",
+      "children": [
+        {
+          "id": "amazon-ecs-and-aws-fargate",
+          "title": "Amazon ECS and AWS Fargate",
+          "summary": "**Amazon ECS and AWS Fargate** provides a comprehensive overview of running containerized applications on AWS, covering the core building blocks including launch types (EC2 vs. Fargate), task definitions, services, and networking configurations. It also addresses security through IAM roles and explores how ECS integrates with the broader AWS ecosystem, including ECR, CloudWatch, Secrets Manager, App Mesh, and X-Ray.",
+          "level": 1,
+          "content": null,
+          "source_doc": "ecs-fargate",
+          "children": [
+            {
+              "id": "launch-types",
+              "title": "Launch Types",
+              "summary": "**Launch Types** covers the two primary methods for running ECS containers: the EC2 Launch Type, where users self-manage underlying EC2 instances for greater control over infrastructure configuration, and the Fargate Launch Type, a serverless option where AWS manages the infrastructure and users are billed based on per-task resource consumption.",
+              "level": 2,
+              "content": null,
+              "source_doc": "ecs-fargate",
+              "children": [
+                {
+                  "id": "ec2-launch-type",
+                  "title": "EC2 Launch Type",
+                  "summary": "The EC2 Launch Type section covers a self-managed hosting model for ECS where users maintain direct control over the underlying EC2 instances, including configuration of instance types, AMIs, and capacity, with support for Spot Instances to reduce costs; it is recommended for workloads requiring GPUs, specific instance types, or Windows containers.",
+                  "level": 3,
+                  "content": "- You manage the EC2 instances in your cluster\n- Full control over instance types, AMIs, and capacity\n- Can use Spot Instances for cost savings\n- Best for: workloads needing GPUs, specific instance types, or Windows containers",
+                  "source_doc": "ecs-fargate",
+                  "children": []
+                },
+                {
+                  "id": "fargate-launch-type",
+                  "title": "Fargate Launch Type",
+                  "summary": "The Fargate Launch Type section covers AWS-managed serverless container execution where users pay per vCPU and memory per second with no EC2 instance management required. It highlights task-level kernel isolation and identifies optimal use cases including microservices, batch jobs, and serverless containers.",
+                  "level": 3,
+                  "content": "- No EC2 instances to manage — AWS manages the infrastructure\n- Pay per vCPU and memory per second\n- Task-level isolation (each task runs in its own kernel)\n- Best for: microservices, batch jobs, serverless containers",
+                  "source_doc": "ecs-fargate",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "task-definitions",
+              "title": "Task Definitions",
+              "summary": "**Task Definitions** explains the structure and configuration of ECS task definitions, covering how tasks are defined as the blueprint for running containers, including the specification of multiple containers within a single task and their associated settings.",
+              "level": 2,
+              "content": null,
+              "source_doc": "ecs-fargate",
+              "children": [
+                {
+                  "id": "container-definitions",
+                  "title": "Container Definitions",
+                  "summary": "Each task can have multiple containers:",
+                  "level": 3,
+                  "content": "Each task can have multiple containers:",
+                  "source_doc": "ecs-fargate",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "services",
+              "title": "Services",
+              "summary": "Based on the child sections provided, here is a summary of the parent section:\n\n**Services** covers the various deployment strategies available for exposing and managing access to applications within a Kubernetes environment. It explores different approaches for routing traffic, load balancing, and making workloads accessible both internally and externally within a cluster.",
+              "level": 2,
+              "content": null,
+              "source_doc": "ecs-fargate",
+              "children": [
+                {
+                  "id": "deployment-strategies",
+                  "title": "Deployment Strategies",
+                  "summary": "Section: Deployment Strategies",
+                  "level": 3,
+                  "content": "",
+                  "source_doc": "ecs-fargate",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "networking-awsvpc",
+              "title": "Networking (awsvpc)",
+              "summary": "The `awsvpc` network mode assigns each ECS task its own Elastic Network Interface (ENI) with a private VPC subnet IP, enabling task-level security group enforcement and inter-task communication via private IPs; internet access requires either a public subnet with a public IP assigned or a private subnet with a NAT Gateway.",
+              "level": 2,
+              "content": "Each task gets its own ENI with a private IP in your VPC subnet:\n\n- Tasks can communicate using private IPs\n- Security groups applied at the task level\n- For internet access: public subnet + assign public IP, OR private subnet + NAT Gateway",
+              "source_doc": "ecs-fargate",
+              "children": []
+            },
+            {
+              "id": "iam-roles",
+              "title": "IAM Roles",
+              "summary": "The **IAM Roles** section covers the two distinct IAM roles required for ECS tasks: the **Task Execution Role**, which grants the ECS agent infrastructure-level permissions to pull container images from ECR and write logs to CloudWatch, and the **Task Role**, which provides the application running inside the container with permissions to access AWS services such as S3, DynamoDB, and SQS.",
+              "level": 2,
+              "content": null,
+              "source_doc": "ecs-fargate",
+              "children": [
+                {
+                  "id": "task-execution-role",
+                  "title": "Task Execution Role",
+                  "summary": "The Task Execution Role grants the ECS agent permissions to pull container images from ECR (`GetAuthorizationToken`, `BatchGetImage`, `GetDownloadUrlForLayer`) and write logs to CloudWatch (`CreateLogStream`, `PutLogEvents`).",
+                  "level": 3,
+                  "content": "Allows ECS agent to pull images from ECR and write logs to CloudWatch:\n\n- `ecr:GetAuthorizationToken`\n- `ecr:BatchGetImage`\n- `ecr:GetDownloadUrlForLayer`\n- `logs:CreateLogStream`\n- `logs:PutLogEvents`",
+                  "source_doc": "ecs-fargate",
+                  "children": []
+                },
+                {
+                  "id": "task-role",
+                  "title": "Task Role",
+                  "summary": "Permissions for the application running inside the container (e.g., access S3, DynamoDB, SQS).",
+                  "level": 3,
+                  "content": "Permissions for the application running inside the container (e.g., access S3, DynamoDB, SQS).",
+                  "source_doc": "ecs-fargate",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "integration-with-other-services",
+              "title": "Integration with Other Services",
+              "summary": "ECS integrates with ECR for private container image storage, CloudWatch for logs/metrics/Container Insights, and Secrets Manager/Parameter Store for injecting secrets as environment variables, while App Mesh provides service mesh capabilities for microservices communication and X-Ray enables distributed tracing across services.",
+              "level": 2,
+              "content": "- **ECR**: Private container image registry\n- **CloudWatch**: Logs, metrics, Container Insights\n- **Secrets Manager / Parameter Store**: Inject secrets as environment variables\n- **App Mesh**: Service mesh for microservices\n- **X-Ray**: Distributed tracing",
+              "source_doc": "ecs-fargate",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "api-gateway",
+      "title": "Amazon API Gateway",
+      "summary": "**Amazon API Gateway** provides a comprehensive overview of AWS's fully managed API service, covering the three API types (REST, HTTP, and WebSocket), integration patterns with Lambda and other backends, security and authorization mechanisms, traffic management through throttling and quotas, CORS configuration, and deployment strategies including stages and canary releases.",
+      "level": 0,
+      "content": null,
+      "source_doc": "datasets/aws-compute/raw/api-gateway.md",
+      "children": [
+        {
+          "id": "amazon-api-gateway",
+          "title": "Amazon API Gateway",
+          "summary": "**Amazon API Gateway** covers the core concepts and configuration options for building and managing APIs on AWS, including the available API types (REST, HTTP, and WebSocket), Lambda integration patterns, access control and authorization methods, throttling and quota management, CORS configuration, and deployment strategies using stages and canary releases.",
+          "level": 1,
+          "content": null,
+          "source_doc": "api-gateway",
+          "children": [
+            {
+              "id": "api-types",
+              "title": "API Types",
+              "summary": "**API Types** covers the three API options available in Amazon API Gateway: REST API, HTTP API, and WebSocket API. These options vary in features, pricing, and use cases, ranging from full-featured REST APIs with advanced capabilities, to cost-optimized HTTP APIs, to real-time bidirectional WebSocket APIs.",
+              "level": 2,
+              "content": null,
+              "source_doc": "api-gateway",
+              "children": [
+                {
+                  "id": "rest-api",
+                  "title": "REST API",
+                  "summary": "REST API is Amazon API Gateway's full-featured option supporting usage plans, API keys, request/response transformations, request validation, WAF integration, and caching, with deployment options including edge-optimized, regional, or private; pricing is $3.50 per million requests plus data transfer costs.",
+                  "level": 3,
+                  "content": "- Full API management features: usage plans, API keys, request/response transformations\n- Edge-optimized, regional, or private deployment\n- Request validation, WAF integration, caching\n- Cost: $3.50 per million requests + data transfer",
+                  "source_doc": "api-gateway",
+                  "children": []
+                },
+                {
+                  "id": "http-api",
+                  "title": "HTTP API",
+                  "summary": "HTTP API is a low-latency, cost-effective API Gateway option priced at $1.00 per million requests (71% cheaper than REST APIs), offering native JWT and OIDC authorization support but lacking advanced REST features such as usage plans, request transformation, and caching.",
+                  "level": 3,
+                  "content": "- Low-latency, cost-effective alternative to REST APIs\n- Simpler feature set — no usage plans, request transformation, or caching\n- Native JWT authorizer, OIDC support\n- Cost: $1.00 per million requests (71% cheaper than REST)",
+                  "source_doc": "api-gateway",
+                  "children": []
+                },
+                {
+                  "id": "websocket-api",
+                  "title": "WebSocket API",
+                  "summary": "WebSocket APIs in API Gateway enable real-time, persistent two-way communication (idle timeout up to 2 hours, maximum 24 hours) by routing messages to Lambda functions based on a route selection expression.",
+                  "level": 3,
+                  "content": "- Real-time two-way communication\n- Route messages to Lambda functions based on route selection expression\n- Maintain persistent connections (up to 2 hours idle, 24 hours max)",
+                  "source_doc": "api-gateway",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "lambda-integration",
+              "title": "Lambda Integration",
+              "summary": "**Lambda Integration** covers the two approaches for connecting API Gateway to AWS Lambda functions: Proxy Integration, where requests are passed directly to Lambda with minimal transformation, and Non-Proxy Integration, where API Gateway mediates the request/response cycle using parameter mapping and VTL templates for custom transformations.",
+              "level": 2,
+              "content": null,
+              "source_doc": "api-gateway",
+              "children": [
+                {
+                  "id": "lambda-proxy-integration-recommended",
+                  "title": "Lambda Proxy Integration (recommended)",
+                  "summary": "Lambda Proxy Integration passes the entire HTTP request to Lambda as an event object, and requires Lambda to return a response in a specific format including `statusCode`, `headers`, and `body` fields.",
+                  "level": 3,
+                  "content": "API Gateway passes the entire request to Lambda as an event object:\n\n\nLambda must return a specific response format:",
+                  "source_doc": "api-gateway",
+                  "children": []
+                },
+                {
+                  "id": "lambda-non-proxy-integration",
+                  "title": "Lambda Non-Proxy Integration",
+                  "summary": "**Lambda Non-Proxy Integration** covers how API Gateway mediates between HTTP requests and Lambda by mapping request parameters to function input and using Velocity Template Language (VTL) mapping templates to transform Lambda's output into a properly formatted HTTP response.",
+                  "level": 3,
+                  "content": "- API Gateway transforms requests before sending to Lambda\n- Map request parameters to Lambda function input\n- Transform Lambda output to HTTP response using mapping templates (VTL)",
+                  "source_doc": "api-gateway",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "authorization",
+              "title": "Authorization",
+              "summary": "**Authorization** covers the three primary methods for controlling access to API Gateway endpoints: IAM-based request signing for internal AWS service communication, Cognito User Pools for JWT-based user authentication in mobile and web applications, and Lambda Authorizers for custom authentication logic supporting third-party token validation.",
+              "level": 2,
+              "content": null,
+              "source_doc": "api-gateway",
+              "children": [
+                {
+                  "id": "iam-authorization",
+                  "title": "IAM Authorization",
+                  "summary": "**IAM Authorization** uses AWS Signature v4 for request signing, with API Gateway validating signatures against IAM policies. It is best suited for service-to-service communication within the AWS ecosystem.",
+                  "level": 3,
+                  "content": "- Caller signs request with AWS Signature v4\n- API Gateway validates the signature against IAM policies\n- Best for: service-to-service calls within AWS",
+                  "source_doc": "api-gateway",
+                  "children": []
+                },
+                {
+                  "id": "cognito-user-pools",
+                  "title": "Cognito User Pools",
+                  "summary": "**Cognito User Pools** describes an authorization method where API Gateway directly validates JWT tokens issued by Amazon Cognito, making it suitable for mobile and web applications that require user authentication.",
+                  "level": 3,
+                  "content": "- JWT tokens from Cognito\n- API Gateway validates the token directly\n- Best for: mobile/web apps with user authentication",
+                  "source_doc": "api-gateway",
+                  "children": []
+                },
+                {
+                  "id": "lambda-authorizer-custom",
+                  "title": "Lambda Authorizer (Custom)",
+                  "summary": "A Lambda Authorizer is a custom AWS Lambda function that authenticates API Gateway requests by evaluating either a token (from the Authorization header) or full request parameters, then returning an IAM policy. Results are cacheable with a TTL between 0–3600 seconds, making it suitable for custom authentication schemes and third-party token validation.",
+                  "level": 3,
+                  "content": "- Lambda function receives the token/request, returns an IAM policy\n- Two types: token-based (Authorization header) and request-based (all parameters)\n- Results can be cached (TTL 0-3600 seconds)\n- Best for: custom auth schemes, third-party tokens",
+                  "source_doc": "api-gateway",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "throttling-and-quotas",
+              "title": "Throttling and Quotas",
+              "summary": "Section: Throttling and Quotas",
+              "level": 2,
+              "content": "",
+              "source_doc": "api-gateway",
+              "children": []
+            },
+            {
+              "id": "cors",
+              "title": "CORS",
+              "summary": "Covers enabling Cross-Origin Resource Sharing (CORS) in API Gateway by configuring allowed origins, methods, and headers; for Lambda proxy integrations, CORS headers must be returned directly in the Lambda response, while non-proxy integrations require CORS configuration in the API Gateway method response settings.",
+              "level": 2,
+              "content": "Enable Cross-Origin Resource Sharing for browser clients:\n\n- Configure allowed origins, methods, headers\n- For Lambda proxy integration: Lambda must return CORS headers in the response\n- For non-proxy: configure in API Gateway method response",
+              "source_doc": "api-gateway",
+              "children": []
+            },
+            {
+              "id": "stages-and-deployment",
+              "title": "Stages and Deployment",
+              "summary": "API Gateway stages (e.g., dev, staging, prod) each have a unique URL and use stage variables to parameterize integrations, such as routing to different Lambda aliases per stage. Canary deployments allow gradual traffic shifting by directing a configurable percentage of requests to a new deployment before full rollout.",
+              "level": 2,
+              "content": "- Each API has stages (e.g., dev, staging, prod)\n- Stage variables parameterize integrations (different Lambda aliases per stage)\n- Canary deployments: route a percentage of traffic to a new deployment\n- Each stage has its own URL: `https://{api-id}.execute-api.{region}.amazonaws.com/{stage}`",
+              "source_doc": "api-gateway",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lambda-overview",
+      "title": "AWS Lambda",
+      "summary": "**AWS Lambda** covers AWS's serverless compute service in depth, exploring function configuration, networking, security, and dependency management. It also addresses performance and scalability concerns, including concurrency models, Provisioned Concurrency, and strategies for managing cold starts across supported runtimes.",
+      "level": 0,
+      "content": null,
+      "source_doc": "datasets/aws-compute/raw/lambda-overview.md",
+      "children": [
+        {
+          "id": "aws-lambda",
+          "title": "AWS Lambda",
+          "summary": "**AWS Lambda** provides a comprehensive overview of AWS's serverless compute service, covering the supported runtimes, function configuration options (memory, timeout, and environment variables), networking via VPC, IAM execution roles, and the various event source invocation models. It also addresses operational concerns such as Lambda Layers for dependency management, and concurrency and performance topics including Provisioned Concurrency and strategies for diagnosing and mitigating cold starts.",
+          "level": 1,
+          "content": null,
+          "source_doc": "lambda-overview",
+          "children": [
+            {
+              "id": "runtimes",
+              "title": "Runtimes",
+              "summary": "This section lists the natively supported Lambda runtimes, covering Node.js (18.x, 20.x), Python (3.9–3.12), Java (11, 17, 21), .NET (6, 8), Ruby (3.2, 3.3), Go, and custom runtimes, with Go and custom runtimes running on the `provided.al2023` execution environment.",
+              "level": 2,
+              "content": "Lambda natively supports the following runtimes:\n\n- Node.js 18.x, 20.x\n- Python 3.9, 3.10, 3.11, 3.12\n- Java 11, 17, 21\n- .NET 6, 8\n- Ruby 3.2, 3.3\n- Go (provided.al2023)\n- Custom runtime (provided.al2023)",
+              "source_doc": "lambda-overview",
+              "children": []
+            },
+            {
+              "id": "function-configuration",
+              "title": "Function Configuration",
+              "summary": "**Function Configuration** covers the key settings that define a Lambda function's runtime behavior, including resource allocation parameters (memory and timeout) and environment variables that expose function metadata such as name, version, region, and handler location.",
+              "level": 2,
+              "content": null,
+              "source_doc": "lambda-overview",
+              "children": [
+                {
+                  "id": "memory-and-timeout",
+                  "title": "Memory and Timeout",
+                  "summary": "Section: Memory and Timeout",
+                  "level": 3,
+                  "content": "",
+                  "source_doc": "lambda-overview",
+                  "children": []
+                },
+                {
+                  "id": "environment-variables",
+                  "title": "Environment Variables",
+                  "summary": "This section covers how Lambda functions access environment variables via standard runtime APIs, listing key system-provided variables including `AWS_LAMBDA_FUNCTION_NAME`, `AWS_LAMBDA_FUNCTION_VERSION`, `AWS_REGION`, `AWS_LAMBDA_LOG_GROUP_NAME`, and `_HANDLER`, which expose function metadata such as name, version, region, log group, and configured handler location.",
+                  "level": 3,
+                  "content": "Lambda functions can access environment variables through the standard runtime APIs. Common system variables:\n\n- `AWS_LAMBDA_FUNCTION_NAME` — the name of the function\n- `AWS_LAMBDA_FUNCTION_VERSION` — the version being executed\n- `AWS_REGION` — the AWS Region where the function runs\n- `AWS_LAMBDA_LOG_GROUP_NAME` — the CloudWatch Logs group\n- `_HANDLER` — the handler location configured on the function",
+                  "source_doc": "lambda-overview",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "vpc-configuration",
+              "title": "VPC Configuration",
+              "summary": "**VPC Configuration** covers the key considerations for deploying Lambda functions within a Virtual Private Cloud, including how VPC placement affects internet connectivity and the available options to restore it (NAT Gateway or VPC Endpoints), as well as the specific IAM permissions required to allow Lambda to manage network interfaces within the VPC.",
+              "level": 2,
+              "content": null,
+              "source_doc": "lambda-overview",
+              "children": [
+                {
+                  "id": "vpc-and-internet-access",
+                  "title": "VPC and Internet Access",
+                  "summary": "Lambda functions deployed in a VPC lose internet access by default, which can be restored either via a NAT Gateway (at additional cost) routing traffic through a public subnet, or via VPC Endpoints for direct, internet-free access to specific AWS services like S3, DynamoDB, and SQS.",
+                  "level": 3,
+                  "content": "Lambda functions in a VPC do NOT have internet access by default. To restore internet access:\n\n- **NAT Gateway**: Route outbound traffic through a NAT Gateway in a public subnet ($0.045/hr + $0.045/GB)\n- **VPC Endpoints**: Access specific AWS services without internet (S3, DynamoDB, SQS, etc.)",
+                  "source_doc": "lambda-overview",
+                  "children": []
+                },
+                {
+                  "id": "iam-requirements",
+                  "title": "IAM Requirements",
+                  "summary": "The **IAM Requirements** section covers the permissions needed for Lambda functions operating within a VPC, specifying that the execution role must include the `AWSLambdaVPCAccessExecutionRole` managed policy to grant the EC2 actions `CreateNetworkInterface`, `DescribeNetworkInterfaces`, and `DeleteNetworkInterface`.",
+                  "level": 3,
+                  "content": "The execution role needs `AWSLambdaVPCAccessExecutionRole` managed policy which grants:\n\n- `ec2:CreateNetworkInterface`\n- `ec2:DescribeNetworkInterfaces`\n- `ec2:DeleteNetworkInterface`",
+                  "source_doc": "lambda-overview",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "execution-role",
+              "title": "Execution Role",
+              "summary": "The **Execution Role** section covers the IAM role configuration required for execution, detailing how trust policies define which entities can assume the role and what managed policies govern the permissions granted to it.",
+              "level": 2,
+              "content": null,
+              "source_doc": "lambda-overview",
+              "children": [
+                {
+                  "id": "trust-policy",
+                  "title": "Trust Policy",
+                  "summary": "Section: Trust Policy",
+                  "level": 3,
+                  "content": "",
+                  "source_doc": "lambda-overview",
+                  "children": []
+                },
+                {
+                  "id": "common-managed-policies",
+                  "title": "Common Managed Policies",
+                  "summary": "Section: Common Managed Policies",
+                  "level": 3,
+                  "content": "",
+                  "source_doc": "lambda-overview",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "event-sources",
+              "title": "Event Sources",
+              "summary": "**Event Sources** covers the three primary models by which Lambda functions are triggered: synchronous invocation (where the caller waits for a real-time response), asynchronous invocation (where events are queued and processed independently with retry handling), and stream-based polling (where Lambda continuously polls sources like DynamoDB Streams, Kinesis, SQS, and Amazon MQ for new records).",
+              "level": 2,
+              "content": null,
+              "source_doc": "lambda-overview",
+              "children": [
+                {
+                  "id": "synchronous-invocation",
+                  "title": "Synchronous Invocation",
+                  "summary": "**Synchronous Invocation** covers how Lambda functions are invoked and wait for a response in real-time across multiple AWS services and external triggers, including API Gateway (REST, HTTP, WebSocket), Application Load Balancer, CloudFront via Lambda@Edge, Cognito, and Alexa. It details the request-response model where the caller waits for the function to complete and return a result, with error handling managed by the client side.",
+                  "level": 3,
+                  "content": "- API Gateway (REST, HTTP, WebSocket)\n- Application Load Balancer\n- CloudFront (Lambda@Edge)\n- Cognito\n- Alexa",
+                  "source_doc": "lambda-overview",
+                  "children": []
+                },
+                {
+                  "id": "asynchronous-invocation",
+                  "title": "Asynchronous Invocation",
+                  "summary": "Asynchronous invocation covers how Lambda handles events from sources like S3, SNS, CloudWatch Events/EventBridge, CodeCommit, and CloudFormation custom resources, where the invoking service places the event in an internal queue and Lambda processes it without the caller waiting for a response, including retry behavior and dead-letter queue (DLQ) configuration for failed invocations.",
+                  "level": 3,
+                  "content": "- S3 (object events)\n- SNS (topic messages)\n- CloudWatch Events / EventBridge\n- CodeCommit\n- CloudFormation (custom resources)",
+                  "source_doc": "lambda-overview",
+                  "children": []
+                },
+                {
+                  "id": "stream-based-polling",
+                  "title": "Stream-based (Polling)",
+                  "summary": "- DynamoDB Streams\n- Kinesis Data Streams\n- Amazon MQ\n- SQS",
+                  "level": 3,
+                  "content": "- DynamoDB Streams\n- Kinesis Data Streams\n- Amazon MQ\n- SQS",
+                  "source_doc": "lambda-overview",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "layers",
+              "title": "Layers",
+              "summary": "Lambda Layers allow packaging libraries and dependencies separately from function code, with a maximum of 5 layers per function, and are extracted to `/opt` in the execution environment.",
+              "level": 2,
+              "content": "Lambda Layers let you package libraries and dependencies separately from your function code. A function can use up to 5 layers. Layers are extracted to `/opt` in the execution environment.",
+              "source_doc": "lambda-overview",
+              "children": []
+            },
+            {
+              "id": "provisioned-concurrency",
+              "title": "Provisioned Concurrency",
+              "summary": "**Provisioned Concurrency** allows users to keep a specified number of Lambda function instances pre-initialized and ready to respond instantly, eliminating cold starts. It covers the associated pricing model, which includes a separate charge for keeping capacity warm alongside the standard on-demand rate for actual function execution duration.",
+              "level": 2,
+              "content": null,
+              "source_doc": "lambda-overview",
+              "children": [
+                {
+                  "id": "pricing",
+                  "title": "Pricing",
+                  "summary": "Provisioned Concurrency is billed at $0.0000041667/GB-second for capacity kept warm, while function execution duration is charged at $0.0000033334/GB-second, matching the standard on-demand rate.",
+                  "level": 3,
+                  "content": "- Provisioned Concurrency: $0.0000041667/GB-second\n- Duration: $0.0000033334/GB-second (same as on-demand)",
+                  "source_doc": "lambda-overview",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "cold-starts",
+              "title": "Cold Starts",
+              "summary": "**Cold Starts** explains the phenomenon of initialization latency in AWS Lambda functions and provides practical techniques to diagnose and mitigate it, covering strategies such as Provisioned Concurrency, package optimization, efficient SDK initialization, and architecture selection to minimize its performance impact.",
+              "level": 2,
+              "content": null,
+              "source_doc": "lambda-overview",
+              "children": [
+                {
+                  "id": "mitigation",
+                  "title": "Mitigation",
+                  "summary": "This section covers strategies to reduce AWS Lambda cold start latency, including enabling Provisioned Concurrency, minimizing deployment package size, initializing SDK clients outside the handler function, and using arm64/Graviton2 architecture for faster initialization.",
+                  "level": 3,
+                  "content": "- Use Provisioned Concurrency\n- Keep deployment packages small\n- Initialize SDK clients outside the handler\n- Use arm64 (Graviton2) for faster init",
+                  "source_doc": "lambda-overview",
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

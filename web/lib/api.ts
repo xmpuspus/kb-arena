@@ -7,6 +7,7 @@ export const STRATEGIES = [
   "knowledge_graph",
   "hybrid",
   "raptor",
+  "pageindex",
 ] as const;
 
 export type Strategy = (typeof STRATEGIES)[number];
@@ -18,6 +19,7 @@ export const STRATEGY_LABELS: Record<Strategy, string> = {
   knowledge_graph: "Knowledge Graph",
   hybrid: "Hybrid",
   raptor: "RAPTOR",
+  pageindex: "PageIndex",
 };
 
 export const STRATEGY_COLORS: Record<Strategy, string> = {
@@ -27,6 +29,7 @@ export const STRATEGY_COLORS: Record<Strategy, string> = {
   knowledge_graph: "#22c55e",
   hybrid: "#f59e0b",
   raptor: "#ef4444",
+  pageindex: "#ec4899",
 };
 
 export const TIER_INFO: Record<number, { label: string; description: string }> = {
@@ -70,6 +73,8 @@ export const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
     "Routes by intent \u2014 vector path for lookups, graph path for integration queries, both paths fused via RRF for how-to questions.",
   raptor:
     "Builds a recursive tree of LLM cluster summaries (L0 chunks \u2192 L1 summaries \u2192 L2). Queries all levels simultaneously for superior Tier 4/5 multi-hop performance.",
+  pageindex:
+    "Vectorless, reasoning-based retrieval. Builds a hierarchical tree index from document structure, then uses LLM reasoning to traverse the tree \u2014 no embeddings, no chunking. Excels on well-structured docs.",
 };
 
 export interface CorpusInfo {
@@ -310,39 +315,45 @@ export async function* streamChat(
 // Mock data used when API is unavailable
 export const MOCK_BENCHMARK_DATA = [
   {
-    strategy: "naive_vector" as Strategy,
-    tiers: [72, 61, 48, 35, 22],
-    latencyMs: 420,
-    costUsd: 0.0012,
-  },
-  {
-    strategy: "contextual_vector" as Strategy,
-    tiers: [78, 69, 55, 41, 28],
-    latencyMs: 510,
-    costUsd: 0.0018,
-  },
-  {
     strategy: "qna_pairs" as Strategy,
-    tiers: [82, 74, 61, 44, 30],
-    latencyMs: 680,
-    costUsd: 0.0024,
+    tiers: [79, 85, 83, 84, 66],
+    latencyMs: 9043,
+    costUsd: 0.48,
   },
   {
     strategy: "knowledge_graph" as Strategy,
-    tiers: [85, 82, 78, 71, 62],
-    latencyMs: 890,
-    costUsd: 0.0031,
+    tiers: [72, 69, 61, 77, 79],
+    latencyMs: 20322,
+    costUsd: 1.37,
   },
   {
     strategy: "hybrid" as Strategy,
-    tiers: [88, 85, 81, 74, 65],
-    latencyMs: 1050,
-    costUsd: 0.0038,
+    tiers: [39, 81, 61, 80, 62],
+    latencyMs: 41549,
+    costUsd: 3.02,
   },
   {
     strategy: "raptor" as Strategy,
-    tiers: [91, 88, 85, 79, 71],
-    latencyMs: 1240,
-    costUsd: 0.0045,
+    tiers: [30, 16, 15, 36, 30],
+    latencyMs: 7240,
+    costUsd: 0.69,
+  },
+  {
+    strategy: "naive_vector" as Strategy,
+    tiers: [27, 15, 14, 26, 22],
+    latencyMs: 6421,
+    costUsd: 0.33,
+  },
+  {
+    strategy: "contextual_vector" as Strategy,
+    tiers: [25, 11, 9, 26, 11],
+    latencyMs: 5114,
+    costUsd: 0.29,
+  },
+  {
+    strategy: "pageindex" as Strategy,
+    tiers: [19, 12, 7, 21, 12],
+    latencyMs: 10933,
+    costUsd: 0.29,
   },
 ];

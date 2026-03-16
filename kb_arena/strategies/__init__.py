@@ -1,4 +1,4 @@
-"""Retrieval strategies — 5 approaches to answering questions from documentation."""
+"""Retrieval strategies — 7 approaches to answering questions from documentation."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from kb_arena.strategies.contextual_vector import ContextualVectorStrategy
 from kb_arena.strategies.hybrid import HybridStrategy
 from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
 from kb_arena.strategies.naive_vector import NaiveVectorStrategy
+from kb_arena.strategies.pageindex import PageIndexStrategy
 from kb_arena.strategies.qna_pairs import QnAPairStrategy
 from kb_arena.strategies.raptor import RaptorStrategy
 
@@ -27,6 +28,7 @@ STRATEGY_REGISTRY: dict[str, type] = {
     "knowledge_graph": KnowledgeGraphStrategy,
     "hybrid": HybridStrategy,
     "raptor": RaptorStrategy,
+    "pageindex": PageIndexStrategy,
 }
 
 
@@ -73,13 +75,16 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
     llm = LLMClient()
     raptor = RaptorStrategy(chroma_client=chroma)
     raptor._llm = llm
+    pageindex = PageIndexStrategy()
+    pageindex._llm = llm
 
-    # Only vector-backed strategies need explicit build_index()
+    # Strategies that need explicit build_index()
     buildable = {
         "naive_vector": NaiveVectorStrategy(chroma_client=chroma),
         "contextual_vector": ContextualVectorStrategy(chroma_client=chroma),
         "qna_pairs": QnAPairStrategy(chroma_client=chroma),
         "raptor": raptor,
+        "pageindex": pageindex,
     }
 
     targets = (
@@ -115,6 +120,10 @@ def get_strategy(name: str):
     cls = STRATEGY_REGISTRY.get(name)
     if cls is None:
         raise ValueError(f"Unknown strategy: {name}. Available: {list(STRATEGY_REGISTRY)}")
+
+    # PageIndex needs no external dependencies
+    if name == "pageindex":
+        return cls()
 
     # Vector-backed strategies need a ChromaDB client
     if name in ("naive_vector", "contextual_vector", "qna_pairs", "raptor"):
@@ -157,6 +166,7 @@ __all__ = [
     "KnowledgeGraphStrategy",
     "HybridStrategy",
     "RaptorStrategy",
+    "PageIndexStrategy",
     "build_vector_indexes",
     "load_documents",
 ]

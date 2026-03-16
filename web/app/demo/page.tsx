@@ -42,6 +42,20 @@ const DEMO_RESULTS: Partial<Record<Strategy, DemoResult>> = {
     tokensUsed: 112,
     costUsd: 0.0024,
   },
+  raptor: {
+    answer: "Setting up Lambda behind API Gateway with VPC access to RDS requires coordinating several AWS services across networking, compute, and database layers.\n\nAt the networking level, your VPC needs private subnets (for Lambda ENIs and RDS instances) across at least 2 AZs, security groups allowing Lambda-to-RDS traffic on the database port, and optionally a NAT Gateway if Lambda needs internet access for external API calls.\n\nFor the compute layer, the Lambda function must be configured with VPC settings (SubnetIds and SecurityGroupIds) and an execution role that includes AWSLambdaVPCAccessExecutionRole for ENI management. Be aware that VPC-attached Lambda functions experience 1-10s cold starts due to ENI attachment.\n\nThe API Gateway REST API connects to Lambda via proxy integration, routing HTTP requests to your function. API Gateway itself doesn't need VPC access — it invokes Lambda through the AWS service network.\n\nKey trade-off: VPC attachment adds cold start latency but is required for RDS access. Use Provisioned Concurrency for latency-sensitive APIs.",
+    sources: ["lambda/latest/dg/configuration-vpc.html", "AmazonRDS/latest/UserGuide/USER_VPC.html", "apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html"],
+    latencyMs: 720,
+    tokensUsed: 189,
+    costUsd: 0.0028,
+  },
+  pageindex: {
+    answer: "Based on the documentation structure, this question spans three main topic areas: Lambda VPC configuration, API Gateway integration, and RDS networking.\n\nLambda VPC Configuration: Attach your Lambda function to private subnets in the same VPC as RDS. The function needs an execution role with AWSLambdaVPCAccessExecutionRole to create Elastic Network Interfaces (ENIs) in your subnets. Lambda functions in a VPC lose default internet access — add a NAT Gateway or VPC endpoints if needed.\n\nAPI Gateway Setup: Create a REST API with Lambda proxy integration. API Gateway invokes Lambda via the AWS internal network, so no VPC configuration is needed on the API Gateway side. The proxy integration passes the full HTTP request to your function.\n\nRDS Connectivity: Place RDS in a DB subnet group spanning private subnets across 2+ AZs. Configure security groups so the Lambda security group can reach the RDS security group on port 3306 (MySQL) or 5432 (PostgreSQL).\n\nCritical path: API Gateway → Lambda (proxy integration) → VPC ENI → Private Subnet → RDS. Cold starts add 1-10s for ENI attachment; use Provisioned Concurrency for production APIs.",
+    sources: ["lambda/latest/dg/configuration-vpc.html", "AmazonRDS/latest/UserGuide/USER_VPC.html", "apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html"],
+    latencyMs: 950,
+    tokensUsed: 215,
+    costUsd: 0.0032,
+  },
 };
 
 export default function DemoPage() {

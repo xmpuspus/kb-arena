@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     benchmark_query_timeout_s: int = 120
     benchmark_max_retries: int = 2
 
+    # PageIndex
+    pageindex_beam_width: int = 3
+    pageindex_max_depth: int = 4
+
     # Paths
     datasets_path: str = "./datasets"
     results_path: str = "./results"
