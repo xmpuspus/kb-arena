@@ -31,6 +31,7 @@ def _setup(
         handlers=[RichHandler(rich_tracebacks=True, show_path=verbose)],
     )
 
+
 # Pipeline: init-corpus -> ingest -> build-graph/build-vectors ->
 # generate-questions -> benchmark -> report -> serve
 _PIPELINE_NEXT: dict[str, str] = {

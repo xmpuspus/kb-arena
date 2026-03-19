@@ -131,9 +131,7 @@ class LLMClient:
     ) -> LLMResponse:
         """LLM-as-judge evaluation. Uses JUDGE_MODEL (defaults to Opus) to avoid same-model bias."""
         user_content = f"Reference answer:\n{reference}\n\nCandidate answer:\n{answer}"
-        return await self._call(
-            JUDGE_MODEL, system_prompt, user_content, max_tokens=300, **kwargs
-        )
+        return await self._call(JUDGE_MODEL, system_prompt, user_content, max_tokens=300, **kwargs)
 
     async def _call(
         self,
