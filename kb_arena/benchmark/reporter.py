@@ -16,7 +16,15 @@ from kb_arena.settings import settings
 
 console = Console()
 
-STRATEGY_NAMES = ["naive_vector", "contextual_vector", "qna_pairs", "knowledge_graph", "hybrid"]
+STRATEGY_NAMES = [
+    "naive_vector",
+    "contextual_vector",
+    "qna_pairs",
+    "knowledge_graph",
+    "hybrid",
+    "raptor",
+    "pageindex",
+]
 TIER_LABELS = {
     1: "Tier 1 - Factoid",
     2: "Tier 2 - Procedural",

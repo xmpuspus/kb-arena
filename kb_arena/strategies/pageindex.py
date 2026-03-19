@@ -271,6 +271,7 @@ class PageIndexStrategy(Strategy):
     name = "pageindex"
 
     def __init__(self):
+        super().__init__()
         self._llm = None
         self._trees: dict[str, CorpusTree] = {}
 

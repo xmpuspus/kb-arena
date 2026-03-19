@@ -7,12 +7,21 @@ Tracks graph_context for Sigma.js visualization.
 
 from __future__ import annotations
 
+import logging
 import re
 
 from kb_arena.graph.schema import node_type_values, rel_type_values
 from kb_arena.models.document import Document
 from kb_arena.models.graph import GraphContext
 from kb_arena.strategies.base import AnswerResult, Strategy
+
+logger = logging.getLogger(__name__)
+
+# Reject LLM-generated Cypher that contains write operations
+_WRITE_CYPHER_RE = re.compile(
+    r"\b(CREATE|MERGE|SET|DELETE|REMOVE|DROP|DETACH|CALL\s+apoc\.schema)\b",
+    re.IGNORECASE,
+)
 
 # --- Cypher templates (Pattern 6 from PLAN.md) ---
 
@@ -183,6 +192,7 @@ class KnowledgeGraphStrategy(Strategy):
     name = "knowledge_graph"
 
     def __init__(self, neo4j_driver=None):
+        super().__init__()
         # neo4j_driver is the async neo4j.AsyncDriver instance (or None)
         self._driver = neo4j_driver
         self._llm = None
@@ -272,6 +282,11 @@ class KnowledgeGraphStrategy(Strategy):
         prompt = cypher_gen_prompt.format(question=question)
         resp = await llm.extract(text=prompt, system_prompt="Output only Cypher. No prose.")
         cypher = _extract_cypher(resp.text)
+
+        if _WRITE_CYPHER_RE.search(cypher):
+            logger.warning("Blocked LLM-generated write Cypher: %.200s", cypher)
+            records = await self._run_cypher(FULLTEXT_SEARCH, {"query": question})
+            return records, FULLTEXT_SEARCH
 
         try:
             records = await self._run_cypher(cypher, {"query": question})

@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     generate_model: str = "claude-sonnet-4-6"
     fast_model: str = "claude-haiku-4-5-20251001"
+    # Use a different model family for evaluation to avoid self-evaluation bias
+    judge_model: str = "claude-opus-4-6"
 
     # LLM — OpenAI (for embeddings)
     openai_api_key: str = ""
@@ -17,7 +19,7 @@ class Settings(BaseSettings):
     # Neo4j
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
-    neo4j_password: str = "kbarena1"
+    neo4j_password: str = ""  # set KB_ARENA_NEO4J_PASSWORD or NEO4J_AUTH in docker-compose
 
     # ChromaDB
     chroma_path: str = "./chroma_data"

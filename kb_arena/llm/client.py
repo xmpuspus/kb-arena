@@ -6,14 +6,26 @@ Sonnet for generation, extraction, evaluation.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from dataclasses import dataclass
 
 import anthropic
 
 from kb_arena.settings import settings
 
+logger = logging.getLogger(__name__)
+
+_RETRYABLE = (
+    anthropic.RateLimitError,
+    anthropic.APIConnectionError,
+    anthropic.APITimeoutError,
+    anthropic.InternalServerError,
+)
+
 GENERATE_MODEL = settings.generate_model
 FAST_MODEL = settings.fast_model
+JUDGE_MODEL = settings.judge_model
 
 # Per-million-token pricing (USD). Update when Anthropic changes pricing.
 _MODEL_PRICING: dict[str, dict[str, float]] = {
@@ -117,10 +129,10 @@ class LLMClient:
         system_prompt: str,
         **kwargs,
     ) -> LLMResponse:
-        """LLM-as-judge evaluation. Sonnet."""
+        """LLM-as-judge evaluation. Uses JUDGE_MODEL (defaults to Opus) to avoid same-model bias."""
         user_content = f"Reference answer:\n{reference}\n\nCandidate answer:\n{answer}"
         return await self._call(
-            GENERATE_MODEL, system_prompt, user_content, max_tokens=300, **kwargs
+            JUDGE_MODEL, system_prompt, user_content, max_tokens=300, **kwargs
         )
 
     async def _call(
@@ -131,7 +143,41 @@ class LLMClient:
         max_tokens: int = 4096,
         **kwargs,
     ) -> LLMResponse:
-        """Core API call with cache_control on system prompt."""
+        """Core API call with retry (3 attempts, exponential backoff) and 60s timeout."""
+        last_exc: BaseException = RuntimeError("LLM call failed before any attempt")
+        for attempt in range(3):
+            try:
+                return await asyncio.wait_for(
+                    self._call_once(model, system, user, max_tokens, **kwargs),
+                    timeout=60.0,
+                )
+            except TimeoutError as exc:
+                last_exc = exc
+                logger.warning("LLM call timed out (attempt %d/3)", attempt + 1)
+            except _RETRYABLE as exc:
+                last_exc = exc
+                if attempt < 2:
+                    delay = 2**attempt
+                    logger.warning(
+                        "LLM call failed (attempt %d/3): %s. Retrying in %ds",
+                        attempt + 1,
+                        exc,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    raise
+        raise last_exc
+
+    async def _call_once(
+        self,
+        model: str,
+        system: str,
+        user: str,
+        max_tokens: int = 4096,
+        **kwargs,
+    ) -> LLMResponse:
+        """Single API call with cache_control on system prompt."""
         response = await self.client.messages.create(
             model=model,
             system=[

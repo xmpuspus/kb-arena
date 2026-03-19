@@ -5,8 +5,11 @@ Each command is independently runnable and re-runnable.
 
 from __future__ import annotations
 
+import logging
+
 import typer
 from rich.console import Console
+from rich.logging import RichHandler
 
 app = typer.Typer(
     name="kb-arena",
@@ -14,6 +17,19 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 console = Console()
+
+
+@app.callback()
+def _setup(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
+) -> None:
+    level = logging.DEBUG if verbose else logging.WARNING
+    logging.basicConfig(
+        level=level,
+        format="%(message)s",
+        datefmt="[%X]",
+        handlers=[RichHandler(rich_tracebacks=True, show_path=verbose)],
+    )
 
 # Pipeline: init-corpus -> ingest -> build-graph/build-vectors ->
 # generate-questions -> benchmark -> report -> serve

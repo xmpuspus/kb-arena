@@ -88,6 +88,7 @@ class RaptorStrategy(Strategy):
     name = "raptor"
 
     def __init__(self, chroma_client=None):
+        super().__init__()
         self._client = chroma_client
         self._llm = None
 

@@ -23,6 +23,24 @@ This launches the dashboard with pre-computed results from the AWS Compute corpu
 
 ---
 
+## How KB Arena Differs from Other RAG Evaluation Tools
+
+Most RAG evaluation tools answer "how well does my pipeline work?" KB Arena answers a different question: "which retrieval architecture works best for my docs?"
+
+| | KB Arena | RAGAS | MTEB / BEIR | GraphRAG | DeepEval |
+|---|---|---|---|---|---|
+| Compares multiple architectures | Yes - 7 strategies | No - evaluates your existing pipeline | No - compares embedding models | No - only their own approach | No |
+| Works on your own docs | Yes | Yes | No - fixed public datasets | No - fixed datasets | Yes |
+| Includes graph + vector + hybrid | Yes | Vector/hybrid only | Embeddings only | Graph only | Any |
+| Auto-generates benchmark questions | Yes - 5 difficulty tiers | Manual | Fixed | Fixed | Manual |
+| Interactive comparison UI | Yes - chatbot + benchmark explorer | No | Leaderboard only | No | Dashboard |
+| Chatbot per strategy | Yes | No | No | No | No |
+| Standard IR metrics (NDCG, MRR) | Roadmap | Yes | Yes | Partial | No |
+
+If you want to know whether a knowledge graph, Q&A pairs, or plain vector search is the right architecture for your documentation, that's what KB Arena is for.
+
+---
+
 ## Quick Start — I Just Have My Docs
 
 You have documentation files (markdown, HTML, text, PDFs). You want to know which retrieval strategy works best. Here's everything from zero.
@@ -396,7 +414,8 @@ All prefixed with `KB_ARENA_`. Loaded from `.env` or environment.
 | `OPENAI_API_KEY` | — | Yes | OpenAI for text-embedding-3-large |
 | `NEO4J_URI` | `bolt://localhost:7687` | No | Neo4j connection |
 | `NEO4J_USER` | `neo4j` | No | Neo4j username |
-| `NEO4J_PASSWORD` | `kbarena1` | No | Neo4j password |
+| `NEO4J_PASSWORD` | — | No | Neo4j password (set to match `NEO4J_AUTH` in docker-compose) |
+| `JUDGE_MODEL` | `claude-opus-4-6` | No | Model used for LLM-as-judge evaluation (default differs from generate model to avoid self-evaluation bias) |
 | `CHROMA_PATH` | `./chroma_data` | No | ChromaDB storage path |
 | `EMBEDDING_MODEL` | `text-embedding-3-large` | No | OpenAI embedding model |
 | `EMBEDDING_DIMENSIONS` | `3072` | No | Embedding vector dimensions |

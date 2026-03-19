@@ -39,12 +39,13 @@ class Strategy(ABC):
 
     name: str = "base"
 
-    # Tracking fields populated after each query
-    last_sources: list[str] = []
-    last_graph_context: GraphContext | None = None
-    last_latency_ms: float = 0.0
-    last_tokens_used: int = 0
-    last_cost_usd: float = 0.0
+    def __init__(self) -> None:
+        # Per-instance tracking state — avoids sharing state across concurrent SSE streams
+        self.last_sources: list[str] = []
+        self.last_graph_context: GraphContext | None = None
+        self.last_latency_ms: float = 0.0
+        self.last_tokens_used: int = 0
+        self.last_cost_usd: float = 0.0
 
     @abstractmethod
     async def build_index(self, documents: list[Document]) -> None:

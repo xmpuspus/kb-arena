@@ -56,6 +56,7 @@ class NaiveVectorStrategy(Strategy):
     name = "naive_vector"
 
     def __init__(self, chroma_client=None):
+        super().__init__()
         self._client = chroma_client
         self._collection = None
         self._llm = None

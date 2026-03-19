@@ -10,6 +10,7 @@ Re-ranking: Sonnet scores each chunk 0-1, top 5 passed to final generation.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
@@ -32,23 +33,25 @@ Question: {question}
 Passage: {passage}"""
 
 
-async def _rerank_passages(llm, question: str, passages: list[str]) -> list[tuple[str, float]]:
-    """Score each passage with Sonnet and return sorted (passage, score) pairs."""
-    scored = []
-    for passage in passages:
-        try:
-            resp = await llm.generate(
-                query="",
-                context="",
-                system_prompt=RERANK_PROMPT.format(question=question, passage=passage[:1000]),
-                max_tokens=50,
-            )
-            data = json.loads(resp.text.strip())
-            score = float(data.get("score", 0.5))
-        except Exception:
-            score = 0.5
-        scored.append((passage, score))
+async def _score_passage(llm, question: str, passage: str) -> tuple[str, float]:
+    """Score a single passage — runs concurrently with asyncio.gather."""
+    try:
+        resp = await llm.classify(
+            query="",
+            system_prompt=RERANK_PROMPT.format(question=question, passage=passage[:1000]),
+            max_tokens=50,
+        )
+        data = json.loads(resp.strip())
+        score = float(data.get("score", 0.5))
+    except Exception:
+        score = 0.5
+    return passage, score
 
+
+async def _rerank_passages(llm, question: str, passages: list[str]) -> list[tuple[str, float]]:
+    """Score all passages concurrently with Haiku and return sorted (passage, score) pairs."""
+    results = await asyncio.gather(*[_score_passage(llm, question, p) for p in passages])
+    scored = list(results)
     scored.sort(key=lambda x: x[1], reverse=True)
     return scored
 
@@ -82,6 +85,7 @@ class HybridStrategy(Strategy):
     name = "hybrid"
 
     def __init__(self, neo4j_driver=None, chroma_client=None, router=None):
+        super().__init__()
         self._neo4j = neo4j_driver
         self._chroma = chroma_client
         self._router = router

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -147,19 +148,31 @@ async def _extract_section(
     return _validate_result(raw, corpus, section.id)
 
 
+_EXTRACTION_SEMAPHORE = asyncio.Semaphore(5)
+
+
 async def extract_document(
     doc: Document, llm: LLMClient, system_prompt: str, event_callback=None
 ) -> ExtractionResult:
-    """Extract all entities/relationships from a document's sections."""
+    """Extract all entities/relationships from a document's sections.
+
+    Runs up to 5 section extractions concurrently.
+    """
     all_entities: list[Entity] = []
     all_relationships: list[Relationship] = []
 
-    for section in doc.sections:
-        result = await _extract_section(section, doc.corpus, llm, system_prompt)
+    async def _bounded(section):
+        async with _EXTRACTION_SEMAPHORE:
+            return await _extract_section(section, doc.corpus, llm, system_prompt)
+
+    results = await asyncio.gather(*[_bounded(s) for s in doc.sections])
+
+    for result in results:
         all_entities.extend(result.entities)
         all_relationships.extend(result.relationships)
 
-        if event_callback:
+    if event_callback:
+        for result in results:
             for entity in result.entities:
                 await event_callback(
                     {

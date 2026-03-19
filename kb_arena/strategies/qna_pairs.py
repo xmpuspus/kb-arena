@@ -34,6 +34,7 @@ class QnAPairStrategy(Strategy):
     name = "qna_pairs"
 
     def __init__(self, chroma_client=None, llm_client=None):
+        super().__init__()
         self._client = chroma_client
         self._collection = None
         self._llm = llm_client

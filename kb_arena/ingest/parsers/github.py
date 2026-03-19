@@ -35,9 +35,12 @@ def _clone_repo(repo_spec: str, target_dir: Path) -> Path:
     else:
         url = f"https://github.com/{repo_spec}.git"
 
+    if not (url.startswith("https://") or url.startswith("git@")):
+        raise ValueError(f"Unsupported repository URL scheme: {url}")
+
     log.info("Cloning %s into %s", url, target_dir)
     subprocess.run(
-        ["git", "clone", "--depth", "1", "--single-branch", url, str(target_dir)],
+        ["git", "clone", "--depth", "1", "--single-branch", "--", url, str(target_dir)],
         check=True,
         capture_output=True,
         timeout=120,
