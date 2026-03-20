@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 
 from kb_arena.models.document import Document
 from kb_arena.models.graph import GraphContext
@@ -152,28 +153,38 @@ class HybridStrategy(Strategy):
         passages: list[str] = []
         total_tokens = 0
         total_cost = 0.0
+        retrieval_ms = 0.0
+        gen_ms = 0.0
 
         if intent in ("comparison", "relational"):
             # Graph-primary
+            retrieval_start = time.perf_counter()
             graph_result = await self._get_graph().query(question, top_k=top_k)
+            retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
             answer = graph_result.answer
             sources = graph_result.sources
             graph_ctx = graph_result.graph_context
             total_tokens = graph_result.tokens_used
             total_cost = graph_result.cost_usd
+            gen_ms = graph_result.generation_latency_ms
 
         elif intent in ("factoid", "exploratory"):
             # Vector-primary
+            retrieval_start = time.perf_counter()
             vector_result = await self._get_vector().query(question, top_k=top_k)
+            retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
             answer = vector_result.answer
             sources = vector_result.sources
             total_tokens = vector_result.tokens_used
             total_cost = vector_result.cost_usd
+            gen_ms = vector_result.generation_latency_ms
 
         else:
             # Procedural — fuse both
+            retrieval_start = time.perf_counter()
             vector_result = await self._get_vector().query(question, top_k=top_k)
             graph_result = await self._get_graph().query(question, top_k=top_k)
+            retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
             total_tokens = vector_result.tokens_used + graph_result.tokens_used
             total_cost = vector_result.cost_usd + graph_result.cost_usd
 
@@ -200,11 +211,13 @@ class HybridStrategy(Strategy):
                 passages = raw_passages
 
             context = "\n\n---\n\n".join(passages)
+            gen_start = time.perf_counter()
             resp = await llm.generate(
                 query=question,
                 context=context,
                 system_prompt=SYSTEM_PROMPT,
             )
+            gen_ms = (time.perf_counter() - gen_start) * 1000
             answer = resp.text
             total_tokens += resp.total_tokens
             total_cost += resp.cost_usd
@@ -220,6 +233,8 @@ class HybridStrategy(Strategy):
             graph_context=graph_ctx,
             strategy=self.name,
             latency_ms=latency_ms,
+            retrieval_latency_ms=retrieval_ms,
+            generation_latency_ms=gen_ms,
             tokens_used=total_tokens,
             cost_usd=total_cost,
         )

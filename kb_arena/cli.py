@@ -201,6 +201,12 @@ def benchmark(
         "qna_pairs, knowledge_graph, hybrid, raptor, pageindex",
     ),
     tier: int = typer.Option(0, help="Tier filter (0 = all tiers)"),
+    parallel: bool = typer.Option(
+        True, "--parallel/--no-parallel", help="Run strategies in parallel"
+    ),
+    fail_below: float = typer.Option(
+        0.0, "--fail-below", help="Exit code 1 if accuracy below threshold (0.0-1.0)"
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview what would be benchmarked"),
 ):
     """Stage 4: Run benchmark questions against specified strategies.
@@ -243,7 +249,24 @@ def benchmark(
 
     from kb_arena.benchmark.runner import run_benchmark
 
-    asyncio.run(run_benchmark(corpus=corpus, strategy=strategy, tier=tier))
+    asyncio.run(run_benchmark(corpus=corpus, strategy=strategy, tier=tier, parallel=parallel))
+
+    if fail_below > 0:
+        from kb_arena.benchmark.reporter import _load_results
+
+        all_results = _load_results(corpus if corpus != "all" else None)
+        failed = False
+        for r in all_results:
+            if r.accuracy_by_tier:
+                avg = sum(r.accuracy_by_tier.values()) / len(r.accuracy_by_tier)
+                if avg < fail_below:
+                    console.print(
+                        f"[red]FAIL: {r.strategy} accuracy {avg:.1%} < {fail_below:.1%}[/red]"
+                    )
+                    failed = True
+        if failed:
+            raise typer.Exit(1)
+        console.print(f"[green]PASS: All strategies above {fail_below:.1%}[/green]")
 
     _next_step("benchmark", corpus)
 
@@ -252,7 +275,7 @@ def benchmark(
 def report(
     corpus: str = typer.Option("all", help="Corpus to generate report for"),
     output: str | None = typer.Option(None, help="Output file path"),  # noqa: UP045
-    format: str = typer.Option("rich", help="Output format: rich, json"),
+    format: str = typer.Option("rich", help="Output format: rich, json, csv, html"),
 ):
     """Generate benchmark report from results JSON."""
     if format == "json":
@@ -266,6 +289,38 @@ def report(
             _cli_error("NO_RESULTS", "No results found. Run benchmark first.", fmt="json")
         summary = _build_summary(results)
         sys.stdout.write(json.dumps(summary, indent=2) + "\n")
+        return
+
+    if format == "csv":
+        from pathlib import Path
+
+        from kb_arena.benchmark.reporter import _build_csv, _load_results
+        from kb_arena.settings import settings
+
+        results = _load_results(corpus)
+        if not results:
+            _cli_error("NO_RESULTS", "No results found. Run benchmark first.")
+        csv_text = _build_csv(results)
+        if output:
+            Path(output).write_text(csv_text)
+            console.print(f"CSV written to {output}")
+        else:
+            print(csv_text)
+        return
+
+    if format == "html":
+        from pathlib import Path
+
+        from kb_arena.benchmark.reporter import _build_html, _load_results
+        from kb_arena.settings import settings
+
+        results = _load_results(corpus)
+        if not results:
+            _cli_error("NO_RESULTS", "No results found. Run benchmark first.")
+        html_text = _build_html(results, corpus)
+        out = Path(output) if output else Path(settings.results_path) / "report.html"
+        out.write_text(html_text)
+        console.print(f"HTML report written to {out}")
         return
 
     from kb_arena.benchmark.reporter import generate_report
@@ -405,13 +460,22 @@ def demo(
     console.print(f"API docs at http://localhost:{actual_port}/docs\n")
 
     def open_browser():
-        for fe_port in (3000, 3001):
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                if s.connect_ex(("localhost", fe_port)) == 0:
-                    console.print(f"[green]Frontend detected on port {fe_port}[/green]")
-                    webbrowser.open(f"http://localhost:{fe_port}/benchmark")
-                    return
-        webbrowser.open(f"http://localhost:{actual_port}/docs")
+        import importlib.resources
+
+        static_dir = importlib.resources.files("kb_arena") / "static"
+        if hasattr(static_dir, "is_dir") and static_dir.is_dir():
+            # Bundled frontend - open the dashboard directly
+            console.print("[green]Serving bundled frontend dashboard[/green]")
+            webbrowser.open(f"http://localhost:{actual_port}/benchmark/")
+        else:
+            # No bundled frontend - check for dev server
+            for fe_port in (3000, 3001):
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    if s.connect_ex(("localhost", fe_port)) == 0:
+                        console.print(f"[green]Frontend detected on port {fe_port}[/green]")
+                        webbrowser.open(f"http://localhost:{fe_port}/benchmark")
+                        return
+            webbrowser.open(f"http://localhost:{actual_port}/docs")
 
     Timer(1.5, open_browser).start()
 

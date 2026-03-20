@@ -1,4 +1,4 @@
-"""Tests for LLMClient and LLMResponse — mocked Anthropic API."""
+"""Tests for LLMClient and LLMResponse — mocked provider."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ from kb_arena.llm.client import LLMClient, LLMResponse, _compute_cost
 
 
 def test_compute_cost_haiku_model():
-    # 1000 input, 100 output on haiku: 1000*0.80/1e6 + 100*4.00/1e6
     cost = _compute_cost("claude-haiku-4-5", 1000, 100)
     assert cost == pytest.approx(0.0008 + 0.0004)
 
@@ -34,24 +33,27 @@ def test_compute_cost_zero_tokens():
 
 
 def test_compute_cost_with_cache_creation():
-    # cache_creation adds 1.25x input rate
     base = _compute_cost("claude-haiku-4-5", 0, 0)
     with_cache = _compute_cost("claude-haiku-4-5", 0, 0, cache_creation_tokens=1000)
     assert with_cache > base
 
 
 def test_compute_cost_with_cache_read():
-    # cache_read adds 0.1x input rate (much cheaper)
     cost = _compute_cost("claude-haiku-4-5", 0, 0, cache_read_tokens=1000)
     assert cost > 0
-    assert cost < _compute_cost("claude-haiku-4-5", 1000, 0)  # cheaper than regular input
+    assert cost < _compute_cost("claude-haiku-4-5", 1000, 0)
 
 
 def test_compute_cost_unknown_model_defaults_sonnet():
-    # unknown model should fall back to sonnet pricing
     sonnet_cost = _compute_cost("claude-sonnet-4-6", 1000, 100)
     unknown_cost = _compute_cost("unknown-model-xyz", 1000, 100)
     assert unknown_cost == sonnet_cost
+
+
+def test_compute_cost_gpt4o_mini_exact_match():
+    # gpt-4o-mini should match exactly, not fall through to gpt-4o substring
+    cost = _compute_cost("gpt-4o-mini", 1_000_000, 0)
+    assert cost == pytest.approx(0.15)
 
 
 # ---------------------------------------------------------------------------
@@ -83,45 +85,42 @@ def test_llm_response_text_stored():
 
 
 # ---------------------------------------------------------------------------
-# LLMClient — mock Anthropic
+# LLMClient — mock provider
 # ---------------------------------------------------------------------------
 
 
-def _make_response(text: str, input_tokens: int = 50, output_tokens: int = 20) -> MagicMock:
-    resp = MagicMock()
-    content_block = MagicMock()
-    content_block.text = text
-    resp.content = [content_block]
-    resp.usage = MagicMock()
-    resp.usage.input_tokens = input_tokens
-    resp.usage.output_tokens = output_tokens
-    # Simulate no cache tokens
-    del resp.usage.cache_creation_input_tokens
-    del resp.usage.cache_read_input_tokens
-    return resp
+def _make_provider_response(text: str, input_tokens: int = 50, output_tokens: int = 20):
+    from kb_arena.llm.providers import ProviderResponse
+
+    return ProviderResponse(
+        text=text,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        model="claude-haiku-4-5-20251001",
+    )
 
 
 @pytest.fixture
-def mock_anthropic():
-    with patch("kb_arena.llm.client.anthropic.AsyncAnthropic") as mock_cls:
+def mock_provider():
+    """Mock AnthropicProvider so LLMClient works without a real API key."""
+    with patch("kb_arena.llm.providers.AnthropicProvider") as mock_cls:
         instance = MagicMock()
-        instance.messages = MagicMock()
-        instance.messages.create = AsyncMock(return_value=_make_response("mocked response"))
+        instance.complete = AsyncMock(return_value=_make_provider_response("mocked response"))
         mock_cls.return_value = instance
         yield instance
 
 
 @pytest.mark.asyncio
-async def test_classify_returns_string(mock_anthropic):
-    mock_anthropic.messages.create.return_value = _make_response("factoid")
+async def test_classify_returns_string(mock_provider):
+    mock_provider.complete.return_value = _make_provider_response("factoid")
     client = LLMClient(api_key="test-key")
     result = await client.classify("What is json?", system_prompt="Classify the query.")
     assert isinstance(result, str)
 
 
 @pytest.mark.asyncio
-async def test_classify_matches_allowed_value(mock_anthropic):
-    mock_anthropic.messages.create.return_value = _make_response("comparison")
+async def test_classify_matches_allowed_value(mock_provider):
+    mock_provider.complete.return_value = _make_provider_response("comparison")
     client = LLMClient(api_key="test-key")
     result = await client.classify(
         "compare x vs y",
@@ -132,8 +131,8 @@ async def test_classify_matches_allowed_value(mock_anthropic):
 
 
 @pytest.mark.asyncio
-async def test_classify_fallback_to_first_value(mock_anthropic):
-    mock_anthropic.messages.create.return_value = _make_response("something unexpected")
+async def test_classify_fallback_to_first_value(mock_provider):
+    mock_provider.complete.return_value = _make_provider_response("something unexpected")
     client = LLMClient(api_key="test-key")
     result = await client.classify(
         "gibberish",
@@ -144,8 +143,8 @@ async def test_classify_fallback_to_first_value(mock_anthropic):
 
 
 @pytest.mark.asyncio
-async def test_classify_case_insensitive_match(mock_anthropic):
-    mock_anthropic.messages.create.return_value = _make_response("PROCEDURAL")
+async def test_classify_case_insensitive_match(mock_provider):
+    mock_provider.complete.return_value = _make_provider_response("PROCEDURAL")
     client = LLMClient(api_key="test-key")
     result = await client.classify(
         "how do I setup?",
@@ -156,45 +155,44 @@ async def test_classify_case_insensitive_match(mock_anthropic):
 
 
 @pytest.mark.asyncio
-async def test_classify_with_history_includes_context(mock_anthropic):
-    mock_anthropic.messages.create.return_value = _make_response("factoid")
+async def test_classify_with_history_includes_context(mock_provider):
+    mock_provider.complete.return_value = _make_provider_response("factoid")
     client = LLMClient(api_key="test-key")
     history = [{"role": "user", "content": "previous question about json"}]
     await client.classify("follow-up?", system_prompt="Classify.", history=history)
 
-    call_args = mock_anthropic.messages.create.call_args
-    user_message = call_args.kwargs["messages"][0]["content"]
+    call_args = mock_provider.complete.call_args
+    user_message = call_args.kwargs["user"]
     assert "previous question about json" in user_message
 
 
 @pytest.mark.asyncio
-async def test_classify_history_truncates_to_six(mock_anthropic):
-    mock_anthropic.messages.create.return_value = _make_response("factoid")
+async def test_classify_history_truncates_to_six(mock_provider):
+    mock_provider.complete.return_value = _make_provider_response("factoid")
     client = LLMClient(api_key="test-key")
     history = [{"role": "user", "content": f"msg {i}"} for i in range(10)]
     await client.classify("latest?", system_prompt="Classify.", history=history)
 
-    call_args = mock_anthropic.messages.create.call_args
-    user_message = call_args.kwargs["messages"][0]["content"]
-    # Only last 6 turns are included
+    call_args = mock_provider.complete.call_args
+    user_message = call_args.kwargs["user"]
     assert "msg 0" not in user_message
     assert "msg 9" in user_message
 
 
 @pytest.mark.asyncio
-async def test_classify_no_history_no_conversation_prefix(mock_anthropic):
-    mock_anthropic.messages.create.return_value = _make_response("factoid")
+async def test_classify_no_history_no_conversation_prefix(mock_provider):
+    mock_provider.complete.return_value = _make_provider_response("factoid")
     client = LLMClient(api_key="test-key")
     await client.classify("What is X?", system_prompt="Classify.")
 
-    call_args = mock_anthropic.messages.create.call_args
-    user_message = call_args.kwargs["messages"][0]["content"]
+    call_args = mock_provider.complete.call_args
+    user_message = call_args.kwargs["user"]
     assert "Conversation:" not in user_message
 
 
 @pytest.mark.asyncio
-async def test_generate_builds_context_query_prompt(mock_anthropic):
-    mock_anthropic.messages.create.return_value = _make_response("The answer.")
+async def test_generate_builds_context_query_prompt(mock_provider):
+    mock_provider.complete.return_value = _make_provider_response("The answer.")
     client = LLMClient(api_key="test-key")
     result = await client.generate(
         query="What is json.loads?",
@@ -204,51 +202,51 @@ async def test_generate_builds_context_query_prompt(mock_anthropic):
     assert isinstance(result, LLMResponse)
     assert result.text == "The answer."
 
-    call_args = mock_anthropic.messages.create.call_args
-    user_message = call_args.kwargs["messages"][0]["content"]
+    call_args = mock_provider.complete.call_args
+    user_message = call_args.kwargs["user"]
     assert "Context:" in user_message
     assert "Query:" in user_message
 
 
 @pytest.mark.asyncio
-async def test_generate_empty_context_no_prefix(mock_anthropic):
-    mock_anthropic.messages.create.return_value = _make_response("Direct answer.")
+async def test_generate_empty_context_no_prefix(mock_provider):
+    mock_provider.complete.return_value = _make_provider_response("Direct answer.")
     client = LLMClient(api_key="test-key")
     await client.generate(query="What is json?", context="", system_prompt="Be helpful.")
 
-    call_args = mock_anthropic.messages.create.call_args
-    user_message = call_args.kwargs["messages"][0]["content"]
+    call_args = mock_provider.complete.call_args
+    user_message = call_args.kwargs["user"]
     assert "Context:" not in user_message
 
 
 @pytest.mark.asyncio
-async def test_generate_uses_generate_model(mock_anthropic):
-    from kb_arena.llm.client import GENERATE_MODEL
+async def test_generate_uses_generate_model(mock_provider):
+    from kb_arena.settings import settings
 
-    mock_anthropic.messages.create.return_value = _make_response("ok")
+    mock_provider.complete.return_value = _make_provider_response("ok")
     client = LLMClient(api_key="test-key")
     await client.generate(query="Q", context="C", system_prompt="S")
 
-    call_args = mock_anthropic.messages.create.call_args
-    assert call_args.kwargs["model"] == GENERATE_MODEL
+    call_args = mock_provider.complete.call_args
+    assert call_args.kwargs["model"] == settings.generate_model
 
 
 @pytest.mark.asyncio
-async def test_extract_passes_text_as_user(mock_anthropic):
-    mock_anthropic.messages.create.return_value = _make_response('{"entities": []}')
+async def test_extract_passes_text_as_user(mock_provider):
+    mock_provider.complete.return_value = _make_provider_response('{"entities": []}')
     client = LLMClient(api_key="test-key")
     result = await client.extract(text="Document text.", system_prompt="Extract entities.")
     assert isinstance(result, LLMResponse)
     assert '{"entities": []}' in result.text
 
-    call_args = mock_anthropic.messages.create.call_args
-    user_message = call_args.kwargs["messages"][0]["content"]
+    call_args = mock_provider.complete.call_args
+    user_message = call_args.kwargs["user"]
     assert "Document text." in user_message
 
 
 @pytest.mark.asyncio
-async def test_judge_builds_reference_candidate_prompt(mock_anthropic):
-    mock_anthropic.messages.create.return_value = _make_response('{"accuracy": 0.9}')
+async def test_judge_builds_reference_candidate_prompt(mock_provider):
+    mock_provider.complete.return_value = _make_provider_response('{"accuracy": 0.9}')
     client = LLMClient(api_key="test-key")
     result = await client.judge(
         answer="Candidate.",
@@ -256,52 +254,49 @@ async def test_judge_builds_reference_candidate_prompt(mock_anthropic):
         system_prompt="Judge quality.",
     )
     assert isinstance(result, LLMResponse)
-    call_args = mock_anthropic.messages.create.call_args
-    user_message = call_args.kwargs["messages"][0]["content"]
+    call_args = mock_provider.complete.call_args
+    user_message = call_args.kwargs["user"]
     assert "Reference answer:" in user_message
     assert "Candidate answer:" in user_message
 
 
 @pytest.mark.asyncio
-async def test_call_uses_cache_control(mock_anthropic):
-    mock_anthropic.messages.create.return_value = _make_response("ok")
+async def test_call_uses_system_prompt(mock_provider):
+    mock_provider.complete.return_value = _make_provider_response("ok")
     client = LLMClient(api_key="test-key")
-    await client._call("some-model", "system text", "user text")
+    await client._call("fast", "system text", "user text")
 
-    call_args = mock_anthropic.messages.create.call_args
-    system = call_args.kwargs["system"]
-    assert isinstance(system, list)
-    assert system[0]["type"] == "text"
-    assert "cache_control" in system[0]
+    call_args = mock_provider.complete.call_args
+    assert call_args.kwargs["system"] == "system text"
 
 
 @pytest.mark.asyncio
-async def test_call_default_temperature_zero(mock_anthropic):
-    mock_anthropic.messages.create.return_value = _make_response("ok")
+async def test_call_default_temperature_zero(mock_provider):
+    mock_provider.complete.return_value = _make_provider_response("ok")
     client = LLMClient(api_key="test-key")
-    await client._call("model", "sys", "user")
+    await client._call("fast", "sys", "user")
 
-    call_args = mock_anthropic.messages.create.call_args
+    call_args = mock_provider.complete.call_args
     assert call_args.kwargs["temperature"] == 0
 
 
 @pytest.mark.asyncio
-async def test_call_respects_max_tokens(mock_anthropic):
-    mock_anthropic.messages.create.return_value = _make_response("ok")
+async def test_call_respects_max_tokens(mock_provider):
+    mock_provider.complete.return_value = _make_provider_response("ok")
     client = LLMClient(api_key="test-key")
-    await client._call("model", "sys", "user", max_tokens=100)
+    await client._call("fast", "sys", "user", max_tokens=100)
 
-    call_args = mock_anthropic.messages.create.call_args
+    call_args = mock_provider.complete.call_args
     assert call_args.kwargs["max_tokens"] == 100
 
 
 @pytest.mark.asyncio
-async def test_call_returns_llm_response_with_cost(mock_anthropic):
-    mock_anthropic.messages.create.return_value = _make_response(
+async def test_call_returns_llm_response_with_cost(mock_provider):
+    mock_provider.complete.return_value = _make_provider_response(
         "ok", input_tokens=100, output_tokens=50
     )
     client = LLMClient(api_key="test-key")
-    result = await client._call("claude-haiku-4-5", "sys", "user")
+    result = await client._call("fast", "sys", "user")
     assert isinstance(result, LLMResponse)
     assert result.input_tokens == 100
     assert result.output_tokens == 50

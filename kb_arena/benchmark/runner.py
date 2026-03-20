@@ -35,6 +35,7 @@ STRATEGY_NAMES = [
     "hybrid",
     "raptor",
     "pageindex",
+    "bm25",
 ]
 
 RETRY_BACKOFF_S = 1.0
@@ -240,6 +241,7 @@ async def run_benchmark(
     corpus: str = "all",
     strategy: str = "all",
     tier: int = 0,
+    parallel: bool = True,
 ) -> None:
     """Run benchmark questions against specified strategies.
 
@@ -247,6 +249,18 @@ async def run_benchmark(
     evaluates with structural + entity coverage + source attribution + LLM judge,
     writes results/{corpus}_{strategy}.json.
     """
+    from datetime import UTC, datetime
+    from uuid import uuid4
+
+    run_id = uuid4().hex[:8]
+    timestamp = datetime.now(UTC).isoformat()
+    config_snap = {
+        "llm_provider": settings.llm_provider,
+        "generate_model": settings.generate_model,
+        "max_concurrent": settings.benchmark_max_concurrent,
+        "query_timeout_s": settings.benchmark_query_timeout_s,
+    }
+
     llm = LLMClient()
     semaphore = asyncio.Semaphore(settings.benchmark_max_concurrent)
     results_dir = Path(settings.results_path)
@@ -259,66 +273,140 @@ async def run_benchmark(
         console.print("[red]No strategies available. Run build_vectors / build_graph first.[/red]")
         return
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("{task.completed}/{task.total}"),
-        TimeElapsedColumn(),
-        console=console,
-    ) as progress:
-        for corp in corpora:
-            try:
-                questions = load_questions(corp, tier=tier)
-            except FileNotFoundError:
-                console.print(f"[yellow]No questions for corpus: {corp}[/yellow]")
-                continue
+    console.print(f"[dim]Run ID: {run_id}[/dim]")
 
-            if not questions:
-                continue
+    for corp in corpora:
+        try:
+            questions = load_questions(corp, tier=tier)
+        except FileNotFoundError:
+            console.print(f"[yellow]No questions for corpus: {corp}[/yellow]")
+            continue
 
-            questions_map = {q.id: q.type for q in questions}
+        if not questions:
+            continue
 
-            total_tasks = len(strategies) * len(questions)
-            task = progress.add_task(f"[cyan]{corp}", total=total_tasks)
-            cumulative_cost = 0.0
+        questions_map = {q.id: q.type for q in questions}
 
-            for strat in strategies:
-                bench = BenchmarkResult(corpus=corp, strategy=strat.name)
+        def _write_result(bench: BenchmarkResult) -> None:
+            # Latest (backward compat)
+            latest_path = results_dir / f"{bench.corpus}_{bench.strategy}.json"
+            latest_path.write_text(bench.model_dump_json(indent=2))
+            # Timestamped run copy
+            run_dir = results_dir / f"run_{run_id}"
+            run_dir.mkdir(parents=True, exist_ok=True)
+            run_path = run_dir / f"{bench.corpus}_{bench.strategy}.json"
+            run_path.write_text(bench.model_dump_json(indent=2))
 
-                coros = [
-                    _run_one(strat, q.id, q.question, q.ground_truth, q.constraints, llm, semaphore)
-                    for q in questions
-                ]
+        if parallel and len(strategies) > 1:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("{task.completed}/{task.total}"),
+                TimeElapsedColumn(),
+                console=console,
+            ) as progress:
+                task_ids: dict[str, object] = {}
+                for strat in strategies:
+                    tid = progress.add_task(f"[cyan]{strat.name}", total=len(questions))
+                    task_ids[strat.name] = tid
 
-                for coro in asyncio.as_completed(coros):
-                    rec = await coro
-                    bench.records.append(rec)
-                    cumulative_cost += rec.cost_usd
-                    progress.update(
-                        task,
-                        description=f"[cyan]{corp} [dim]${cumulative_cost:.4f}[/dim]",
+                async def _run_strategy_parallel(strat: Strategy) -> BenchmarkResult:
+                    bench = BenchmarkResult(
+                        corpus=corp,
+                        strategy=strat.name,
+                        run_id=run_id,
+                        timestamp=timestamp,
+                        config_snapshot=config_snap,
                     )
-                    progress.advance(task)
+                    coros = [
+                        _run_one(
+                            strat, q.id, q.question, q.ground_truth, q.constraints, llm, semaphore
+                        )
+                        for q in questions
+                    ]
+                    for coro in asyncio.as_completed(coros):
+                        rec = await coro
+                        bench.records.append(rec)
+                        progress.advance(task_ids[strat.name])
+                    bench = _aggregate(bench, questions_map)
+                    return bench
 
-                bench = _aggregate(bench, questions_map)
+                results_list = await asyncio.gather(
+                    *[_run_strategy_parallel(s) for s in strategies]
+                )
 
-                out_path = results_dir / f"{corp}_{strat.name}.json"
-                out_path.write_text(bench.model_dump_json(indent=2))
-
+            cumulative_cost = 0.0
+            for bench in results_list:
+                _write_result(bench)
                 overall_acc = (
                     sum(bench.accuracy_by_tier.values()) / len(bench.accuracy_by_tier)
                     if bench.accuracy_by_tier
                     else 0.0
                 )
+                cumulative_cost += bench.total_cost_usd
                 console.print(
-                    f"  {strat.name}: {len(bench.records)} questions, "
+                    f"  {bench.strategy}: {len(bench.records)} questions, "
                     f"acc={overall_acc:.1%}, "
                     f"${bench.total_cost_usd:.4f}, "
                     f"avg {bench.avg_latency_ms:.0f}ms"
                 )
+        else:
+            # Sequential path
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("{task.completed}/{task.total}"),
+                TimeElapsedColumn(),
+                console=console,
+            ) as progress:
+                total_tasks = len(strategies) * len(questions)
+                task = progress.add_task(f"[cyan]{corp}", total=total_tasks)
+                cumulative_cost = 0.0
 
-            console.print(
-                f"[green]Done {corp}:[/green] {len(strategies)} strategies, "
-                f"${cumulative_cost:.4f} total"
-            )
+                for strat in strategies:
+                    bench = BenchmarkResult(
+                        corpus=corp,
+                        strategy=strat.name,
+                        run_id=run_id,
+                        timestamp=timestamp,
+                        config_snapshot=config_snap,
+                    )
+
+                    coros = [
+                        _run_one(
+                            strat, q.id, q.question, q.ground_truth, q.constraints, llm, semaphore
+                        )
+                        for q in questions
+                    ]
+
+                    for coro in asyncio.as_completed(coros):
+                        rec = await coro
+                        bench.records.append(rec)
+                        cumulative_cost += rec.cost_usd
+                        progress.update(
+                            task,
+                            description=f"[cyan]{corp} [dim]${cumulative_cost:.4f}[/dim]",
+                        )
+                        progress.advance(task)
+
+                    bench = _aggregate(bench, questions_map)
+                    _write_result(bench)
+
+                    overall_acc = (
+                        sum(bench.accuracy_by_tier.values()) / len(bench.accuracy_by_tier)
+                        if bench.accuracy_by_tier
+                        else 0.0
+                    )
+                    console.print(
+                        f"  {strat.name}: {len(bench.records)} questions, "
+                        f"acc={overall_acc:.1%}, "
+                        f"${bench.total_cost_usd:.4f}, "
+                        f"avg {bench.avg_latency_ms:.0f}ms"
+                    )
+
+        console.print(
+            f"[green]Done {corp}:[/green] {len(strategies)} strategies, "
+            f"${cumulative_cost:.4f} total"
+        )

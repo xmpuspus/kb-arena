@@ -7,6 +7,8 @@ The "best practice" vector approach — shows how much metadata helps.
 
 from __future__ import annotations
 
+import time
+
 import chromadb
 
 from kb_arena.models.document import Document, Section
@@ -112,6 +114,7 @@ class ContextualVectorStrategy(Strategy):
         start = self._start_timer()
         collection = self._get_collection()
 
+        retrieval_start = time.perf_counter()
         query_kwargs: dict = {"query_texts": [question], "n_results": top_k}
         if where:
             query_kwargs["where"] = where
@@ -119,16 +122,19 @@ class ContextualVectorStrategy(Strategy):
         results = collection.query(**query_kwargs)
         chunks = results["documents"][0] if results["documents"] else []
         metas = results["metadatas"][0] if results["metadatas"] else []
+        retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
         sources = list({m.get("source_id", "") for m in metas if m.get("source_id")})
         context = "\n\n---\n\n".join(chunks)
 
         llm = self._get_llm()
+        gen_start = time.perf_counter()
         resp = await llm.generate(
             query=question,
             context=context,
             system_prompt=SYSTEM_PROMPT,
         )
+        gen_ms = (time.perf_counter() - gen_start) * 1000
 
         latency_ms = self._record_metrics(
             start, tokens=resp.total_tokens, cost=resp.cost_usd, sources=sources
@@ -138,6 +144,8 @@ class ContextualVectorStrategy(Strategy):
             sources=sources,
             strategy=self.name,
             latency_ms=latency_ms,
+            retrieval_latency_ms=retrieval_ms,
+            generation_latency_ms=gen_ms,
             tokens_used=resp.total_tokens,
             cost_usd=resp.cost_usd,
         )

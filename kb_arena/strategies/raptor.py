@@ -9,6 +9,7 @@ architecture) questions access to broad topic synthesis that flat vector search 
 from __future__ import annotations
 
 import logging
+import time
 
 import chromadb
 import numpy as np
@@ -17,6 +18,7 @@ from kb_arena.models.document import Document
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
 from kb_arena.strategies.embeddings import OpenAIEmbedding
+from kb_arena.tokenizer import detokenize, tokenize
 
 logger = logging.getLogger(__name__)
 
@@ -36,21 +38,17 @@ _SUMMARIZE_SYSTEM = (
 )
 
 
-def _tokenize(text: str) -> list[str]:
-    return text.split()
-
-
 def _chunk_text(
     text: str, chunk_tokens: int = CHUNK_TOKENS, overlap_tokens: int = OVERLAP_TOKENS
 ) -> list[str]:
-    tokens = _tokenize(text)
+    tokens = tokenize(text)
     if not tokens:
         return []
     chunks = []
     start = 0
     while start < len(tokens):
         end = min(start + chunk_tokens, len(tokens))
-        chunks.append(" ".join(tokens[start:end]))
+        chunks.append(detokenize(tokens[start:end]))
         if end == len(tokens):
             break
         start = end - overlap_tokens
@@ -195,6 +193,7 @@ class RaptorStrategy(Strategy):
         """Search L0, L1, L2 simultaneously → fuse context → Sonnet."""
         start = self._start_timer()
 
+        retrieval_start = time.perf_counter()
         all_chunks: list[str] = []
         all_sources: set[str] = set()
 
@@ -214,7 +213,8 @@ class RaptorStrategy(Strategy):
                     if src:
                         all_sources.add(src)
             except Exception as exc:
-                logger.debug("RAPTOR: skipping level %d — %s", level, exc)
+                logger.debug("RAPTOR: skipping level %d - %s", level, exc)
+        retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
         if not all_chunks:
             latency_ms = self._record_metrics(start)
@@ -227,11 +227,13 @@ class RaptorStrategy(Strategy):
 
         context = "\n\n---\n\n".join(all_chunks)
         llm = self._get_llm()
+        gen_start = time.perf_counter()
         resp = await llm.generate(
             query=question,
             context=context,
             system_prompt=SYSTEM_PROMPT,
         )
+        gen_ms = (time.perf_counter() - gen_start) * 1000
 
         sources = list(all_sources)
         latency_ms = self._record_metrics(
@@ -242,6 +244,8 @@ class RaptorStrategy(Strategy):
             sources=sources,
             strategy=self.name,
             latency_ms=latency_ms,
+            retrieval_latency_ms=retrieval_ms,
+            generation_latency_ms=gen_ms,
             tokens_used=resp.total_tokens,
             cost_usd=resp.cost_usd,
         )

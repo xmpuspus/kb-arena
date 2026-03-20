@@ -35,6 +35,7 @@ const STRATEGY_DESCS: Record<Strategy, string> = {
   hybrid: "Route by intent: factoid → vector, cross-topic → graph, complex → both with Reciprocal Rank Fusion. Adapts per question.",
   raptor: "Build a recursive tree of LLM cluster summaries over the corpus. Query all levels simultaneously — leaf chunks + broad topic synthesis for Tier 4/5 questions.",
   pageindex: "Vectorless, reasoning-based retrieval. Builds a hierarchical tree index from document structure, then uses LLM reasoning to traverse the tree — no embeddings, no chunking.",
+  bm25: "Classic keyword matching with BM25Okapi scoring. The lexical baseline — no embeddings, no LLM retrieval. Shows whether neural retrieval adds value for your docs.",
 };
 
 export default function Home() {

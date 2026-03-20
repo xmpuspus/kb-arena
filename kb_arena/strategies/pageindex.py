@@ -13,6 +13,7 @@ document structure.
 from __future__ import annotations
 
 import logging
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -194,17 +195,20 @@ async def _beam_traverse(
     beam_width: int,
     max_depth: int,
     _depth: int = 0,
-) -> list[TreeNode]:
-    """Recursive beam search: LLM selects promising branches at each level."""
+) -> tuple[list[TreeNode], float]:
+    """Recursive beam search: LLM selects promising branches at each level.
+
+    Returns (selected_leaves, total_llm_cost_usd).
+    """
     if not candidates or _depth >= max_depth:
-        return candidates
+        return candidates, 0.0
 
     # All candidates are leaves — return them
     if all(c.is_leaf() for c in candidates):
-        return candidates
+        return candidates, 0.0
 
     # Present candidates to LLM for selection
-    listing = "\n".join(f"{i + 1}. [{c.title}] — {c.summary}" for i, c in enumerate(candidates))
+    listing = "\n".join(f"{i + 1}. [{c.title}] - {c.summary}" for i, c in enumerate(candidates))
     prompt = (
         f"Question: {question}\n\n"
         f"Available sections:\n{listing}\n\n"
@@ -218,6 +222,7 @@ async def _beam_traverse(
         system_prompt=system,
         max_tokens=50,
     )
+    level_cost = resp.cost_usd
 
     # Parse selection (comma-separated numbers)
     selected_indices = _parse_selection(resp.text, len(candidates), beam_width)
@@ -233,13 +238,14 @@ async def _beam_traverse(
             next_candidates.extend(node.children)
 
     # Recurse into children
+    deeper_cost = 0.0
     if next_candidates:
-        deeper = await _beam_traverse(
+        deeper_leaves, deeper_cost = await _beam_traverse(
             next_candidates, question, llm, beam_width, max_depth, _depth + 1
         )
-        leaves.extend(deeper)
+        leaves.extend(deeper_leaves)
 
-    return leaves
+    return leaves, level_cost + deeper_cost
 
 
 def _parse_selection(text: str, total: int, beam_width: int) -> list[int]:
@@ -373,7 +379,11 @@ class PageIndexStrategy(Strategy):
         max_depth = settings.pageindex_max_depth
 
         # Beam search: traverse tree to find relevant leaf sections
-        selected_leaves = await _beam_traverse(all_roots, question, llm, beam_width, max_depth)
+        retrieval_start = time.perf_counter()
+        selected_leaves, traversal_cost = await _beam_traverse(
+            all_roots, question, llm, beam_width, max_depth
+        )
+        retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
         if not selected_leaves:
             latency_ms = self._record_metrics(start)
@@ -395,21 +405,26 @@ class PageIndexStrategy(Strategy):
         context = "\n\n---\n\n".join(context_parts)
 
         # Generate final answer with Sonnet
+        gen_start = time.perf_counter()
         resp = await llm.generate(
             query=question,
             context=context,
             system_prompt=_ANSWER_SYSTEM,
         )
+        gen_ms = (time.perf_counter() - gen_start) * 1000
 
+        total_cost = resp.cost_usd + traversal_cost
         unique_sources = list(dict.fromkeys(sources))
         latency_ms = self._record_metrics(
-            start, tokens=resp.total_tokens, cost=resp.cost_usd, sources=unique_sources
+            start, tokens=resp.total_tokens, cost=total_cost, sources=unique_sources
         )
         return AnswerResult(
             answer=resp.text,
             sources=unique_sources,
             strategy=self.name,
             latency_ms=latency_ms,
+            retrieval_latency_ms=retrieval_ms,
+            generation_latency_ms=gen_ms,
             tokens_used=resp.total_tokens,
-            cost_usd=resp.cost_usd,
+            cost_usd=total_cost,
         )

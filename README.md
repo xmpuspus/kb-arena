@@ -2,9 +2,9 @@
 
 Which retrieval architecture works best for your documentation?
 
-KB Arena benchmarks 7 retrieval strategies — naive vector, contextual vector, Q&A pairs, knowledge graph, hybrid, RAPTOR, and PageIndex — on **your** documentation. Bring your docs in any format, run the pipeline, get empirical results. Ships with an AWS Compute corpus (75 questions across 5 difficulty tiers) as a built-in example.
+KB Arena benchmarks **8 retrieval strategies** -- naive vector, contextual vector, Q&A pairs, knowledge graph, hybrid, RAPTOR, PageIndex, and BM25 -- on **your** documentation. Bring your docs in any format, run the pipeline, get empirical results. Ships with an AWS Compute corpus (75 questions across 5 difficulty tiers) as a built-in example.
 
-![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-454-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue)
+![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-480-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![PyPI](https://img.shields.io/pypi/v/kb-arena) ![CI](https://github.com/xmpuspus/kb-arena/actions/workflows/ci.yml/badge.svg)
 
 ![KB Arena Demo](docs/demo.gif)
 
@@ -19,7 +19,7 @@ pip install kb-arena
 kb-arena demo
 ```
 
-This launches the dashboard with pre-computed results from the AWS Compute corpus (75 questions, 7 strategies, 5 difficulty tiers).
+This launches the dashboard with pre-computed results from the AWS Compute corpus (75 questions, 8 strategies, 5 difficulty tiers).
 
 ---
 
@@ -29,7 +29,7 @@ Most RAG evaluation tools answer "how well does my pipeline work?" KB Arena answ
 
 | | KB Arena | RAGAS | MTEB / BEIR | GraphRAG | DeepEval |
 |---|---|---|---|---|---|
-| Compares multiple architectures | Yes - 7 strategies | No - evaluates your existing pipeline | No - compares embedding models | No - only their own approach | No |
+| Compares multiple architectures | Yes - 8 strategies | No - evaluates your existing pipeline | No - compares embedding models | No - only their own approach | No |
 | Works on your own docs | Yes | Yes | No - fixed public datasets | No - fixed datasets | Yes |
 | Includes graph + vector + hybrid | Yes | Vector/hybrid only | Embeddings only | Graph only | Any |
 | Auto-generates benchmark questions | Yes - 5 difficulty tiers | Manual | Fixed | Fixed | Manual |
@@ -41,7 +41,108 @@ If you want to know whether a knowledge graph, Q&A pairs, or plain vector search
 
 ---
 
-## Quick Start — I Just Have My Docs
+## What's New in v0.3.0
+
+### Multi-LLM Provider Support
+
+No longer locked to Anthropic. Choose your LLM backend:
+
+```bash
+# Anthropic (default)
+export KB_ARENA_LLM_PROVIDER=anthropic
+export KB_ARENA_ANTHROPIC_API_KEY=sk-ant-...
+
+# OpenAI
+export KB_ARENA_LLM_PROVIDER=openai
+export KB_ARENA_OPENAI_API_KEY=sk-...
+
+# Ollama (free local inference)
+export KB_ARENA_LLM_PROVIDER=ollama
+```
+
+Each provider has its own model mapping -- GPT-4o for generation, GPT-4o-mini for classification when using OpenAI; any local model when using Ollama.
+
+### Strategy Arena - Blind A/B Comparison
+
+A new **Arena mode** for blind head-to-head strategy battles. Ask a question, two random strategies answer it, you vote for the better response. ELO ratings emerge over time.
+
+```bash
+kb-arena serve  # then open /arena in your browser
+```
+
+![Arena Mode](docs/screenshot-arena.png)
+
+### BM25 Baseline Strategy
+
+Strategy #8: classic BM25 keyword matching. The pre-neural baseline that answers "do I even need embeddings for my docs?" Uses BM25Okapi scoring with LLM answer generation.
+
+### Parallel Benchmark Execution
+
+Strategies now run concurrently instead of sequentially. A full 8-strategy benchmark that took 60-90 minutes now completes in 15-25 minutes.
+
+```bash
+kb-arena benchmark --corpus my-docs              # parallel by default
+kb-arena benchmark --corpus my-docs --no-parallel # sequential if needed
+```
+
+### Accurate Token Counting
+
+Replaced whitespace tokenization with tiktoken (cl100k_base BPE). Chunk sizes are now measured in real tokens, not word counts. Previous "512-token chunks" were actually ~370 real tokens - now they're exactly 512.
+
+### Cost Tracking Fixed
+
+Fixed cost propagation across all multi-call strategies:
+- Knowledge graph: Text-to-Cypher generation cost now tracked
+- PageIndex: beam traversal LLM cost now accumulated
+- Streaming: token usage captured via `get_final_message()`
+- Latency decomposition: retrieval vs generation timing now measured separately
+
+### Run Comparison
+
+Benchmark runs now have unique IDs and timestamps. Results are preserved across runs instead of overwritten:
+
+```bash
+kb-arena benchmark --corpus my-docs
+# Run ID: a1b2c3d4
+# Results: results/run_a1b2c3d4/my-docs_naive_vector.json
+
+kb-arena report --run-id a1b2c3d4
+```
+
+### CI/CD Integration
+
+Fail your pipeline if retrieval quality drops:
+
+```bash
+kb-arena benchmark --corpus my-docs --fail-below 0.7
+# Exit code 1 if any strategy's accuracy falls below 70%
+```
+
+### Export Formats
+
+Generate reports in CSV or self-contained HTML:
+
+```bash
+kb-arena report --format csv    # spreadsheet-ready
+kb-arena report --format html   # shareable dashboard
+```
+
+### Bundled Frontend
+
+`kb-arena demo` now serves a complete dashboard -- no separate Next.js dev server needed. The static frontend is bundled with the pip package.
+
+### Changelog
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 0.3.0 | 2026-03-20 | Multi-LLM providers (Anthropic/OpenAI/Ollama), Strategy Arena, BM25 strategy, parallel benchmarks, tiktoken chunking, cost tracking fixes, run comparison, CI fail-below, CSV/HTML export, bundled frontend |
+| 0.2.1 | 2026-03-03 | PageIndex strategy, verbose mode, retry logic, parallel extraction, eval independence |
+| 0.2.0 | 2026-02-28 | RAPTOR strategy, hybrid improvements, 7 strategies total |
+| 0.1.0 | 2026-02-20 | Initial release: 5 strategies, benchmark engine, chatbot demo |
+
+---
+
+## Quick Start -- I Just Have My Docs
 
 You have documentation files (markdown, HTML, text, PDFs). You want to know which retrieval strategy works best. Here's everything from zero.
 
@@ -49,7 +150,7 @@ You have documentation files (markdown, HTML, text, PDFs). You want to know whic
 
 1. **Python 3.11+** and **pip**
 2. **Docker** (for Neo4j — the knowledge graph strategy needs it)
-3. **API keys** for Anthropic (LLM) and OpenAI (embeddings)
+3. **API keys** for your LLM provider (Anthropic, OpenAI, or Ollama) and OpenAI (embeddings)
 
 That's it. No Neo4j expertise needed. No graph database experience required. KB Arena handles the schema, extraction, and querying.
 

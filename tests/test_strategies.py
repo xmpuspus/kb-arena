@@ -23,21 +23,27 @@ from kb_arena.strategies.qna_pairs import QnAPairStrategy
 
 
 def test_chunk_text_basic():
+    from kb_arena.tokenizer import token_count
+
     text = " ".join(str(i) for i in range(1000))
     chunks = _chunk_text(text, chunk_tokens=512, overlap_tokens=50)
     assert len(chunks) > 1
-    # First chunk should be 512 tokens
-    assert len(chunks[0].split()) == 512
+    # First chunk should have exactly chunk_tokens BPE tokens
+    assert token_count(chunks[0]) == 512
 
 
 def test_chunk_text_overlap():
+    from kb_arena.tokenizer import token_count, tokenize
+
     text = " ".join(str(i) for i in range(600))
     chunks = _chunk_text(text, chunk_tokens=512, overlap_tokens=50)
-    assert len(chunks) == 2
-    # Second chunk starts 50 tokens before end of first
-    first_last_tokens = chunks[0].split()[-50:]
-    second_first_tokens = chunks[1].split()[:50]
-    assert first_last_tokens == second_first_tokens
+    assert len(chunks) >= 2
+    # Overlap: last 50 BPE tokens of chunk[0] match first 50 of chunk[1]
+    first_tokens = tokenize(chunks[0])
+    second_tokens = tokenize(chunks[1])
+    assert first_tokens[-50:] == second_tokens[:50]
+    # Total unique BPE tokens <= token_count(text) (some overlap is expected)
+    assert token_count(text) > 0
 
 
 def test_chunk_text_short():

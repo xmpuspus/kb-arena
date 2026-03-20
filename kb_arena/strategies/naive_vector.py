@@ -7,12 +7,15 @@ Deliberately simple — this is the strawman all others beat.
 
 from __future__ import annotations
 
+import time
+
 import chromadb
 
 from kb_arena.models.document import Document
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
 from kb_arena.strategies.embeddings import OpenAIEmbedding
+from kb_arena.tokenizer import detokenize, tokenize
 
 CHUNK_TOKENS = 512
 OVERLAP_TOKENS = 50
@@ -24,16 +27,11 @@ SYSTEM_PROMPT = (
 )
 
 
-def _tokenize(text: str) -> list[str]:
-    """Naive whitespace tokenization — consistent with how we count tokens for chunking."""
-    return text.split()
-
-
 def _chunk_text(
     text: str, chunk_tokens: int = CHUNK_TOKENS, overlap_tokens: int = OVERLAP_TOKENS
 ) -> list[str]:
-    """Split text into overlapping chunks by token count."""
-    tokens = _tokenize(text)
+    """Split text into overlapping chunks by BPE token count."""
+    tokens = tokenize(text)
     if not tokens:
         return []
 
@@ -41,8 +39,7 @@ def _chunk_text(
     start = 0
     while start < len(tokens):
         end = min(start + chunk_tokens, len(tokens))
-        chunk = " ".join(tokens[start:end])
-        chunks.append(chunk)
+        chunks.append(detokenize(tokens[start:end]))
         if end == len(tokens):
             break
         start = end - overlap_tokens
@@ -112,19 +109,23 @@ class NaiveVectorStrategy(Strategy):
         start = self._start_timer()
         collection = self._get_collection()
 
+        retrieval_start = time.perf_counter()
         results = collection.query(query_texts=[question], n_results=top_k)
         chunks = results["documents"][0] if results["documents"] else []
         metas = results["metadatas"][0] if results["metadatas"] else []
+        retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
         sources = list({m.get("source_id", "") for m in metas if m.get("source_id")})
         context = "\n\n---\n\n".join(chunks)
 
         llm = self._get_llm()
+        gen_start = time.perf_counter()
         resp = await llm.generate(
             query=question,
             context=context,
             system_prompt=SYSTEM_PROMPT,
         )
+        gen_ms = (time.perf_counter() - gen_start) * 1000
 
         latency_ms = self._record_metrics(
             start, tokens=resp.total_tokens, cost=resp.cost_usd, sources=sources
@@ -134,6 +135,8 @@ class NaiveVectorStrategy(Strategy):
             sources=sources,
             strategy=self.name,
             latency_ms=latency_ms,
+            retrieval_latency_ms=retrieval_ms,
+            generation_latency_ms=gen_ms,
             tokens_used=resp.total_tokens,
             cost_usd=resp.cost_usd,
         )

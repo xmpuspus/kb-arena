@@ -117,6 +117,9 @@ class BenchmarkResult(BaseModel):
 
     corpus: str
     strategy: str
+    run_id: str = ""
+    timestamp: str = ""
+    config_snapshot: dict = Field(default_factory=dict)
     total_questions: int = 0
     records: list[AnswerRecord] = Field(default_factory=list)
 

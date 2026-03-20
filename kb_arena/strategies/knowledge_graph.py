@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 
 from kb_arena.graph.schema import node_type_values, rel_type_values
 from kb_arena.models.document import Document
@@ -272,8 +273,8 @@ class KnowledgeGraphStrategy(Strategy):
         records = await self._run_cypher(cypher, params)
         return records, cypher
 
-    async def _generate_cypher(self, question: str) -> tuple[list[dict], str]:
-        """Text-to-Cypher fallback for novel queries."""
+    async def _generate_cypher(self, question: str) -> tuple[list[dict], str, float]:
+        """Text-to-Cypher fallback for novel queries. Returns (records, cypher, cost_usd)."""
         llm = self._get_llm()
         cypher_gen_prompt = CYPHER_GEN_PROMPT_TEMPLATE.format(
             node_types=", ".join(node_type_values("")),
@@ -281,20 +282,21 @@ class KnowledgeGraphStrategy(Strategy):
         )
         prompt = cypher_gen_prompt.format(question=question)
         resp = await llm.extract(text=prompt, system_prompt="Output only Cypher. No prose.")
+        cypher_cost = resp.cost_usd
         cypher = _extract_cypher(resp.text)
 
         if _WRITE_CYPHER_RE.search(cypher):
             logger.warning("Blocked LLM-generated write Cypher: %.200s", cypher)
             records = await self._run_cypher(FULLTEXT_SEARCH, {"query": question})
-            return records, FULLTEXT_SEARCH
+            return records, FULLTEXT_SEARCH, cypher_cost
 
         try:
             records = await self._run_cypher(cypher, {"query": question})
-            return records, cypher
+            return records, cypher, cypher_cost
         except Exception:
             # Cypher generation can produce invalid queries — fall through to fulltext
             records = await self._run_cypher(FULLTEXT_SEARCH, {"query": question})
-            return records, FULLTEXT_SEARCH
+            return records, FULLTEXT_SEARCH, cypher_cost
 
     async def query(self, question: str, top_k: int = 5) -> AnswerResult:
         """Intent → Cypher template → execute → LLM answer."""
@@ -313,12 +315,15 @@ class KnowledgeGraphStrategy(Strategy):
                 mock=True,
             )
 
+        retrieval_start = time.perf_counter()
         intent = await self._classify_intent(question)
         records, cypher_used = await self._template_query(question, intent)
+        cypher_cost = 0.0
 
         # If template returns nothing, try Text-to-Cypher
         if not records:
-            records, cypher_used = await self._generate_cypher(question)
+            records, cypher_used, cypher_cost = await self._generate_cypher(question)
+        retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
         context = _results_to_context(records)
         graph_ctx = _records_to_graph_context(records, cypher_used)
@@ -326,16 +331,19 @@ class KnowledgeGraphStrategy(Strategy):
         sources = [s for s in sources if s]
 
         llm = self._get_llm()
+        gen_start = time.perf_counter()
         resp = await llm.generate(
             query=question,
             context=context,
             system_prompt=SYSTEM_PROMPT,
         )
+        gen_ms = (time.perf_counter() - gen_start) * 1000
 
+        total_cost = resp.cost_usd + cypher_cost
         latency_ms = self._record_metrics(
             start,
             tokens=resp.total_tokens,
-            cost=resp.cost_usd,
+            cost=total_cost,
             sources=sources,
             graph_context=graph_ctx,
         )
@@ -345,8 +353,10 @@ class KnowledgeGraphStrategy(Strategy):
             graph_context=graph_ctx,
             strategy=self.name,
             latency_ms=latency_ms,
+            retrieval_latency_ms=retrieval_ms,
+            generation_latency_ms=gen_ms,
             tokens_used=resp.total_tokens,
-            cost_usd=resp.cost_usd,
+            cost_usd=total_cost,
         )
 
     async def stream_answer(self, question: str, history: list[dict] | None = None):
@@ -361,7 +371,7 @@ class KnowledgeGraphStrategy(Strategy):
         intent = await self._classify_intent(question)
         records, cypher_used = await self._template_query(question, intent)
         if not records:
-            records, cypher_used = await self._generate_cypher(question)
+            records, cypher_used, _ = await self._generate_cypher(question)
 
         context = _results_to_context(records)
         graph_ctx = _records_to_graph_context(records, cypher_used)

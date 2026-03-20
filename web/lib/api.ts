@@ -8,6 +8,7 @@ export const STRATEGIES = [
   "hybrid",
   "raptor",
   "pageindex",
+  "bm25",
 ] as const;
 
 export type Strategy = (typeof STRATEGIES)[number];
@@ -20,6 +21,7 @@ export const STRATEGY_LABELS: Record<Strategy, string> = {
   hybrid: "Hybrid",
   raptor: "RAPTOR",
   pageindex: "PageIndex",
+  bm25: "BM25",
 };
 
 export const STRATEGY_COLORS: Record<Strategy, string> = {
@@ -30,6 +32,7 @@ export const STRATEGY_COLORS: Record<Strategy, string> = {
   hybrid: "#f59e0b",
   raptor: "#ef4444",
   pageindex: "#ec4899",
+  bm25: "#0ea5e9",
 };
 
 export const TIER_INFO: Record<number, { label: string; description: string }> = {
@@ -75,6 +78,8 @@ export const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
     "Builds a recursive tree of LLM cluster summaries (L0 chunks \u2192 L1 summaries \u2192 L2). Queries all levels simultaneously for superior Tier 4/5 multi-hop performance.",
   pageindex:
     "Vectorless, reasoning-based retrieval. Builds a hierarchical tree index from document structure, then uses LLM reasoning to traverse the tree \u2014 no embeddings, no chunking. Excels on well-structured docs.",
+  bm25:
+    "BM25 keyword matching \u2014 the pre-neural lexical baseline. No embeddings, no graph. Shows whether dense retrieval actually helps on your specific documentation.",
 };
 
 export interface CorpusInfo {

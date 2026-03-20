@@ -7,6 +7,8 @@ Higher upfront cost, near-zero runtime cost once built.
 
 from __future__ import annotations
 
+import time
+
 import chromadb
 
 from kb_arena.generate.qna import generate_pairs_for_section
@@ -117,9 +119,11 @@ class QnAPairStrategy(Strategy):
         start = self._start_timer()
         collection = self._get_collection()
 
+        retrieval_start = time.perf_counter()
         results = collection.query(query_texts=[question], n_results=top_k)
         metas = results["metadatas"][0] if results["metadatas"] else []
         matched_questions = results["documents"][0] if results["documents"] else []
+        retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
         if not metas:
             return AnswerResult(
@@ -127,6 +131,7 @@ class QnAPairStrategy(Strategy):
                 sources=[],
                 strategy=self.name,
                 latency_ms=self._record_metrics(start),
+                retrieval_latency_ms=retrieval_ms,
             )
 
         # Best match is first result
@@ -140,18 +145,21 @@ class QnAPairStrategy(Strategy):
         answer = best_answer
         total_tokens = 0
         total_cost = 0.0
+        gen_ms = 0.0
         if best_answer and matched_q and matched_q.lower() != question.lower():
             llm = self._get_llm()
             context = (
                 f"User question: {question}\nMatched question: {matched_q}"
                 f"\nPre-generated answer: {best_answer}"
             )
+            gen_start = time.perf_counter()
             resp = await llm.generate(
                 query=question,
                 context=context,
                 system_prompt=ANSWER_PROMPT,
                 max_tokens=500,
             )
+            gen_ms = (time.perf_counter() - gen_start) * 1000
             answer = resp.text
             total_tokens = resp.total_tokens
             total_cost = resp.cost_usd
@@ -164,6 +172,8 @@ class QnAPairStrategy(Strategy):
             sources=sources,
             strategy=self.name,
             latency_ms=latency_ms,
+            retrieval_latency_ms=retrieval_ms,
+            generation_latency_ms=gen_ms,
             tokens_used=total_tokens,
             cost_usd=total_cost,
         )

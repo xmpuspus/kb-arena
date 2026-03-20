@@ -10,6 +10,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
 from kb_arena.models.document import Document
 from kb_arena.settings import settings
+from kb_arena.strategies.bm25 import BM25Strategy
 from kb_arena.strategies.contextual_vector import ContextualVectorStrategy
 from kb_arena.strategies.hybrid import HybridStrategy
 from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
@@ -29,6 +30,7 @@ STRATEGY_REGISTRY: dict[str, type] = {
     "hybrid": HybridStrategy,
     "raptor": RaptorStrategy,
     "pageindex": PageIndexStrategy,
+    "bm25": BM25Strategy,
 }
 
 
@@ -85,6 +87,7 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
         "qna_pairs": QnAPairStrategy(chroma_client=chroma),
         "raptor": raptor,
         "pageindex": pageindex,
+        "bm25": BM25Strategy(),
     }
 
     targets = (
@@ -121,8 +124,8 @@ def get_strategy(name: str):
     if cls is None:
         raise ValueError(f"Unknown strategy: {name}. Available: {list(STRATEGY_REGISTRY)}")
 
-    # PageIndex needs no external dependencies
-    if name == "pageindex":
+    # No-dependency strategies
+    if name in ("pageindex", "bm25"):
         return cls()
 
     # Vector-backed strategies need a ChromaDB client
@@ -167,6 +170,7 @@ __all__ = [
     "HybridStrategy",
     "RaptorStrategy",
     "PageIndexStrategy",
+    "BM25Strategy",
     "build_vector_indexes",
     "load_documents",
 ]

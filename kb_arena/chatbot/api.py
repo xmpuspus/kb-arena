@@ -7,20 +7,24 @@ Neo4j unavailability is handled gracefully — strategy falls back to mock data.
 from __future__ import annotations
 
 import asyncio as _asyncio
+import importlib.resources as _pkg_resources
 import json
 import logging
 import time
 from collections import defaultdict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path as _Path
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 from sse_starlette.sse import EventSourceResponse
 
+from kb_arena.arena.engine import ArenaEngine
 from kb_arena.chatbot.session import SessionMemory
 from kb_arena.chatbot.tools_api import router as tools_router
 from kb_arena.models.api import ChatRequest, ChatResponse, ErrorDetail, ErrorResponse
@@ -69,6 +73,7 @@ async def lifespan(app: FastAPI):
     """Initialize all services. Store on app.state. (Pattern 11 from PLAN.md)"""
     from kb_arena.chatbot.router import IntentRouter
     from kb_arena.llm.client import LLMClient
+    from kb_arena.strategies.bm25 import BM25Strategy
     from kb_arena.strategies.contextual_vector import ContextualVectorStrategy
     from kb_arena.strategies.hybrid import HybridStrategy
     from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
@@ -119,7 +124,14 @@ async def lifespan(app: FastAPI):
         ),
         "raptor": RaptorStrategy(chroma_client=chroma),
         "pageindex": PageIndexStrategy(),
+        "bm25": BM25Strategy(),
     }
+
+    # Arena engine
+    try:
+        app.state.arena = ArenaEngine(app.state.strategies)
+    except Exception:
+        app.state.arena = None
 
     yield
 
@@ -130,7 +142,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="KB Arena API",
     description="Benchmark retrieval strategies on your documentation.",
-    version="0.1.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -517,6 +529,65 @@ async def graph_build_stream(corpus: str) -> EventSourceResponse:
     return EventSourceResponse(event_generator())
 
 
+@app.post("/api/arena/match")
+async def arena_create_match(request: Request):
+    """Create a blind A/B match between two random strategies."""
+    arena = request.app.state.arena
+    if not arena:
+        return JSONResponse(
+            {"error": {"code": "arena_unavailable", "message": "Arena not initialized"}}, 503
+        )
+    body = await request.json()
+    question = body.get("question", "").strip()
+    if not question:
+        return JSONResponse(
+            {"error": {"code": "missing_question", "message": "Question required"}}, 400
+        )
+    try:
+        match = await arena.create_match(question)
+        return {
+            "match_id": match.id,
+            "question": match.question,
+            "answer_a": match.answer_a,
+            "answer_b": match.answer_b,
+            "latency_a_ms": round(match.latency_a_ms, 1),
+            "latency_b_ms": round(match.latency_b_ms, 1),
+            "sources_a": match.sources_a,
+            "sources_b": match.sources_b,
+        }
+    except Exception as exc:
+        return JSONResponse({"error": {"code": "match_failed", "message": str(exc)}}, 500)
+
+
+@app.post("/api/arena/vote")
+async def arena_vote(request: Request):
+    """Vote on an arena match. Body: {match_id, winner: 'a'|'b'|'tie'}."""
+    arena = request.app.state.arena
+    if not arena:
+        return JSONResponse(
+            {"error": {"code": "arena_unavailable", "message": "Arena not initialized"}}, 503
+        )
+    body = await request.json()
+    match_id = body.get("match_id", "")
+    winner = body.get("winner", "")
+    result = arena.vote(match_id, winner)
+    if "error" in result:
+        return JSONResponse({"error": {"code": "vote_failed", "message": result["error"]}}, 400)
+    return result
+
+
+@app.get("/api/arena/leaderboard")
+async def arena_leaderboard(request: Request):
+    """Get current ELO leaderboard."""
+    arena = request.app.state.arena
+    if not arena:
+        return {"leaderboard": [], "total_votes": 0}
+    return {
+        "leaderboard": arena.leaderboard(),
+        "total_votes": arena.state.total_votes,
+    }
+
+
 @app.get("/health")
 async def health(request: Request) -> dict:
     """Health check — reports Neo4j connectivity status."""
@@ -526,3 +597,9 @@ async def health(request: Request) -> dict:
         "neo4j": "connected" if neo4j_ok else "unavailable (mock mode)",
         "strategies": list(request.app.state.strategies.keys()),
     }
+
+
+# Mount bundled static frontend (must be AFTER all API routes)
+_static_dir = _Path(_pkg_resources.files("kb_arena")) / "static"  # type: ignore[arg-type]
+if _static_dir.is_dir():
+    app.mount("/", StaticFiles(directory=str(_static_dir), html=True), name="static")
