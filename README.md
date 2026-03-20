@@ -70,7 +70,7 @@ A new **Arena mode** for blind head-to-head strategy battles. Ask a question, tw
 kb-arena serve  # then open /arena in your browser
 ```
 
-![Arena Mode](docs/screenshot-arena.png)
+![Arena Mode](docs/demo-arena.gif)
 
 ### BM25 Baseline Strategy
 
