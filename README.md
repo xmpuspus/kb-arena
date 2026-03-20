@@ -402,6 +402,26 @@ Next: kb-arena build-graph --corpus my-docs && kb-arena build-vectors --corpus m
 
 **Cost tracking** — Benchmark runs display cumulative API cost in the progress bar and print per-strategy cost/accuracy summaries after completion.
 
+**Verbose mode** — Add `--verbose` / `-v` to any command for debug logging:
+
+```bash
+kb-arena benchmark --corpus my-docs --verbose
+```
+
+---
+
+## Reliability and Performance
+
+**LLM retry with backoff** — All Anthropic API calls retry up to 3 times with exponential backoff (1s, 2s, 4s) on rate limits, timeouts, and server errors. Every call has a 60-second hard timeout.
+
+**Parallel graph extraction** — Entity/relationship extraction from document sections runs up to 5 sections concurrently (5-10x faster than sequential for large corpora).
+
+**Parallel hybrid reranking** — The hybrid strategy's passage re-ranking runs all scoring calls concurrently using Haiku instead of sequential Sonnet calls (~50s to ~5s on procedural queries).
+
+**Evaluation independence** — The LLM-as-judge evaluator uses a different model (`JUDGE_MODEL`, defaults to Opus) than the generation model (Sonnet) to avoid same-model scoring bias.
+
+**Cypher safety** — LLM-generated Cypher queries are checked for write operations (`CREATE`, `MERGE`, `DELETE`, etc.) and blocked before execution. Only read queries reach Neo4j.
+
 ---
 
 ## Environment Variables
