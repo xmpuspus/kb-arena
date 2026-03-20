@@ -600,6 +600,17 @@ async def health(request: Request) -> dict:
 
 
 # Mount bundled static frontend (must be AFTER all API routes)
-_static_dir = _Path(_pkg_resources.files("kb_arena")) / "static"  # type: ignore[arg-type]
-if _static_dir.is_dir():
-    app.mount("/", StaticFiles(directory=str(_static_dir), html=True), name="static")
+# Check multiple locations: source tree, importlib, site-packages
+_static_candidates = [
+    _Path(_pkg_resources.files("kb_arena")) / "static",  # type: ignore[arg-type]
+    _Path(__file__).resolve().parent.parent / "static",
+]
+# Also check relative to CWD (for editable installs where kb_arena/ is in project root)
+_cwd_static = _Path("kb_arena") / "static"
+if _cwd_static.is_dir():
+    _static_candidates.insert(0, _cwd_static.resolve())
+
+for _sd in _static_candidates:
+    if _sd.is_dir() and (_sd / "index.html").exists():
+        app.mount("/", StaticFiles(directory=str(_sd), html=True), name="static")
+        break

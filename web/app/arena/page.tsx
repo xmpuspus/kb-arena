@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_URL || "";
 
 const EXAMPLE_QUESTIONS = [
   "How does AWS Lambda handle cold starts?",
@@ -107,9 +107,9 @@ export default function ArenaPage() {
   }
 
   // Fetch leaderboard on mount
-  useState(() => {
+  useEffect(() => {
     fetchLeaderboard();
-  });
+  }, []);
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
