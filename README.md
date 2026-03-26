@@ -267,7 +267,7 @@ kb-arena build-vectors --corpus my-docs
 # Auto-generate benchmark questions from your docs (10 per difficulty tier)
 kb-arena generate-questions --corpus my-docs --count 50
 
-# Run the benchmark (each question x 7 strategies, 4-pass evaluation)
+# Run the benchmark (each question x 8 strategies, 4-pass evaluation)
 kb-arena benchmark --corpus my-docs
 
 # Launch the web UI to explore results
@@ -324,11 +324,11 @@ kb-arena serve
 
 ## Screenshots
 
-**Home** — Overview of the 7 strategies, difficulty tiers, and evaluation methodology.
+**Home** — Overview of the 8 strategies, difficulty tiers, and evaluation methodology.
 
 ![Home page](docs/screenshot-home.png)
 
-**Strategy comparison** — Ask the same question to all 7 strategies simultaneously. Compare answers, sources, latency, and cost side-by-side.
+**Strategy comparison** — Ask the same question to all 8 strategies simultaneously. Compare answers, sources, latency, and cost side-by-side.
 
 ![Strategy comparison demo](docs/screenshot-demo.png)
 
@@ -425,7 +425,7 @@ These are results from the built-in AWS Compute corpus. Your mileage will vary �
 
 ---
 
-## The 7 Strategies
+## The 8 Strategies
 
 | # | Strategy | How it works | Best at |
 |---|----------|-------------|---------|
@@ -436,6 +436,7 @@ These are results from the built-in AWS Compute corpus. Your mileage will vary �
 | 5 | **Hybrid** | Intent routing → vector or graph or both (RRF) | Adapts per question type |
 | 6 | **RAPTOR** | Cluster chunks → LLM topic summaries → recursive tree → query all levels | Cross-document synthesis, broad topic questions |
 | 7 | **PageIndex** | Build tree index from doc structure → LLM beam search traversal → no vectors | Well-structured docs, reasoning over hierarchy |
+| 8 | **BM25** | Classic keyword matching (BM25Okapi) → LLM generation | Pre-neural baseline — "do I even need embeddings?" |
 
 ---
 
@@ -598,7 +599,7 @@ All prefixed with `KB_ARENA_`. Loaded from `.env` or environment.
 pip install -e '.[dev]'
 
 # Run tests
-pytest tests/ -v --ignore=tests/live  # 454 tests
+pytest tests/ -v --ignore=tests/live  # 494 tests
 
 # Lint + format
 ruff check . && ruff format --check .
@@ -621,7 +622,7 @@ cd web && npm install && npx next build
 | Frontend | Next.js 14 + Tailwind + Recharts |
 | Models | Pydantic v2 |
 | CLI | Typer + Rich |
-| Testing | pytest (454 tests) |
+| Testing | pytest (494 tests) |
 
 ---
 

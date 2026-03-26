@@ -51,7 +51,7 @@ export default function Home() {
           KB Arena
         </h1>
         <p className="text-lg leading-relaxed max-w-3xl" style={{ color: "var(--muted)" }}>
-          Which retrieval architecture works best for your documentation? 7 strategies, tiered difficulty questions — empirical evidence so you don&apos;t have to guess.
+          Which retrieval architecture works best for your documentation? 8 strategies, tiered difficulty questions — empirical evidence so you don&apos;t have to guess.
         </p>
         <div className="flex gap-3 pt-2">
           <Link
@@ -85,7 +85,7 @@ export default function Home() {
         <h2 className="text-xl font-semibold" style={{ color: "var(--foreground)" }}>How it works</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {[
-            { step: "1", title: "Same question", desc: "Each question — from simple lookups to multi-topic dependency chains — is sent to all 7 strategies simultaneously." },
+            { step: "1", title: "Same question", desc: "Each question — from simple lookups to multi-topic dependency chains — is sent to all 8 strategies simultaneously." },
             { step: "2", title: "4-pass evaluation", desc: "Structural checks, entity coverage, source attribution against your docs, then LLM-as-judge scoring." },
             { step: "3", title: "Ranked report", desc: "Accuracy by tier, latency percentiles, reliability rates, and cross-strategy composite ranking across your documentation." },
           ].map((item) => (
@@ -109,7 +109,7 @@ export default function Home() {
 
       {/* Strategies */}
       <section className="space-y-4">
-        <h2 className="text-xl font-semibold" style={{ color: "var(--foreground)" }}>The 7 strategies</h2>
+        <h2 className="text-xl font-semibold" style={{ color: "var(--foreground)" }}>The 8 strategies</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {STRATEGIES.map((s) => (
             <StrategyCard
