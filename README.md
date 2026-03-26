@@ -41,6 +41,40 @@ If you want to know whether a knowledge graph, Q&A pairs, or plain vector search
 
 ---
 
+## What's New in v0.3.1
+
+### Production Hardening
+
+Session management, error handling, and API configuration improvements for real deployments:
+
+- **Session ID support** -- pass `X-Session-ID` header instead of relying on IP-based sessions. Fixes shared proxy and network-switching issues.
+- **Session TTL** -- idle sessions are automatically evicted (default 30 min, configurable via `KB_ARENA_SESSION_TTL_MINUTES`)
+- **CORS configuration** -- set allowed origins via `KB_ARENA_CORS_ORIGINS` env var instead of hardcoded localhost
+- **Corpus validation** -- graph build API validates corpus exists with processed documents before starting
+- **Specific exception handling** -- Neo4j connection errors, graph extraction failures, and stream errors now catch specific types instead of bare `except Exception`
+
+### Streaming Cost Tracking
+
+OpenAI and Ollama providers now capture token usage after streaming completes -- previously only Anthropic tracked streaming costs. The chatbot demo now reports accurate `cost_usd` for all three providers.
+
+### Faster QnA Index Building
+
+Q&A pair generation during `build-vectors` is now parallelized with `asyncio.gather()` (5 concurrent). Building QnA indexes on large corpora is up to 5x faster.
+
+### Custom Exception Hierarchy
+
+New `kb_arena.exceptions` module with typed exceptions (`IngestError`, `GraphError`, `StrategyError`, `EvaluationError`, `LLMError`) for better error handling and debugging.
+
+### Frontend Error Boundary
+
+React error boundary wraps all page content -- API failures and render errors now show a recovery UI instead of a blank page.
+
+### Graph Schema Cleanup
+
+Removed dead Cypher templates that referenced non-existent relationship types (`DEPRECATED_BY`, `INHERITS`, `REQUIRES`, `EXAMPLE_OF`). Remaining templates now use only valid universal schema types.
+
+---
+
 ## What's New in v0.3.0
 
 ### Multi-LLM Provider Support
@@ -130,38 +164,6 @@ kb-arena report --format html   # shareable dashboard
 ### Bundled Frontend
 
 `kb-arena demo` now serves a complete dashboard -- no separate Next.js dev server needed. The static frontend is bundled with the pip package.
-
-## What's New in v0.3.1
-
-### Production Hardening
-
-Session management, error handling, and API configuration improvements for real deployments:
-
-- **Session ID support** -- pass `X-Session-ID` header instead of relying on IP-based sessions. Fixes shared proxy and network-switching issues.
-- **Session TTL** -- idle sessions are automatically evicted (default 30 min, configurable via `KB_ARENA_SESSION_TTL_MINUTES`)
-- **CORS configuration** -- set allowed origins via `KB_ARENA_CORS_ORIGINS` env var instead of hardcoded localhost
-- **Corpus validation** -- graph build API validates corpus exists with processed documents before starting
-- **Specific exception handling** -- Neo4j connection errors, graph extraction failures, and stream errors now catch specific types instead of bare `except Exception`
-
-### Streaming Cost Tracking
-
-OpenAI and Ollama providers now capture token usage after streaming completes -- previously only Anthropic tracked streaming costs. The chatbot demo now reports accurate `cost_usd` for all three providers.
-
-### Faster QnA Index Building
-
-Q&A pair generation during `build-vectors` is now parallelized with `asyncio.gather()` (5 concurrent). Building QnA indexes on large corpora is up to 5x faster.
-
-### Custom Exception Hierarchy
-
-New `kb_arena.exceptions` module with typed exceptions (`IngestError`, `GraphError`, `StrategyError`, `EvaluationError`, `LLMError`) for better error handling and debugging.
-
-### Frontend Error Boundary
-
-React error boundary wraps all page content -- API failures and render errors now show a recovery UI instead of a blank page.
-
-### Graph Schema Cleanup
-
-Removed dead Cypher templates that referenced non-existent relationship types (`DEPRECATED_BY`, `INHERITS`, `REQUIRES`, `EXAMPLE_OF`). Remaining templates now use only valid universal schema types.
 
 ### Changelog
 
