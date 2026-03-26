@@ -4,7 +4,7 @@ Which retrieval architecture works best for your documentation?
 
 KB Arena benchmarks **8 retrieval strategies** -- naive vector, contextual vector, Q&A pairs, knowledge graph, hybrid, RAPTOR, PageIndex, and BM25 -- on **your** documentation. Bring your docs in any format, run the pipeline, get empirical results. Ships with an AWS Compute corpus (75 questions across 5 difficulty tiers) as a built-in example.
 
-![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-480-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![PyPI](https://img.shields.io/pypi/v/kb-arena) ![CI](https://github.com/xmpuspus/kb-arena/actions/workflows/ci.yml/badge.svg)
+![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-494-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![PyPI](https://img.shields.io/pypi/v/kb-arena) ![CI](https://github.com/xmpuspus/kb-arena/actions/workflows/ci.yml/badge.svg)
 
 ![KB Arena Demo](docs/demo.gif)
 
@@ -131,10 +131,43 @@ kb-arena report --format html   # shareable dashboard
 
 `kb-arena demo` now serves a complete dashboard -- no separate Next.js dev server needed. The static frontend is bundled with the pip package.
 
+## What's New in v0.3.1
+
+### Production Hardening
+
+Session management, error handling, and API configuration improvements for real deployments:
+
+- **Session ID support** -- pass `X-Session-ID` header instead of relying on IP-based sessions. Fixes shared proxy and network-switching issues.
+- **Session TTL** -- idle sessions are automatically evicted (default 30 min, configurable via `KB_ARENA_SESSION_TTL_MINUTES`)
+- **CORS configuration** -- set allowed origins via `KB_ARENA_CORS_ORIGINS` env var instead of hardcoded localhost
+- **Corpus validation** -- graph build API validates corpus exists with processed documents before starting
+- **Specific exception handling** -- Neo4j connection errors, graph extraction failures, and stream errors now catch specific types instead of bare `except Exception`
+
+### Streaming Cost Tracking
+
+OpenAI and Ollama providers now capture token usage after streaming completes -- previously only Anthropic tracked streaming costs. The chatbot demo now reports accurate `cost_usd` for all three providers.
+
+### Faster QnA Index Building
+
+Q&A pair generation during `build-vectors` is now parallelized with `asyncio.gather()` (5 concurrent). Building QnA indexes on large corpora is up to 5x faster.
+
+### Custom Exception Hierarchy
+
+New `kb_arena.exceptions` module with typed exceptions (`IngestError`, `GraphError`, `StrategyError`, `EvaluationError`, `LLMError`) for better error handling and debugging.
+
+### Frontend Error Boundary
+
+React error boundary wraps all page content -- API failures and render errors now show a recovery UI instead of a blank page.
+
+### Graph Schema Cleanup
+
+Removed dead Cypher templates that referenced non-existent relationship types (`DEPRECATED_BY`, `INHERITS`, `REQUIRES`, `EXAMPLE_OF`). Remaining templates now use only valid universal schema types.
+
 ### Changelog
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 0.3.1 | 2026-03-26 | Production hardening (session IDs, TTL, CORS config, corpus validation), streaming cost for OpenAI/Ollama, parallel QnA build, custom exceptions, error boundary, graph schema cleanup, 494 tests |
 | 0.3.0 | 2026-03-20 | Multi-LLM providers (Anthropic/OpenAI/Ollama), Strategy Arena, BM25 strategy, parallel benchmarks, tiktoken chunking, cost tracking fixes, run comparison, CI fail-below, CSV/HTML export, bundled frontend |
 | 0.2.1 | 2026-03-03 | PageIndex strategy, verbose mode, retry logic, parallel extraction, eval independence |
 | 0.2.0 | 2026-02-28 | RAPTOR strategy, hybrid improvements, 7 strategies total |

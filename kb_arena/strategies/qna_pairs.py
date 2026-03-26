@@ -7,6 +7,7 @@ Higher upfront cost, near-zero runtime cost once built.
 
 from __future__ import annotations
 
+import asyncio
 import time
 
 import chromadb
@@ -73,16 +74,19 @@ class QnAPairStrategy(Strategy):
         ids, questions, metadatas = [], [], []
         pair_counter = 0
 
-        for doc in documents:
-            for section in doc.sections:
-                if not section.content.strip():
-                    continue
-                try:
-                    pairs = await self._generate_pairs(section, doc.id)
-                except Exception:
-                    # On generation failure, skip section rather than crash build
-                    continue
+        sem = asyncio.Semaphore(5)
 
+        async def _safe_generate(section, doc_id):
+            async with sem:
+                try:
+                    return await self._generate_pairs(section, doc_id)
+                except Exception:
+                    return []
+
+        for doc in documents:
+            sections = [s for s in doc.sections if s.content.strip()]
+            results = await asyncio.gather(*[_safe_generate(s, doc.id) for s in sections])
+            for section, pairs in zip(sections, results):
                 for pair in pairs:
                     q = pair.get("question", "").strip()
                     a = pair.get("answer", "").strip()

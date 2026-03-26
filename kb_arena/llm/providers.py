@@ -133,10 +133,21 @@ class OpenAIProvider(LLMProvider):
             temperature=temperature,
             max_tokens=max_tokens,
             stream=True,
+            stream_options={"include_usage": True},
         )
+        last_usage = None
         async for chunk in stream:
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
+            if chunk.usage:
+                last_usage = chunk.usage
+
+        self.last_stream_response = ProviderResponse(
+            text="",
+            input_tokens=last_usage.prompt_tokens if last_usage else 0,
+            output_tokens=last_usage.completion_tokens if last_usage else 0,
+            model=model,
+        )
 
 
 class OllamaProvider(LLMProvider):
@@ -191,6 +202,14 @@ class OllamaProvider(LLMProvider):
                     content = data.get("message", {}).get("content", "")
                     if content:
                         yield content
+                    # Final chunk has done=true with token counts
+                    if data.get("done"):
+                        self.last_stream_response = ProviderResponse(
+                            text="",
+                            input_tokens=data.get("prompt_eval_count", 0),
+                            output_tokens=data.get("eval_count", 0),
+                            model=model,
+                        )
 
 
 def create_provider(provider_name: str, **kwargs) -> LLMProvider:

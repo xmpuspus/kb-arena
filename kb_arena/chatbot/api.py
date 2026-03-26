@@ -25,7 +25,7 @@ from pydantic import BaseModel, field_validator
 from sse_starlette.sse import EventSourceResponse
 
 from kb_arena.arena.engine import ArenaEngine
-from kb_arena.chatbot.session import SessionMemory
+from kb_arena.chatbot.session import SessionStore
 from kb_arena.chatbot.tools_api import router as tools_router
 from kb_arena.models.api import ChatRequest, ChatResponse, ErrorDetail, ErrorResponse
 from kb_arena.settings import settings
@@ -51,8 +51,8 @@ logger = logging.getLogger(__name__)
 _rate_store: dict[str, list[float]] = defaultdict(list)
 RATE_LIMIT_RPM = 60
 
-# Per-session memory for multi-turn conversations
-_session_store: dict[str, SessionMemory] = defaultdict(SessionMemory)
+# Per-session memory for multi-turn conversations (TTL-based eviction)
+_session_store = SessionStore(ttl_minutes=settings.session_ttl_minutes)
 
 
 def _check_rate_limit(client_ip: str) -> bool:
@@ -90,16 +90,21 @@ async def lifespan(app: FastAPI):
     app.state.neo4j = None
     try:
         import neo4j
+    except ImportError:
+        logger.warning("Neo4j driver not installed — graph strategy will use mock data")
+        neo4j = None  # type: ignore[assignment]
 
-        driver = neo4j.AsyncGraphDatabase.driver(
-            settings.neo4j_uri,
-            auth=(settings.neo4j_user, settings.neo4j_password),
-        )
-        await driver.verify_connectivity()
-        app.state.neo4j = driver
-        logger.info("Neo4j connected at %s", settings.neo4j_uri)
-    except Exception as exc:
-        logger.warning("Neo4j not available (%s) — graph strategy will use mock data", exc)
+    if neo4j is not None:
+        try:
+            driver = neo4j.AsyncGraphDatabase.driver(
+                settings.neo4j_uri,
+                auth=(settings.neo4j_user, settings.neo4j_password),
+            )
+            await driver.verify_connectivity()
+            app.state.neo4j = driver
+            logger.info("Neo4j connected at %s", settings.neo4j_uri)
+        except (OSError, neo4j.exceptions.ServiceUnavailable) as exc:
+            logger.warning("Neo4j not available (%s) — graph strategy will use mock data", exc)
 
     # ChromaDB (always available — local file)
     import chromadb
@@ -133,8 +138,19 @@ async def lifespan(app: FastAPI):
     except Exception:
         app.state.arena = None
 
+    # Periodic session cleanup task
+    async def _cleanup_sessions():
+        while True:
+            await _asyncio.sleep(300)  # every 5 minutes
+            evicted = _session_store.cleanup()
+            if evicted:
+                logger.debug("Evicted %d expired sessions", evicted)
+
+    cleanup_task = _asyncio.create_task(_cleanup_sessions())
+
     yield
 
+    cleanup_task.cancel()
     if app.state.neo4j is not None:
         await app.state.neo4j.close()
 
@@ -142,12 +158,12 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="KB Arena API",
     description="Benchmark retrieval strategies on your documentation.",
-    version="0.3.0",
+    version="0.3.1",
     lifespan=lifespan,
 )
 
-# CORS — allow configurable origins, never wildcard in production
-_cors_origins = getattr(settings, "cors_origins", None) or [
+# CORS — configurable via KB_ARENA_CORS_ORIGINS, defaults to localhost dev ports
+_cors_origins = settings.cors_origins or [
     "http://localhost:3000",
     "http://localhost:3001",
 ]
@@ -198,9 +214,10 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
 
     strategy = _resolve_strategy(body.strategy, request)
 
-    # Track conversation history per session (keyed by IP + strategy)
-    session_key = f"{client_ip}:{body.strategy}"
-    session = _session_store[session_key]
+    # Track conversation history per session (X-Session-ID header preferred, IP fallback)
+    session_id = request.headers.get("x-session-id", client_ip)
+    session_key = f"{session_id}:{body.strategy}"
+    session = _session_store.get(session_key)
     session.add_turn("user", body.query)
 
     result = await strategy.query(body.query, top_k=5)
@@ -478,6 +495,21 @@ async def graph_data(request: Request, corpus: str = "all", limit: int = 200) ->
 async def trigger_graph_build(body: _GraphBuildRequest) -> dict:
     """Trigger graph build for a corpus. Events streamed via /api/graph/build/stream/{corpus}."""
     corpus = body.corpus
+
+    # Validate corpus exists and has processed documents
+    corpus_dir = _Path(settings.datasets_path) / corpus
+    processed_dir = corpus_dir / "processed"
+    if not corpus_dir.is_dir():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Corpus '{corpus}' not found in datasets directory",
+        )
+    if not processed_dir.is_dir() or not any(processed_dir.glob("*.jsonl")):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Corpus '{corpus}' has no processed documents. Run 'kb-arena ingest' first.",
+        )
+
     queue: _asyncio.Queue = _asyncio.Queue()
     _graph_build_queues[corpus] = queue
 

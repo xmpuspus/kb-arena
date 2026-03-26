@@ -29,24 +29,23 @@ def test_comparison_query_has_entity_params():
 
 def test_dependency_chain_has_start():
     assert "$start" in cypher_templates.DEPENDENCY_CHAIN
-
-
-def test_deprecation_chain_has_start_params():
-    assert "$start_fqn" in cypher_templates.DEPRECATION_CHAIN
-    assert "$start_name" in cypher_templates.DEPRECATION_CHAIN
+    # Must use valid schema rel types only
+    assert "DEPENDS_ON" in cypher_templates.DEPENDENCY_CHAIN
+    assert "REQUIRES" not in cypher_templates.DEPENDENCY_CHAIN
+    assert "INHERITS" not in cypher_templates.DEPENDENCY_CHAIN
 
 
 def test_cross_reference_has_fqn():
     assert "$fqn" in cypher_templates.CROSS_REFERENCE
+    # Uses generic relationship match (any type)
+    assert "REFERENCES" not in cypher_templates.CROSS_REFERENCE
 
 
 def test_type_hierarchy_has_fqn():
     assert "$fqn" in cypher_templates.TYPE_HIERARCHY
-
-
-def test_usage_examples_has_fqn_and_name():
-    assert "$fqn" in cypher_templates.USAGE_EXAMPLES
-    assert "$name" in cypher_templates.USAGE_EXAMPLES
+    # Must use EXTENDS (valid schema), not INHERITS
+    assert "EXTENDS" in cypher_templates.TYPE_HIERARCHY
+    assert "INHERITS" not in cypher_templates.TYPE_HIERARCHY
 
 
 def test_fulltext_search_has_query_and_limit():
@@ -57,16 +56,12 @@ def test_fulltext_search_has_query_and_limit():
 # ── Template selection ─────────────────────────────────────────────────────────
 
 
-def test_pick_template_deprecation():
-    assert _pick_template("what deprecated this function?") == "DEPRECATION_CHAIN"
-
-
 def test_pick_template_hierarchy():
     assert _pick_template("show me the inheritance hierarchy for Exception") == "TYPE_HIERARCHY"
 
 
-def test_pick_template_examples():
-    assert _pick_template("find usage examples for Lambda InvokeFunction") == "USAGE_EXAMPLES"
+def test_pick_template_extends():
+    assert _pick_template("what extends this component?") == "TYPE_HIERARCHY"
 
 
 def test_pick_template_dependency():
@@ -146,10 +141,10 @@ async def test_generator_falls_back_on_invalid_llm_output():
     mock_llm.extract.return_value = LLMResponse(text="This is not Cypher at all.")
 
     gen = CypherGenerator(mock_llm, "aws-compute")
-    # "deprecat" keyword → DEPRECATION_CHAIN template
-    cypher, _ = await gen.generate("what deprecated this api?")
+    # "depend" keyword → DEPENDENCY_CHAIN template
+    cypher, _ = await gen.generate("what does Lambda depend on?")
 
-    assert "$start_fqn" in cypher  # DEPRECATION_CHAIN template
+    assert "$start" in cypher  # DEPENDENCY_CHAIN template
 
 
 @pytest.mark.asyncio

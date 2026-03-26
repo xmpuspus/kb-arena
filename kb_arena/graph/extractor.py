@@ -11,6 +11,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
+from kb_arena.exceptions import GraphError
 from kb_arena.graph.neo4j_store import Neo4jStore
 from kb_arena.graph.resolver import resolve_entities
 from kb_arena.graph.schema import (
@@ -141,9 +142,11 @@ async def _extract_section(
         # Strip markdown fences if present (LLM often wraps JSON in ```json ... ```)
         cleaned = re.sub(r"```(?:json)?\s*", "", resp.text).strip().rstrip("`").strip()
         raw = json.loads(cleaned)
-    except (json.JSONDecodeError, Exception) as exc:
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
         logger.warning("Extraction failed for section %s: %s", section.id, exc)
         return ExtractionResult(section_id=section.id)
+    except Exception as exc:
+        raise GraphError(f"Unexpected extraction error for section {section.id}") from exc
 
     return _validate_result(raw, corpus, section.id)
 

@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Nav from "@/components/Nav";
+import ClientErrorBoundary from "@/components/ClientErrorBoundary";
 
 export const metadata: Metadata = {
   title: "KB Arena — Knowledge Base Benchmark",
   description:
-    "Benchmark 6 retrieval strategies on your documentation. Find which KB architecture works best for your data.",
+    "Benchmark 8 retrieval strategies on your documentation. Find which KB architecture works best for your data.",
 };
 
 export default function RootLayout({
@@ -15,7 +16,9 @@ export default function RootLayout({
     <html lang="en">
       <body className="min-h-screen" style={{ background: "var(--background)", color: "var(--foreground)" }}>
         <Nav />
-        <main>{children}</main>
+        <main>
+          <ClientErrorBoundary>{children}</ClientErrorBoundary>
+        </main>
         <footer className="border-t mt-16 py-8 text-center text-sm" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
           <a
             href="https://github.com/xavier/kb-arena"

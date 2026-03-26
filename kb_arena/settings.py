@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     debug: bool = False
+    cors_origins: list[str] = []  # Override via KB_ARENA_CORS_ORIGINS='["http://myapp:3000"]'
+    session_ttl_minutes: int = 30
 
     # Benchmark
     benchmark_temperature: float = 0.0

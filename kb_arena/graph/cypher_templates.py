@@ -47,9 +47,11 @@ RETURN unique.name AS shared_entity,
        null AS rel_to_b
 """
 
-# Trace full dependency/import/inheritance chain from $start up to depth 4.
+# Trace full dependency chain from $start up to depth 4.
+# Uses only valid universal schema relationship types.
 DEPENDENCY_CHAIN = """
-MATCH path = (source {fqn: $start})-[:REQUIRES|INHERITS*1..4]->(dep)
+MATCH path = (source {fqn: $start})
+  -[:DEPENDS_ON|CONNECTS_TO|TRIGGERS|EXTENDS|CONFIGURES*1..4]->(dep)
 WITH path, dep, length(path) AS depth
 RETURN dep.name AS name,
        dep.fqn AS fqn,
@@ -60,57 +62,34 @@ ORDER BY depth
 LIMIT 100
 """
 
-# Follow deprecated -> replacement chains, showing what replaced what.
-DEPRECATION_CHAIN = """
-MATCH path = (old)-[:DEPRECATED_BY*1..5]->(replacement)
-WHERE old.fqn = $start_fqn OR old.name = $start_name
-RETURN [n IN nodes(path) | n.name] AS chain,
-       [n IN nodes(path) | n.fqn] AS fqn_chain,
-       length(path) AS depth,
-       replacement.name AS current_recommendation
-ORDER BY depth
-LIMIT 20
-"""
-
-# Find all cross-references from/to an entity.
+# Find all connections from/to an entity via any relationship.
 CROSS_REFERENCE = """
-MATCH (entity {fqn: $fqn})-[r:REFERENCES]-(other)
+MATCH (entity {fqn: $fqn})-[r]-(other)
 RETURN other.name AS name,
        other.fqn AS fqn,
        labels(other)[0] AS type,
+       type(r) AS relationship,
        CASE WHEN startNode(r).fqn = $fqn THEN 'outgoing' ELSE 'incoming' END AS direction
 ORDER BY direction, other.name
 LIMIT 50
 """
 
-# Walk full inheritance chain up and down from $fqn.
+# Walk extension/containment hierarchy up and down from $fqn.
 TYPE_HIERARCHY = """
-MATCH path = (base)-[:INHERITS*0..5]->(child {fqn: $fqn})
+MATCH path = (base)-[:EXTENDS|CONTAINS*0..5]->(child {fqn: $fqn})
 WITH path, base, length(path) AS depth
 RETURN base.name AS ancestor,
        base.fqn AS ancestor_fqn,
        depth,
        [n IN nodes(path) | n.name] AS chain
 UNION
-MATCH path = (target {fqn: $fqn})-[:INHERITS*1..5]->(descendant)
+MATCH path = (target {fqn: $fqn})-[:EXTENDS|CONTAINS*1..5]->(descendant)
 RETURN descendant.name AS ancestor,
        descendant.fqn AS ancestor_fqn,
        length(path) AS depth,
        [n IN nodes(path) | n.name] AS chain
 ORDER BY depth
 LIMIT 50
-"""
-
-# Find code examples directly related to a function, class, or concept.
-USAGE_EXAMPLES = """
-MATCH (example:Example)-[:EXAMPLE_OF]->(entity)
-WHERE entity.fqn = $fqn OR entity.name = $name
-RETURN example.name AS example_name,
-       example.fqn AS example_fqn,
-       example.description AS description,
-       example.properties AS properties
-ORDER BY example.name
-LIMIT 20
 """
 
 # Full-text search across Concept|Module|Class|Function using the entity_search index.

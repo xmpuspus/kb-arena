@@ -21,11 +21,9 @@ _CYPHER_WRITE_PATTERN = re.compile(
 
 # Template keyword triggers — ordered by specificity
 _TEMPLATE_TRIGGERS: list[tuple[list[str], str]] = [
-    (["deprecat"], "DEPRECATION_CHAIN"),
-    (["inherit", "hierarchy", "subclass", "superclass"], "TYPE_HIERARCHY"),
-    (["example", "usage", "sample"], "USAGE_EXAMPLES"),
+    (["inherit", "hierarchy", "subclass", "superclass", "extends"], "TYPE_HIERARCHY"),
     (["depend", "import", "require"], "DEPENDENCY_CHAIN"),
-    (["cross-ref", "references", "links to"], "CROSS_REFERENCE"),
+    (["cross-ref", "references", "links to", "connected to"], "CROSS_REFERENCE"),
     (["compare", "difference", "vs", "versus"], "COMPARISON_QUERY"),
     (["connected", "related", "hop", "neighbor"], "MULTI_HOP_QUERY"),
     (["find", "lookup", "get", "show", "what is"], "SINGLE_ENTITY_LOOKUP"),
