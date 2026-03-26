@@ -63,8 +63,7 @@ class SessionStore:
         """Remove expired sessions. Returns number evicted."""
         now = time.time()
         expired = [
-            k for k, v in self._sessions.items()
-            if now - v.last_accessed > self._ttl_seconds
+            k for k, v in self._sessions.items() if now - v.last_accessed > self._ttl_seconds
         ]
         for k in expired:
             del self._sessions[k]
