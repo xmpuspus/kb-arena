@@ -417,9 +417,10 @@ Real numbers from 75 questions across 5 difficulty tiers, evaluated with a 4-pas
 | RAPTOR | 25.3% | 30% | 16% | 15% | 36% | 30% | 7.2s | $0.69 |
 | Naive Vector | 20.7% | 27% | 15% | 14% | 26% | 22% | 6.4s | $0.33 |
 | Contextual Vector | 16.5% | 25% | 11% | 9% | 26% | 11% | 5.1s | $0.29 |
+| BM25 | 14.0% | 24% | 11% | 9% | 16% | 10% | 4.5s | $0.26 |
 | PageIndex | 14.3% | 19% | 12% | 7% | 21% | 12% | 10.9s | $0.29 |
 
-**Key takeaway:** Q&A pairs dominate overall because pre-generated answers sidestep retrieval failures. Knowledge graph leads on architecture questions (T5: 79%) where structured graph traversal shines. The hybrid strategy adapts per question type but pays a latency/cost premium. PageIndex — the vectorless, reasoning-based approach — scores comparably to contextual vector at $0.29, demonstrating that LLM tree traversal is a viable alternative to embeddings on well-structured docs. RAPTOR's hierarchical retrieval shows strength at T4/T5 but needs a larger corpus. Pure vector RAG — what most teams ship — scores under 21%. Cost ranges from $0.29 (contextual vector / pageindex) to $3.02 (hybrid) for the full 75-question benchmark.
+**Key takeaway:** Q&A pairs dominate overall because pre-generated answers sidestep retrieval failures. Knowledge graph leads on architecture questions (T5: 79%) where structured graph traversal shines. The hybrid strategy adapts per question type but pays a latency/cost premium. BM25 -- the pre-neural keyword baseline -- scores 14.0% overall at the lowest cost ($0.26), confirming that embeddings add meaningful value for this corpus. PageIndex -- the vectorless, reasoning-based approach -- scores comparably to contextual vector at $0.29, demonstrating that LLM tree traversal is a viable alternative to embeddings on well-structured docs. RAPTOR's hierarchical retrieval shows strength at T4/T5 but needs a larger corpus. Pure vector RAG -- what most teams ship -- scores under 21%. Cost ranges from $0.26 (BM25) to $3.02 (hybrid) for the full 75-question benchmark.
 
 These are results from the built-in AWS Compute corpus. Your mileage will vary — that's the whole point of running it on your own docs.
 

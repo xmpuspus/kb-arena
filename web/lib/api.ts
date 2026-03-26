@@ -363,8 +363,8 @@ export const MOCK_BENCHMARK_DATA = [
   },
   {
     strategy: "bm25" as Strategy,
-    tiers: [24, 13, 11, 20, 15],
-    latencyMs: 4800,
-    costUsd: 0.28,
+    tiers: [24, 11, 9, 16, 10],
+    latencyMs: 4514,
+    costUsd: 0.26,
   },
 ];
