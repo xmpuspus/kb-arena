@@ -43,6 +43,8 @@ If you want to know whether a knowledge graph, Q&A pairs, or plain vector search
 
 ## What's New in v0.4.0
 
+![v0.4.0 CLI Demo](docs/v040-demo.gif)
+
 ### RAGAS Metrics
 
 Industry-standard evaluation metrics alongside the existing LLM judge:
@@ -107,6 +109,8 @@ Returns intent classification, retrieval sources, latency breakdown, and cost.
 ### Side-by-Side Strategy Comparison
 
 New "Compare" view in the benchmark UI lets you pick two strategies and see tier-by-tier accuracy, latency, and cost differences side by side.
+
+![Compare View](docs/compare-view.png)
 
 ### Dry-Run Cost Estimates
 
