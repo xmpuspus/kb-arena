@@ -4,7 +4,7 @@ Which retrieval architecture works best for your documentation?
 
 KB Arena benchmarks **8 retrieval strategies** -- naive vector, contextual vector, Q&A pairs, knowledge graph, hybrid, RAPTOR, PageIndex, and BM25 -- on **your** documentation. Bring your docs in any format, run the pipeline, get empirical results. Ships with an AWS Compute corpus (75 questions across 5 difficulty tiers) as a built-in example.
 
-![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-494-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![PyPI](https://img.shields.io/pypi/v/kb-arena) ![CI](https://github.com/xmpuspus/kb-arena/actions/workflows/ci.yml/badge.svg)
+![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-514-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![PyPI](https://img.shields.io/pypi/v/kb-arena) ![CI](https://github.com/xmpuspus/kb-arena/actions/workflows/ci.yml/badge.svg)
 
 ![KB Arena Demo](docs/demo.gif)
 
@@ -38,6 +38,79 @@ Most RAG evaluation tools answer "how well does my pipeline work?" KB Arena answ
 | Standard IR metrics (NDCG, MRR) | Roadmap | Yes | Yes | Partial | No |
 
 If you want to know whether a knowledge graph, Q&A pairs, or plain vector search is the right architecture for your documentation, that's what KB Arena is for.
+
+---
+
+## What's New in v0.4.0
+
+### RAGAS Metrics
+
+Industry-standard evaluation metrics alongside the existing LLM judge:
+
+```bash
+kb-arena benchmark --corpus my-docs --ragas
+```
+
+Adds four metrics per question: **faithfulness** (answer grounded in context), **context precision** (retrieved chunks are relevant), **context recall** (context covers the reference), and **answer relevancy** (answer addresses the question). All computed via LLM-as-judge. Enable with `--ragas` flag or `KB_ARENA_BENCHMARK_ENABLE_RAGAS=true`.
+
+### Reference-Free Evaluation
+
+Benchmark without pre-written ground truth -- useful for quick evaluation of new corpora:
+
+```bash
+kb-arena benchmark --corpus my-docs --reference-free
+```
+
+Scores on faithfulness and answer relevancy only (no accuracy/completeness since there's no reference to compare against).
+
+### Strategy Plugin System
+
+Bring your own retrieval strategy without forking:
+
+```bash
+kb-arena benchmark --strategy-module my_package.my_strategy --strategy my_custom
+```
+
+Your module exports a single `Strategy` subclass with `build_index()` and `query()` methods. KB Arena discovers and registers it automatically.
+
+### CI/CD Eval Command
+
+Gate merges on retrieval quality:
+
+```bash
+kb-arena eval --ci --threshold accuracy=0.7 --threshold faithfulness=0.8
+```
+
+Exits non-zero if any strategy falls below thresholds. Pair with `--format json` for machine-readable output.
+
+### Reliability Improvements
+
+- **`/ready` endpoint** -- returns 503 if Neo4j is configured but unreachable. Use as a k8s/Docker readiness probe.
+- **Exponential backoff** -- benchmark retries use `1s, 2s, 4s` instead of linear `1s, 2s, 3s`.
+- **Embedding retry** -- OpenAI embedding API calls retry 3x with exponential backoff and 30s timeout.
+- **Cost cap** -- halt benchmark if cumulative cost exceeds `KB_ARENA_BENCHMARK_COST_CAP_USD`.
+- **Eval memoization** -- identical answer+reference pairs are scored once and cached.
+- **Arena JSONL** -- append-only vote log at `results/arena_votes.jsonl` survives state resets.
+
+### Debug Endpoint
+
+Trace the full pipeline without generating a final answer:
+
+```bash
+curl -X POST localhost:8000/api/debug/explain \
+  -H "Content-Type: application/json" \
+  -d '{"query": "How does Lambda scaling work?", "strategy": "hybrid"}'
+```
+
+Returns intent classification, retrieval sources, latency breakdown, and cost.
+
+### Side-by-Side Strategy Comparison
+
+New "Compare" view in the benchmark UI lets you pick two strategies and see tier-by-tier accuracy, latency, and cost differences side by side.
+
+### Dry-Run Cost Estimates
+
+`kb-arena benchmark --dry-run` now shows estimated cost and time before you commit to a run.
 
 ---
 
