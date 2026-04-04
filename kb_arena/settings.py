@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     benchmark_max_concurrent: int = 5
     benchmark_query_timeout_s: int = 120
     benchmark_max_retries: int = 2
+    benchmark_cost_cap_usd: float = 0.0  # 0 = unlimited; halt if cumulative cost exceeds
+    benchmark_enable_ragas: bool = False  # enable RAGAS metrics (adds 4 LLM calls per question)
 
     # PageIndex
     pageindex_beam_width: int = 3

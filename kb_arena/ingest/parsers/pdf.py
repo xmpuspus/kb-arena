@@ -34,7 +34,7 @@ def _extract_tables_from_page(page) -> list[Table]:
             rows = [[str(c) if c else "" for c in row] for row in data[1:]]
             tables.append(Table(headers=headers, rows=rows))
     except Exception:  # noqa: BLE001
-        pass
+        log.debug("Table extraction failed for page", exc_info=True)
     return tables
 
 

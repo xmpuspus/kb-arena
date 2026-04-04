@@ -208,6 +208,19 @@ def benchmark(
         0.0, "--fail-below", help="Exit code 1 if accuracy below threshold (0.0-1.0)"
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview what would be benchmarked"),
+    reference_free: bool = typer.Option(
+        False,
+        "--reference-free",
+        help="Evaluate on faithfulness + relevancy only (no ground truth)",
+    ),
+    ragas: bool = typer.Option(
+        False, "--ragas", help="Enable RAGAS metrics (faithfulness, precision, recall, relevancy)"
+    ),
+    strategy_module: str = typer.Option(
+        "",
+        "--strategy-module",
+        help="Import path for a custom Strategy plugin (e.g. my_pkg.my_strat)",
+    ),
 ):
     """Stage 4: Run benchmark questions against specified strategies.
 
@@ -216,6 +229,11 @@ def benchmark(
     import asyncio
 
     _preflight(needs_anthropic=True, needs_openai=True)
+
+    if strategy_module:
+        from kb_arena.strategies import register_plugin_strategy
+
+        register_plugin_strategy(strategy_module)
 
     if dry_run:
         from kb_arena.benchmark.questions import discover_corpora, load_questions
@@ -244,12 +262,40 @@ def benchmark(
         console.print(f"  Total queries: {total_queries}")
         console.print(f"  Max concurrency: {settings.benchmark_max_concurrent}")
         console.print(f"  Timeout per query: {settings.benchmark_query_timeout_s}s")
+
+        # Cost/time estimates
+        est_cost_per_query = 0.003  # ~$0.003 per query (Haiku eval + Sonnet gen avg)
+        est_judge_cost = 0.005  # ~$0.005 per LLM judge call (Opus)
+        est_cost = total_queries * (est_cost_per_query + est_judge_cost)
+        avg_seconds_per_query = 4.5
+        est_parallel = settings.benchmark_max_concurrent
+        est_time_s = (total_queries / est_parallel) * avg_seconds_per_query
+        est_minutes = est_time_s / 60
+
+        console.print(f"\n  [bold]Estimated cost:[/bold] ~${est_cost:.2f}")
+        console.print(f"  [bold]Estimated time:[/bold] ~{est_minutes:.0f} min")
+        console.print(
+            "  [dim](estimates assume Anthropic provider, actual cost varies by strategy)[/dim]"
+        )
         console.print("\n  Remove --dry-run to execute.")
         return
 
+    if ragas:
+        from kb_arena.settings import settings as _settings
+
+        _settings.benchmark_enable_ragas = True
+
     from kb_arena.benchmark.runner import run_benchmark
 
-    asyncio.run(run_benchmark(corpus=corpus, strategy=strategy, tier=tier, parallel=parallel))
+    asyncio.run(
+        run_benchmark(
+            corpus=corpus,
+            strategy=strategy,
+            tier=tier,
+            parallel=parallel,
+            reference_free=reference_free,
+        )
+    )
 
     if fail_below > 0:
         from kb_arena.benchmark.reporter import _load_results
@@ -717,6 +763,85 @@ def health(
         console.print(f"      vectors: {vec_s}  graph: {graph_s}")
         console.print(f"      questions: {q_s}  results: {r_s}  qa-pairs: {qa_s}")
     console.print()
+
+
+@app.command()
+def eval(
+    corpus: str = typer.Option("all", help="Corpus to evaluate"),
+    ci: bool = typer.Option(False, "--ci", help="CI mode: exit non-zero on regression"),
+    threshold: list[str] = typer.Option(
+        [],
+        "--threshold",
+        help="Metric thresholds as metric=value (e.g. accuracy=0.7 faithfulness=0.8)",
+    ),
+    format: str = typer.Option("rich", help="Output format: rich, json"),
+):
+    """Evaluate latest benchmark results against thresholds.
+
+    CI/CD mode: exits non-zero if any metric falls below its threshold.
+    Use with --ci --threshold accuracy=0.7 --threshold faithfulness=0.8
+    """
+    from kb_arena.benchmark.reporter import _load_results
+
+    parsed_thresholds: dict[str, float] = {}
+    for t in threshold:
+        if "=" not in t:
+            _cli_error("BAD_THRESHOLD", f"Invalid threshold format: {t}. Use metric=value")
+        metric, val = t.split("=", 1)
+        try:
+            parsed_thresholds[metric.strip()] = float(val.strip())
+        except ValueError:
+            _cli_error("BAD_THRESHOLD", f"Invalid threshold value: {val}")
+
+    results = _load_results(corpus if corpus != "all" else None)
+    if not results:
+        _cli_error("NO_RESULTS", "No results found. Run benchmark first.", fmt=format)
+
+    failed = False
+    for r in results:
+        if not r.accuracy_by_tier:
+            continue
+        avg_acc = sum(r.accuracy_by_tier.values()) / len(r.accuracy_by_tier)
+        metrics = {
+            "accuracy": avg_acc,
+            "faithfulness": r.reliability.avg_faithfulness if r.reliability else 0.0,
+        }
+
+        for metric, thresh in parsed_thresholds.items():
+            actual = metrics.get(metric, 0.0)
+            if actual < thresh:
+                console.print(f"[red]FAIL: {r.strategy} {metric}={actual:.3f} < {thresh}[/red]")
+                failed = True
+            elif ci:
+                console.print(
+                    f"[green]PASS: {r.strategy} {metric}={actual:.3f} >= {thresh}[/green]"
+                )
+
+    if format == "json":
+        import json as _json
+        import sys
+
+        summary = {
+            "strategies": [
+                {
+                    "strategy": r.strategy,
+                    "accuracy": (
+                        sum(r.accuracy_by_tier.values()) / len(r.accuracy_by_tier)
+                        if r.accuracy_by_tier
+                        else 0.0
+                    ),
+                    "cost": r.total_cost_usd,
+                }
+                for r in results
+            ],
+            "passed": not failed,
+        }
+        sys.stdout.write(_json.dumps(summary, indent=2) + "\n")
+
+    if ci and failed:
+        raise typer.Exit(1)
+    if ci and not failed:
+        console.print("[green]All thresholds passed.[/green]")
 
 
 if __name__ == "__main__":
