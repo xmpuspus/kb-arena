@@ -280,6 +280,7 @@ class PageIndexStrategy(Strategy):
         super().__init__()
         self._llm = None
         self._trees: dict[str, CorpusTree] = {}
+        self._trees_loaded: bool = False
 
     def _get_llm(self):
         if self._llm is None:
@@ -302,8 +303,12 @@ class PageIndexStrategy(Strategy):
         return tree
 
     def _load_all_trees(self) -> list[CorpusTree]:
-        """Load all available corpus trees (for chatbot path where corpus is unknown)."""
-        if self._trees:
+        """Load all available corpus trees (for chatbot path where corpus is unknown).
+
+        Uses self._trees_loaded flag to avoid repeated disk scans while still
+        allowing per-corpus loads to populate the cache incrementally.
+        """
+        if self._trees_loaded:
             return list(self._trees.values())
 
         base = Path(settings.datasets_path)
@@ -316,6 +321,7 @@ class PageIndexStrategy(Strategy):
                 except Exception as exc:
                     logger.warning("Failed to load tree for %s: %s", corpus_name, exc)
 
+        self._trees_loaded = True
         return list(self._trees.values())
 
     async def build_index(self, documents: list[Document]) -> None:

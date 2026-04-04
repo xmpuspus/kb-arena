@@ -47,6 +47,11 @@ class Score(BaseModel):
     mentions_found: list[str] = Field(default_factory=list)
     false_claims: list[str] = Field(default_factory=list)
     entities_found: list[str] = Field(default_factory=list)
+    # RAGAS-compatible metrics (v0.4.0)
+    ragas_faithfulness: float = Field(ge=0.0, le=1.0, default=0.0)
+    ragas_context_precision: float = Field(ge=0.0, le=1.0, default=0.0)
+    ragas_context_recall: float = Field(ge=0.0, le=1.0, default=0.0)
+    ragas_answer_relevancy: float = Field(ge=0.0, le=1.0, default=0.0)
 
 
 class AnswerRecord(BaseModel):

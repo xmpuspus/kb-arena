@@ -38,7 +38,7 @@ STRATEGY_NAMES = [
     "bm25",
 ]
 
-RETRY_BACKOFF_S = 1.0
+RETRY_BASE_S = 1.0  # base for exponential backoff: 1s, 2s, 4s, ...
 
 
 def _load_strategies(strategy_filter: str) -> list[Strategy]:
@@ -95,6 +95,7 @@ async def _run_one(
                     constraints,
                     sources=sources,
                     llm=llm,
+                    question_text=question_text,
                 )
 
                 return AnswerRecord(
@@ -118,14 +119,14 @@ async def _run_one(
                 latency_ms = (time.perf_counter() - t0) * 1000
                 last_error = f"Timeout after {query_timeout}s"
                 if attempt <= max_retries:
-                    await asyncio.sleep(RETRY_BACKOFF_S * attempt)
+                    await asyncio.sleep(RETRY_BASE_S * (2 ** (attempt - 1)))
                     continue
 
             except Exception as e:
                 latency_ms = (time.perf_counter() - t0) * 1000
                 last_error = str(e)
                 if attempt <= max_retries:
-                    await asyncio.sleep(RETRY_BACKOFF_S * attempt)
+                    await asyncio.sleep(RETRY_BASE_S * (2 ** (attempt - 1)))
                     continue
 
         # All retries exhausted
@@ -237,11 +238,16 @@ def _aggregate(
     return bench
 
 
+class CostCapExceededError(Exception):
+    """Raised when cumulative benchmark cost exceeds the configured cap."""
+
+
 async def run_benchmark(
     corpus: str = "all",
     strategy: str = "all",
     tier: int = 0,
     parallel: bool = True,
+    reference_free: bool = False,
 ) -> None:
     """Run benchmark questions against specified strategies.
 
@@ -273,7 +279,12 @@ async def run_benchmark(
         console.print("[red]No strategies available. Run build_vectors / build_graph first.[/red]")
         return
 
+    cost_cap = settings.benchmark_cost_cap_usd
+    cumulative_total_cost = 0.0
+
     console.print(f"[dim]Run ID: {run_id}[/dim]")
+    if cost_cap > 0:
+        console.print(f"[dim]Cost cap: ${cost_cap:.2f}[/dim]")
 
     for corp in corpora:
         try:
@@ -345,12 +356,19 @@ async def run_benchmark(
                     else 0.0
                 )
                 cumulative_cost += bench.total_cost_usd
+                cumulative_total_cost += bench.total_cost_usd
                 console.print(
                     f"  {bench.strategy}: {len(bench.records)} questions, "
                     f"acc={overall_acc:.1%}, "
                     f"${bench.total_cost_usd:.4f}, "
                     f"avg {bench.avg_latency_ms:.0f}ms"
                 )
+            if cost_cap > 0 and cumulative_total_cost >= cost_cap:
+                console.print(
+                    f"[red]Cost cap exceeded: ${cumulative_total_cost:.4f} >= "
+                    f"${cost_cap:.2f}. Halting benchmark.[/red]"
+                )
+                return
         else:
             # Sequential path
             with Progress(
@@ -385,11 +403,21 @@ async def run_benchmark(
                         rec = await coro
                         bench.records.append(rec)
                         cumulative_cost += rec.cost_usd
+                        cumulative_total_cost += rec.cost_usd
                         progress.update(
                             task,
                             description=f"[cyan]{corp} [dim]${cumulative_cost:.4f}[/dim]",
                         )
                         progress.advance(task)
+
+                        if cost_cap > 0 and cumulative_total_cost >= cost_cap:
+                            console.print(
+                                f"\n[red]Cost cap exceeded: ${cumulative_total_cost:.4f} >= "
+                                f"${cost_cap:.2f}. Halting benchmark.[/red]"
+                            )
+                            bench = _aggregate(bench, questions_map)
+                            _write_result(bench)
+                            return
 
                     bench = _aggregate(bench, questions_map)
                     _write_result(bench)

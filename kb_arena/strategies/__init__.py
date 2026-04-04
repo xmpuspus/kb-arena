@@ -115,6 +115,38 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
     )
 
 
+def register_plugin_strategy(module_path: str) -> None:
+    """Import a user module and register its Strategy subclass.
+
+    Usage: --strategy-module my_package.my_strategy
+    The module must contain exactly one class that subclasses Strategy.
+    """
+    import importlib
+
+    from kb_arena.strategies.base import Strategy as _Base
+
+    mod = importlib.import_module(module_path)
+    candidates = [
+        obj
+        for name in dir(mod)
+        if not name.startswith("_")
+        for obj in [getattr(mod, name)]
+        if isinstance(obj, type) and issubclass(obj, _Base) and obj is not _Base
+    ]
+    if not candidates:
+        raise ValueError(f"No Strategy subclass found in {module_path}")
+    if len(candidates) > 1:
+        raise ValueError(
+            f"Multiple Strategy subclasses in {module_path}: "
+            f"{[c.__name__ for c in candidates]}. Export exactly one."
+        )
+
+    cls = candidates[0]
+    name = getattr(cls, "name", module_path.split(".")[-1])
+    STRATEGY_REGISTRY[name] = cls
+    logger.info("Registered plugin strategy: %s from %s", name, module_path)
+
+
 def get_strategy(name: str):
     """Instantiate a strategy by name. Used by the benchmark runner."""
     import chromadb

@@ -27,8 +27,12 @@ class ChatRequest(BaseModel):
     @field_validator("corpus")
     @classmethod
     def validate_corpus(cls, v: str) -> str:
-        if ".." in v or "/" in v or "\\" in v or "\0" in v:
-            raise ValueError("Invalid corpus name")
+        import re
+
+        if not re.match(r"^[a-zA-Z0-9_-]+$", v):
+            raise ValueError(
+                "Invalid corpus name: must contain only letters, digits, hyphens, underscores"
+            )
         return v
 
 

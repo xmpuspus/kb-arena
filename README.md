@@ -169,6 +169,7 @@ kb-arena report --format html   # shareable dashboard
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 0.4.0 | 2026-04-04 | RAGAS metrics (faithfulness, context precision/recall, answer relevancy), reference-free eval mode, LLM eval memoization, cost cap enforcement, strategy plugin system (`--strategy-module`), CI/CD eval command (`kb-arena eval --ci`), debug/explain endpoint, `/ready` health probe, exponential backoff on retries, embedding API retry+timeout, arena ELO JSONL persistence, side-by-side strategy comparison UI, benchmark dry-run cost estimates, tightened corpus validation |
 | 0.3.1 | 2026-03-26 | Production hardening (session IDs, TTL, CORS config, corpus validation), streaming cost for OpenAI/Ollama, parallel QnA build, custom exceptions, error boundary, graph schema cleanup, 494 tests |
 | 0.3.0 | 2026-03-20 | Multi-LLM providers (Anthropic/OpenAI/Ollama), Strategy Arena, BM25 strategy, parallel benchmarks, tiktoken chunking, cost tracking fixes, run comparison, CI fail-below, CSV/HTML export, bundled frontend |
 | 0.2.1 | 2026-03-03 | PageIndex strategy, verbose mode, retry logic, parallel extraction, eval independence |
@@ -600,7 +601,7 @@ All prefixed with `KB_ARENA_`. Loaded from `.env` or environment.
 pip install -e '.[dev]'
 
 # Run tests
-pytest tests/ -v --ignore=tests/live  # 494 tests
+pytest tests/ -v --ignore=tests/live  # 514 tests
 
 # Lint + format
 ruff check . && ruff format --check .
@@ -623,7 +624,7 @@ cd web && npm install && npx next build
 | Frontend | Next.js 14 + Tailwind + Recharts |
 | Models | Pydantic v2 |
 | CLI | Typer + Rich |
-| Testing | pytest (494 tests) |
+| Testing | pytest (514 tests) |
 
 ---
 

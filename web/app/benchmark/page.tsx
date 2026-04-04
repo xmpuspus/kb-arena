@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import BenchmarkTable from "@/components/BenchmarkTable";
 import TierChart from "@/components/TierChart";
+import StrategyCompare from "@/components/StrategyCompare";
 import {
   MOCK_BENCHMARK_DATA,
   CORPORA,
@@ -10,7 +11,7 @@ import {
   fetchCorpora,
 } from "@/lib/api";
 
-type ViewMode = "table" | "chart" | "both";
+type ViewMode = "table" | "chart" | "both" | "compare";
 
 export default function BenchmarkPage() {
   const [corpus, setCorpus] = useState("all");
@@ -60,7 +61,7 @@ export default function BenchmarkPage() {
         </div>
 
         <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: "var(--border)" }}>
-          {(["table", "chart", "both"] as ViewMode[]).map((v) => (
+          {(["table", "chart", "both", "compare"] as ViewMode[]).map((v) => (
             <button
               key={v}
               onClick={() => setView(v)}
@@ -98,6 +99,10 @@ export default function BenchmarkPage() {
             </h2>
             <TierChart rows={rows} />
           </div>
+        )}
+
+        {view === "compare" && (
+          <StrategyCompare rows={rows} />
         )}
       </div>
 

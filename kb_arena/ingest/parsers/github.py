@@ -74,7 +74,7 @@ class GitHubParser:
             if "/" in repo_spec:
                 return self._parse_remote(repo_spec, corpus)
         except Exception:  # noqa: BLE001
-            pass
+            log.warning("Failed to read repo spec from %s", path, exc_info=True)
 
         return []
 

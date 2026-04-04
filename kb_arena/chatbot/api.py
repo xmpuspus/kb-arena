@@ -40,8 +40,12 @@ class _GraphBuildRequest(BaseModel):
     @field_validator("corpus")
     @classmethod
     def _validate(cls, v: str) -> str:
-        if ".." in v or "/" in v or "\\" in v or "\0" in v:
-            raise ValueError("Invalid corpus name")
+        import re
+
+        if not re.match(r"^[a-zA-Z0-9_-]+$", v):
+            raise ValueError(
+                "Invalid corpus name: must contain only letters, digits, hyphens, underscores"
+            )
         return v
 
 
@@ -158,7 +162,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="KB Arena API",
     description="Benchmark retrieval strategies on your documentation.",
-    version="0.3.1",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
@@ -628,6 +632,102 @@ async def health(request: Request) -> dict:
         "status": "ok",
         "neo4j": "connected" if neo4j_ok else "unavailable (mock mode)",
         "strategies": list(request.app.state.strategies.keys()),
+    }
+
+
+@app.get("/ready")
+async def readiness(request: Request) -> JSONResponse:
+    """Readiness probe — fails if Neo4j is configured but unreachable.
+
+    Use for orchestrators (k8s, docker compose) that need to know when
+    the service is actually ready to serve traffic, not just alive.
+    """
+    checks: dict[str, bool] = {}
+    ready = True
+
+    # Neo4j: only required if a neo4j-dependent strategy is loaded
+    neo4j_strategies = {"knowledge_graph", "hybrid"}
+    loaded = set(request.app.state.strategies.keys())
+    needs_neo4j = bool(loaded & neo4j_strategies)
+
+    if needs_neo4j:
+        driver = request.app.state.neo4j
+        if driver is None:
+            checks["neo4j"] = False
+            ready = False
+        else:
+            try:
+                await driver.verify_connectivity()
+                checks["neo4j"] = True
+            except Exception:
+                checks["neo4j"] = False
+                ready = False
+    else:
+        checks["neo4j"] = True  # not needed
+
+    # LLM: check if at least one API key is configured
+    checks["llm_configured"] = bool(settings.anthropic_api_key or settings.openai_api_key)
+    if not checks["llm_configured"]:
+        ready = False
+
+    status_code = 200 if ready else 503
+    return JSONResponse(
+        {"ready": ready, "checks": checks},
+        status_code=status_code,
+    )
+
+
+@app.post("/api/debug/explain")
+async def debug_explain(body: ChatRequest, request: Request) -> dict:
+    """Debug endpoint: show intent classification, retrieval chunks, and routing decision.
+
+    Returns the full pipeline trace without generating a final answer.
+    """
+    strategies = request.app.state.strategies
+    router = request.app.state.router
+
+    # Step 1: Intent classification
+    intent = "unknown"
+    try:
+        intent = await router.classify(body.query)
+    except Exception as exc:
+        intent = f"error: {exc}"
+
+    # Step 2: Strategy resolution
+    strategy_name = body.strategy
+    strategy = strategies.get(strategy_name)
+    if not strategy:
+        return {
+            "intent": intent,
+            "strategy": strategy_name,
+            "error": f"Unknown strategy: {strategy_name}",
+        }
+
+    # Step 3: Query the strategy to get retrieval results
+    import time as _time
+
+    t0 = _time.perf_counter()
+    try:
+        result = await strategy.query(body.query, top_k=5)
+        latency_ms = (_time.perf_counter() - t0) * 1000
+    except Exception as exc:
+        return {
+            "intent": intent,
+            "strategy": strategy_name,
+            "error": f"Query failed: {exc}",
+        }
+
+    return {
+        "intent": intent,
+        "strategy": strategy_name,
+        "answer_preview": result.answer[:500] if result.answer else "",
+        "sources": result.sources,
+        "graph_context": result.graph_context.model_dump() if result.graph_context else None,
+        "latency_ms": round(latency_ms, 1),
+        "retrieval_latency_ms": round(result.retrieval_latency_ms, 1),
+        "generation_latency_ms": round(result.generation_latency_ms, 1),
+        "tokens_used": result.tokens_used,
+        "cost_usd": result.cost_usd,
     }
 
 

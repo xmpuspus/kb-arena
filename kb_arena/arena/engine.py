@@ -162,6 +162,7 @@ class ArenaEngine:
         self.state.total_votes += 1
         self._update_elo(match)
         self.state.save(self._state_path)
+        self._append_vote_jsonl(match)
 
         return {
             "strategy_a": match.strategy_a,
@@ -225,6 +226,26 @@ class ArenaEngine:
                 }
             )
         return sorted(board, key=lambda x: x["elo"], reverse=True)
+
+    def _append_vote_jsonl(self, match: Match) -> None:
+        """Append-only JSONL log of all votes (survives state resets)."""
+        jsonl_path = self._state_path.parent / "arena_votes.jsonl"
+        jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "match_id": match.id,
+            "question": match.question[:200],
+            "strategy_a": match.strategy_a,
+            "strategy_b": match.strategy_b,
+            "winner": match.winner,
+            "latency_a_ms": round(match.latency_a_ms, 1),
+            "latency_b_ms": round(match.latency_b_ms, 1),
+            "cost_a": match.cost_a,
+            "cost_b": match.cost_b,
+            "timestamp": match.timestamp,
+            "elo_snapshot": {k: round(v, 1) for k, v in self.state.elo.items()},
+        }
+        with open(jsonl_path, "a") as f:
+            f.write(json.dumps(record) + "\n")
 
     def get_pending_match(self, match_id: str) -> Match | None:
         """Get a match by ID."""

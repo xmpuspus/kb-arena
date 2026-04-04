@@ -48,7 +48,7 @@ def _check_llms_txt(base_url: str, client) -> str | None:
             log.info("Found llms.txt at %s — using as primary source", llms_url)
             return resp.text
     except Exception:  # noqa: BLE001
-        pass
+        log.debug("llms.txt check failed for %s", llms_url, exc_info=True)
     return None
 
 
@@ -102,6 +102,7 @@ class WebParser:
             try:
                 url = path.read_text().strip()
             except Exception:  # noqa: BLE001
+                log.warning("Failed to read URL from %s", path, exc_info=True)
                 return []
             if not url.startswith(("http://", "https://")):
                 return []

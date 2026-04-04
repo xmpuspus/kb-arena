@@ -1,18 +1,24 @@
-"""Two-pass evaluator: structural checks (no LLM) then LLM-as-judge.
+"""Multi-pass evaluator: structural checks, entity coverage, source attribution,
+LLM-as-judge, and optional RAGAS metrics.
 
-Enhanced with entity coverage and source attribution scoring.
+Includes evaluation memoization to avoid re-scoring identical answer+reference pairs.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
 
 from kb_arena.llm.client import LLMClient
 from kb_arena.models.benchmark import Constraints, GroundTruth, Score
+from kb_arena.settings import settings
 
 logger = logging.getLogger(__name__)
+
+# Memoization cache: (answer_hash, reference_hash) -> Score
+_eval_cache: dict[tuple[str, str], Score] = {}
 
 JUDGE_SYSTEM_PROMPT = """You are an expert evaluator for a retrieval benchmark.
 
@@ -30,6 +36,10 @@ Scoring guidance:
 - faithfulness: Does it avoid hallucination/fabrication? 1.0 = no fabrication, 0.0 = makes things up
 
 Be strict. A partially correct answer scores 0.5-0.7, not 0.9."""
+
+
+def _hash_text(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
 def _structural_check(answer: str, constraints: Constraints) -> Score:
@@ -118,6 +128,9 @@ async def evaluate(
     constraints: Constraints,
     sources: list[str] | None = None,
     llm: LLMClient | None = None,
+    question_text: str = "",
+    context_chunks: list[str] | None = None,
+    reference_free: bool = False,
 ) -> Score:
     """Multi-pass evaluation.
 
@@ -125,36 +138,83 @@ async def evaluate(
     Pass 2: entity coverage (required_entities) — <1ms
     Pass 3: source attribution (source_refs vs returned sources) — <1ms
     Pass 4: LLM-as-judge (accuracy, completeness, faithfulness) — ~500ms
+    Pass 5: RAGAS metrics (faithfulness, context_precision, context_recall, answer_relevancy)
+
+    reference_free=True skips passes that need ground_truth.answer and evaluates
+    on faithfulness + answer relevancy only.
     """
-    score = _structural_check(answer, constraints)
+    # Memoization check
+    answer_hash = _hash_text(answer)
+    ref_hash = _hash_text(ground_truth.answer) if not reference_free else "ref-free"
+    cache_key = (answer_hash, ref_hash)
+    if cache_key in _eval_cache:
+        logger.debug("Eval cache hit for %s", cache_key)
+        return _eval_cache[cache_key].model_copy()
 
-    # Entity coverage
-    entity_ratio, entities_found = _check_entity_coverage(answer, ground_truth.required_entities)
-    score.entity_coverage = entity_ratio
-    score.entities_found = entities_found
+    if reference_free:
+        # Reference-free mode: skip structural checks that need ground truth
+        score = Score(accuracy=0.0, completeness=0.0, faithfulness=1.0, structural_pass=True)
+    else:
+        score = _structural_check(answer, constraints)
 
-    # Source attribution
-    score.source_attribution = _check_source_attribution(sources or [], ground_truth.source_refs)
+        # Entity coverage
+        entity_ratio, entities_found = _check_entity_coverage(
+            answer, ground_truth.required_entities
+        )
+        score.entity_coverage = entity_ratio
+        score.entities_found = entities_found
+
+        # Source attribution
+        score.source_attribution = _check_source_attribution(
+            sources or [], ground_truth.source_refs
+        )
 
     if not score.structural_pass or llm is None:
+        _eval_cache[cache_key] = score
         return score
 
-    # Pass 4: LLM-as-judge
-    try:
-        resp = await llm.judge(
-            answer=answer,
-            reference=ground_truth.answer,
-            system_prompt=JUDGE_SYSTEM_PROMPT,
-        )
-        # Extract JSON — tolerate markdown fences
-        json_match = re.search(r"\{[^}]+\}", resp.text, re.DOTALL)
-        if json_match:
-            parsed = json.loads(json_match.group())
-            score.accuracy = float(parsed.get("accuracy", score.accuracy))
-            score.completeness = float(parsed.get("completeness", score.completeness))
-            score.faithfulness = float(parsed.get("faithfulness", score.faithfulness))
-    except Exception as exc:
-        # Structural score stands if judge fails
-        logger.warning("LLM judge failed, using structural score only: %s", exc)
+    # Pass 4: LLM-as-judge (skip in reference-free mode)
+    if not reference_free:
+        try:
+            resp = await llm.judge(
+                answer=answer,
+                reference=ground_truth.answer,
+                system_prompt=JUDGE_SYSTEM_PROMPT,
+            )
+            json_match = re.search(r"\{[^}]+\}", resp.text, re.DOTALL)
+            if json_match:
+                parsed = json.loads(json_match.group())
+                score.accuracy = float(parsed.get("accuracy", score.accuracy))
+                score.completeness = float(parsed.get("completeness", score.completeness))
+                score.faithfulness = float(parsed.get("faithfulness", score.faithfulness))
+        except Exception as exc:
+            logger.warning("LLM judge failed, using structural score only: %s", exc)
 
+    # Pass 5: RAGAS metrics (if enabled)
+    if settings.benchmark_enable_ragas and llm is not None:
+        from kb_arena.benchmark.ragas_metrics import (
+            compute_answer_relevancy,
+            compute_context_precision,
+            compute_context_recall,
+            compute_faithfulness,
+        )
+
+        chunks = context_chunks or []
+        try:
+            score.ragas_answer_relevancy = await compute_answer_relevancy(
+                question_text, answer, llm
+            )
+            if chunks:
+                score.ragas_faithfulness = await compute_faithfulness(answer, chunks, llm)
+                score.ragas_context_precision = await compute_context_precision(
+                    question_text, chunks, llm
+                )
+            if not reference_free and ground_truth.answer:
+                score.ragas_context_recall = await compute_context_recall(
+                    ground_truth.answer, chunks, llm
+                )
+        except Exception as exc:
+            logger.warning("RAGAS metrics failed: %s", exc)
+
+    _eval_cache[cache_key] = score
     return score
