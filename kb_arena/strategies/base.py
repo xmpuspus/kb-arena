@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from kb_arena.models.document import Document
 from kb_arena.models.graph import GraphContext
+from kb_arena.models.retrieval import RetrievalTrace
 
 
 class AnswerResult(BaseModel):
@@ -21,6 +22,7 @@ class AnswerResult(BaseModel):
     answer: str
     sources: list[str] = Field(default_factory=list)
     graph_context: GraphContext | None = None
+    retrieval: RetrievalTrace | None = None
     strategy: str = ""
     latency_ms: float = 0.0
     retrieval_latency_ms: float = 0.0
