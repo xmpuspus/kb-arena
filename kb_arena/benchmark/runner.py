@@ -14,6 +14,7 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from kb_arena.benchmark.evaluator import evaluate
+from kb_arena.benchmark.ir_metrics import compute_all as compute_ir_metrics
 from kb_arena.benchmark.questions import discover_corpora, load_questions
 from kb_arena.llm.client import LLMClient
 from kb_arena.models.benchmark import (
@@ -61,8 +62,10 @@ async def _run_one(
     question_text: str,
     ground_truth,
     constraints,
+    expected_chunks: list[str],
     llm: LLMClient,
     semaphore: asyncio.Semaphore,
+    top_k: int = 5,
 ) -> AnswerRecord:
     async with semaphore:
         attempt = 0
@@ -75,7 +78,7 @@ async def _run_one(
             t0 = time.perf_counter()
             try:
                 result = await asyncio.wait_for(
-                    strategy.query(question_text),
+                    strategy.query(question_text, top_k=top_k),
                     timeout=query_timeout,
                 )
                 latency_ms = (time.perf_counter() - t0) * 1000
@@ -98,6 +101,15 @@ async def _run_one(
                     question_text=question_text,
                 )
 
+                ir_metrics = None
+                if result.retrieval and result.retrieval.retrieved:
+                    ir_metrics = compute_ir_metrics(
+                        retrieved=result.retrieval.retrieved,
+                        expected_ids=set(expected_chunks),
+                        k=top_k,
+                        expected_doc_ids=set(ground_truth.source_refs),
+                    )
+
                 return AnswerRecord(
                     question_id=question_id,
                     strategy=strategy.name,
@@ -113,6 +125,7 @@ async def _run_one(
                     is_empty=is_empty,
                     attempt_count=attempt,
                     response_length=len(answer) if answer else 0,
+                    retrieval_metrics=ir_metrics,
                 )
 
             except TimeoutError:
@@ -235,6 +248,18 @@ def _aggregate(
     bench.cost_per_correct = total_cost / correct if correct else 0.0
     bench.total_questions = n
 
+    ir_records = [r for r in bench.records if r.retrieval_metrics]
+    if ir_records:
+        bench.ir_top_k = ir_records[0].retrieval_metrics.k
+        denom = len(ir_records)
+        bench.mean_recall_at_k = sum(r.retrieval_metrics.recall_at_k for r in ir_records) / denom
+        bench.mean_precision_at_k = (
+            sum(r.retrieval_metrics.precision_at_k for r in ir_records) / denom
+        )
+        bench.mean_hit_at_k = sum(r.retrieval_metrics.hit_at_k for r in ir_records) / denom
+        bench.mean_mrr = sum(r.retrieval_metrics.mrr for r in ir_records) / denom
+        bench.mean_ndcg_at_k = sum(r.retrieval_metrics.ndcg_at_k for r in ir_records) / denom
+
     return bench
 
 
@@ -248,6 +273,7 @@ async def run_benchmark(
     tier: int = 0,
     parallel: bool = True,
     reference_free: bool = False,
+    top_k: int = 5,
 ) -> None:
     """Run benchmark questions against specified strategies.
 
@@ -265,6 +291,7 @@ async def run_benchmark(
         "generate_model": settings.generate_model,
         "max_concurrent": settings.benchmark_max_concurrent,
         "query_timeout_s": settings.benchmark_query_timeout_s,
+        "top_k": top_k,
     }
 
     llm = LLMClient()
@@ -332,7 +359,15 @@ async def run_benchmark(
                     )
                     coros = [
                         _run_one(
-                            strat, q.id, q.question, q.ground_truth, q.constraints, llm, semaphore
+                            strat,
+                            q.id,
+                            q.question,
+                            q.ground_truth,
+                            q.constraints,
+                            q.expected_chunks,
+                            llm,
+                            semaphore,
+                            top_k=top_k,
                         )
                         for q in questions
                     ]
@@ -394,7 +429,15 @@ async def run_benchmark(
 
                     coros = [
                         _run_one(
-                            strat, q.id, q.question, q.ground_truth, q.constraints, llm, semaphore
+                            strat,
+                            q.id,
+                            q.question,
+                            q.ground_truth,
+                            q.constraints,
+                            q.expected_chunks,
+                            llm,
+                            semaphore,
+                            top_k=top_k,
                         )
                         for q in questions
                     ]

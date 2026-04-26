@@ -123,6 +123,29 @@ def _build_markdown(results: list[BenchmarkResult]) -> str:
             )
         lines.append("")
 
+        # 1b. Retrieval Quality (IR metrics) — only render when populated
+        ir_results = [r for r in corpus_results if r.mean_recall_at_k or r.mean_mrr]
+        if ir_results:
+            k = ir_results[0].ir_top_k
+            lines.append(f"### Retrieval Quality (top-{k})")
+            lines.append("")
+            lines.append(
+                f"| Strategy | Recall@{k} | Precision@{k} | Hit@{k} | MRR | NDCG@{k} |"
+            )
+            lines.append(
+                "|----------|------------|---------------|---------|-----|----------|"
+            )
+            for r in ir_results:
+                lines.append(
+                    f"| {r.strategy} "
+                    f"| {_format_pct(r.mean_recall_at_k)} "
+                    f"| {_format_pct(r.mean_precision_at_k)} "
+                    f"| {_format_pct(r.mean_hit_at_k)} "
+                    f"| {r.mean_mrr:.3f} "
+                    f"| {r.mean_ndcg_at_k:.3f} |"
+                )
+            lines.append("")
+
         # 2. Latency Distribution by Strategy
         lines.append("### Latency Distribution by Strategy")
         lines.append("")
