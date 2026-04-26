@@ -159,3 +159,40 @@ def test_compute_all_carries_k():
     retrieved = [_chunk("a", rank=1)]
     metrics = compute_all(retrieved, expected_ids={"a"}, k=10)
     assert metrics.k == 10
+
+
+def test_hierarchical_match_section_label_matches_subchunk():
+    """Expected section ID 'doc::sec' should match retrieved sub-chunk 'doc::sec::0'."""
+    retrieved = [_chunk("doc::sec::0", rank=1), _chunk("doc::sec::1", rank=2)]
+    metrics = compute_all(retrieved, expected_ids={"doc::sec"}, k=5)
+    assert metrics.recall_at_k == 1.0
+    assert metrics.hit_at_k == 1
+    assert metrics.mrr == 1.0
+    # Both subchunks count as the same canonical hit for hits list
+    assert metrics.hits == ["doc::sec"]
+
+
+def test_hierarchical_match_does_not_match_unrelated_prefix():
+    retrieved = [_chunk("doc::other::0", rank=1)]
+    metrics = compute_all(retrieved, expected_ids={"doc::sec"}, k=5)
+    assert metrics.recall_at_k == 0.0
+    assert metrics.hit_at_k == 0
+
+
+def test_hierarchical_match_no_partial_segment():
+    """Prefix matching must respect '::' delimiters (no partial-segment match)."""
+    retrieved = [_chunk("documentation::0", rank=1)]
+    metrics = compute_all(retrieved, expected_ids={"doc"}, k=5)
+    assert metrics.recall_at_k == 0.0
+
+
+def test_hierarchical_ndcg_dedupes_per_expected():
+    """Two sub-chunks of the same section should not double-count NDCG."""
+    retrieved = [
+        _chunk("doc::sec::0", rank=1),
+        _chunk("doc::sec::1", rank=2),
+        _chunk("doc::sec::2", rank=3),
+    ]
+    metrics = compute_all(retrieved, expected_ids={"doc::sec"}, k=3)
+    # NDCG should be 1.0 — single expected matched at rank 1 with IDCG also rank 1
+    assert metrics.ndcg_at_k == pytest.approx(1.0)

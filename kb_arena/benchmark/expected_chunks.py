@@ -23,16 +23,23 @@ from kb_arena.strategies.bm25 import BM25Strategy
 
 log = logging.getLogger(__name__)
 
-JUDGE_PROMPT = """You are labeling retrieval ground truth. Given a QUESTION and CANDIDATE chunks,
-return a JSON array of chunk_ids that contain information directly relevant to answering it.
-Be strict: a chunk is "relevant" only if it contains content needed to answer.
+JUDGE_PROMPT = """You are labeling retrieval ground truth for a documentation QA benchmark.
+
+Given a QUESTION and CANDIDATE chunks, identify which chunks contain information
+that helps answer the question — including partial information, supporting context,
+and related details. Err on the side of inclusion if a chunk is plausibly useful;
+exclude only chunks that are clearly off-topic.
 
 QUESTION: {question}
 
 CANDIDATES:
 {candidates}
 
-Return ONLY a JSON array of chunk_id strings. Example:
+OUTPUT FORMAT — strict:
+Return ONLY a single JSON array literal of chunk_id strings. No prose, no reasoning,
+no code fences. If nothing is relevant, return [].
+
+Example:
 ["lambda-overview::pricing", "ec2-overview::instance-types"]"""
 
 
@@ -45,6 +52,37 @@ def _strip_fences(text: str) -> str:
         if text.endswith("```"):
             text = text[: -len("```")]
     return text.strip()
+
+
+def _extract_json_array(text: str) -> str | None:
+    """Extract the first balanced JSON array '[...]' from possibly noisy text."""
+    text = _strip_fences(text)
+    start = text.find("[")
+    if start < 0:
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
 
 
 async def label_one_question(
@@ -63,16 +101,23 @@ async def label_one_question(
     )
     prompt = JUDGE_PROMPT.format(question=question_text, candidates=candidates_text)
 
-    resp = await llm.extract(text=prompt, system_prompt="Return only valid JSON.")
-    text = _strip_fences(resp.text)
+    resp = await llm.extract(
+        text=prompt,
+        system_prompt="You output only a JSON array literal. No prose. No markdown.",
+    )
+    valid = {c.chunk_id for c in result.retrieval.retrieved}
+    array_text = _extract_json_array(resp.text)
+    if array_text is None:
+        log.warning("No JSON array in judge output: %.200s", resp.text)
+        return [], resp.cost_usd
     try:
-        ids = json.loads(text)
-        if isinstance(ids, list):
-            valid = {c.chunk_id for c in result.retrieval.retrieved}
-            return [str(x) for x in ids if str(x) in valid], resp.cost_usd
+        ids = json.loads(array_text)
     except json.JSONDecodeError:
-        log.warning("Failed to parse judge output: %.200s", text)
-    return [], resp.cost_usd
+        log.warning("Failed to parse judge output: %.200s", array_text)
+        return [], resp.cost_usd
+    if not isinstance(ids, list):
+        return [], resp.cost_usd
+    return [str(x) for x in ids if str(x) in valid], resp.cost_usd
 
 
 async def label_corpus(

@@ -4,6 +4,11 @@ All five metrics operate on a list of retrieved IDs and a set of expected IDs.
 compute_all() falls back to doc-level matching (chunk.doc_id) when chunk-level
 expected IDs are absent — preserves usefulness when a corpus has no chunk
 labels but does have ground-truth source_refs.
+
+Identifier hierarchy: chunk IDs are "::"-delimited paths (e.g. doc::section::0).
+When an expected_id is a strict prefix of a retrieved chunk_id (e.g. expected
+doc::section matches retrieved doc::section::0), it counts as a match. This
+lets section-level ground truth match against sub-chunk retrievals.
 """
 
 from __future__ import annotations
@@ -14,41 +19,60 @@ from kb_arena.models.benchmark import RetrievalMetrics
 from kb_arena.models.retrieval import RetrievedChunk
 
 
+def _match_expected(chunk_id: str, expected: set[str]) -> str | None:
+    """Return the expected_id matched by chunk_id (exact or hierarchical prefix), else None."""
+    if not expected:
+        return None
+    if chunk_id in expected:
+        return chunk_id
+    parts = chunk_id.split("::")
+    for n in range(len(parts) - 1, 0, -1):
+        prefix = "::".join(parts[:n])
+        if prefix in expected:
+            return prefix
+    return None
+
+
 def recall_at_k(retrieved_ids: list[str], expected_ids: set[str], k: int) -> float:
     """Fraction of expected items that appear in the top-k retrieval.
 
-    Duplicates in retrieved_ids count once — recall is over the unique set.
+    Hierarchical matching: a retrieved id matches an expected id if they're equal
+    or the expected id is a "::"-prefix of the retrieved id. Duplicates count once.
     """
     if not expected_ids:
         return 0.0
-    top_k = set(retrieved_ids[:k])
-    hits = len(top_k & expected_ids)
-    return hits / len(expected_ids)
+    matched: set[str] = set()
+    for rid in retrieved_ids[:k]:
+        m = _match_expected(rid, expected_ids)
+        if m:
+            matched.add(m)
+    return len(matched) / len(expected_ids)
 
 
 def precision_at_k(retrieved_ids: list[str], expected_ids: set[str], k: int) -> float:
-    """Fraction of top-k items that are expected. Counts duplicates as separate
-    positions (a doc retrieved twice in top-k counts twice).
+    """Fraction of top-k items that are expected (with hierarchical matching).
+
+    Counts duplicates as separate positions.
     """
     if k <= 0:
         return 0.0
     top_k = retrieved_ids[:k]
     if not top_k:
         return 0.0
-    hits = sum(1 for rid in top_k if rid in expected_ids)
+    hits = sum(1 for rid in top_k if _match_expected(rid, expected_ids) is not None)
     return hits / min(k, len(top_k))
 
 
 def hit_at_k(retrieved_ids: list[str], expected_ids: set[str], k: int) -> int:
-    """1 if any expected item is in top-k, else 0."""
+    """1 if any expected item is in top-k (with hierarchical matching), else 0."""
     top_k = retrieved_ids[:k]
-    return 1 if any(rid in expected_ids for rid in top_k) else 0
+    return 1 if any(_match_expected(rid, expected_ids) is not None for rid in top_k) else 0
 
 
 def mrr(retrieved_ids: list[str], expected_ids: set[str]) -> float:
     """Reciprocal rank of the first expected item (1.0 if rank 1, 0.5 if rank 2, ...)."""
     for i, rid in enumerate(retrieved_ids, start=1):
-        if rid in expected_ids:
+        if _match_expected(rid, expected_ids) is not None:
             return 1.0 / i
     return 0.0
 
@@ -60,21 +84,24 @@ def ndcg_at_k(
 ) -> float:
     """Normalized Discounted Cumulative Gain over top-k.
 
-    Uses graded relevance from expected_relevance; binary (1.0 / 0.0) is fine
-    for the default callers. Repeated IDs in retrieved_ids contribute relevance
-    only on first occurrence so DCG cannot exceed IDCG.
+    Uses graded relevance from expected_relevance with hierarchical matching:
+    a retrieved id earns the relevance of the first expected id it matches
+    (exact or "::"-prefix). Each expected id contributes only on first match
+    so DCG cannot exceed IDCG.
     Returns 0.0 if no relevant items exist.
     """
     if not expected_relevance or k <= 0:
         return 0.0
+    expected_set = set(expected_relevance)
     top_k = retrieved_ids[:k]
     seen: set[str] = set()
     dcg = 0.0
     for i, rid in enumerate(top_k, start=1):
-        if rid in seen:
+        m = _match_expected(rid, expected_set)
+        if m is None or m in seen:
             continue
-        seen.add(rid)
-        dcg += expected_relevance.get(rid, 0.0) / math.log2(i + 1)
+        seen.add(m)
+        dcg += expected_relevance.get(m, 0.0) / math.log2(i + 1)
     ideal_relevances = sorted(expected_relevance.values(), reverse=True)[:k]
     idcg = sum(rel / math.log2(i + 1) for i, rel in enumerate(ideal_relevances, start=1))
     if idcg == 0:
@@ -104,7 +131,9 @@ def compute_all(
         target = expected_ids
 
     relevance = {rid: 1.0 for rid in target}
-    hits_set = sorted({rid for rid in ids_in_top_k[:k] if rid in target})
+    hits_set = sorted(
+        {m for rid in ids_in_top_k[:k] if (m := _match_expected(rid, target)) is not None}
+    )
 
     return RetrievalMetrics(
         k=k,
