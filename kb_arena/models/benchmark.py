@@ -33,6 +33,22 @@ class Question(BaseModel):
     question: str
     ground_truth: GroundTruth
     constraints: Constraints = Field(default_factory=Constraints)
+    expected_chunks: list[str] = Field(default_factory=list)
+
+
+class RetrievalMetrics(BaseModel):
+    """Classical IR metrics for a single query against a single strategy."""
+
+    k: int = 5
+    recall_at_k: float = Field(ge=0.0, le=1.0, default=0.0)
+    precision_at_k: float = Field(ge=0.0, le=1.0, default=0.0)
+    hit_at_k: int = Field(ge=0, le=1, default=0)
+    mrr: float = Field(ge=0.0, le=1.0, default=0.0)
+    ndcg_at_k: float = Field(ge=0.0, le=1.0, default=0.0)
+    expected_count: int = 0
+    retrieved_count: int = 0
+    hits: list[str] = Field(default_factory=list)
+    fallback_doc_level: bool = False
 
 
 class Score(BaseModel):
@@ -72,6 +88,7 @@ class AnswerRecord(BaseModel):
     error_message: str = ""
     attempt_count: int = 1
     response_length: int = 0
+    retrieval_metrics: RetrievalMetrics | None = None
 
 
 class LatencyStats(BaseModel):
@@ -145,3 +162,11 @@ class BenchmarkResult(BaseModel):
     # Cost
     total_cost_usd: float = 0.0
     cost_per_correct: float = 0.0
+
+    # Retrieval Quality (IR metrics) — populated when records have retrieval_metrics
+    ir_top_k: int = 5
+    mean_recall_at_k: float = 0.0
+    mean_precision_at_k: float = 0.0
+    mean_hit_at_k: float = 0.0
+    mean_mrr: float = 0.0
+    mean_ndcg_at_k: float = 0.0

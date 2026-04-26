@@ -1,0 +1,216 @@
+compute-t1-001:
+- lambda-overview::aws-lambda
+- lambda-overview::event-sources
+- lambda-overview::execution-role
+- lambda-overview::layers
+- lambda-overview::environment-variables
+- lambda-overview::vpc-configuration
+- lambda-overview::provisioned-concurrency
+compute-t1-002: []
+compute-t1-003:
+- ecs-fargate::amazon-ecs-and-aws-fargate
+- ecs-fargate::fargate-launch-type
+- ecs-fargate::ec2-launch-type
+compute-t1-004:
+- ecs-fargate::amazon-ecs-and-aws-fargate
+- ecs-fargate::fargate-launch-type
+- ecs-fargate::ec2-launch-type
+compute-t1-005: []
+compute-t1-006: []
+compute-t1-007: []
+compute-t1-008: []
+compute-t1-009: []
+compute-t1-010: []
+compute-t1-011: []
+compute-t1-012:
+- lambda-overview::synchronous-invocation
+- ecs-fargate::services
+compute-t1-013: []
+compute-t1-014:
+- lambda-overview::cold-starts
+- lambda-overview::aws-lambda
+- lambda-overview::provisioned-concurrency
+- lambda-overview::vpc-configuration
+compute-t1-015:
+- ecs-fargate::task-definitions
+- ecs-fargate::container-definitions
+- ecs-fargate::amazon-ecs-and-aws-fargate
+- ecs-fargate::task-role
+- ecs-fargate::task-execution-role
+compute-t1-016:
+- lambda-overview::layers
+compute-t1-017: []
+compute-t1-018: []
+compute-t1-019:
+- lambda-overview::provisioned-concurrency
+- lambda-overview::mitigation
+- lambda-overview::pricing
+compute-t1-020:
+- ecs-fargate::services
+compute-t2-001: []
+compute-t2-002:
+- ecs-fargate::amazon-ecs-and-aws-fargate
+- ecs-fargate::services
+- ecs-fargate::task-definitions
+- ecs-fargate::task-execution-role
+- ecs-fargate::task-role
+- ecs-fargate::networking-awsvpc
+- ecs-fargate::integration-with-other-services
+compute-t2-003:
+- lambda-overview::vpc-configuration
+- lambda-overview::vpc-and-internet-access
+- lambda-overview::cold-starts
+compute-t2-004: []
+compute-t2-005: []
+compute-t2-006: []
+compute-t2-007:
+- lambda-overview::stream-based-polling
+compute-t2-008:
+- ecs-fargate::services
+- ecs-fargate::amazon-ecs-and-aws-fargate
+- ecs-fargate::task-definitions
+compute-t2-009:
+- ecs-fargate::integration-with-other-services
+- ecs-fargate::task-execution-role
+- ecs-fargate::amazon-ecs-and-aws-fargate
+compute-t2-010:
+- lambda-overview::execution-role
+- api-gateway::iam-authorization
+- lambda-overview::aws-lambda
+compute-t2-011: []
+compute-t2-012: []
+compute-t2-013:
+- lambda-overview::asynchronous-invocation
+- lambda-overview::event-sources
+- lambda-overview::execution-role
+- lambda-overview::aws-lambda
+compute-t2-014: []
+compute-t2-015: []
+compute-t2-016:
+- lambda-overview::execution-role
+- lambda-overview::environment-variables
+- lambda-overview::vpc-configuration
+- lambda-overview::layers
+compute-t2-017: []
+compute-t2-018: []
+compute-t2-019: []
+compute-t2-020:
+- ecs-fargate::services
+compute-t3-001:
+- ecs-fargate::amazon-ecs-and-aws-fargate
+- ecs-fargate::fargate-launch-type
+- ecs-fargate::ec2-launch-type
+- ecs-fargate::services
+- ecs-fargate::task-definitions
+- ecs-fargate::networking-awsvpc
+- ecs-fargate::integration-with-other-services
+- lambda-overview::aws-lambda
+- lambda-overview::cold-starts
+- lambda-overview::provisioned-concurrency
+- lambda-overview::vpc-configuration
+- lambda-overview::mitigation
+compute-t3-002: []
+compute-t3-003:
+- ecs-fargate::services
+compute-t3-004:
+- ecs-fargate::amazon-ecs-and-aws-fargate
+- ecs-fargate::fargate-launch-type
+- ecs-fargate::ec2-launch-type
+- ecs-fargate::services
+- ecs-fargate::networking-awsvpc
+- ecs-fargate::integration-with-other-services
+- ecs-fargate::task-definitions
+- ecs-fargate::task-role
+- ecs-fargate::task-execution-role
+compute-t3-005: []
+compute-t3-006: []
+compute-t3-007:
+- lambda-overview::cold-starts
+- lambda-overview::mitigation
+- lambda-overview::provisioned-concurrency
+- lambda-overview::layers
+compute-t3-008: []
+compute-t3-009: []
+compute-t3-010:
+- lambda-overview::synchronous-invocation
+compute-t3-011: []
+compute-t3-012: []
+compute-t3-013: []
+compute-t3-014:
+- lambda-overview::provisioned-concurrency
+- lambda-overview::cold-starts
+- lambda-overview::mitigation
+compute-t3-015: []
+compute-t4-001: []
+compute-t4-002:
+- ecs-fargate::task-role
+- ecs-fargate::task-execution-role
+- ecs-fargate::integration-with-other-services
+- ecs-fargate::task-definitions
+compute-t4-003:
+- ecs-fargate::services
+- ecs-fargate::networking-awsvpc
+- ecs-fargate::amazon-ecs-and-aws-fargate
+- ecs-fargate::fargate-launch-type
+- ecs-fargate::integration-with-other-services
+- ecs-fargate::task-definitions
+compute-t4-004:
+- lambda-overview::vpc-and-internet-access
+- lambda-overview::vpc-configuration
+- lambda-overview::execution-role
+- lambda-overview::iam-requirements
+compute-t4-005: []
+compute-t4-006: []
+compute-t4-007: []
+compute-t4-008:
+- ecs-fargate::ec2-launch-type
+compute-t4-009:
+- lambda-overview::asynchronous-invocation
+compute-t4-010: []
+compute-t4-011:
+- lambda-overview::aws-lambda
+- api-gateway::amazon-api-gateway
+- api-gateway::rest-api
+- api-gateway::lambda-proxy-integration-recommended
+- lambda-overview::layers
+- lambda-overview::execution-role
+- ecs-fargate::integration-with-other-services
+- lambda-overview::environment-variables
+compute-t4-012:
+- ecs-fargate::networking-awsvpc
+- ecs-fargate::services
+- ecs-fargate::fargate-launch-type
+- ecs-fargate::task-definitions
+- ecs-fargate::amazon-ecs-and-aws-fargate
+compute-t5-001:
+- api-gateway::rest-api
+- api-gateway::amazon-api-gateway
+- api-gateway::stages-and-deployment
+- api-gateway::lambda-proxy-integration-recommended
+- lambda-overview::aws-lambda
+- lambda-overview::synchronous-invocation
+- lambda-overview::provisioned-concurrency
+- lambda-overview::vpc-and-internet-access
+- lambda-overview::stream-based-polling
+compute-t5-002: []
+compute-t5-003:
+- lambda-overview::aws-lambda
+- ecs-fargate::amazon-ecs-and-aws-fargate
+- ecs-fargate::fargate-launch-type
+- lambda-overview::stream-based-polling
+- ecs-fargate::integration-with-other-services
+- ecs-fargate::services
+- lambda-overview::vpc-and-internet-access
+- ecs-fargate::networking-awsvpc
+compute-t5-004: []
+compute-t5-005:
+- ecs-fargate::integration-with-other-services
+- ecs-fargate::services
+- ecs-fargate::amazon-ecs-and-aws-fargate
+- ecs-fargate::fargate-launch-type
+- ecs-fargate::networking-awsvpc
+- ecs-fargate::task-definitions
+compute-t5-006: []
+compute-t5-007:
+- ecs-fargate::ec2-launch-type
+compute-t5-008: []

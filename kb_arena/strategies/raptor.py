@@ -15,6 +15,7 @@ import chromadb
 import numpy as np
 
 from kb_arena.models.document import Document
+from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
 from kb_arena.strategies.embeddings import OpenAIEmbedding
@@ -196,6 +197,7 @@ class RaptorStrategy(Strategy):
         retrieval_start = time.perf_counter()
         all_chunks: list[str] = []
         all_sources: set[str] = set()
+        retrieved_chunks: list[RetrievedChunk] = []
 
         for level in (0, 1, 2):
             try:
@@ -204,23 +206,46 @@ class RaptorStrategy(Strategy):
                 if count == 0:
                     continue
                 n = min(top_k, count)
-                results = coll.query(query_texts=[question], n_results=n)
+                results = coll.query(
+                    query_texts=[question],
+                    n_results=n,
+                    include=["documents", "metadatas", "distances"],
+                )
                 chunks = results["documents"][0] if results["documents"] else []
                 metas = results["metadatas"][0] if results["metadatas"] else []
+                ids = results["ids"][0] if results.get("ids") else []
+                distances = results["distances"][0] if results.get("distances") else []
                 all_chunks.extend(chunks)
-                for m in metas:
-                    src = m.get("source_id", "")
+                for i, ch_text in enumerate(chunks):
+                    src = (metas[i].get("source_id") if i < len(metas) else "") or ""
                     if src:
                         all_sources.add(src)
+                    raw_id = ids[i] if i < len(ids) else f"unknown-{i}"
+                    retrieved_chunks.append(
+                        RetrievedChunk(
+                            chunk_id=f"L{level}:{raw_id}",
+                            doc_id=src,
+                            content=ch_text,
+                            score=1.0 - (distances[i] if i < len(distances) else 0.0),
+                            rank=len(retrieved_chunks) + 1,
+                            source_strategy=self.name,
+                            metadata={"level": level, **(dict(metas[i]) if i < len(metas) else {})},
+                        )
+                    )
             except Exception as exc:
                 logger.debug("RAPTOR: skipping level %d - %s", level, exc)
         retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
+
+        trace = RetrievalTrace(
+            query=question, retrieved=retrieved_chunks, latency_ms=retrieval_ms, top_k=top_k
+        )
 
         if not all_chunks:
             latency_ms = self._record_metrics(start)
             return AnswerResult(
                 answer="No indexed content found. Run build-vectors --strategy raptor first.",
                 sources=[],
+                retrieval=trace,
                 strategy=self.name,
                 latency_ms=latency_ms,
             )
@@ -242,6 +267,7 @@ class RaptorStrategy(Strategy):
         return AnswerResult(
             answer=resp.text,
             sources=sources,
+            retrieval=trace,
             strategy=self.name,
             latency_ms=latency_ms,
             retrieval_latency_ms=retrieval_ms,
