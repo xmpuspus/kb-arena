@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import sys
 import time
 from datetime import UTC, datetime
@@ -20,12 +21,19 @@ from rich.console import Console
 from rich.live import Live
 from rich.table import Table
 
-from kb_arena.benchmark.ir_metrics import compute_all
-from kb_arena.benchmark.questions import discover_corpora, load_questions
-from kb_arena.models.benchmark import RetrievalMetrics
-from kb_arena.models.retrieval import RetrievalTrace
-from kb_arena.settings import settings
-from kb_arena.strategies.base import Strategy
+# ChromaDB 0.5.23 has a buggy telemetry callback that floods stderr. Disable it.
+os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
+logging.getLogger("chromadb").setLevel(logging.CRITICAL)
+logging.getLogger("chromadb.telemetry").setLevel(logging.CRITICAL)
+logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
+
+
+from kb_arena.benchmark.ir_metrics import _match_expected, compute_all  # noqa: E402
+from kb_arena.benchmark.questions import discover_corpora, load_questions  # noqa: E402
+from kb_arena.models.benchmark import RetrievalMetrics  # noqa: E402
+from kb_arena.models.retrieval import RetrievalTrace  # noqa: E402
+from kb_arena.settings import settings  # noqa: E402
+from kb_arena.strategies.base import Strategy  # noqa: E402
 
 console = Console()
 log = logging.getLogger(__name__)
@@ -278,6 +286,13 @@ async def _run_corpora_loop(
                         expected_doc_ids=set(q.ground_truth.source_refs),
                     )
                     per_strategy_rows[s.name].append(metrics)
+                    hits_set = set(metrics.hits)
+
+                    def _is_hit(chunk):
+                        if metrics.fallback_doc_level:
+                            return chunk.doc_id in hits_set
+                        return _match_expected(chunk.chunk_id, hits_set) is not None
+
                     per_question_rows.append(
                         {
                             "corpus": corp,
@@ -290,6 +305,7 @@ async def _run_corpora_loop(
                             "mrr": metrics.mrr,
                             "ndcg_at_k": metrics.ndcg_at_k,
                             "fallback_doc_level": metrics.fallback_doc_level,
+                            "hits": list(hits_set),
                             "retrieved": [
                                 {
                                     "chunk_id": c.chunk_id,
@@ -297,8 +313,7 @@ async def _run_corpora_loop(
                                     "rank": c.rank,
                                     "score": c.score,
                                     "source_strategy": c.source_strategy,
-                                    "is_hit": c.chunk_id in metrics.hits
-                                    or c.doc_id in metrics.hits,
+                                    "is_hit": _is_hit(c),
                                 }
                                 for c in trace.retrieved
                             ],
