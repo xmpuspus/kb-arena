@@ -221,6 +221,9 @@ def benchmark(
         "--strategy-module",
         help="Import path for a custom Strategy plugin (e.g. my_pkg.my_strat)",
     ),
+    top_k: int = typer.Option(
+        5, "--top-k", help="Top-k chunks per query (drives IR metrics)"
+    ),
 ):
     """Stage 4: Run benchmark questions against specified strategies.
 
@@ -294,6 +297,7 @@ def benchmark(
             tier=tier,
             parallel=parallel,
             reference_free=reference_free,
+            top_k=top_k,
         )
     )
 
@@ -842,6 +846,57 @@ def eval(
         raise typer.Exit(1)
     if ci and not failed:
         console.print("[green]All thresholds passed.[/green]")
+
+
+@app.command(name="retriever-lab")
+def retriever_lab(
+    corpus: str = typer.Option("all", help="Corpus to evaluate"),
+    top_k: int = typer.Option(5, "--top-k", help="Top-k chunks per query"),
+    strategies: str = typer.Option("all", help="Strategy filter (or 'all')"),
+    min_recall: float = typer.Option(
+        0.30,
+        "--min-recall",
+        help="Exit non-zero if any strategy's mean Recall@k drops below this",
+    ),
+):
+    """Run retrieval-only benchmark with classical IR metrics. ~10x cheaper than `benchmark`."""
+    import asyncio as _asyncio
+
+    from kb_arena.benchmark.retriever_lab import run_retriever_lab
+
+    _preflight(needs_openai=True)
+    exit_code = _asyncio.run(
+        run_retriever_lab(corpus, strategies, top_k, min_recall)
+    )
+    if exit_code:
+        raise typer.Exit(exit_code)
+
+
+@app.command(name="label-chunks")
+def label_chunks(
+    corpus: str = typer.Option(..., help="Corpus to label"),
+    force: bool = typer.Option(False, "--force", help="Re-label even if labels exist"),
+    n_candidates: int = typer.Option(
+        20, "--n-candidates", help="BM25 candidates per question"
+    ),
+):
+    """Generate datasets/{corpus}/questions/expected_chunks.yaml via BM25 + Haiku judge.
+
+    Cost-capped by KB_ARENA_COST_CAP_USD. Idempotent: skips already-labeled
+    questions unless --force.
+    """
+    import asyncio as _asyncio
+
+    from kb_arena.benchmark.expected_chunks import label_corpus
+
+    _preflight(needs_anthropic=True, needs_openai=True)
+    result = _asyncio.run(label_corpus(corpus, force=force, n_candidates=n_candidates))
+    note = " (halted by cost cap)" if result.get("halted_by_cost_cap") else ""
+    console.print(
+        f"[green]Labeled {result['labeled']}, skipped {result['skipped']} "
+        f"of {result['total_questions']} (cost ${result['cost_usd']:.4f}{note})[/green]"
+    )
+    console.print(f"Saved to {result['path']}")
 
 
 if __name__ == "__main__":
