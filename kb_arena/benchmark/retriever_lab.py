@@ -85,24 +85,18 @@ class _PatchLLMClient:
         return False
 
 
-async def _retrieve_only(
-    strategy: Strategy, question_text: str, top_k: int
-) -> RetrievalTrace:
+async def _retrieve_only(strategy: Strategy, question_text: str, top_k: int) -> RetrievalTrace:
     """Run query() under the LLM-stub patch and return the retrieval trace."""
     start = time.perf_counter()
     try:
         result = await strategy.query(question_text, top_k=top_k)
     except Exception as exc:
         log.warning("Strategy %s failed on question: %s", strategy.name, exc)
-        return RetrievalTrace(
-            query=question_text, retrieved=[], latency_ms=0.0, top_k=top_k
-        )
+        return RetrievalTrace(query=question_text, retrieved=[], latency_ms=0.0, top_k=top_k)
     elapsed = (time.perf_counter() - start) * 1000
     if result.retrieval is not None:
         return result.retrieval
-    return RetrievalTrace(
-        query=question_text, retrieved=[], latency_ms=elapsed, top_k=top_k
-    )
+    return RetrievalTrace(query=question_text, retrieved=[], latency_ms=elapsed, top_k=top_k)
 
 
 def _build_table(
@@ -189,22 +183,20 @@ async def run_retriever_lab(
     _llm_patch = _PatchLLMClient()
     _llm_patch.__enter__()
     try:
-      _exit_code = await _run_corpora_loop(
-          corpora,
-          strategies,
-          top_k,
-          min_recall,
-          overall,
-          per_question_rows,
-      )
+        _exit_code = await _run_corpora_loop(
+            corpora,
+            strategies,
+            top_k,
+            min_recall,
+            overall,
+            per_question_rows,
+        )
     finally:
-      _llm_patch.__exit__(None, None, None)
+        _llm_patch.__exit__(None, None, None)
 
     json_path = results_dir / "retriever_lab.json"
     json_path.write_text(
-        json.dumps(
-            {**overall, "questions": per_question_rows}, indent=2, ensure_ascii=False
-        )
+        json.dumps({**overall, "questions": per_question_rows}, indent=2, ensure_ascii=False)
     )
 
     md_lines = [f"# Retriever Lab — run {run_id}", "", f"Top-k: {top_k}", ""]
@@ -326,9 +318,7 @@ async def _run_corpora_loop(
                     avg_recall = (
                         sum(r.recall_at_k for r in per_strategy_rows[s.name]) / n if n else 0.0
                     )
-                    console.print(
-                        f"  {s.name}: n={n}, mean Recall@{top_k}={avg_recall:.3f}"
-                    )
+                    console.print(f"  {s.name}: n={n}, mean Recall@{top_k}={avg_recall:.3f}")
         finally:
             if live is not None:
                 live.stop()

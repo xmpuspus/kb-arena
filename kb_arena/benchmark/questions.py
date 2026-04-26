@@ -36,8 +36,7 @@ def load_questions(
         loaded = yaml.safe_load(expected_path.read_text())
         if isinstance(loaded, dict):
             expected_chunks_map = {
-                str(k): list(v) if isinstance(v, list) else []
-                for k, v in loaded.items()
+                str(k): list(v) if isinstance(v, list) else [] for k, v in loaded.items()
             }
 
     questions: list[Question] = []

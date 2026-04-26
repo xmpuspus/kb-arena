@@ -113,8 +113,7 @@ class BM25Strategy(Strategy):
                     # chunk_ids was added in v0.5.0; fall back to synthesized IDs
                     # for indexes built by older versions so the index keeps working.
                     self._chunk_ids = data.get("chunk_ids") or [
-                        f"{src}::passage-{i}"
-                        for i, src in enumerate(self._corpus_sources)
+                        f"{src}::passage-{i}" for i, src in enumerate(self._corpus_sources)
                     ]
                     tokenized = [t.lower().split() for t in self._corpus_texts]
                     self._bm25 = BM25Okapi(tokenized)

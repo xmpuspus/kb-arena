@@ -129,12 +129,8 @@ def _build_markdown(results: list[BenchmarkResult]) -> str:
             k = ir_results[0].ir_top_k
             lines.append(f"### Retrieval Quality (top-{k})")
             lines.append("")
-            lines.append(
-                f"| Strategy | Recall@{k} | Precision@{k} | Hit@{k} | MRR | NDCG@{k} |"
-            )
-            lines.append(
-                "|----------|------------|---------------|---------|-----|----------|"
-            )
+            lines.append(f"| Strategy | Recall@{k} | Precision@{k} | Hit@{k} | MRR | NDCG@{k} |")
+            lines.append("|----------|------------|---------------|---------|-----|----------|")
             for r in ir_results:
                 lines.append(
                     f"| {r.strategy} "

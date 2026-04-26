@@ -205,9 +205,7 @@ def test_strategy_namespace_prefix_stripping():
 def test_strategy_prefix_stripping_only_known_prefixes():
     """An unknown 'foo:' prefix must NOT match a section label."""
     retrieved = [_chunk("foo:lambda-overview::aws-lambda::0", rank=1)]
-    metrics = compute_all(
-        retrieved, expected_ids={"lambda-overview::aws-lambda"}, k=5
-    )
+    metrics = compute_all(retrieved, expected_ids={"lambda-overview::aws-lambda"}, k=5)
     assert metrics.recall_at_k == 0.0
 
 

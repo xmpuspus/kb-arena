@@ -120,9 +120,7 @@ async def label_one_question(
     return [str(x) for x in ids if str(x) in valid], resp.cost_usd
 
 
-async def label_corpus(
-    corpus: str, force: bool = False, n_candidates: int = 20
-) -> dict:
+async def label_corpus(corpus: str, force: bool = False, n_candidates: int = 20) -> dict:
     """Label every question in a corpus. Idempotent unless force=True. Cost-capped."""
     questions = load_questions(corpus)
     bm25 = BM25Strategy()

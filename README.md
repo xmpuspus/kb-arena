@@ -4,7 +4,7 @@ Which retrieval architecture works best for your documentation?
 
 KB Arena benchmarks **8 retrieval strategies** -- naive vector, contextual vector, Q&A pairs, knowledge graph, hybrid, RAPTOR, PageIndex, and BM25 -- on **your** documentation. Bring your docs in any format, run the pipeline, get empirical results. Ships with an AWS Compute corpus (75 questions across 5 difficulty tiers) as a built-in example.
 
-![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-514-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![PyPI](https://img.shields.io/pypi/v/kb-arena) ![CI](https://github.com/xmpuspus/kb-arena/actions/workflows/ci.yml/badge.svg)
+![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-558-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![PyPI](https://img.shields.io/pypi/v/kb-arena) ![CI](https://github.com/xmpuspus/kb-arena/actions/workflows/ci.yml/badge.svg)
 
 ![KB Arena Demo](docs/demo.gif)
 
@@ -35,9 +35,57 @@ Most RAG evaluation tools answer "how well does my pipeline work?" KB Arena answ
 | Auto-generates benchmark questions | Yes - 5 difficulty tiers | Manual | Fixed | Fixed | Manual |
 | Interactive comparison UI | Yes - chatbot + benchmark explorer | No | Leaderboard only | No | Dashboard |
 | Chatbot per strategy | Yes | No | No | No | No |
-| Standard IR metrics (NDCG, MRR) | Roadmap | Yes | Yes | Partial | No |
+| Standard IR metrics (NDCG, MRR) | Yes - v0.5.0 Retriever Lab | Yes | Yes | Partial | No |
 
 If you want to know whether a knowledge graph, Q&A pairs, or plain vector search is the right architecture for your documentation, that's what KB Arena is for.
+
+---
+
+## What's New in v0.5.0 — Retriever Lab
+
+Classical IR metrics computed at the chunk level. See exactly which chunks each strategy surfaced, which it missed, and why one strategy beats another at a metric level — not just at the answer level.
+
+![Retriever Lab Demo](docs/demo-retriever-lab.gif)
+
+### Metrics
+
+`Recall@k`, `Precision@k`, `Hit@k`, `MRR`, `NDCG@k` — computed for every benchmark query, aggregated per strategy, rendered in the Markdown report.
+
+### `kb-arena retriever-lab`
+
+Retrieval-only benchmark. Skips LLM generation, runs ~10x cheaper than `kb-arena benchmark`. Streams a live Rich table of metrics as each strategy completes. Writes per-question chunk-level results to `results/run_{id}/retriever_lab.json`.
+
+```bash
+kb-arena label-chunks --corpus aws-compute     # Generate ground truth (BM25 + Haiku judge)
+kb-arena retriever-lab --corpus aws-compute    # Live IR metrics, no LLM cost
+```
+
+### `/retriever-lab` web page
+
+Aggregate metrics card per strategy plus per-question drill-down. Click a question, see the chunks each strategy surfaced with rank, score, and HIT/MISS badges so you can tell at a glance where retrieval breaks down.
+
+![Retriever Lab UI](docs/retriever-lab-ui.png)
+
+### Real numbers — aws-compute corpus, run `855aac4e`
+
+35 of 75 questions have chunk-level ground truth (the corpus only covers Lambda, API Gateway, ECS Fargate; the other 40 questions reference services not in the demo corpus, so their metrics fall to 0 — a useful coverage signal in itself).
+
+| Strategy | Recall@5 | Precision@5 | Hit@5 | MRR | NDCG@5 |
+|---|---|---|---|---|---|
+| **contextual_vector** | **35.5%** | **24.5%** | 46.7% | **0.433** | **0.388** |
+| naive_vector | 35.2% | 23.2% | 46.7% | 0.414 | 0.367 |
+| raptor | 35.2% | 23.2% | 46.7% | 0.414 | 0.367 |
+| bm25 | 27.5% | 17.1% | 44.0% | 0.352 | 0.278 |
+| hybrid | 8.0% | 4.8% | 9.3% | 0.093 | 0.086 |
+| pageindex | 6.1% | 5.0% | 14.7% | 0.111 | 0.076 |
+| qna_pairs | 0.0% | 0.0% | 0.0% | 0.000 | 0.000 |
+| knowledge_graph | 0.0% | 0.0% | 0.0% | 0.000 | 0.000 |
+
+Contextual Vector edges out Naive Vector on ranking quality (MRR / NDCG) thanks to heading-path prefixes; Hybrid drops because the knowledge_graph leg is mocked when Neo4j isn't connected; QnA Pairs operates on Q-A identity, not section identity, so it needs doc-level labels (see `docs/retriever-lab.md` for interpretation).
+
+### Roadmap
+
+- v1.1: reranker comparison (cross-encoder vs. cohere-rerank vs. bge-reranker)
 
 ---
 
@@ -388,6 +436,8 @@ kb-arena ingest ./datasets/aws-compute/raw/ --corpus aws-compute
 kb-arena build-graph --corpus aws-compute
 kb-arena build-vectors --corpus aws-compute
 kb-arena benchmark --corpus aws-compute
+kb-arena label-chunks --corpus aws-compute        # v0.5.0: ground truth for IR metrics
+kb-arena retriever-lab --corpus aws-compute       # v0.5.0: classical IR metrics, no LLM cost
 kb-arena serve
 ```
 

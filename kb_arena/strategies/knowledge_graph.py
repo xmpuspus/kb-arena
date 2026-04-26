@@ -148,9 +148,7 @@ def _results_to_context(records: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _records_to_chunks(
-    records: list[dict], strategy_name: str, top_k: int
-) -> list[RetrievedChunk]:
+def _records_to_chunks(records: list[dict], strategy_name: str, top_k: int) -> list[RetrievedChunk]:
     """Synthesize RetrievedChunk objects from Neo4j result records.
 
     Each record becomes a single chunk with chunk_id="graph:{fqn}". Score uses
@@ -342,9 +340,7 @@ class KnowledgeGraphStrategy(Strategy):
                 answer="[Graph database not connected. Showing mock data for demo purposes.]",
                 sources=[],
                 graph_context=graph_ctx,
-                retrieval=RetrievalTrace(
-                    query=question, retrieved=[], latency_ms=0.0, top_k=top_k
-                ),
+                retrieval=RetrievalTrace(query=question, retrieved=[], latency_ms=0.0, top_k=top_k),
                 strategy=self.name,
                 latency_ms=latency_ms,
                 mock=True,

@@ -221,9 +221,7 @@ def benchmark(
         "--strategy-module",
         help="Import path for a custom Strategy plugin (e.g. my_pkg.my_strat)",
     ),
-    top_k: int = typer.Option(
-        5, "--top-k", help="Top-k chunks per query (drives IR metrics)"
-    ),
+    top_k: int = typer.Option(5, "--top-k", help="Top-k chunks per query (drives IR metrics)"),
 ):
     """Stage 4: Run benchmark questions against specified strategies.
 
@@ -865,9 +863,7 @@ def retriever_lab(
     from kb_arena.benchmark.retriever_lab import run_retriever_lab
 
     _preflight(needs_openai=True)
-    exit_code = _asyncio.run(
-        run_retriever_lab(corpus, strategies, top_k, min_recall)
-    )
+    exit_code = _asyncio.run(run_retriever_lab(corpus, strategies, top_k, min_recall))
     if exit_code:
         raise typer.Exit(exit_code)
 
@@ -876,9 +872,7 @@ def retriever_lab(
 def label_chunks(
     corpus: str = typer.Option(..., help="Corpus to label"),
     force: bool = typer.Option(False, "--force", help="Re-label even if labels exist"),
-    n_candidates: int = typer.Option(
-        20, "--n-candidates", help="BM25 candidates per question"
-    ),
+    n_candidates: int = typer.Option(20, "--n-candidates", help="BM25 candidates per question"),
 ):
     """Generate datasets/{corpus}/questions/expected_chunks.yaml via BM25 + Haiku judge.
 

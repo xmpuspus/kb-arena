@@ -65,9 +65,7 @@ def test_reporter_renders_ir_table_when_metrics_populated():
         corpus="test",
         strategy="vec",
         records=[
-            AnswerRecord(
-                question_id="q1", strategy="vec", answer="a", score=Score(accuracy=0.8)
-            )
+            AnswerRecord(question_id="q1", strategy="vec", answer="a", score=Score(accuracy=0.8))
         ],
         mean_recall_at_k=0.65,
         mean_precision_at_k=0.4,
@@ -89,9 +87,7 @@ def test_reporter_skips_ir_table_when_metrics_zero():
         corpus="test",
         strategy="vec",
         records=[
-            AnswerRecord(
-                question_id="q1", strategy="vec", answer="a", score=Score(accuracy=0.8)
-            )
+            AnswerRecord(question_id="q1", strategy="vec", answer="a", score=Score(accuracy=0.8))
         ],
     )
     md = _build_markdown([bench])

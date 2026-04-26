@@ -61,9 +61,7 @@ async def test_contextual_vector_populates_trace():
     from kb_arena.strategies.contextual_vector import ContextualVectorStrategy
 
     s = ContextualVectorStrategy()
-    s._collection = _fake_collection(
-        ids=["a::1::0", "b::1::0"], docs=["one", "two"]
-    )
+    s._collection = _fake_collection(ids=["a::1::0", "b::1::0"], docs=["one", "two"])
     s._llm = AsyncMock()
     s._llm.generate = AsyncMock(return_value=_llm_resp())
 
