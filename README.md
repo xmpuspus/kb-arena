@@ -287,6 +287,7 @@ kb-arena report --format html   # shareable dashboard
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 0.5.0 | 2026-04-26 | Retriever Lab — classical IR metrics (Recall@k, Precision@k, Hit@k, MRR, NDCG@k) computed per query, `RetrievalTrace` exposes retrieved chunks per strategy with rank+score, `kb-arena retriever-lab` retrieval-only command (~10x cheaper than `benchmark`), `kb-arena label-chunks` BM25+Haiku ground-truth generator, `--top-k` flag on `benchmark`, `/retriever-lab` web page with HIT/MISS drill-down, hierarchical chunk-id matching, 558 tests |
 | 0.4.0 | 2026-04-04 | RAGAS metrics (faithfulness, context precision/recall, answer relevancy), reference-free eval mode, LLM eval memoization, cost cap enforcement, strategy plugin system (`--strategy-module`), CI/CD eval command (`kb-arena eval --ci`), debug/explain endpoint, `/ready` health probe, exponential backoff on retries, embedding API retry+timeout, arena ELO JSONL persistence, side-by-side strategy comparison UI, benchmark dry-run cost estimates, tightened corpus validation |
 | 0.3.1 | 2026-03-26 | Production hardening (session IDs, TTL, CORS config, corpus validation), streaming cost for OpenAI/Ollama, parallel QnA build, custom exceptions, error boundary, graph schema cleanup, 494 tests |
 | 0.3.0 | 2026-03-20 | Multi-LLM providers (Anthropic/OpenAI/Ollama), Strategy Arena, BM25 strategy, parallel benchmarks, tiktoken chunking, cost tracking fixes, run comparison, CI fail-below, CSV/HTML export, bundled frontend |

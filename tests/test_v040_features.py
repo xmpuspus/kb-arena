@@ -242,7 +242,7 @@ class TestDebugEndpoint:
 
 
 class TestAPIVersion:
-    def test_api_version_040(self):
+    def test_api_version_050(self):
         from kb_arena.chatbot.api import app
 
-        assert app.version == "0.4.0"
+        assert app.version == "0.5.0"
