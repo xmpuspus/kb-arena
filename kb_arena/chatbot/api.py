@@ -337,6 +337,49 @@ async def list_corpora() -> dict:
     return {"corpora": corpora}
 
 
+@app.get("/api/retriever-lab/runs")
+async def retriever_lab_runs() -> dict:
+    """List available retriever-lab runs (most recent first)."""
+    base = _Path(settings.results_path)
+    if not base.exists():
+        return {"runs": []}
+    runs: list[dict] = []
+    for run_dir in sorted(base.glob("run_*"), reverse=True):
+        path = run_dir / "retriever_lab.json"
+        if not path.exists():
+            continue
+        try:
+            data = json.loads(path.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        run_id = data.get("run_id") or run_dir.name.replace("run_", "")
+        runs.append(
+            {
+                "run_id": run_id,
+                "timestamp": data.get("timestamp", ""),
+                "top_k": data.get("top_k", 5),
+                "corpora": list(data.get("corpora", {}).keys()),
+            }
+        )
+    return {"runs": runs}
+
+
+@app.get("/api/retriever-lab/{run_id}")
+async def retriever_lab_results(run_id: str) -> dict:
+    """Return retriever-lab JSON for the given run."""
+    import re as _re
+
+    if not _re.match(r"^[a-zA-Z0-9_-]+$", run_id):
+        raise HTTPException(status_code=400, detail="invalid run_id")
+    path = _Path(settings.results_path) / f"run_{run_id}" / "retriever_lab.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="run not found")
+    try:
+        return json.loads(path.read_text())
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail="corrupt run file") from e
+
+
 @app.get("/api/benchmark/results")
 async def benchmark_results(corpus: str = "all") -> dict:
     """Load benchmark results from the results directory."""
