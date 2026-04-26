@@ -14,6 +14,7 @@ from pathlib import Path
 from rank_bm25 import BM25Okapi
 
 from kb_arena.models.document import Document
+from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
 
@@ -36,6 +37,7 @@ class BM25Strategy(Strategy):
         self._bm25: BM25Okapi | None = None
         self._corpus_texts: list[str] = []
         self._corpus_sources: list[str] = []
+        self._chunk_ids: list[str] = []
         self._index_path: Path | None = None
         self._llm = None
 
@@ -50,12 +52,14 @@ class BM25Strategy(Strategy):
         """Tokenize all sections for BM25 scoring."""
         texts: list[str] = []
         sources: list[str] = []
+        chunk_ids: list[str] = []
         for doc in documents:
             for section in doc.sections:
                 content = section.content.strip()
                 if content:
                     texts.append(content)
                     sources.append(doc.id)
+                    chunk_ids.append(f"{doc.id}::{section.id}")
 
         if not texts:
             log.warning("No text content found for BM25 index")
@@ -63,6 +67,7 @@ class BM25Strategy(Strategy):
 
         self._corpus_texts = texts
         self._corpus_sources = sources
+        self._chunk_ids = chunk_ids
 
         # BM25 uses whitespace tokenization intentionally - it's the lexical baseline
         tokenized = [t.lower().split() for t in texts]
@@ -73,7 +78,12 @@ class BM25Strategy(Strategy):
         index_dir = Path(settings.datasets_path) / corpus_name / "processed"
         index_dir.mkdir(parents=True, exist_ok=True)
         index_path = index_dir / "bm25_index.json"
-        index_path.write_text(json.dumps({"texts": texts, "sources": sources}, ensure_ascii=False))
+        index_path.write_text(
+            json.dumps(
+                {"texts": texts, "sources": sources, "chunk_ids": chunk_ids},
+                ensure_ascii=False,
+            )
+        )
         self._index_path = index_path
         log.info("BM25 index built: %d passages", len(texts))
 
@@ -100,6 +110,12 @@ class BM25Strategy(Strategy):
                     data = json.loads(path.read_text())
                     self._corpus_texts = data["texts"]
                     self._corpus_sources = data["sources"]
+                    # chunk_ids was added in v0.5.0; fall back to synthesized IDs
+                    # for indexes built by older versions so the index keeps working.
+                    self._chunk_ids = data.get("chunk_ids") or [
+                        f"{src}::passage-{i}"
+                        for i, src in enumerate(self._corpus_sources)
+                    ]
                     tokenized = [t.lower().split() for t in self._corpus_texts]
                     self._bm25 = BM25Okapi(tokenized)
                     self._index_path = path
@@ -128,6 +144,21 @@ class BM25Strategy(Strategy):
         sources = list({self._corpus_sources[i] for i in top_indices})
         retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
+        retrieved_chunks = [
+            RetrievedChunk(
+                chunk_id=self._chunk_ids[idx],
+                doc_id=self._corpus_sources[idx],
+                content=self._corpus_texts[idx],
+                score=float(scores[idx]),
+                rank=rank + 1,
+                source_strategy=self.name,
+            )
+            for rank, idx in enumerate(top_indices)
+        ]
+        trace = RetrievalTrace(
+            query=question, retrieved=retrieved_chunks, latency_ms=retrieval_ms, top_k=top_k
+        )
+
         context = "\n\n---\n\n".join(passages)
 
         # Generation phase
@@ -143,6 +174,7 @@ class BM25Strategy(Strategy):
         return AnswerResult(
             answer=resp.text,
             sources=sources,
+            retrieval=trace,
             strategy=self.name,
             latency_ms=latency_ms,
             retrieval_latency_ms=retrieval_ms,

@@ -20,6 +20,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from kb_arena.models.document import Document
+from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
 
@@ -372,6 +373,7 @@ class PageIndexStrategy(Strategy):
             return AnswerResult(
                 answer="No PageIndex tree found. Run build-vectors --strategy pageindex first.",
                 sources=[],
+                retrieval=RetrievalTrace(query=question, retrieved=[], latency_ms=0.0, top_k=top_k),
                 strategy=self.name,
                 latency_ms=latency_ms,
             )
@@ -396,6 +398,9 @@ class PageIndexStrategy(Strategy):
             return AnswerResult(
                 answer="Tree traversal found no relevant sections.",
                 sources=[],
+                retrieval=RetrievalTrace(
+                    query=question, retrieved=[], latency_ms=retrieval_ms, top_k=top_k
+                ),
                 strategy=self.name,
                 latency_ms=latency_ms,
             )
@@ -403,10 +408,25 @@ class PageIndexStrategy(Strategy):
         # Collect context from selected leaves
         context_parts = []
         sources: list[str] = []
-        for leaf in selected_leaves[:top_k]:
+        retrieved_chunks: list[RetrievedChunk] = []
+        for rank, leaf in enumerate(selected_leaves[:top_k], start=1):
             if leaf.content:
                 context_parts.append(f"[{leaf.title}]\n{leaf.content}")
                 sources.append(leaf.source_doc)
+            retrieved_chunks.append(
+                RetrievedChunk(
+                    chunk_id=f"pageindex:{leaf.source_doc}::{leaf.id}",
+                    doc_id=leaf.source_doc,
+                    content=leaf.content or "",
+                    score=0.0,
+                    rank=rank,
+                    source_strategy=self.name,
+                    metadata={"title": leaf.title, "level": leaf.level},
+                )
+            )
+        trace = RetrievalTrace(
+            query=question, retrieved=retrieved_chunks, latency_ms=retrieval_ms, top_k=top_k
+        )
 
         context = "\n\n---\n\n".join(context_parts)
 
@@ -427,6 +447,7 @@ class PageIndexStrategy(Strategy):
         return AnswerResult(
             answer=resp.text,
             sources=unique_sources,
+            retrieval=trace,
             strategy=self.name,
             latency_ms=latency_ms,
             retrieval_latency_ms=retrieval_ms,

@@ -14,6 +14,7 @@ import time
 from kb_arena.graph.schema import node_type_values, rel_type_values
 from kb_arena.models.document import Document
 from kb_arena.models.graph import GraphContext
+from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.strategies.base import AnswerResult, Strategy
 
 logger = logging.getLogger(__name__)
@@ -145,6 +146,37 @@ def _results_to_context(records: list[dict]) -> str:
                 parts.append(f"{k}: {v}")
         lines.append(" | ".join(parts))
     return "\n".join(lines)
+
+
+def _records_to_chunks(
+    records: list[dict], strategy_name: str, top_k: int
+) -> list[RetrievedChunk]:
+    """Synthesize RetrievedChunk objects from Neo4j result records.
+
+    Each record becomes a single chunk with chunk_id="graph:{fqn}". Score uses
+    the fulltext-search score field when present, else 0.0.
+    """
+    chunks: list[RetrievedChunk] = []
+    for i, r in enumerate(records[:top_k]):
+        if not r:
+            continue
+        fqn = str(r.get("fqn", r.get("name", f"record-{i}")))
+        name = str(r.get("name", fqn))
+        content = " | ".join(f"{k}: {v}" for k, v in r.items() if v is not None)
+        score_raw = r.get("score", 0.0)
+        score_val = float(score_raw) if isinstance(score_raw, int | float) else 0.0
+        chunks.append(
+            RetrievedChunk(
+                chunk_id=f"graph:{fqn}",
+                doc_id=str(r.get("source_id") or fqn),
+                content=content,
+                score=score_val,
+                rank=i + 1,
+                source_strategy=strategy_name,
+                metadata={"name": name, "fqn": fqn, "type": str(r.get("type", "Unknown"))},
+            )
+        )
+    return chunks
 
 
 def _records_to_graph_context(records: list[dict], cypher: str) -> GraphContext:
@@ -310,6 +342,9 @@ class KnowledgeGraphStrategy(Strategy):
                 answer="[Graph database not connected. Showing mock data for demo purposes.]",
                 sources=[],
                 graph_context=graph_ctx,
+                retrieval=RetrievalTrace(
+                    query=question, retrieved=[], latency_ms=0.0, top_k=top_k
+                ),
                 strategy=self.name,
                 latency_ms=latency_ms,
                 mock=True,
@@ -327,6 +362,10 @@ class KnowledgeGraphStrategy(Strategy):
 
         context = _results_to_context(records)
         graph_ctx = _records_to_graph_context(records, cypher_used)
+        retrieved_chunks = _records_to_chunks(records, self.name, top_k)
+        trace = RetrievalTrace(
+            query=question, retrieved=retrieved_chunks, latency_ms=retrieval_ms, top_k=top_k
+        )
         sources = list({r.get("source_id", r.get("fqn", "")) for r in records if r})
         sources = [s for s in sources if s]
 
@@ -351,6 +390,7 @@ class KnowledgeGraphStrategy(Strategy):
             answer=resp.text,
             sources=sources,
             graph_context=graph_ctx,
+            retrieval=trace,
             strategy=self.name,
             latency_ms=latency_ms,
             retrieval_latency_ms=retrieval_ms,

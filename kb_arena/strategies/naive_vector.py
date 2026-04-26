@@ -12,6 +12,7 @@ import time
 import chromadb
 
 from kb_arena.models.document import Document
+from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
 from kb_arena.strategies.embeddings import OpenAIEmbedding
@@ -110,10 +111,32 @@ class NaiveVectorStrategy(Strategy):
         collection = self._get_collection()
 
         retrieval_start = time.perf_counter()
-        results = collection.query(query_texts=[question], n_results=top_k)
+        results = collection.query(
+            query_texts=[question],
+            n_results=top_k,
+            include=["documents", "metadatas", "distances"],
+        )
         chunks = results["documents"][0] if results["documents"] else []
         metas = results["metadatas"][0] if results["metadatas"] else []
+        ids = results["ids"][0] if results.get("ids") else []
+        distances = results["distances"][0] if results.get("distances") else []
         retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
+
+        retrieved_chunks = [
+            RetrievedChunk(
+                chunk_id=ids[i] if i < len(ids) else f"unknown-{i}",
+                doc_id=(metas[i].get("source_id") if i < len(metas) else "") or "",
+                content=chunks[i] if i < len(chunks) else "",
+                score=1.0 - (distances[i] if i < len(distances) else 0.0),
+                rank=i + 1,
+                source_strategy=self.name,
+                metadata=dict(metas[i]) if i < len(metas) else {},
+            )
+            for i in range(len(chunks))
+        ]
+        trace = RetrievalTrace(
+            query=question, retrieved=retrieved_chunks, latency_ms=retrieval_ms, top_k=top_k
+        )
 
         sources = list({m.get("source_id", "") for m in metas if m.get("source_id")})
         context = "\n\n---\n\n".join(chunks)
@@ -133,6 +156,7 @@ class NaiveVectorStrategy(Strategy):
         return AnswerResult(
             answer=resp.text,
             sources=sources,
+            retrieval=trace,
             strategy=self.name,
             latency_ms=latency_ms,
             retrieval_latency_ms=retrieval_ms,

@@ -17,6 +17,7 @@ import time
 
 from kb_arena.models.document import Document
 from kb_arena.models.graph import GraphContext
+from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.strategies.base import AnswerResult, Strategy
 
 logger = logging.getLogger(__name__)
@@ -155,6 +156,7 @@ class HybridStrategy(Strategy):
         total_cost = 0.0
         retrieval_ms = 0.0
         gen_ms = 0.0
+        sub_traces: list[RetrievalTrace] = []
 
         if intent in ("comparison", "relational"):
             # Graph-primary
@@ -167,6 +169,8 @@ class HybridStrategy(Strategy):
             total_tokens = graph_result.tokens_used
             total_cost = graph_result.cost_usd
             gen_ms = graph_result.generation_latency_ms
+            if graph_result.retrieval:
+                sub_traces.append(graph_result.retrieval)
 
         elif intent in ("factoid", "exploratory"):
             # Vector-primary
@@ -178,6 +182,8 @@ class HybridStrategy(Strategy):
             total_tokens = vector_result.tokens_used
             total_cost = vector_result.cost_usd
             gen_ms = vector_result.generation_latency_ms
+            if vector_result.retrieval:
+                sub_traces.append(vector_result.retrieval)
 
         else:
             # Procedural — fuse both
@@ -187,6 +193,10 @@ class HybridStrategy(Strategy):
             retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
             total_tokens = vector_result.tokens_used + graph_result.tokens_used
             total_cost = vector_result.cost_usd + graph_result.cost_usd
+            if vector_result.retrieval:
+                sub_traces.append(vector_result.retrieval)
+            if graph_result.retrieval:
+                sub_traces.append(graph_result.retrieval)
 
             # Collect raw context chunks for re-ranking
             raw_passages = []
@@ -224,6 +234,25 @@ class HybridStrategy(Strategy):
             sources = _merge_sources(vector_result.sources, graph_result.sources)
             graph_ctx = graph_result.graph_context
 
+        # Merge sub-strategy traces, preserving original source_strategy on each chunk.
+        merged_chunks: list[RetrievedChunk] = []
+        seen_ids: set[str] = set()
+        for sub in sub_traces:
+            for ch in sub.retrieved:
+                if ch.chunk_id in seen_ids:
+                    continue
+                seen_ids.add(ch.chunk_id)
+                merged_chunks.append(ch)
+        merged_chunks.sort(key=lambda c: c.score, reverse=True)
+        for i, ch in enumerate(merged_chunks[:top_k]):
+            ch.rank = i + 1
+        trace = RetrievalTrace(
+            query=question,
+            retrieved=merged_chunks[:top_k],
+            latency_ms=retrieval_ms,
+            top_k=top_k,
+        )
+
         latency_ms = self._record_metrics(
             start, tokens=total_tokens, cost=total_cost, sources=sources, graph_context=graph_ctx
         )
@@ -231,6 +260,7 @@ class HybridStrategy(Strategy):
             answer=answer,
             sources=sources,
             graph_context=graph_ctx,
+            retrieval=trace,
             strategy=self.name,
             latency_ms=latency_ms,
             retrieval_latency_ms=retrieval_ms,

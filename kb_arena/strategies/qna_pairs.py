@@ -14,6 +14,7 @@ import chromadb
 
 from kb_arena.generate.qna import generate_pairs_for_section
 from kb_arena.models.document import Document, Section
+from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
 from kb_arena.strategies.embeddings import OpenAIEmbedding
@@ -124,15 +125,42 @@ class QnAPairStrategy(Strategy):
         collection = self._get_collection()
 
         retrieval_start = time.perf_counter()
-        results = collection.query(query_texts=[question], n_results=top_k)
+        results = collection.query(
+            query_texts=[question],
+            n_results=top_k,
+            include=["documents", "metadatas", "distances"],
+        )
         metas = results["metadatas"][0] if results["metadatas"] else []
         matched_questions = results["documents"][0] if results["documents"] else []
+        ids = results["ids"][0] if results.get("ids") else []
+        distances = results["distances"][0] if results.get("distances") else []
         retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
+
+        retrieved_chunks = [
+            RetrievedChunk(
+                chunk_id=f"qna:{ids[i]}" if i < len(ids) else f"qna:unknown-{i}",
+                doc_id=(metas[i].get("source_id") if i < len(metas) else "") or "",
+                content=(
+                    f"Q: {matched_questions[i]}\nA: {metas[i].get('answer', '')}"
+                    if i < len(metas) and i < len(matched_questions)
+                    else ""
+                ),
+                score=1.0 - (distances[i] if i < len(distances) else 0.0),
+                rank=i + 1,
+                source_strategy=self.name,
+                metadata=dict(metas[i]) if i < len(metas) else {},
+            )
+            for i in range(len(matched_questions))
+        ]
+        trace = RetrievalTrace(
+            query=question, retrieved=retrieved_chunks, latency_ms=retrieval_ms, top_k=top_k
+        )
 
         if not metas:
             return AnswerResult(
                 answer="No relevant QnA pairs found for this question.",
                 sources=[],
+                retrieval=trace,
                 strategy=self.name,
                 latency_ms=self._record_metrics(start),
                 retrieval_latency_ms=retrieval_ms,
@@ -174,6 +202,7 @@ class QnAPairStrategy(Strategy):
         return AnswerResult(
             answer=answer,
             sources=sources,
+            retrieval=trace,
             strategy=self.name,
             latency_ms=latency_ms,
             retrieval_latency_ms=retrieval_ms,
