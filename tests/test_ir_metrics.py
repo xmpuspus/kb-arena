@@ -186,6 +186,31 @@ def test_hierarchical_match_no_partial_segment():
     assert metrics.recall_at_k == 0.0
 
 
+def test_strategy_namespace_prefix_stripping():
+    """RAPTOR L0 chunks should match section-level expected labels."""
+    retrieved = [
+        _chunk("L0:lambda-overview::aws-lambda::0", rank=1),
+        _chunk("L1:cluster-summary-1", rank=2),
+    ]
+    metrics = compute_all(
+        retrieved,
+        expected_ids={"lambda-overview::aws-lambda"},
+        k=5,
+    )
+    assert metrics.recall_at_k == 1.0
+    assert metrics.hit_at_k == 1
+    assert metrics.mrr == 1.0
+
+
+def test_strategy_prefix_stripping_only_known_prefixes():
+    """An unknown 'foo:' prefix must NOT match a section label."""
+    retrieved = [_chunk("foo:lambda-overview::aws-lambda::0", rank=1)]
+    metrics = compute_all(
+        retrieved, expected_ids={"lambda-overview::aws-lambda"}, k=5
+    )
+    assert metrics.recall_at_k == 0.0
+
+
 def test_hierarchical_ndcg_dedupes_per_expected():
     """Two sub-chunks of the same section should not double-count NDCG."""
     retrieved = [

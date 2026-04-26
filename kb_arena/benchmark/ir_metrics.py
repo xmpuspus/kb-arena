@@ -18,18 +18,42 @@ import math
 from kb_arena.models.benchmark import RetrievalMetrics
 from kb_arena.models.retrieval import RetrievedChunk
 
+_STRATEGY_NAMESPACE_PREFIXES = ("L0:", "L1:", "L2:", "qna:", "graph:", "pageindex:")
+
+
+def _candidate_ids(chunk_id: str) -> list[str]:
+    """Yield matchable forms of a chunk_id.
+
+    1. The chunk_id itself.
+    2. The chunk_id with a known strategy-namespace prefix stripped — RAPTOR's
+       'L0:doc::sec' is the same chunk as naive_vector's 'doc::sec', and
+       expected labels are written without a strategy prefix.
+    """
+    candidates = [chunk_id]
+    for p in _STRATEGY_NAMESPACE_PREFIXES:
+        if chunk_id.startswith(p):
+            candidates.append(chunk_id[len(p) :])
+            break
+    return candidates
+
 
 def _match_expected(chunk_id: str, expected: set[str]) -> str | None:
-    """Return the expected_id matched by chunk_id (exact or hierarchical prefix), else None."""
+    """Return the expected_id matched by chunk_id (exact or hierarchical prefix), else None.
+
+    Tries the raw chunk_id first; if no match, retries with strategy-namespace
+    prefixes stripped. Hierarchical match: each '::'-delimited prefix of a
+    candidate counts as a match if it exists in expected.
+    """
     if not expected:
         return None
-    if chunk_id in expected:
-        return chunk_id
-    parts = chunk_id.split("::")
-    for n in range(len(parts) - 1, 0, -1):
-        prefix = "::".join(parts[:n])
-        if prefix in expected:
-            return prefix
+    for cand in _candidate_ids(chunk_id):
+        if cand in expected:
+            return cand
+        parts = cand.split("::")
+        for n in range(len(parts) - 1, 0, -1):
+            prefix = "::".join(parts[:n])
+            if prefix in expected:
+                return prefix
     return None
 
 
