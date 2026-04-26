@@ -1,16 +1,16 @@
 name: Publish to PyPI
 
+# Trusted publishing on PyPI is not configured for this repo, so the
+# release-triggered workflow was failing on every tag. Until OIDC is set up,
+# this workflow runs only on manual dispatch and uses an API token from
+# repository secrets (PYPI_API_TOKEN). Manual twine upload remains the
+# documented path; this workflow is here for when the secret is added.
 on:
-  release:
-    types: [published]
-
-permissions:
-  id-token: write
+  workflow_dispatch:
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: pypi
     steps:
       - uses: actions/checkout@v4
 
@@ -19,10 +19,21 @@ jobs:
           python-version: "3.12"
 
       - name: Install build tools
-        run: pip install build
+        run: pip install build twine
 
       - name: Build package
         run: python -m build
 
+      - name: Twine check
+        run: twine check dist/*
+
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [ -z "$TWINE_PASSWORD" ]; then
+            echo "PYPI_API_TOKEN secret not set. See README for manual publish steps."
+            exit 1
+          fi
+          twine upload --skip-existing dist/*
