@@ -70,14 +70,28 @@ Two changes that close the only gaps a direct competitor (AutoRAG) had on us, an
 
 Stop guessing chunk size, top-k, embedding provider, or reranker backend. `optimize` sweeps them per strategy, scores each configuration on a retrieval IR metric, and reports the tuned optimum and its delta versus your current defaults.
 
+**Prepare the corpus first.** `optimize` scores real retrieval, so the same pipeline as `benchmark`/`retriever-lab` must have run once. `--dry-run` (the search-space/cost preview) needs none of this — only a real run does.
+
 ```bash
-# Preview the search space and cost — no API keys needed
+kb-arena init-corpus my-docs
+cp ~/my-docs/*.md datasets/my-docs/raw/
+
+kb-arena ingest datasets/my-docs/raw/ --corpus my-docs      # raw docs → Document JSONL
+kb-arena build-vectors --corpus my-docs                       # vector/RAPTOR/PageIndex/BM25 indexes
+kb-arena build-graph --corpus my-docs                         # Neo4j graph (only if sweeping knowledge_graph/hybrid)
+kb-arena generate-questions --corpus my-docs --count 50        # benchmark questions
+kb-arena label-chunks --corpus my-docs                         # chunk-level ground truth for the IR metric
+                                                               # (skip and optimize falls back to weaker doc-level scoring)
+```
+
+```bash
+# Preview the search space and cost — no API keys, no corpus prep needed
 kb-arena optimize --corpus my-docs \
   --strategies naive_vector,rerank_vector \
   --top-ks 3,5,10 --chunk-sizes 256,512,1024 \
   --embedding-providers openai,bge --dry-run
 
-# Run it
+# Run it (needs the prepared corpus above)
 kb-arena optimize --corpus my-docs --top-ks 3,5,10 --metric ndcg
 ```
 
