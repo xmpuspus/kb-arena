@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kb-arena"
-version = "0.7.1"
+version = "0.8.0"
 description = "Benchmark 9 retrieval architectures on your documentation — find which KB architecture fits your data"
 readme = "README.md"
 license = "MIT"
@@ -40,6 +40,7 @@ dependencies = [
     "tiktoken==0.7.0",
     "httpx==0.28.1",
     "rank-bm25==0.2.2",
+    "scipy>=1.11.0",
 ]
 
 [project.optional-dependencies]

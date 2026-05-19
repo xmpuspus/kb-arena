@@ -128,7 +128,7 @@ def _build_table(
     return t
 
 
-def _summarize(records: list[RetrievalMetrics]) -> dict[str, float | int]:
+def _aggregate_means(records: list[RetrievalMetrics]) -> dict[str, float | int]:
     if not records:
         return {
             "mean_recall_at_k": 0.0,
@@ -136,6 +136,9 @@ def _summarize(records: list[RetrievalMetrics]) -> dict[str, float | int]:
             "mean_hit_at_k": 0.0,
             "mean_mrr": 0.0,
             "mean_ndcg_at_k": 0.0,
+            "mean_average_precision": 0.0,
+            "mean_r_precision": 0.0,
+            "mean_bpref": 0.0,
             "questions": 0,
         }
     n = len(records)
@@ -145,8 +148,67 @@ def _summarize(records: list[RetrievalMetrics]) -> dict[str, float | int]:
         "mean_hit_at_k": sum(r.hit_at_k for r in records) / n,
         "mean_mrr": sum(r.mrr for r in records) / n,
         "mean_ndcg_at_k": sum(r.ndcg_at_k for r in records) / n,
+        "mean_average_precision": sum(r.average_precision for r in records) / n,
+        "mean_r_precision": sum(r.r_precision for r in records) / n,
+        "mean_bpref": sum(r.bpref for r in records) / n,
         "questions": n,
     }
+
+
+def _bootstrap_ci(values: list[float]) -> tuple[float, float]:
+    """Percentile bootstrap 95% CI on the mean; degenerate-band when scipy
+    missing or all values identical so the summary never crashes."""
+    if not values:
+        return (0.0, 0.0)
+    if all(v == values[0] for v in values):
+        return (values[0], values[0])
+    try:
+        import numpy as np
+        from scipy.stats import bootstrap
+
+        res = bootstrap(
+            (np.asarray(values),),
+            statistic=np.mean,
+            n_resamples=1000,
+            confidence_level=0.95,
+            method="percentile",
+            random_state=0,
+        )
+        return (float(res.confidence_interval.low), float(res.confidence_interval.high))
+    except Exception:  # noqa: BLE001
+        m = sum(values) / len(values)
+        return (m, m)
+
+
+def _summarize_with_tiers(
+    rows: list[tuple[int, RetrievalMetrics]],
+) -> dict:
+    """Aggregate means + per-tier breakdown + 95% bootstrap CIs on key metrics.
+
+    Per-tier breakdown answers "does the win hold on hard queries?" — a
+    strategy can dominate on tier-1 lookups and lose badly on tier-5
+    architecture queries while the overall mean masks it.
+    """
+    out = _aggregate_means([m for _, m in rows])
+
+    # 95% CIs on the headline metrics — Sakai's standard.
+    out["ci_ndcg_at_k"] = _bootstrap_ci([m.ndcg_at_k for _, m in rows])
+    out["ci_recall_at_k"] = _bootstrap_ci([m.recall_at_k for _, m in rows])
+    out["ci_average_precision"] = _bootstrap_ci([m.average_precision for _, m in rows])
+
+    by_tier: dict[int, dict] = {}
+    tiers = sorted({t for t, _ in rows if t is not None})
+    for tier in tiers:
+        tier_rows = [m for t, m in rows if t == tier]
+        if tier_rows:
+            by_tier[tier] = _aggregate_means(tier_rows)
+    out["by_tier"] = by_tier
+    return out
+
+
+def _summarize(records: list[RetrievalMetrics]) -> dict[str, float | int]:
+    """Back-compat shim used by the live Rich table during the run."""
+    return _aggregate_means(records)
 
 
 async def run_retriever_lab(
@@ -249,6 +311,9 @@ async def _run_corpora_loop(
             continue
 
         per_strategy_rows: dict[str, list[RetrievalMetrics]] = {s.name: [] for s in strategies}
+        per_strategy_tier_rows: dict[str, list[tuple[int, RetrievalMetrics]]] = {
+            s.name: [] for s in strategies
+        }
         title = f"Retriever Lab — {corp} (top-{top_k})"
 
         # Live updates are TTY-only; in non-TTY contexts (CI, pipes, captured
@@ -278,6 +343,7 @@ async def _run_corpora_loop(
                         expected_doc_ids=set(q.ground_truth.source_refs),
                     )
                     per_strategy_rows[s.name].append(metrics)
+                    per_strategy_tier_rows[s.name].append((int(q.tier or 0), metrics))
                     hits_set = set(metrics.hits)
 
                     def _is_hit(chunk):
@@ -324,7 +390,7 @@ async def _run_corpora_loop(
                 live.stop()
 
         overall["corpora"][corp] = {
-            s.name: _summarize(per_strategy_rows[s.name]) for s in strategies
+            s.name: _summarize_with_tiers(per_strategy_tier_rows[s.name]) for s in strategies
         }
 
     return 0

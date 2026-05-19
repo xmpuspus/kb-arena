@@ -9,7 +9,7 @@ KB Arena is the only open-source benchmark that runs **architecturally distinct*
 
 Embeddings: pluggable across **OpenAI, Voyage-3, Cohere, Gemini, BGE (local), Ollama (local)** via `KB_ARENA_EMBEDDING_PROVIDER`. Rerankers: **BGE-v2-m3 (local), Cohere Rerank, Voyage Rerank** via `KB_ARENA_RERANKER_BACKEND`.
 
-![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-581-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![PyPI](https://img.shields.io/pypi/v/kb-arena) ![CI](https://github.com/xmpuspus/kb-arena/actions/workflows/ci.yml/badge.svg)
+![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-617-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![PyPI](https://img.shields.io/pypi/v/kb-arena) ![CI](https://github.com/xmpuspus/kb-arena/actions/workflows/ci.yml/badge.svg)
 
 ![KB Arena Demo](docs/demo.gif)
 
@@ -59,6 +59,48 @@ Most RAG evaluation tools answer "how well does my pipeline work?" KB Arena answ
 AutoRAG is the only tool that also searches retrieval configurations. KB Arena adds what it can't: knowledge-graph retrieval as a first-class strategy, auto-generated questions, an interactive UI, and graph IR metrics.
 
 If you want to know whether a knowledge graph, Q&A pairs, or plain vector search is the right architecture for your documentation, that's what KB Arena is for.
+
+---
+
+## What's New in v0.8.0 — Statistical-rigor metrics layer
+
+`optimize` used to report "improved: True, delta=+0.0033" with no honesty layer. v0.8.0 fixes that and adds the metrics every IR benchmark since 2010 expects.
+
+### New ranking metrics (`ir_metrics`)
+
+- **MAP / Average Precision** — the BEIR/MTEB/TREC default. Captures *where* in the ranking the relevant items sit, weighted by precision at each hit. Reported per query and aggregated.
+- **R-Precision** — precision at rank R where R = number of relevant items for that query. Removes the arbitrary fixed-k choice when comparing across queries with very different relevance-set sizes.
+- **bpref** (Buckley & Voorhees 2004) — robust to incomplete judgment pools. aws-compute labels 35 of 75 questions; MAP silently penalizes systems for surfacing the unjudged-but-truly-relevant ones, bpref does not. Auto-clamps the inner term to [0,1] (a real-run bug surfaced exactly the case the canonical TREC formulation guards against).
+- **Graded NDCG with exponential gain** (`2^rel - 1`, Burges et al.) — amplifies the penalty for mis-ranking a highly-graded item against a low-graded one. Switched via `ndcg_at_k(..., exponential_gain=True)`. Equivalent to linear for binary labels; takes effect once `expected_chunks.yaml` carries grades.
+
+### New: Rank-Biased Overlap (`rank_similarity.py`)
+
+```python
+from kb_arena.benchmark.rank_similarity import rank_biased_overlap
+rbo = rank_biased_overlap(naive_vector_ranks, contextual_vector_ranks, p=0.9)
+```
+
+Webber, Moffat & Zobel 2010 (extrapolated form). Compares two ranked lists **without ground truth** — answers "are these two strategies actually different in what they surface?", "did the new release perturb rankings beyond what we expected?", "is hybrid actually fusing or just mirroring vector?". `p=0.9` is the SIGIR default; identical rankings give 1.0 regardless of evaluation depth.
+
+### `optimize` is honest now
+
+Every `optimize` report gains:
+
+- **95% bootstrap CIs** on the best score *and* the baseline (Sakai's IR standard). The score column now reads `0.3091 [0.224, 0.396]`.
+- **Wilcoxon paired p-value** between best and baseline + a `significant` flag (p<0.05 AND positive lift). On the BM25 aws-compute sweep this surfaces `+0.0306 (p=0.0095) → significant=True`; a noisy `+0.003` lift would correctly be flagged not significant.
+- **Win-rate vs baseline** — fraction of questions where the best config strictly beats the baseline. A high mean lift driven by a few big wins shows up as low win-rate; a robust improvement shows up high.
+- **NDCG / ms** — efficiency metric (retrieval-time; cost in dollars is dominated by negligible embedding cost in retrieval-only mode).
+- **Pareto frontier across strategies** — strategies not dominated on both (score, score/ms) get a `★` in the table.
+
+### `retriever-lab` gets per-tier IR breakdown
+
+The JSON now ships `by_tier: {1: {...}, 2: {...}, ..., 5: {...}}` for every strategy — Recall@k / NDCG@k / MAP / bpref split by difficulty tier. Does the win hold on hard queries, or is it carried by easy lookups? You can now answer that without re-running the benchmark per tier.
+
+### scipy is now a runtime dep
+
+For `scipy.stats.bootstrap` and `scipy.stats.wilcoxon`. ~50MB on top of the existing stack; dwarfed by chromadb/anthropic deps. Worth it for honest reporting.
+
+617 tests, all TDD.
 
 ---
 
@@ -126,7 +168,7 @@ v0.7.0 carries each entity's source provenance end to end: extraction stamps `so
 
 `KB_ARENA_CHUNK_TOKENS` / `KB_ARENA_CHUNK_OVERLAP_TOKENS` are now real settings (every token-chunking strategy reads them), which is also what lets `optimize` sweep chunk size.
 
-581 tests.
+617 tests.
 
 ---
 
@@ -467,8 +509,9 @@ kb-arena report --format html   # shareable dashboard
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 0.7.1 | 2026-05-20 | `kb-arena optimize` correctness + first real numbers. Rebuild-decision bug: `needs_rebuild` was comparing to the *previous* trial (so trial #1 always rebuilt even when it equalled the baseline, needlessly re-embedding the corpus); now compared to the baseline (persistent-index config), so a pure top-k sweep does zero rebuilds. README v0.7.0 section gains a real `aws-compute` top-k sweep table (BM25 / naive_vector / contextual_vector / RAPTOR, NDCG baseline vs best vs delta) and the demo GIF now shows a real BM25 run streaming actual NDCG numbers, not just `--dry-run`. Corpus-prep recipe documented in the optimize section. 581 tests. |
-| 0.7.0 | 2026-05-19 | Automated retrieval-strategy search (`kb-arena optimize`): scoped grid/random sweeps over chunk size, top-k, embedding provider, reranker backend per strategy; retrieval-only scoring (~10x cheaper than `benchmark`); honest delta vs. current defaults; `--dry-run` cost preview (no keys); isolated per-trial ChromaDB so sweeps never touch persistent indexes. Graph IR fix: entities now carry `source_doc_id`/`source_section_id` end to end (extractor → Neo4j → Cypher templates → retrieval), so `knowledge_graph` emits `graph:{doc}::{section}` and scores real Recall@k/MRR/NDCG@k instead of a flat 0.0. `KB_ARENA_CHUNK_TOKENS`/`KB_ARENA_CHUNK_OVERLAP_TOKENS` are now first-class settings. 581 tests. |
+| 0.8.0 | 2026-05-20 | Statistical-rigor metrics layer. ir_metrics gains **MAP / Average Precision**, **R-Precision**, **bpref** (TREC-style robust to partial labels, auto-clamped to [0,1] from a real-run bug surfaced on aws-compute), and a **graded NDCG** switch using exponential gain (2^rel-1) for SIGIR-standard handling of graded relevance. New `kb_arena/benchmark/rank_similarity.py` with **Rank-Biased Overlap** (Webber 2010, extrapolated form) for comparing two strategies' rankings without a gold standard. `optimize` now reports **bootstrap 95% CIs**, **Wilcoxon paired p-value + significance flag**, **win-rate vs baseline**, **NDCG/ms efficiency**, and **Pareto-optimal markers** across strategies — the report finally tells you whether a `+0.003` lift is real or noise. `retriever-lab` JSON gains **per-tier breakdowns** (Recall/NDCG/MAP per difficulty tier 1-5) and bootstrap CIs on aggregate means. scipy added as a runtime dep. 617 tests. |
+| 0.7.1 | 2026-05-20 | `kb-arena optimize` correctness + first real numbers. Rebuild-decision bug: `needs_rebuild` was comparing to the *previous* trial (so trial #1 always rebuilt even when it equalled the baseline, needlessly re-embedding the corpus); now compared to the baseline (persistent-index config), so a pure top-k sweep does zero rebuilds. README v0.7.0 section gains a real `aws-compute` top-k sweep table (BM25 / naive_vector / contextual_vector / RAPTOR, NDCG baseline vs best vs delta) and the demo GIF now shows a real BM25 run streaming actual NDCG numbers, not just `--dry-run`. Corpus-prep recipe documented in the optimize section. 617 tests. |
+| 0.7.0 | 2026-05-19 | Automated retrieval-strategy search (`kb-arena optimize`): scoped grid/random sweeps over chunk size, top-k, embedding provider, reranker backend per strategy; retrieval-only scoring (~10x cheaper than `benchmark`); honest delta vs. current defaults; `--dry-run` cost preview (no keys); isolated per-trial ChromaDB so sweeps never touch persistent indexes. Graph IR fix: entities now carry `source_doc_id`/`source_section_id` end to end (extractor → Neo4j → Cypher templates → retrieval), so `knowledge_graph` emits `graph:{doc}::{section}` and scores real Recall@k/MRR/NDCG@k instead of a flat 0.0. `KB_ARENA_CHUNK_TOKENS`/`KB_ARENA_CHUNK_OVERLAP_TOKENS` are now first-class settings. 617 tests. |
 | 0.6.1 | 2026-05-02 | Docs-only — adds the missing "What's New in v0.6.0" section, bumps strategy count to 9 across the README, lists `rerank_vector` in the strategy table. No code changes from v0.6.0. |
 | 0.6.0 | 2026-05-02 | Hardening + 9th strategy + embedding providers + public leaderboard. New `rerank_vector` strategy with BGE/Cohere/Voyage backends. Embedding provider abstraction (OpenAI/Voyage/Cohere/BGE/Ollama/Gemini). One-shot `kb-arena run --resume` orchestrator. Public read-only `/api/leaderboard` + `/leaderboard` page. Bearer-token auth + demo-mode + 4000-char input cap on every LLM endpoint. Default cost cap 0 → 10 USD. Cypher sessions opened READ_ACCESS, APOC write regex tightened. WebParser SSRF guard. Hybrid procedural rewritten to fuse real passages via RRF (was reranking answer strings). IntentRouter actually wired in. Cross-section graph edges no longer dropped. Ground-truth pool widened from BM25-only. Cross-tenant strategy state leak fixed. BM25 result file bundled. Re-recorded demo GIFs. 558 tests. |
 | 0.5.0 | 2026-04-26 | Retriever Lab — classical IR metrics (Recall@k, Precision@k, Hit@k, MRR, NDCG@k) computed per query, `RetrievalTrace` exposes retrieved chunks per strategy with rank+score, `kb-arena retriever-lab` retrieval-only command (~10x cheaper than `benchmark`), `kb-arena label-chunks` BM25+Haiku ground-truth generator, `--top-k` flag on `benchmark`, `/retriever-lab` web page with HIT/MISS drill-down, hierarchical chunk-id matching, 558 tests |
@@ -908,7 +951,7 @@ All prefixed with `KB_ARENA_`. Loaded from `.env` or environment.
 pip install -e '.[dev]'
 
 # Run tests
-pytest tests/ -v --ignore=tests/live  # 581 tests
+pytest tests/ -v --ignore=tests/live  # 617 tests
 
 # Lint + format
 ruff check . && ruff format --check .
@@ -931,7 +974,7 @@ cd web && npm install && npx next build
 | Frontend | Next.js 14 + Tailwind + Recharts |
 | Models | Pydantic v2 |
 | CLI | Typer + Rich |
-| Testing | pytest (581 tests) |
+| Testing | pytest (617 tests) |
 
 ---
 

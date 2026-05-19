@@ -65,8 +65,39 @@ class TrialConfig(BaseModel):
     model_config = {"frozen": True}
 
 
+class TrialResult(BaseModel):
+    """Per-question scores and latencies for one (strategy, config) trial.
+
+    Carrying the per-question vectors (not just the mean) is what lets the
+    summarizer compute bootstrap CIs, paired-significance tests, win-rates,
+    and latency-normalized efficiency. Without this, every "improvement"
+    the optimizer prints is a point estimate with no honesty layer.
+    """
+
+    cfg: TrialConfig
+    per_question_scores: list[float] = Field(default_factory=list)
+    per_question_latency_ms: list[float] = Field(default_factory=list)
+
+    @property
+    def mean_score(self) -> float:
+        return (
+            sum(self.per_question_scores) / len(self.per_question_scores)
+            if self.per_question_scores
+            else 0.0
+        )
+
+    @property
+    def mean_latency_ms(self) -> float:
+        return (
+            sum(self.per_question_latency_ms) / len(self.per_question_latency_ms)
+            if self.per_question_latency_ms
+            else 0.0
+        )
+
+
 class OptimizeResult(BaseModel):
-    """Per-strategy outcome: best config and its lift over the baseline."""
+    """Per-strategy outcome: best config, its lift over the baseline, and the
+    statistical layer that makes the lift trustworthy (CIs, p-value, win-rate)."""
 
     strategy: str
     metric: str = "ndcg"
@@ -76,6 +107,16 @@ class OptimizeResult(BaseModel):
     baseline_score: float
     n_trials: int = 0
     scored: list[tuple[TrialConfig, float]] = Field(default_factory=list)
+
+    # v0.8.0 statistical layer
+    best_score_ci: tuple[float, float] = (0.0, 0.0)
+    baseline_score_ci: tuple[float, float] = (0.0, 0.0)
+    p_value: float | None = None
+    significant: bool = False
+    win_rate_vs_baseline: float = 0.0
+    best_metric_per_ms: float = 0.0
+    baseline_metric_per_ms: float = 0.0
+    pareto_optimal: bool = False
 
     @property
     def delta(self) -> float:
@@ -207,6 +248,139 @@ def select_best(
     )
 
 
+# ── Statistical summarization ────────────────────────────────────────────────
+
+
+def _bootstrap_ci(
+    values: list[float], n_resamples: int = 1000, ci: float = 0.95
+) -> tuple[float, float]:
+    """Percentile bootstrap CI on the mean — Sakai's standard for IR."""
+    if not values:
+        return (0.0, 0.0)
+    try:
+        import numpy as np
+        from scipy.stats import bootstrap as scipy_bootstrap
+
+        if all(v == values[0] for v in values):
+            return (values[0], values[0])
+        res = scipy_bootstrap(
+            (np.asarray(values),),
+            statistic=np.mean,
+            n_resamples=n_resamples,
+            confidence_level=ci,
+            method="percentile",
+            random_state=0,
+        )
+        return (float(res.confidence_interval.low), float(res.confidence_interval.high))
+    except Exception:  # noqa: BLE001 — graceful degradation if scipy missing
+        m = sum(values) / len(values)
+        return (m, m)
+
+
+def _wilcoxon(baseline: list[float], best: list[float]) -> float | None:
+    """Two-sided Wilcoxon signed-rank p-value for paired samples; None if degenerate."""
+    if len(baseline) != len(best) or len(baseline) < 2:
+        return None
+    if all(b == a for a, b in zip(baseline, best, strict=True)):
+        return 1.0  # no paired difference — definitely not significant
+    try:
+        from scipy.stats import wilcoxon
+
+        stat = wilcoxon(best, baseline, zero_method="zsplit", alternative="two-sided")
+        return float(stat.pvalue)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _win_rate(baseline: list[float], best: list[float]) -> float:
+    if not baseline or len(baseline) != len(best):
+        return 0.0
+    return sum(1 for a, b in zip(baseline, best, strict=True) if b > a) / len(baseline)
+
+
+def summarize_optimization(
+    strategy: str,
+    trials: list[TrialResult],
+    baseline: TrialConfig,
+    metric: str = "ndcg",
+) -> OptimizeResult:
+    """Pick the best trial and attach the statistical layer (CI, p, win-rate, efficiency).
+
+    Delta is computed against the baseline trial — the trial whose config
+    equals `baseline`, falling back to the first trial when none matches.
+    """
+    if not trials:
+        raise ValueError("no trials to summarize")
+
+    baseline_trial = next((t for t in trials if t.cfg == baseline), trials[0])
+    best_trial = max(trials, key=lambda t: t.mean_score)
+
+    baseline_score = baseline_trial.mean_score
+    best_score = best_trial.mean_score
+    base_lat = baseline_trial.mean_latency_ms or 1.0
+    best_lat = best_trial.mean_latency_ms or 1.0
+
+    same = best_trial is baseline_trial
+    p_value = (
+        None
+        if same
+        else _wilcoxon(baseline_trial.per_question_scores, best_trial.per_question_scores)
+    )
+    win_rate = (
+        0.0
+        if same
+        else _win_rate(baseline_trial.per_question_scores, best_trial.per_question_scores)
+    )
+
+    return OptimizeResult(
+        strategy=strategy,
+        metric=metric,
+        best_config=best_trial.cfg,
+        best_score=best_score,
+        baseline_config=baseline,
+        baseline_score=baseline_score,
+        n_trials=len(trials),
+        scored=[(t.cfg, t.mean_score) for t in trials],
+        best_score_ci=_bootstrap_ci(best_trial.per_question_scores),
+        baseline_score_ci=_bootstrap_ci(baseline_trial.per_question_scores),
+        p_value=p_value,
+        significant=(p_value is not None and p_value < 0.05 and best_score > baseline_score),
+        win_rate_vs_baseline=win_rate,
+        best_metric_per_ms=best_score / best_lat,
+        baseline_metric_per_ms=baseline_score / base_lat,
+    )
+
+
+def pareto_optimal_strategies(results: list[OptimizeResult]) -> list[OptimizeResult]:
+    """Return the Pareto frontier in (latency, score): higher best_score is
+    better; lower mean latency (implied by higher metric_per_ms) is better.
+
+    A result is dominated iff some other result has score >= this one AND
+    metric_per_ms >= this one, with at least one strict inequality. Ties are
+    not dominated."""
+    keep: list[OptimizeResult] = []
+    for r in results:
+        dominated = False
+        for other in results:
+            if other is r:
+                continue
+            if (
+                other.best_score >= r.best_score
+                and other.best_metric_per_ms >= r.best_metric_per_ms
+                and (
+                    other.best_score > r.best_score
+                    or other.best_metric_per_ms > r.best_metric_per_ms
+                )
+            ):
+                dominated = True
+                break
+        if not dominated:
+            keep.append(r)
+    for r in keep:
+        r.pareto_optimal = True
+    return keep
+
+
 # ── Orchestration ─────────────────────────────────────────────────────────────
 
 
@@ -322,12 +496,14 @@ class _ApplyOverrides:
         return False
 
 
-async def _score_trial(strategy, cfg, documents, questions, metric, baseline) -> float:
-    """Mean IR metric for one (strategy, config) over the corpus questions.
+async def _score_trial(strategy, cfg, documents, questions, metric, baseline) -> TrialResult:
+    """Per-question scores + latencies for one (strategy, config) trial.
 
     Retrieval-only (LLM generation stubbed) so a full sweep stays ~10x cheaper
     than the answer benchmark. Rebuilds the index only when the trial's
     rebuild dims differ from the baseline (the persistent-index config).
+    Returns a TrialResult carrying every per-question score so the summarizer
+    can compute CIs, paired significance, and win-rate.
     """
     from kb_arena.benchmark.retriever_lab import _PatchLLMClient, _retrieve_only
     from kb_arena.strategies import get_strategy
@@ -342,8 +518,9 @@ async def _score_trial(strategy, cfg, documents, questions, metric, baseline) ->
                 await inst.build_index(documents)
             except Exception as exc:  # noqa: BLE001 — a dead config scores 0, not crash
                 log.warning("optimize: build_index failed for %s %s: %s", strategy, cfg, exc)
-                return 0.0
+                return TrialResult(cfg=cfg, per_question_scores=[0.0] * len(questions))
         scores: list[float] = []
+        latencies: list[float] = []
         with _PatchLLMClient():
             for q in questions:
                 trace = await _retrieve_only(inst, q.question, cfg.top_k)
@@ -356,7 +533,8 @@ async def _score_trial(strategy, cfg, documents, questions, metric, baseline) ->
                     ),
                 )
                 scores.append(getattr(m, field))
-    return sum(scores) / len(scores) if scores else 0.0
+                latencies.append(float(trace.latency_ms or 0.0))
+    return TrialResult(cfg=cfg, per_question_scores=scores, per_question_latency_ms=latencies)
 
 
 def _resolve_strategies(strategies_filter: str) -> list[str]:
@@ -444,17 +622,19 @@ async def run_optimize(
             max_trials=max_trials,
             seed=seed,
         )
-        scored: list[tuple[TrialConfig, float]] = []
+        trial_results: list[TrialResult] = []
         base = baseline_config(s)
         for cfg in trials:
             start = time.perf_counter()
-            score = await _score_trial(s, cfg, documents, questions, metric, base)
-            scored.append((cfg, score))
+            tr = await _score_trial(s, cfg, documents, questions, metric, base)
+            trial_results.append(tr)
             console.print(
                 f"[dim]{s} {cfg.model_dump(exclude={'strategy'})} "
-                f"{metric}={score:.4f} ({(time.perf_counter() - start):.1f}s)[/dim]"
+                f"{metric}={tr.mean_score:.4f} ({(time.perf_counter() - start):.1f}s)[/dim]"
             )
-        results[s] = select_best(s, scored, baseline_config(s), metric=metric)
+        results[s] = summarize_optimization(s, trial_results, base, metric=metric)
+
+    pareto_optimal_strategies(list(results.values()))  # marks pareto_optimal in-place
 
     out = Path(out_dir) if out_dir else Path(settings.results_path) / f"run_{run_id}"
     out.mkdir(parents=True, exist_ok=True)
@@ -468,10 +648,18 @@ async def run_optimize(
             name: {
                 "best_config": r.best_config.model_dump(),
                 "best_score": r.best_score,
+                "best_score_ci": list(r.best_score_ci),
                 "baseline_config": r.baseline_config.model_dump(),
                 "baseline_score": r.baseline_score,
+                "baseline_score_ci": list(r.baseline_score_ci),
                 "delta": r.delta,
                 "improved": r.improved,
+                "p_value": r.p_value,
+                "significant": r.significant,
+                "win_rate_vs_baseline": r.win_rate_vs_baseline,
+                "best_metric_per_ms": r.best_metric_per_ms,
+                "baseline_metric_per_ms": r.baseline_metric_per_ms,
+                "pareto_optimal": r.pareto_optimal,
                 "n_trials": r.n_trials,
             }
             for name, r in results.items()
@@ -482,20 +670,35 @@ async def run_optimize(
     table = Table(title=f"optimize — {corpus} (metric={metric})")
     table.add_column("Strategy", style="bold")
     table.add_column(f"default {metric}", justify="right")
-    table.add_column(f"best {metric}", justify="right")
+    table.add_column(f"best {metric} [95% CI]", justify="right")
     table.add_column("delta", justify="right")
+    table.add_column("p", justify="right")
+    table.add_column("win-rate", justify="right")
+    table.add_column(f"{metric}/ms", justify="right")
     table.add_column("best config")
     for name, r in results.items():
         sign = "+" if r.delta >= 0 else ""
         bc = r.best_config.model_dump(exclude={"strategy"})
         bc = {k: v for k, v in bc.items() if v is not None}
+        ci_lo, ci_hi = r.best_score_ci
+        p_str = f"{r.p_value:.3g}" if r.p_value is not None else "—"
+        sig_color = "green" if r.significant else "dim"
+        delta_fmt = f"[{sig_color}]{sign}{r.delta:.4f}[/{sig_color}]"
+        pareto_tag = " ★" if r.pareto_optimal else ""
         table.add_row(
-            name,
+            name + pareto_tag,
             f"{r.baseline_score:.4f}",
-            f"{r.best_score:.4f}",
-            f"[green]{sign}{r.delta:.4f}[/green]" if r.improved else f"{sign}{r.delta:.4f}",
+            f"{r.best_score:.4f} [{ci_lo:.3f}, {ci_hi:.3f}]",
+            delta_fmt,
+            p_str,
+            f"{r.win_rate_vs_baseline:.0%}",
+            f"{r.best_metric_per_ms:.3g}",
             str(bc),
         )
     console.print(table)
+    console.print(
+        "[dim]★ = Pareto-optimal on (score, score/ms). "
+        "Significance: green delta = Wilcoxon p<0.05 + positive lift.[/dim]"
+    )
     console.print(f"[green]Report: {out / 'optimize.json'}[/green]")
     return 0

@@ -45,6 +45,10 @@ class RetrievalMetrics(BaseModel):
     hit_at_k: int = Field(ge=0, le=1, default=0)
     mrr: float = Field(ge=0.0, le=1.0, default=0.0)
     ndcg_at_k: float = Field(ge=0.0, le=1.0, default=0.0)
+    # v0.8.0 additions — universal IR baselines + partial-pool robustness.
+    average_precision: float = Field(ge=0.0, le=1.0, default=0.0)
+    r_precision: float = Field(ge=0.0, le=1.0, default=0.0)
+    bpref: float = Field(ge=0.0, le=1.0, default=0.0)
     expected_count: int = 0
     retrieved_count: int = 0
     hits: list[str] = Field(default_factory=list)
