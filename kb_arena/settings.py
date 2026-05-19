@@ -80,6 +80,12 @@ class Settings(BaseSettings):
     benchmark_cost_cap_usd: float = 10.0
     benchmark_enable_ragas: bool = False  # enable RAGAS metrics (adds 4 LLM calls per question)
 
+    # Chunking — consumed by every token-chunking strategy (naive_vector,
+    # contextual_vector, raptor). Exposed as settings so `kb-arena optimize`
+    # can sweep them per strategy.
+    chunk_tokens: int = 512
+    chunk_overlap_tokens: int = 50
+
     # PageIndex
     pageindex_beam_width: int = 3
     pageindex_max_depth: int = 4

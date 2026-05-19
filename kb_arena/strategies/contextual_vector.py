@@ -16,7 +16,7 @@ from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
 from kb_arena.strategies.embeddings import get_embedding_function
-from kb_arena.strategies.naive_vector import CHUNK_TOKENS, OVERLAP_TOKENS, _chunk_text
+from kb_arena.strategies.naive_vector import _chunk_text
 
 COLLECTION_NAME = "contextual_vector"
 
@@ -92,7 +92,7 @@ class ContextualVectorStrategy(Strategy):
 
         for doc in documents:
             for section in doc.sections:
-                raw_chunks = _chunk_text(section.content, CHUNK_TOKENS, OVERLAP_TOKENS)
+                raw_chunks = _chunk_text(section.content)
                 meta = _section_metadata(doc, section)
                 for i, chunk in enumerate(raw_chunks):
                     chunk_id = f"{doc.id}::{section.id}::{i}"

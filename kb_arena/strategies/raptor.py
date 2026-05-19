@@ -40,8 +40,12 @@ _SUMMARIZE_SYSTEM = (
 
 
 def _chunk_text(
-    text: str, chunk_tokens: int = CHUNK_TOKENS, overlap_tokens: int = OVERLAP_TOKENS
+    text: str, chunk_tokens: int | None = None, overlap_tokens: int | None = None
 ) -> list[str]:
+    if chunk_tokens is None:
+        chunk_tokens = settings.chunk_tokens
+    if overlap_tokens is None:
+        overlap_tokens = settings.chunk_overlap_tokens
     tokens = tokenize(text)
     if not tokens:
         return []

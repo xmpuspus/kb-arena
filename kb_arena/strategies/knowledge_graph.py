@@ -45,6 +45,8 @@ MATCH path = (start)-[*1..{depth}]-(connected)
 WHERE start.fqn = $target AND ALL(r IN relationships(path) WHERE type(r) IN $allowed_rel_types)
 RETURN connected.name AS name, connected.fqn AS fqn,
        labels(connected)[0] AS type,
+       connected.source_doc_id AS source_doc_id,
+       connected.source_section_id AS source_section_id,
        length(path) AS hops,
        [r IN relationships(path) | type(r)] AS relationship_chain
 ORDER BY hops, connected.name
@@ -54,7 +56,10 @@ LIMIT 50
 COMPARISON_QUERY = """
 MATCH (a)-[r1]-(shared)-[r2]-(b)
 WHERE a.fqn = $entity_a AND b.fqn = $entity_b
-RETURN shared.name AS shared_entity, labels(shared)[0] AS shared_type,
+RETURN shared.name AS shared_entity, shared.name AS name,
+       shared.fqn AS fqn, labels(shared)[0] AS shared_type,
+       shared.source_doc_id AS source_doc_id,
+       shared.source_section_id AS source_section_id,
        type(r1) AS rel_to_a, type(r2) AS rel_to_b
 LIMIT 50
 """
@@ -63,7 +68,9 @@ DEPENDENCY_CHAIN = """
 MATCH path = (source)-[:DEPENDS_ON|CONNECTS_TO|TRIGGERS|EXTENDS|CONFIGURES*1..4]->(dep)
 WHERE source.fqn = $start
 WITH path, dep, length(path) AS depth
-RETURN dep.name AS name, dep.fqn AS fqn, labels(dep)[0] AS type, depth,
+RETURN dep.name AS name, dep.fqn AS fqn, labels(dep)[0] AS type,
+       dep.source_doc_id AS source_doc_id,
+       dep.source_section_id AS source_section_id, depth,
        [n IN nodes(path) | n.name] AS chain
 ORDER BY depth
 LIMIT 100
@@ -72,7 +79,9 @@ LIMIT 100
 FULLTEXT_SEARCH = """
 CALL db.index.fulltext.queryNodes('entity_search', $query) YIELD node, score
 RETURN node.name AS name, node.fqn AS fqn,
-       labels(node)[0] AS type, node.description AS description, score
+       labels(node)[0] AS type, node.description AS description,
+       node.source_doc_id AS source_doc_id,
+       node.source_section_id AS source_section_id, score
 ORDER BY score DESC
 LIMIT 20
 """
@@ -83,6 +92,8 @@ WHERE n.fqn = $fqn OR toLower(n.name) = toLower($name)
 OPTIONAL MATCH (n)-[r]-(neighbor)
 RETURN n.name AS name, n.fqn AS fqn, labels(n)[0] AS type,
        n.description AS description,
+       n.source_doc_id AS source_doc_id,
+       n.source_section_id AS source_section_id,
        collect({neighbor: neighbor.name, rel: type(r),
            dir: CASE WHEN startNode(r)=n THEN 'out' ELSE 'in' END}) AS neighbors
 LIMIT 1
@@ -104,7 +115,9 @@ Write a Cypher query to answer: {{question}}
 Rules:
 - Return only the Cypher query, no explanation
 - Use LIMIT 50 to cap results
-- Always return: name, fqn, type, and any relevant relationship fields
+- Always return: name, fqn, type, source_doc_id, source_section_id, and any
+  relevant relationship fields (alias node properties exactly as
+  `source_doc_id` and `source_section_id`)
 - Use $params for parameters (available: $query string)
 """
 
@@ -164,8 +177,11 @@ def _results_to_context(records: list[dict]) -> str:
 def _records_to_chunks(records: list[dict], strategy_name: str, top_k: int) -> list[RetrievedChunk]:
     """Synthesize RetrievedChunk objects from Neo4j result records.
 
-    Each record becomes a single chunk with chunk_id="graph:{fqn}". Score uses
-    the fulltext-search score field when present, else 0.0.
+    chunk_id maps back to the entity's source section ("graph:{doc}::{section}")
+    so the section-level ground truth in expected_chunks.yaml matches under the
+    IR metrics' "graph:" prefix-stripping + hierarchical match. Falls back to
+    "graph:{fqn}" when source provenance is absent (pre-v0.7 graphs / mock data).
+    Score uses the fulltext-search score field when present, else 0.0.
     """
     chunks: list[RetrievedChunk] = []
     for i, r in enumerate(records[:top_k]):
@@ -173,13 +189,21 @@ def _records_to_chunks(records: list[dict], strategy_name: str, top_k: int) -> l
             continue
         fqn = str(r.get("fqn", r.get("name", f"record-{i}")))
         name = str(r.get("name", fqn))
+        src_doc = str(r.get("source_doc_id") or "")
+        src_section = str(r.get("source_section_id") or "")
+        if src_doc and src_section:
+            chunk_id = f"graph:{src_doc}::{src_section}"
+            doc_id = src_doc
+        else:
+            chunk_id = f"graph:{fqn}"
+            doc_id = str(r.get("source_id") or src_doc or fqn)
         content = " | ".join(f"{k}: {v}" for k, v in r.items() if v is not None)
         score_raw = r.get("score", 0.0)
         score_val = float(score_raw) if isinstance(score_raw, int | float) else 0.0
         chunks.append(
             RetrievedChunk(
-                chunk_id=f"graph:{fqn}",
-                doc_id=str(r.get("source_id") or fqn),
+                chunk_id=chunk_id,
+                doc_id=doc_id,
                 content=content,
                 score=score_val,
                 rank=i + 1,

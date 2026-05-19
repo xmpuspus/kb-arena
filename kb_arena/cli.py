@@ -1097,5 +1097,70 @@ def label_chunks(
     console.print(f"Saved to {result['path']}")
 
 
+@app.command(name="optimize")
+def optimize(
+    corpus: str = typer.Option(..., help="Corpus to optimize against"),
+    strategies: str = typer.Option("all", help="Strategy filter: 'all' or comma-separated names"),
+    top_ks: str = typer.Option("3,5,10", "--top-ks", help="Comma-separated top-k values to sweep"),
+    chunk_sizes: str = typer.Option(
+        "", "--chunk-sizes", help="Comma-separated chunk-token sizes (chunking strategies only)"
+    ),
+    embedding_providers: str = typer.Option(
+        "",
+        "--embedding-providers",
+        help="Comma-separated embedding providers (openai,voyage,cohere,bge,ollama,gemini)",
+    ),
+    reranker_backends: str = typer.Option(
+        "", "--reranker-backends", help="Comma-separated reranker backends (rerank_vector only)"
+    ),
+    metric: str = typer.Option(
+        "ndcg", "--metric", help="Metric to optimize: ndcg|recall|mrr|hit|precision"
+    ),
+    method: str = typer.Option("grid", "--method", help="Search method: grid|random"),
+    max_trials: int = typer.Option(0, "--max-trials", help="Cap trials per strategy (0 = no cap)"),
+    seed: int = typer.Option(0, "--seed", help="RNG seed for --method random"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Print the trial plan and cost preview, then exit"
+    ),
+):
+    """Automated retrieval-strategy hyperparameter search.
+
+    Sweeps chunk size, top-k, embedding provider and reranker backend per
+    strategy, scores each configuration on a retrieval IR metric (retrieval-only,
+    ~10x cheaper than `benchmark`), and reports the tuned optimum and its delta
+    versus the current defaults. `--dry-run` needs no API keys.
+    """
+    import asyncio as _asyncio
+
+    from kb_arena.benchmark.optimizer import run_optimize
+
+    def _ints(s: str) -> list[int]:
+        return [int(x) for x in s.split(",") if x.strip()]
+
+    def _strs(s: str) -> list[str]:
+        return [x.strip() for x in s.split(",") if x.strip()]
+
+    if not dry_run:
+        _preflight(needs_openai=True)
+
+    exit_code = _asyncio.run(
+        run_optimize(
+            corpus,
+            strategies,
+            top_ks=_ints(top_ks),
+            chunk_sizes=_ints(chunk_sizes),
+            embedding_providers=_strs(embedding_providers),
+            reranker_backends=_strs(reranker_backends),
+            metric=metric,
+            method=method,
+            max_trials=max_trials,
+            seed=seed,
+            dry_run=dry_run,
+        )
+    )
+    if exit_code:
+        raise typer.Exit(exit_code)
+
+
 if __name__ == "__main__":
     app()

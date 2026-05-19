@@ -204,6 +204,12 @@ async def extract_document(
     absorbed_ids = {pair[1] for pair in merged_pairs if pair[1] != pair[2]}
     deduped = [e for e in all_entities if e.id not in absorbed_ids]
 
+    # Stamp the source document id so graph retrieval can map an entity back to
+    # its "doc::section" identity (section-level IR ground truth matching).
+    # _validate_result runs per-section and has no doc context; this does.
+    for e in deduped:
+        e.source_doc_id = doc.id
+
     return ExtractionResult(
         entities=deduped,
         relationships=all_relationships,

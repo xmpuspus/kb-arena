@@ -9,7 +9,7 @@ KB Arena is the only open-source benchmark that runs **architecturally distinct*
 
 Embeddings: pluggable across **OpenAI, Voyage-3, Cohere, Gemini, BGE (local), Ollama (local)** via `KB_ARENA_EMBEDDING_PROVIDER`. Rerankers: **BGE-v2-m3 (local), Cohere Rerank, Voyage Rerank** via `KB_ARENA_RERANKER_BACKEND`.
 
-![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-558-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![PyPI](https://img.shields.io/pypi/v/kb-arena) ![CI](https://github.com/xmpuspus/kb-arena/actions/workflows/ci.yml/badge.svg)
+![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-580-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![PyPI](https://img.shields.io/pypi/v/kb-arena) ![CI](https://github.com/xmpuspus/kb-arena/actions/workflows/ci.yml/badge.svg)
 
 ![KB Arena Demo](docs/demo.gif)
 
@@ -45,17 +45,61 @@ kb-arena serve
 
 Most RAG evaluation tools answer "how well does my pipeline work?" KB Arena answers a different question: "which retrieval architecture works best for my docs?"
 
-| | KB Arena | RAGAS | MTEB / BEIR | GraphRAG | DeepEval |
-|---|---|---|---|---|---|
-| Compares multiple architectures | Yes - 9 strategies | No - evaluates your existing pipeline | No - compares embedding models | No - only their own approach | No |
-| Works on your own docs | Yes | Yes | No - fixed public datasets | No - fixed datasets | Yes |
-| Includes graph + vector + hybrid | Yes | Vector/hybrid only | Embeddings only | Graph only | Any |
-| Auto-generates benchmark questions | Yes - 5 difficulty tiers | Manual | Fixed | Fixed | Manual |
-| Interactive comparison UI | Yes - chatbot + benchmark explorer | No | Leaderboard only | No | Dashboard |
-| Chatbot per strategy | Yes | No | No | No | No |
-| Standard IR metrics (NDCG, MRR) | Yes - v0.5.0 Retriever Lab | Yes | Yes | Partial | No |
+| | KB Arena | AutoRAG | RAGAS | MTEB / BEIR | GraphRAG | DeepEval |
+|---|---|---|---|---|---|---|
+| Compares multiple architectures | Yes - 9 strategies | Yes - module combos | No - evaluates your existing pipeline | No - compares embedding models | No - only their own approach | No |
+| Automated hyperparameter search | Yes - `kb-arena optimize` (v0.7.0) | Yes | No | No | No | No |
+| Includes graph + vector + hybrid | Yes | No - vector/keyword only | Vector/hybrid only | Embeddings only | Graph only | Any |
+| Works on your own docs | Yes | Yes | Yes | No - fixed public datasets | No - fixed datasets | Yes |
+| Auto-generates benchmark questions | Yes - 5 difficulty tiers | No - bring your own | Manual | Fixed | Fixed | Manual |
+| Interactive comparison UI | Yes - chatbot + benchmark explorer | No - CLI/YAML only | No | Leaderboard only | No | Dashboard |
+| Chatbot per strategy | Yes | No | No | No | No | No |
+| Standard IR metrics (NDCG, MRR) | Yes - Retriever Lab, incl. graph (v0.7.0) | Yes | Yes | Yes | Partial | No |
+
+AutoRAG is the only tool that also searches retrieval configurations. KB Arena adds what it can't: knowledge-graph retrieval as a first-class strategy, auto-generated questions, an interactive UI, and graph IR metrics.
 
 If you want to know whether a knowledge graph, Q&A pairs, or plain vector search is the right architecture for your documentation, that's what KB Arena is for.
+
+---
+
+## What's New in v0.7.0 — Automated strategy search + graph IR metrics
+
+Two changes that close the only gaps a direct competitor (AutoRAG) had on us, and fix the most visible methodological hole in our own numbers.
+
+### New: `kb-arena optimize` — automated retrieval-strategy search
+
+Stop guessing chunk size, top-k, embedding provider, or reranker backend. `optimize` sweeps them per strategy, scores each configuration on a retrieval IR metric, and reports the tuned optimum and its delta versus your current defaults.
+
+```bash
+# Preview the search space and cost — no API keys needed
+kb-arena optimize --corpus my-docs \
+  --strategies naive_vector,rerank_vector \
+  --top-ks 3,5,10 --chunk-sizes 256,512,1024 \
+  --embedding-providers openai,bge --dry-run
+
+# Run it
+kb-arena optimize --corpus my-docs --top-ks 3,5,10 --metric ndcg
+```
+
+![kb-arena optimize](docs/demo-optimize.gif)
+
+- **Scoped sweeps.** Each strategy only sweeps the dimensions it actually consumes — BM25 sweeps top-k only, `rerank_vector` adds the reranker backend, chunking strategies add chunk size. No wasted trials.
+- **Honest delta.** The current-settings configuration is always trial #1, so the reported lift is measured against what you ship today, not the worst trial.
+- **Retrieval-only scoring.** Generation is stubbed, so a full sweep is ~10x cheaper than the answer benchmark — same primitive as Retriever Lab.
+- **`grid` or `random`** search, `--max-trials` cap, seeded RNG for reproducibility, `--dry-run` cost preview that needs no credentials.
+- **Isolated rebuilds.** A chunk/embedding sweep builds into a throwaway ChromaDB path — your persistent indexes are never touched.
+
+This is the AutoRAG-parity feature: KB Arena now searches configurations *and* keeps graph retrieval, auto-generated questions, and the UI that AutoRAG doesn't have.
+
+### Fixed: knowledge graph now scores real IR metrics
+
+The `knowledge_graph` strategy previously scored a flat **0.0** on every Retriever Lab metric. It emitted `chunk_id="graph:{entity_fqn}"` (e.g. `graph:aws.lambda`) while ground truth is section-level (`lambda-overview::aws-lambda`) — the two could never match, so the headline graph strategy looked broken in our own table.
+
+v0.7.0 carries each entity's source provenance end to end: extraction stamps `source_doc_id`, the loader persists it, every entity-returning Cypher template (and the Text-to-Cypher fallback) returns `source_doc_id` + `source_section_id`, and retrieval emits `graph:{doc}::{section}`. That maps a retrieved entity back to its source section, so the existing section-level ground truth matches and graph retrieval reports non-zero Recall@k / MRR / NDCG@k. Regenerate with `kb-arena retriever-lab --corpus aws-compute` after a graph build; the v0.5.0 table below is the pre-fix historical snapshot.
+
+`KB_ARENA_CHUNK_TOKENS` / `KB_ARENA_CHUNK_OVERLAP_TOKENS` are now real settings (every token-chunking strategy reads them), which is also what lets `optimize` sweep chunk size.
+
+580 tests.
 
 ---
 
@@ -396,6 +440,7 @@ kb-arena report --format html   # shareable dashboard
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 0.7.0 | 2026-05-19 | Automated retrieval-strategy search (`kb-arena optimize`): scoped grid/random sweeps over chunk size, top-k, embedding provider, reranker backend per strategy; retrieval-only scoring (~10x cheaper than `benchmark`); honest delta vs. current defaults; `--dry-run` cost preview (no keys); isolated per-trial ChromaDB so sweeps never touch persistent indexes. Graph IR fix: entities now carry `source_doc_id`/`source_section_id` end to end (extractor → Neo4j → Cypher templates → retrieval), so `knowledge_graph` emits `graph:{doc}::{section}` and scores real Recall@k/MRR/NDCG@k instead of a flat 0.0. `KB_ARENA_CHUNK_TOKENS`/`KB_ARENA_CHUNK_OVERLAP_TOKENS` are now first-class settings. 580 tests. |
 | 0.6.1 | 2026-05-02 | Docs-only — adds the missing "What's New in v0.6.0" section, bumps strategy count to 9 across the README, lists `rerank_vector` in the strategy table. No code changes from v0.6.0. |
 | 0.6.0 | 2026-05-02 | Hardening + 9th strategy + embedding providers + public leaderboard. New `rerank_vector` strategy with BGE/Cohere/Voyage backends. Embedding provider abstraction (OpenAI/Voyage/Cohere/BGE/Ollama/Gemini). One-shot `kb-arena run --resume` orchestrator. Public read-only `/api/leaderboard` + `/leaderboard` page. Bearer-token auth + demo-mode + 4000-char input cap on every LLM endpoint. Default cost cap 0 → 10 USD. Cypher sessions opened READ_ACCESS, APOC write regex tightened. WebParser SSRF guard. Hybrid procedural rewritten to fuse real passages via RRF (was reranking answer strings). IntentRouter actually wired in. Cross-section graph edges no longer dropped. Ground-truth pool widened from BM25-only. Cross-tenant strategy state leak fixed. BM25 result file bundled. Re-recorded demo GIFs. 558 tests. |
 | 0.5.0 | 2026-04-26 | Retriever Lab — classical IR metrics (Recall@k, Precision@k, Hit@k, MRR, NDCG@k) computed per query, `RetrievalTrace` exposes retrieved chunks per strategy with rank+score, `kb-arena retriever-lab` retrieval-only command (~10x cheaper than `benchmark`), `kb-arena label-chunks` BM25+Haiku ground-truth generator, `--top-k` flag on `benchmark`, `/retriever-lab` web page with HIT/MISS drill-down, hierarchical chunk-id matching, 558 tests |
@@ -729,6 +774,7 @@ No per-domain configuration needed. The LLM maps your documentation concepts to 
 | `build-vectors` | Build vector indexes + PageIndex tree. Options: `--corpus`, `--strategy` |
 | `generate-questions` | Auto-generate benchmark questions. Options: `--corpus`, `--count` |
 | `benchmark` | Run evaluation. Options: `--corpus`, `--strategy`, `--tier`, `--dry-run` |
+| `optimize` | Automated hyperparameter search per strategy. Options: `--corpus`, `--strategies`, `--top-ks`, `--chunk-sizes`, `--embedding-providers`, `--reranker-backends`, `--metric`, `--method` (grid/random), `--max-trials`, `--dry-run` |
 | `generate-qa` | Generate Q&A pairs from your docs as JSONL. Options: `--corpus`, `--output` |
 | `audit` | Find documentation gaps — classifies sections as strong/weak/gap. Options: `--corpus`, `--output`, `--max-sections` |
 | `fix` | Generate fix recommendations with draft content. Options: `--corpus`, `--max-fixes`, `--output` |
@@ -834,7 +880,7 @@ All prefixed with `KB_ARENA_`. Loaded from `.env` or environment.
 pip install -e '.[dev]'
 
 # Run tests
-pytest tests/ -v --ignore=tests/live  # 514 tests
+pytest tests/ -v --ignore=tests/live  # 580 tests
 
 # Lint + format
 ruff check . && ruff format --check .
@@ -857,7 +903,7 @@ cd web && npm install && npx next build
 | Frontend | Next.js 14 + Tailwind + Recharts |
 | Models | Pydantic v2 |
 | CLI | Typer + Rich |
-| Testing | pytest (514 tests) |
+| Testing | pytest (580 tests) |
 
 ---
 

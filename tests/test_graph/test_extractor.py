@@ -121,6 +121,25 @@ async def test_extract_document_calls_llm_per_section(sample_document):
 
 
 @pytest.mark.asyncio
+async def test_extract_document_stamps_source_doc_id(sample_document):
+    """Entities must carry their source document id so graph retrieval can map
+    back to section-level ground truth (graph IR fix)."""
+    mock_llm = AsyncMock()
+    from kb_arena.llm.client import LLMResponse
+
+    mock_llm.extract.return_value = LLMResponse(text=json.dumps(_VALID_LLM_RESPONSE))
+
+    from kb_arena.graph.extractor import _build_system_prompt
+
+    result = await extract_document(sample_document, mock_llm, _build_system_prompt(AWS_CORPUS))
+
+    assert result.entities
+    assert all(e.source_doc_id == sample_document.id for e in result.entities)
+    # source_section_id is still set per-section
+    assert all(e.source_section_id for e in result.entities)
+
+
+@pytest.mark.asyncio
 async def test_extract_document_handles_bad_json(sample_document):
     mock_llm = AsyncMock()
     from kb_arena.llm.client import LLMResponse

@@ -17,6 +17,7 @@ class Entity(BaseModel):
     description: str = ""
     properties: dict[str, Any] = Field(default_factory=dict)
     aliases: list[str] = Field(default_factory=list)
+    source_doc_id: str = ""
     source_section_id: str = ""
     extraction_confidence: float = 1.0
     embedding: list[float] | None = None

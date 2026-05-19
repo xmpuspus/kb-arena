@@ -18,6 +18,9 @@ from kb_arena.strategies.base import AnswerResult, Strategy
 from kb_arena.strategies.embeddings import get_embedding_function
 from kb_arena.tokenizer import detokenize, tokenize
 
+# Back-compat constants — kept for callers that import them directly. The live
+# defaults are KB_ARENA_CHUNK_TOKENS / KB_ARENA_CHUNK_OVERLAP_TOKENS in Settings;
+# _chunk_text() resolves None args from there so `kb-arena optimize` can sweep.
 CHUNK_TOKENS = 512
 OVERLAP_TOKENS = 50
 COLLECTION_NAME = "naive_vector"
@@ -29,9 +32,18 @@ SYSTEM_PROMPT = (
 
 
 def _chunk_text(
-    text: str, chunk_tokens: int = CHUNK_TOKENS, overlap_tokens: int = OVERLAP_TOKENS
+    text: str, chunk_tokens: int | None = None, overlap_tokens: int | None = None
 ) -> list[str]:
-    """Split text into overlapping chunks by BPE token count."""
+    """Split text into overlapping chunks by BPE token count.
+
+    chunk_tokens / overlap_tokens default to the live Settings values when not
+    passed explicitly, so a per-trial settings override (the optimizer) takes
+    effect without touching call sites.
+    """
+    if chunk_tokens is None:
+        chunk_tokens = settings.chunk_tokens
+    if overlap_tokens is None:
+        overlap_tokens = settings.chunk_overlap_tokens
     tokens = tokenize(text)
     if not tokens:
         return []
