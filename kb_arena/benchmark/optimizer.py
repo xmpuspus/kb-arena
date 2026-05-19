@@ -269,12 +269,12 @@ def plan_optimize(
             max_trials=max_trials,
             seed=seed,
         )
-        rebuilds = 0
-        prev: TrialConfig | None = None
-        for t in trials:
-            if needs_rebuild(prev, t):
-                rebuilds += 1
-            prev = t
+        # A trial needs a rebuild iff its rebuild dims differ from the
+        # persistent-index (baseline) config; the persistent index already
+        # matches the baseline, so trials that match it on chunk/embedding
+        # reuse it for free.
+        base = baseline_config(s)
+        rebuilds = sum(1 for t in trials if needs_rebuild(t, base))
         plan.append(
             {
                 "strategy": s,
@@ -322,17 +322,17 @@ class _ApplyOverrides:
         return False
 
 
-async def _score_trial(strategy, cfg, documents, questions, metric, prev_cfg) -> float:
+async def _score_trial(strategy, cfg, documents, questions, metric, baseline) -> float:
     """Mean IR metric for one (strategy, config) over the corpus questions.
 
     Retrieval-only (LLM generation stubbed) so a full sweep stays ~10x cheaper
-    than the answer benchmark. Rebuilds the index only when a rebuild-affecting
-    dimension changed since the previous trial.
+    than the answer benchmark. Rebuilds the index only when the trial's
+    rebuild dims differ from the baseline (the persistent-index config).
     """
     from kb_arena.benchmark.retriever_lab import _PatchLLMClient, _retrieve_only
     from kb_arena.strategies import get_strategy
 
-    rebuild = needs_rebuild(prev_cfg, cfg)
+    rebuild = needs_rebuild(cfg, baseline)
     field = _METRIC_FIELDS.get(metric, "mean_ndcg_at_k").replace("mean_", "")
 
     with _ApplyOverrides(cfg, isolate_chroma=rebuild):
@@ -445,12 +445,11 @@ async def run_optimize(
             seed=seed,
         )
         scored: list[tuple[TrialConfig, float]] = []
-        prev: TrialConfig | None = None
+        base = baseline_config(s)
         for cfg in trials:
             start = time.perf_counter()
-            score = await _score_trial(s, cfg, documents, questions, metric, prev)
+            score = await _score_trial(s, cfg, documents, questions, metric, base)
             scored.append((cfg, score))
-            prev = cfg
             console.print(
                 f"[dim]{s} {cfg.model_dump(exclude={'strategy'})} "
                 f"{metric}={score:.4f} ({(time.perf_counter() - start):.1f}s)[/dim]"

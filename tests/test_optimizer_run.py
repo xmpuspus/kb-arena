@@ -25,7 +25,7 @@ def patched(monkeypatch, tmp_path):
     monkeypatch.setattr(opt, "load_questions", lambda corpus: [_Q(1), _Q(2)])
 
     # Score: top_k=10 is best for naive_vector, baseline (top_k=5) mid, top_k=3 worst.
-    async def fake_score(strategy, cfg, documents, questions, metric, prev_cfg):
+    async def fake_score(strategy, cfg, documents, questions, metric, baseline):
         table = {3: 0.20, 5: 0.40, 10: 0.62}
         return table.get(cfg.top_k, 0.10)
 
@@ -80,11 +80,14 @@ async def test_dry_run_plans_without_scoring(monkeypatch, tmp_path):
     )
     assert called is False
     by_strategy = {p["strategy"]: p for p in plan}
-    # bm25 sweeps only top_k -> 3 trials, 1 rebuild (the first).
+    # bm25 sweeps only top_k -> 3 trials, ZERO rebuilds (top_k is query-time;
+    # all trials match the persistent index's config on rebuild dims).
     assert by_strategy["bm25"]["n_trials"] == 3
-    # naive_vector: 3 top_k x 2 chunk x 2 emb = 12 trials.
+    assert by_strategy["bm25"]["n_rebuilds"] == 0
+    # naive_vector: 3 top_k x 2 chunk x 2 emb = 12 trials. Baseline matches
+    # 3 of them (one per top_k value, at chunk=512, emb=openai). 12-3=9 rebuilds.
     assert by_strategy["naive_vector"]["n_trials"] == 12
-    assert by_strategy["naive_vector"]["n_rebuilds"] >= 1
+    assert by_strategy["naive_vector"]["n_rebuilds"] == 9
 
 
 @pytest.mark.asyncio

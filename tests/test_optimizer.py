@@ -117,6 +117,30 @@ def test_select_best_no_improvement_reports_zero_delta():
     assert res.improved is False
 
 
+def test_needs_rebuild_is_relative_to_baseline_not_prev():
+    """A trial whose rebuild dims match the persistent-index (baseline) config
+    must not trigger a rebuild — even if it is the first trial. The legacy
+    prev=None signalled 'first trial → rebuild' which re-embedded the whole
+    corpus for the baseline itself."""
+    from kb_arena.benchmark.optimizer import needs_rebuild
+
+    base = TrialConfig(
+        strategy="naive_vector",
+        top_k=5,
+        chunk_tokens=512,
+        embedding_provider="openai",
+        reranker_backend="bge",
+    )
+    same_dims_diff_topk = base.model_copy(update={"top_k": 10})
+    diff_chunk = base.model_copy(update={"chunk_tokens": 256})
+    diff_emb = base.model_copy(update={"embedding_provider": "bge"})
+
+    assert needs_rebuild(base, base) is False
+    assert needs_rebuild(same_dims_diff_topk, base) is False  # top_k is query-time
+    assert needs_rebuild(diff_chunk, base) is True
+    assert needs_rebuild(diff_emb, base) is True
+
+
 def test_build_trials_rejects_unknown_method():
     with pytest.raises(ValueError):
         build_trials(
