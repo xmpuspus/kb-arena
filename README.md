@@ -990,7 +990,7 @@ Puspus, Xavier. KB Arena: a benchmark for retrieval architectures on
 your own documentation. Version 0.8.1, 2026. https://github.com/xmpuspus/kb-arena
 ```
 
-BibTeX (resolve the badge above for the version-specific DOI; the concept DOI is `10.5281/zenodo.PENDING` until Zenodo finishes archiving the first release):
+The DOI badge above resolves to the latest archived version. The **concept DOI** `10.5281/zenodo.20319678` always points to the most recent release; pin the version-specific DOI when you want a frozen reference. BibTeX:
 
 ```bibtex
 @software{kb_arena_2026,
@@ -999,7 +999,7 @@ BibTeX (resolve the badge above for the version-specific DOI; the concept DOI is
   year      = {2026},
   version   = {0.8.1},
   url       = {https://github.com/xmpuspus/kb-arena},
-  doi       = {10.5281/zenodo.PENDING}
+  doi       = {10.5281/zenodo.20319678}
 }
 ```
 
