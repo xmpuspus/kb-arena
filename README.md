@@ -9,7 +9,7 @@ KB Arena is the only open-source benchmark that runs **architecturally distinct*
 
 Embeddings: pluggable across **OpenAI, Voyage-3, Cohere, Gemini, BGE (local), Ollama (local)** via `KB_ARENA_EMBEDDING_PROVIDER`. Rerankers: **BGE-v2-m3 (local), Cohere Rerank, Voyage Rerank** via `KB_ARENA_RERANKER_BACKEND`.
 
-![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-617-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![PyPI](https://img.shields.io/pypi/v/kb-arena) ![CI](https://github.com/xmpuspus/kb-arena/actions/workflows/ci.yml/badge.svg)
+![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-617-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![PyPI](https://img.shields.io/pypi/v/kb-arena) ![CI](https://github.com/xmpuspus/kb-arena/actions/workflows/ci.yml/badge.svg) [![DOI](https://zenodo.org/badge/1182030516.svg)](https://zenodo.org/badge/latestdoi/1182030516)
 
 ![KB Arena Demo](docs/demo.gif)
 
@@ -975,6 +975,34 @@ cd web && npm install && npx next build
 | Models | Pydantic v2 |
 | CLI | Typer + Rich |
 | Testing | pytest (617 tests) |
+
+---
+
+## Citation
+
+If you use KB Arena in academic work, please cite it. Metadata lives in [`CITATION.cff`](CITATION.cff) and [`.zenodo.json`](.zenodo.json); GitHub's "Cite this repository" button will resolve the CFF directly, and every GitHub release is archived to Zenodo with a versioned DOI plus a concept DOI that always resolves to the latest release.
+
+Plain-text reference:
+
+```
+Puspus, Xavier. KB Arena: a benchmark for retrieval architectures on
+your own documentation. Version 0.8.0, 2026. https://github.com/xmpuspus/kb-arena
+```
+
+BibTeX:
+
+```bibtex
+@software{kb_arena_2026,
+  author    = {Puspus, Xavier},
+  title     = {KB Arena: a benchmark for retrieval architectures on your own documentation},
+  year      = {2026},
+  version   = {0.8.0},
+  url       = {https://github.com/xmpuspus/kb-arena},
+  doi       = {10.5281/zenodo.PENDING}
+}
+```
+
+The DOI placeholder will be replaced once Zenodo mints the first archive of a release.
 
 ---
 

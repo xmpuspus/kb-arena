@@ -1,0 +1,46 @@
+cff-version: 1.2.0
+title: "KB Arena: a benchmark for retrieval architectures on your own documentation"
+message: "If you use this software in academic work, please cite it as below."
+type: software
+authors:
+  - family-names: Puspus
+    given-names: Xavier
+    affiliation: ""
+    orcid: ""
+repository-code: "https://github.com/xmpuspus/kb-arena"
+url: "https://github.com/xmpuspus/kb-arena"
+license: MIT
+version: "0.8.0"
+date-released: "2026-05-20"
+abstract: >
+  KB Arena benchmarks nine retrieval architectures (naive vector, contextual
+  vector, QnA pairs, knowledge graph, hybrid via reciprocal rank fusion,
+  RAPTOR, PageIndex, BM25, rerank-vector) head-to-head on user-provided
+  documentation. It auto-generates benchmark questions across five difficulty
+  tiers, computes a layered IR metric stack (Recall@k, Precision@k, Hit@k,
+  MRR, NDCG@k, MAP, R-Precision, bpref) with bootstrap 95% confidence
+  intervals, supports graded NDCG with exponential gain, includes a
+  Rank-Biased Overlap implementation for strategy-vs-strategy comparison,
+  and ships an automated hyperparameter search (kb-arena optimize) that
+  reports Wilcoxon paired significance tests, win-rate, and a Pareto
+  frontier over the (quality, latency) plane.
+keywords:
+  - retrieval-augmented-generation
+  - rag
+  - rag-evaluation
+  - benchmark
+  - information-retrieval
+  - knowledge-graph
+  - graphrag
+  - vector-search
+  - hybrid-search
+  - reranking
+  - ndcg
+  - map
+  - bpref
+  - rank-biased-overlap
+  - bootstrap-confidence-intervals
+  - hyperparameter-optimization
+  - neo4j
+  - chromadb
+  - python
