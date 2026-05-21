@@ -509,6 +509,7 @@ kb-arena report --format html   # shareable dashboard
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 0.8.1 | 2026-05-21 | Release-only. Triggers the first Zenodo archive of the repo so the citation badge resolves to a real concept DOI. No code changes. |
 | 0.8.0 | 2026-05-20 | Statistical-rigor metrics layer. ir_metrics gains **MAP / Average Precision**, **R-Precision**, **bpref** (TREC-style robust to partial labels, auto-clamped to [0,1] from a real-run bug surfaced on aws-compute), and a **graded NDCG** switch using exponential gain (2^rel-1) for SIGIR-standard handling of graded relevance. New `kb_arena/benchmark/rank_similarity.py` with **Rank-Biased Overlap** (Webber 2010, extrapolated form) for comparing two strategies' rankings without a gold standard. `optimize` now reports **bootstrap 95% CIs**, **Wilcoxon paired p-value + significance flag**, **win-rate vs baseline**, **NDCG/ms efficiency**, and **Pareto-optimal markers** across strategies — the report finally tells you whether a `+0.003` lift is real or noise. `retriever-lab` JSON gains **per-tier breakdowns** (Recall/NDCG/MAP per difficulty tier 1-5) and bootstrap CIs on aggregate means. scipy added as a runtime dep. 617 tests. |
 | 0.7.1 | 2026-05-20 | `kb-arena optimize` correctness + first real numbers. Rebuild-decision bug: `needs_rebuild` was comparing to the *previous* trial (so trial #1 always rebuilt even when it equalled the baseline, needlessly re-embedding the corpus); now compared to the baseline (persistent-index config), so a pure top-k sweep does zero rebuilds. README v0.7.0 section gains a real `aws-compute` top-k sweep table (BM25 / naive_vector / contextual_vector / RAPTOR, NDCG baseline vs best vs delta) and the demo GIF now shows a real BM25 run streaming actual NDCG numbers, not just `--dry-run`. Corpus-prep recipe documented in the optimize section. 617 tests. |
 | 0.7.0 | 2026-05-19 | Automated retrieval-strategy search (`kb-arena optimize`): scoped grid/random sweeps over chunk size, top-k, embedding provider, reranker backend per strategy; retrieval-only scoring (~10x cheaper than `benchmark`); honest delta vs. current defaults; `--dry-run` cost preview (no keys); isolated per-trial ChromaDB so sweeps never touch persistent indexes. Graph IR fix: entities now carry `source_doc_id`/`source_section_id` end to end (extractor → Neo4j → Cypher templates → retrieval), so `knowledge_graph` emits `graph:{doc}::{section}` and scores real Recall@k/MRR/NDCG@k instead of a flat 0.0. `KB_ARENA_CHUNK_TOKENS`/`KB_ARENA_CHUNK_OVERLAP_TOKENS` are now first-class settings. 617 tests. |
@@ -986,23 +987,21 @@ Plain-text reference:
 
 ```
 Puspus, Xavier. KB Arena: a benchmark for retrieval architectures on
-your own documentation. Version 0.8.0, 2026. https://github.com/xmpuspus/kb-arena
+your own documentation. Version 0.8.1, 2026. https://github.com/xmpuspus/kb-arena
 ```
 
-BibTeX:
+BibTeX (resolve the badge above for the version-specific DOI; the concept DOI is `10.5281/zenodo.PENDING` until Zenodo finishes archiving the first release):
 
 ```bibtex
 @software{kb_arena_2026,
   author    = {Puspus, Xavier},
   title     = {KB Arena: a benchmark for retrieval architectures on your own documentation},
   year      = {2026},
-  version   = {0.8.0},
+  version   = {0.8.1},
   url       = {https://github.com/xmpuspus/kb-arena},
   doi       = {10.5281/zenodo.PENDING}
 }
 ```
-
-The DOI placeholder will be replaced once Zenodo mints the first archive of a release.
 
 ---
 
