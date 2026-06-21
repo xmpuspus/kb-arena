@@ -1060,6 +1060,12 @@ def retriever_lab(
         "--min-recall",
         help="Exit non-zero if any strategy's mean Recall@k drops below this",
     ),
+    ceiling_k: int = typer.Option(
+        0,
+        "--ceiling-k",
+        help="Deeper cutoff for the retrieval-ceiling diagnostic (0 = top_k*4). "
+        "Reports base-retriever Recall@top_k vs Recall@ceiling_k = ranking headroom.",
+    ),
 ):
     """Run retrieval-only benchmark with classical IR metrics. ~10x cheaper than `benchmark`."""
     import asyncio as _asyncio
@@ -1067,7 +1073,9 @@ def retriever_lab(
     from kb_arena.benchmark.retriever_lab import run_retriever_lab
 
     _preflight(needs_openai=True)
-    exit_code = _asyncio.run(run_retriever_lab(corpus, strategies, top_k, min_recall))
+    exit_code = _asyncio.run(
+        run_retriever_lab(corpus, strategies, top_k, min_recall, ceiling_k or None)
+    )
     if exit_code:
         raise typer.Exit(exit_code)
 

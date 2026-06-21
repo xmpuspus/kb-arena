@@ -74,6 +74,26 @@ def _format_ms(v: float) -> str:
     return f"{v:.0f}"
 
 
+def cost_efficiency(result: BenchmarkResult) -> dict:
+    """Per-query token / cost economics for one strategy on one corpus.
+
+    Uses the cost the LLM client already computed for each call — there is no
+    pricing assumption here. NDCG-per-1k-tokens is a quality-per-spend ratio that
+    exposes the cost of LLM-heavy strategies (e.g. query decomposition or QnA
+    generation) against the free vector strategies.
+    """
+    n = result.total_questions or 1
+    tokens = sum(getattr(r, "tokens_used", 0) for r in result.records)
+    tokens_per_query = tokens / n
+    cost_per_query = result.total_cost_usd / n
+    ndcg_per_1k = result.mean_ndcg_at_k / (tokens_per_query / 1000) if tokens_per_query else 0.0
+    return {
+        "tokens_per_query": tokens_per_query,
+        "cost_per_query_usd": cost_per_query,
+        "ndcg_per_1k_tokens": ndcg_per_1k,
+    }
+
+
 def _build_markdown(results: list[BenchmarkResult]) -> str:
     lines = ["# KB Arena Benchmark Report", ""]
 
@@ -139,6 +159,23 @@ def _build_markdown(results: list[BenchmarkResult]) -> str:
                     f"| {_format_pct(r.mean_hit_at_k)} "
                     f"| {r.mean_mrr:.3f} "
                     f"| {r.mean_ndcg_at_k:.3f} |"
+                )
+            lines.append("")
+
+        # 1c. Cost Efficiency — per-query economics (real LLM cost, no assumed pricing)
+        cost_results = [r for r in corpus_results if r.total_questions]
+        if cost_results:
+            lines.append("### Cost Efficiency (per query)")
+            lines.append("")
+            lines.append("| Strategy | Tokens/query | $/query | NDCG/1k tokens |")
+            lines.append("|----------|--------------|---------|----------------|")
+            for r in cost_results:
+                ce = cost_efficiency(r)
+                lines.append(
+                    f"| {r.strategy} "
+                    f"| {ce['tokens_per_query']:.0f} "
+                    f"| ${ce['cost_per_query_usd']:.5f} "
+                    f"| {ce['ndcg_per_1k_tokens']:.3f} |"
                 )
             lines.append("")
 
