@@ -1,5 +1,8 @@
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
+// Mirrors the backend default strategy set (STRATEGY_NAMES). `sqr` is omitted on
+// purpose: it needs the optional [quantum] extra and would error in the arena on
+// a core install, so it stays opt-in (run it via the CLI with that extra).
 export const STRATEGIES = [
   "naive_vector",
   "contextual_vector",
@@ -9,6 +12,8 @@ export const STRATEGIES = [
   "raptor",
   "pageindex",
   "bm25",
+  "rerank_vector",
+  "qiss",
 ] as const;
 
 export type Strategy = (typeof STRATEGIES)[number];
@@ -22,6 +27,8 @@ export const STRATEGY_LABELS: Record<Strategy, string> = {
   raptor: "RAPTOR",
   pageindex: "PageIndex",
   bm25: "BM25",
+  rerank_vector: "Rerank Vector",
+  qiss: "QISS (quantum)",
 };
 
 export const STRATEGY_COLORS: Record<Strategy, string> = {
@@ -33,6 +40,8 @@ export const STRATEGY_COLORS: Record<Strategy, string> = {
   raptor: "#ef4444",
   pageindex: "#ec4899",
   bm25: "#0ea5e9",
+  rerank_vector: "#14b8a6",
+  qiss: "#6366f1",
 };
 
 export const TIER_INFO: Record<number, { label: string; description: string }> = {
@@ -80,6 +89,10 @@ export const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
     "Vectorless, reasoning-based retrieval. Builds a hierarchical tree index from document structure, then uses LLM reasoning to traverse the tree \u2014 no embeddings, no chunking. Excels on well-structured docs.",
   bm25:
     "BM25 keyword matching \u2014 the pre-neural lexical baseline. No embeddings, no graph. Shows whether dense retrieval actually helps on your specific documentation.",
+  rerank_vector:
+    "Naive Vector retrieves a wide candidate pool, then a cross-encoder reranker (BGE, Cohere, or Voyage) rescores and keeps the top-k. The 2026 production accuracy lever.",
+  qiss:
+    "Quantum-inspired reranker (pure NumPy). Rescores Naive Vector candidates by state fidelity Tr(rho_q . rho_d) = cos squared over the same embeddings, with an optional multi-query superposition mode whose interference terms classical rank fusion cannot produce.",
 };
 
 export interface CorpusInfo {

@@ -211,6 +211,22 @@ def _summarize(records: list[RetrievalMetrics]) -> dict[str, float | int]:
     return _aggregate_means(records)
 
 
+def _empty_trace_failures(by_strategy: dict, threshold: float = 0.5) -> list[str]:
+    """Strategy names whose empty-retrieval count is >= `threshold` of questions.
+
+    An empty trace means the strategy raised and `_retrieve_only` swallowed it,
+    not that it retrieved irrelevant chunks. A strategy empty on most questions is
+    crashing, not merely scoring low — caught separately from the recall floor.
+    """
+    failures: list[str] = []
+    for sname, m in by_strategy.items():
+        n_q = m.get("questions", 0)
+        n_empty = m.get("empty_retrieval", 0)
+        if n_q and n_empty >= threshold * n_q:
+            failures.append(sname)
+    return failures
+
+
 async def run_retriever_lab(
     corpus: str = "all",
     strategies_filter: str = "all",
@@ -281,8 +297,21 @@ async def run_retriever_lab(
 
     floor_violation = False
     for corp_name, by_strategy in overall["corpora"].items():
+        # Dead-strategy guard runs first: empty retrieval on most questions is a
+        # crash signature (the strategy raised and _retrieve_only swallowed it
+        # into an empty trace), NOT a genuine low-recall result. Flag it
+        # distinctly so a silently-broken strategy can't masquerade as "0 recall"
+        # — exactly how the rerank_vector c.source bug hid.
+        crashed = set(_empty_trace_failures(by_strategy))
         for sname, m in by_strategy.items():
-            if m["mean_recall_at_k"] < min_recall:
+            if sname in crashed:
+                console.print(
+                    f"[red]FAIL[/red] {corp_name}/{sname} returned EMPTY retrieval for "
+                    f"{m['empty_retrieval']}/{m['questions']} questions — likely a crash, "
+                    f"not a result"
+                )
+                floor_violation = True
+            elif m["mean_recall_at_k"] < min_recall:
                 console.print(
                     f"[red]FAIL[/red] {corp_name}/{sname} "
                     f"Recall@{top_k}={m['mean_recall_at_k']:.3f} < {min_recall}"
@@ -314,6 +343,8 @@ async def _run_corpora_loop(
         per_strategy_tier_rows: dict[str, list[tuple[int, RetrievalMetrics]]] = {
             s.name: [] for s in strategies
         }
+        # Crash signature: count questions where a strategy surfaced zero chunks.
+        per_strategy_empty: dict[str, int] = {s.name: 0 for s in strategies}
         title = f"Retriever Lab — {corp} (top-{top_k})"
 
         # Live updates are TTY-only; in non-TTY contexts (CI, pipes, captured
@@ -344,6 +375,8 @@ async def _run_corpora_loop(
                     )
                     per_strategy_rows[s.name].append(metrics)
                     per_strategy_tier_rows[s.name].append((int(q.tier or 0), metrics))
+                    if not trace.retrieved:
+                        per_strategy_empty[s.name] += 1
                     hits_set = set(metrics.hits)
 
                     def _is_hit(chunk):
@@ -389,9 +422,12 @@ async def _run_corpora_loop(
             if live is not None:
                 live.stop()
 
-        overall["corpora"][corp] = {
-            s.name: _summarize_with_tiers(per_strategy_tier_rows[s.name]) for s in strategies
-        }
+        summary = {}
+        for s in strategies:
+            stats = _summarize_with_tiers(per_strategy_tier_rows[s.name])
+            stats["empty_retrieval"] = per_strategy_empty[s.name]
+            summary[s.name] = stats
+        overall["corpora"][corp] = summary
 
     return 0
 
