@@ -39,7 +39,13 @@ STRATEGY_NAMES = [
     "pageindex",
     "bm25",
     "rerank_vector",
+    "qiss",
 ]
+# Note: `sqr` is intentionally NOT in the default "all" set — it needs the
+# optional [quantum] extra (qiskit/qiskit-aer/scikit-learn). Run it explicitly
+# with `--strategies sqr`; get_strategy("sqr") raises a clear install hint when
+# the extra is missing, so _load_strategies skips it rather than emitting empty
+# traces that would trip the min-recall floor on a core install.
 
 RETRY_BASE_S = 1.0  # base for exponential backoff: 1s, 2s, 4s, ...
 
@@ -111,14 +117,27 @@ def _classify_error(exc_or_message) -> str:
 
 
 def _load_strategies(strategy_filter: str) -> list[Strategy]:
+    """Resolve a strategy filter into instantiated strategies.
+
+    Accepts "all", a single name, or a comma-separated list ("naive_vector,qiss").
+    Unavailable strategies (e.g. sqr without the [quantum] extra) raise during
+    get_strategy() and are skipped with a message rather than failing the run.
+    """
     from kb_arena.strategies import get_strategy
 
-    names = STRATEGY_NAMES if strategy_filter == "all" else [strategy_filter]
-    active = []
+    if strategy_filter == "all":
+        names = list(STRATEGY_NAMES)
+    else:
+        names = [n.strip() for n in strategy_filter.split(",") if n.strip()]
+
+    active: list[Strategy] = []
+    seen: set[str] = set()
     for name in names:
+        if name in seen:
+            continue
+        seen.add(name)
         try:
-            s = get_strategy(name)
-            active.append(s)
+            active.append(get_strategy(name))
         except Exception as e:
             console.print(f"[yellow]Skipping strategy {name}: {e}[/yellow]")
     return active

@@ -183,7 +183,7 @@ class RerankVectorStrategy(Strategy):
         )
         gen_ms = (time.perf_counter() - gen_t0) * 1000
 
-        sources = list(dict.fromkeys(c.source for _, c in kept if c.source))
+        sources = list(dict.fromkeys(c.doc_id for _, c in kept if c.doc_id))
         trace = RetrievalTrace(
             query=question,
             retrieved=[c for _, c in kept],

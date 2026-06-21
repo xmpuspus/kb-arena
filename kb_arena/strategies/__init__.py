@@ -17,6 +17,8 @@ from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
 from kb_arena.strategies.naive_vector import NaiveVectorStrategy
 from kb_arena.strategies.pageindex import PageIndexStrategy
 from kb_arena.strategies.qna_pairs import QnAPairStrategy
+from kb_arena.strategies.quantum.qiss import QISSStrategy
+from kb_arena.strategies.quantum.sqr import SQRStrategy
 from kb_arena.strategies.raptor import RaptorStrategy
 from kb_arena.strategies.rerank_vector import RerankVectorStrategy
 
@@ -33,6 +35,15 @@ STRATEGY_REGISTRY: dict[str, type] = {
     "pageindex": PageIndexStrategy,
     "bm25": BM25Strategy,
     "rerank_vector": RerankVectorStrategy,
+    "qiss": QISSStrategy,
+    "sqr": SQRStrategy,
+}
+
+# Optional-dependency strategies: name -> (modules required, extra name).
+# get_strategy raises a clear install hint when any module is missing, so the
+# benchmark/retriever-lab loaders skip them instead of emitting empty traces.
+_OPTIONAL_DEP_STRATEGIES: dict[str, tuple[tuple[str, ...], str]] = {
+    "sqr": (("qiskit", "qiskit_aer", "sklearn"), "quantum"),
 }
 
 
@@ -82,7 +93,8 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
     pageindex = PageIndexStrategy()
     pageindex._llm = llm
 
-    # Strategies that need explicit build_index()
+    # Strategies that need explicit build_index(). qiss/sqr build through the
+    # naive_vector collection they wrap, so building them is idempotent with it.
     buildable = {
         "naive_vector": NaiveVectorStrategy(chroma_client=chroma),
         "contextual_vector": ContextualVectorStrategy(chroma_client=chroma),
@@ -90,6 +102,8 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
         "raptor": raptor,
         "pageindex": pageindex,
         "bm25": BM25Strategy(),
+        "qiss": QISSStrategy(chroma_client=chroma),
+        "sqr": SQRStrategy(chroma_client=chroma),
     }
 
     targets = (
@@ -158,12 +172,35 @@ def get_strategy(name: str):
     if cls is None:
         raise ValueError(f"Unknown strategy: {name}. Available: {list(STRATEGY_REGISTRY)}")
 
+    # Optional-dependency strategies (e.g. sqr) — fail with a clear install hint
+    # when the extra is absent, so loaders skip them rather than running empty.
+    if name in _OPTIONAL_DEP_STRATEGIES:
+        import importlib.util
+
+        required, extra = _OPTIONAL_DEP_STRATEGIES[name]
+        missing = [m for m in required if importlib.util.find_spec(m) is None]
+        if missing:
+            raise ImportError(
+                f"Strategy '{name}' needs the optional [{extra}] extra "
+                f"({', '.join(missing)} not installed). "
+                f"Install with: pip install 'kb-arena[{extra}]'"
+            )
+
     # No-dependency strategies
     if name in ("pageindex", "bm25"):
         return cls()
 
-    # Vector-backed strategies need a ChromaDB client
-    if name in ("naive_vector", "contextual_vector", "qna_pairs", "raptor", "rerank_vector"):
+    # Vector-backed strategies need a ChromaDB client. qiss/sqr wrap naive_vector
+    # for coarse retrieval (like rerank_vector) and rerank the same Chroma index.
+    if name in (
+        "naive_vector",
+        "contextual_vector",
+        "qna_pairs",
+        "raptor",
+        "rerank_vector",
+        "qiss",
+        "sqr",
+    ):
         chroma = chromadb.PersistentClient(path=settings.chroma_path)
         return cls(chroma_client=chroma)
 
@@ -211,6 +248,8 @@ __all__ = [
     "PageIndexStrategy",
     "BM25Strategy",
     "RerankVectorStrategy",
+    "QISSStrategy",
+    "SQRStrategy",
     "build_vector_indexes",
     "load_documents",
 ]

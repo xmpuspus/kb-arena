@@ -5,11 +5,11 @@
 
 Nine retrieval architectures. Your documentation. One winner.
 
-KB Arena is the only open-source benchmark that runs **architecturally distinct** retrieval strategies — naive vector, contextual vector, Q&A pairs, knowledge graph, hybrid (RRF-fused), RAPTOR, PageIndex, BM25, and **rerank-vector** (cross-encoder reranking) — head-to-head on your own corpus, with auto-generated questions across 5 difficulty tiers, IR metrics (Recall@k, MRR, NDCG@k), RAGAS metrics, ELO arena voting, a CI gate, and a strategy plugin system.
+KB Arena is the only open-source benchmark that runs **architecturally distinct** retrieval strategies — naive vector, contextual vector, Q&A pairs, knowledge graph, hybrid (RRF-fused), RAPTOR, PageIndex, BM25, **rerank-vector** (cross-encoder reranking), and two **quantum rerankers** (**QISS**, a quantum-inspired state-fidelity reranker; **SQR**, a Qiskit Aer SWAP-test reranker) — head-to-head on your own corpus, with auto-generated questions across 5 difficulty tiers, IR metrics (Recall@k, MRR, NDCG@k), RAGAS metrics, ELO arena voting, a CI gate, and a strategy plugin system.
 
 Embeddings: pluggable across **OpenAI, Voyage-3, Cohere, Gemini, BGE (local), Ollama (local)** via `KB_ARENA_EMBEDDING_PROVIDER`. Rerankers: **BGE-v2-m3 (local), Cohere Rerank, Voyage Rerank** via `KB_ARENA_RERANKER_BACKEND`.
 
-![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-617-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![PyPI](https://img.shields.io/pypi/v/kb-arena) ![CI](https://github.com/xmpuspus/kb-arena/actions/workflows/ci.yml/badge.svg) [![DOI](https://zenodo.org/badge/1182030516.svg)](https://zenodo.org/badge/latestdoi/1182030516)
+![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-649-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![PyPI](https://img.shields.io/pypi/v/kb-arena) ![CI](https://github.com/xmpuspus/kb-arena/actions/workflows/ci.yml/badge.svg) [![DOI](https://zenodo.org/badge/1182030516.svg)](https://zenodo.org/badge/latestdoi/1182030516)
 
 ![KB Arena Demo](docs/demo.gif)
 
@@ -22,7 +22,7 @@ pip install kb-arena
 kb-arena demo
 ```
 
-This launches the dashboard with pre-computed results from the AWS Compute corpus (75 questions, 9 strategies, 5 difficulty tiers). The demo runs in **read-only mode** — chat, arena, and tools endpoints stay disabled until you set an API key. No Docker, no Neo4j, no surprises.
+This launches the dashboard with pre-computed results from the AWS Compute corpus (75 questions, 9 benchmarked strategies, 5 difficulty tiers; the two quantum rerankers added in v0.9.0 are validated on retriever-lab + optimize, not yet in the 4-pass leaderboard). The demo runs in **read-only mode** — chat, arena, and tools endpoints stay disabled until you set an API key. No Docker, no Neo4j, no surprises.
 
 ![Dashboard walkthrough](docs/demo-ui-walkthrough.gif)
 
@@ -47,7 +47,7 @@ Most RAG evaluation tools answer "how well does my pipeline work?" KB Arena answ
 
 | | KB Arena | AutoRAG | RAGAS | MTEB / BEIR | GraphRAG | DeepEval |
 |---|---|---|---|---|---|---|
-| Compares multiple architectures | Yes - 9 strategies | Yes - module combos | No - evaluates your existing pipeline | No - compares embedding models | No - only their own approach | No |
+| Compares multiple architectures | Yes - 11 strategies | Yes - module combos | No - evaluates your existing pipeline | No - compares embedding models | No - only their own approach | No |
 | Automated hyperparameter search | Yes - `kb-arena optimize` (v0.7.0) | Yes | No | No | No | No |
 | Includes graph + vector + hybrid | Yes | No - vector/keyword only | Vector/hybrid only | Embeddings only | Graph only | Any |
 | Works on your own docs | Yes | Yes | Yes | No - fixed public datasets | No - fixed datasets | Yes |
@@ -59,6 +59,25 @@ Most RAG evaluation tools answer "how well does my pipeline work?" KB Arena answ
 AutoRAG is the only tool that also searches retrieval configurations. KB Arena adds what it can't: knowledge-graph retrieval as a first-class strategy, auto-generated questions, an interactive UI, and graph IR metrics.
 
 If you want to know whether a knowledge graph, Q&A pairs, or plain vector search is the right architecture for your documentation, that's what KB Arena is for.
+
+---
+
+## What's New in v0.9.0 — Two quantum rerankers (strategies #10 + #11)
+
+![Quantum strategies — honest diagnostics](docs/demo-quantum.gif)
+
+Two new rerankers sit on top of the same `naive_vector` coarse retrieval as `rerank_vector`, so they inherit the corpus, ground truth, IR metrics, and the optimizer's statistical layer with **zero new metrics code**.
+
+- **QISS** (`qiss`, strategy #10) — Quantum-Inspired Semantic Similarity. Pure NumPy, no extra install. Scores candidates by quantum state fidelity `Tr(ρ_q·ρ_d) = |⟨q|d⟩|² = cos²` over the *same* embeddings `naive_vector` uses (an apples-to-apples reorder), plus a config-gated multi-query **superposition** mode `|Q⟩ = Σ αᵢ|qᵢ⟩` whose interference cross-terms are something classical rank fusion (RRF) cannot produce.
+- **SQR** (`sqr`, strategy #11) — Simulated Quantum Reranker. PCA-reduces each embedding to 2ⁿ dims, amplitude-encodes it, and reranks by a **real Qiskit Aer SWAP test** (`P(0) = (1 + |⟨ψ_q|ψ_d⟩|²)/2`). Exact statevector by default; shots is an accuracy/speed knob; all candidate circuits run in one batched Aer job. Needs the optional `[quantum]` extra (`pip install 'kb-arena[quantum]'`).
+
+The North Star is honest caveats, surfaced by a new `kb-arena quantum-diagnostics` command (shown above): 4-qubit/16-dim amplitude encoding keeps **~0.68** of the aws-compute corpus variance, SWAP-test error falls ~1/√shots (statevector is exact), and the quantum rerank adds **~+1s** over the coarse retrieval. On aws-compute Recall@5 all three land together — QISS 0.352, SQR 0.349, naive_vector 0.352 — because single-query fidelity is a monotonic reorder of cosine; the differentiation is the superposition path and the SWAP-test machinery, not a recall headline.
+
+```bash
+pip install 'kb-arena[quantum]'
+kb-arena retriever-lab --corpus aws-compute --strategies naive_vector,qiss,sqr
+kb-arena quantum-diagnostics --corpus aws-compute
+```
 
 ---
 
@@ -509,6 +528,7 @@ kb-arena report --format html   # shareable dashboard
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 0.9.0 | 2026-06-22 | Two quantum rerankers, strategies #10/#11, folded into the package (not a separate repo) so they reuse the same coarse retrieval, aws-compute ground truth, IR metrics and optimizer statistical layer with **zero new metrics code**. **QISS** (pure NumPy, no extra install) reranks naive_vector candidates by quantum state fidelity `Tr(ρ_q·ρ_d)=cos²` over the same embeddings, plus a config-gated multi-query **superposition fusion** with genuine interference cross-terms that classical RRF cannot produce. **SQR** (optional `[quantum]` extra: qiskit + qiskit-aer + scikit-learn) PCA-reduces to 2ⁿ amplitudes, amplitude-encodes, and reranks by a real Qiskit Aer **SWAP test** — exact statevector by default, shots as an accuracy/speed knob, all candidate circuits batched in one job. New `kb-arena quantum-diagnostics` reports the honest caveats: PCA variance retained per qubit count (16-dim/4-qubit keeps **~0.68** of aws-compute corpus variance, so it loses ~32%), SWAP-test error vs shots (sampled, falls ~1/√shots from ~0.05 at 256 shots to ~0.005 at 16k; statevector mode is exact), and quantum overhead (**~+1s** over the coarse retrieval, dominated by re-embedding). aws-compute Recall@5: QISS 0.352, SQR 0.349, naive_vector 0.352 — single-query fidelity is a monotonic reorder of cosine. Also fixes a latent `rerank_vector` bug (`c.source` → `c.doc_id`, was producing empty traces in retriever-lab) and teaches `--strategies` to accept comma-separated lists. 649 tests. |
 | 0.8.1 | 2026-05-21 | Release-only. Triggers the first Zenodo archive of the repo so the citation badge resolves to a real concept DOI. No code changes. |
 | 0.8.0 | 2026-05-20 | Statistical-rigor metrics layer. ir_metrics gains **MAP / Average Precision**, **R-Precision**, **bpref** (TREC-style robust to partial labels, auto-clamped to [0,1] from a real-run bug surfaced on aws-compute), and a **graded NDCG** switch using exponential gain (2^rel-1) for SIGIR-standard handling of graded relevance. New `kb_arena/benchmark/rank_similarity.py` with **Rank-Biased Overlap** (Webber 2010, extrapolated form) for comparing two strategies' rankings without a gold standard. `optimize` now reports **bootstrap 95% CIs**, **Wilcoxon paired p-value + significance flag**, **win-rate vs baseline**, **NDCG/ms efficiency**, and **Pareto-optimal markers** across strategies — the report finally tells you whether a `+0.003` lift is real or noise. `retriever-lab` JSON gains **per-tier breakdowns** (Recall/NDCG/MAP per difficulty tier 1-5) and bootstrap CIs on aggregate means. scipy added as a runtime dep. 617 tests. |
 | 0.7.1 | 2026-05-20 | `kb-arena optimize` correctness + first real numbers. Rebuild-decision bug: `needs_rebuild` was comparing to the *previous* trial (so trial #1 always rebuilt even when it equalled the baseline, needlessly re-embedding the corpus); now compared to the baseline (persistent-index config), so a pure top-k sweep does zero rebuilds. README v0.7.0 section gains a real `aws-compute` top-k sweep table (BM25 / naive_vector / contextual_vector / RAPTOR, NDCG baseline vs best vs delta) and the demo GIF now shows a real BM25 run streaming actual NDCG numbers, not just `--dry-run`. Corpus-prep recipe documented in the optimize section. 617 tests. |
@@ -615,7 +635,7 @@ kb-arena build-vectors --corpus my-docs
 # Auto-generate benchmark questions from your docs (10 per difficulty tier)
 kb-arena generate-questions --corpus my-docs --count 50
 
-# Run the benchmark (each question x 9 strategies, 4-pass evaluation)
+# Run the benchmark (each question x all default strategies, 4-pass evaluation)
 kb-arena benchmark --corpus my-docs
 
 # Launch the web UI to explore results
@@ -674,11 +694,11 @@ kb-arena serve
 
 ## Screenshots
 
-**Home** — Overview of the 9 strategies, difficulty tiers, and evaluation methodology.
+**Home** — Overview of the 11 strategies, difficulty tiers, and evaluation methodology.
 
 ![Home page](docs/screenshot-home.png)
 
-**Strategy comparison** — Ask the same question to all 9 strategies simultaneously. Compare answers, sources, latency, and cost side-by-side.
+**Strategy comparison** — Ask the same question to all 11 strategies simultaneously. Compare answers, sources, latency, and cost side-by-side.
 
 ![Strategy comparison demo](docs/screenshot-demo.png)
 
@@ -776,7 +796,7 @@ These are results from the built-in AWS Compute corpus. Your mileage will vary �
 
 ---
 
-## The 9 Strategies
+## The 11 Strategies
 
 | # | Strategy | How it works | Best at |
 |---|----------|-------------|---------|
@@ -789,6 +809,10 @@ These are results from the built-in AWS Compute corpus. Your mileage will vary �
 | 7 | **PageIndex** | Build tree index from doc structure → LLM beam search traversal → no vectors | Well-structured docs, reasoning over hierarchy |
 | 8 | **BM25** | Classic keyword matching (BM25Okapi) → LLM generation | Pre-neural baseline — "do I even need embeddings?" |
 | 9 | **Rerank Vector** | Naive Vector at top-k×4 → cross-encoder rerank (BGE / Cohere / Voyage) → top-k → generate | The 2026 reranker question: "is the upgrade worth it on my docs?" |
+| 10 | **QISS** | Naive Vector at top-k×4 → quantum state fidelity Tr(ρ_q·ρ_d)=cos² rerank, with optional multi-query superposition fusion (interference cross-terms) → top-k → generate | Pure-NumPy quantum-inspired reranking; superposition fusion for multi-hop queries |
+| 11 | **SQR** | Naive Vector at top-k×4 → PCA to 2ⁿ dims → amplitude-encode → Qiskit Aer SWAP test (exact statevector; shots optional) → top-k → generate | "What does a real quantum reranker cost?" — needs the `[quantum]` extra |
+
+Strategies 10–11 are quantum rerankers added in v0.9.0. They reuse the same coarse retrieval, ground-truth corpus, IR metrics and optimizer statistical layer as every other strategy — no new metrics code. `kb-arena quantum-diagnostics` reports the honest caveats (PCA variance retained per qubit count, SWAP-test error vs shots, wall-clock overhead). On aws-compute Recall@5: QISS 0.352, SQR 0.349, naive_vector 0.352 — single-query fidelity is a monotonic reorder of cosine, so the recall is matched; the differentiation is the superposition path and the SWAP-test machinery.
 
 ---
 
@@ -952,7 +976,7 @@ All prefixed with `KB_ARENA_`. Loaded from `.env` or environment.
 pip install -e '.[dev]'
 
 # Run tests
-pytest tests/ -v --ignore=tests/live  # 617 tests
+pytest tests/ -v --ignore=tests/live  # 649 tests
 
 # Lint + format
 ruff check . && ruff format --check .
@@ -975,7 +999,7 @@ cd web && npm install && npx next build
 | Frontend | Next.js 14 + Tailwind + Recharts |
 | Models | Pydantic v2 |
 | CLI | Typer + Rich |
-| Testing | pytest (617 tests) |
+| Testing | pytest (649 tests) |
 
 ---
 

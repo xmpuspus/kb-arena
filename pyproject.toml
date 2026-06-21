@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kb-arena"
-version = "0.8.1"
-description = "Benchmark 9 retrieval architectures on your documentation — find which KB architecture fits your data"
+version = "0.9.0"
+description = "Benchmark 11 retrieval architectures on your documentation — find which KB architecture fits your data"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
@@ -49,6 +49,10 @@ pdf = ["PyMuPDF==1.25.3"]
 docx = ["mammoth==1.8.0"]
 web = ["httpx==0.28.1"]
 all-formats = ["PyMuPDF==1.25.3", "mammoth==1.8.0", "httpx==0.28.1"]
+# Quantum strategies #10 (qiss is pure-NumPy and needs nothing here) and #11
+# (sqr — Qiskit Aer SWAP test + PCA reduction). Lazy-imported, so the core
+# install and CI stay light; install with `pip install 'kb-arena[quantum]'`.
+quantum = ["qiskit==2.4.2", "qiskit-aer==0.17.2", "scikit-learn==1.9.0"]
 
 [project.scripts]
 kb-arena = "kb_arena.cli:app"
