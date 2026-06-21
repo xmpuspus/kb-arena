@@ -9,7 +9,7 @@ KB Arena is the only open-source benchmark that runs **architecturally distinct*
 
 Embeddings: pluggable across **OpenAI, Voyage-3, Cohere, Gemini, BGE (local), Ollama (local)** via `KB_ARENA_EMBEDDING_PROVIDER`. Rerankers: **BGE-v2-m3 (local), Cohere Rerank, Voyage Rerank** via `KB_ARENA_RERANKER_BACKEND`.
 
-![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-661-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![PyPI](https://img.shields.io/pypi/v/kb-arena) ![CI](https://github.com/xmpuspus/kb-arena/actions/workflows/ci.yml/badge.svg) [![DOI](https://zenodo.org/badge/1182030516.svg)](https://zenodo.org/badge/latestdoi/1182030516)
+![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-666-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![PyPI](https://img.shields.io/pypi/v/kb-arena) ![CI](https://github.com/xmpuspus/kb-arena/actions/workflows/ci.yml/badge.svg) [![DOI](https://zenodo.org/badge/1182030516.svg)](https://zenodo.org/badge/latestdoi/1182030516)
 
 ![KB Arena Demo](docs/demo.gif)
 
@@ -528,6 +528,7 @@ kb-arena report --format html   # shareable dashboard
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 0.9.3 | 2026-06-22 | **Cost/efficiency honesty.** Two reporting additions that surface where retrieval actually spends time and money, both computed from real run output (no assumed pricing or recall). `retriever-lab --ceiling-k N` adds a **retrieval-ceiling** line: the base retriever's Recall@top_k vs Recall@ceiling_k, whose gap is the **ranking headroom** — the share of relevant chunks already retrieved but ranked below top_k. (It also corrected a scoping point: on the full aws-compute corpus naive Recall@20 is 0.445, not the 0.92 that holds only for the tier-4/5 multi-hop subset.) The benchmark report gains a **Cost Efficiency** section: tokens-per-query, $-per-query, and NDCG-per-1k-tokens, exposing the spend of LLM-heavy strategies (e.g. query decomposition costs ~160 tokens / ~$0.0015 per query) against the free vector strategies. 666 tests. |
 | 0.9.2 | 2026-06-22 | **Corrects the QISS multi-hop operator.** Digging into why v0.9.1's superposition only tied naive: the coherent superposition (the normalized sum of the sub-query state vectors) scores by (Σ cos)², which ranks by cosine to the sub-query *mean* — and the mean is ≈ the holistic question embedding (measured cosine 0.77 on aws-compute), so it could never differ from naive. Replaced with **subspace projection**: a document is scored by the squared norm of its projection onto the orthonormal span of {question, sub-queries}. This is a clean generalization — a rank-1 subspace is exactly cos² (the single-query contract), and each extra sub-query direction lets a chunk answering one hop (even one orthogonal to the others) still score. On 11 tier-4/5 questions it is the best decomposition method (Recall@5 0.71 vs naive 0.70) and, unlike the centroid, does not hurt MRR. It ties rather than wins because naive's top-20 already holds 92% of the relevant chunks — aws-compute is too small to need decomposition; the operator is the right one for larger multi-hop corpora. The coherent and classical-mixture functions are retained as the comparison baselines that diagnosed this. 661 tests. |
 | 0.9.1 | 2026-06-22 | Quantum follow-ups + robustness. **Fixes the QISS superposition path**, which was dead-on-arrival in v0.9.0: the LLM decomposition call passed an empty system prompt that the Anthropic API rejects (`cache_control cannot be set for empty text blocks`), so `KB_ARENA_QISS_DECOMPOSE` always threw and silently fell back to single-query. With it fixed, a tier-4/5 validation (11 multi-hop questions) shows the coherent superposition beating the classical incoherent mixture of the same sub-queries (Recall@5 0.705 vs 0.614 — the interference term helps), roughly tying naive_vector. **Dead-strategy guard** in retriever-lab: a strategy returning empty traces for ≥50% of questions is now flagged as a crash, distinct from low recall — exactly the signature that hid the v0.9.0 `rerank_vector` bug (which itself shipped a 0-retrieval result unnoticed). **Frontend** caught up: the web arena/leaderboard strategy list had been stuck at 8 (never even got `rerank_vector`), now lists all 10 core strategies with labels, colors, and descriptions; stale "8 strategies" copy fixed. Regression tests for all three (`rerank_vector` non-empty trace, the empty-trace guard, the decompose system prompt). 656 tests. |
 | 0.9.0 | 2026-06-22 | Two quantum rerankers, strategies #10/#11, folded into the package (not a separate repo) so they reuse the same coarse retrieval, aws-compute ground truth, IR metrics and optimizer statistical layer with **zero new metrics code**. **QISS** (pure NumPy, no extra install) reranks naive_vector candidates by quantum state fidelity `Tr(ρ_q·ρ_d)=cos²` over the same embeddings, plus a config-gated multi-query **superposition fusion** with genuine interference cross-terms that classical RRF cannot produce. **SQR** (optional `[quantum]` extra: qiskit + qiskit-aer + scikit-learn) PCA-reduces to 2ⁿ amplitudes, amplitude-encodes, and reranks by a real Qiskit Aer **SWAP test** — exact statevector by default, shots as an accuracy/speed knob, all candidate circuits batched in one job. New `kb-arena quantum-diagnostics` reports the honest caveats: PCA variance retained per qubit count (16-dim/4-qubit keeps **~0.68** of aws-compute corpus variance, so it loses ~32%), SWAP-test error vs shots (sampled, falls ~1/√shots from ~0.05 at 256 shots to ~0.005 at 16k; statevector mode is exact), and quantum overhead (**~+1s** over the coarse retrieval, dominated by re-embedding). aws-compute Recall@5: QISS 0.352, SQR 0.349, naive_vector 0.352 — single-query fidelity is a monotonic reorder of cosine. Also fixes a latent `rerank_vector` bug (`c.source` → `c.doc_id`, was producing empty traces in retriever-lab) and teaches `--strategies` to accept comma-separated lists. 649 tests. |
@@ -978,7 +979,7 @@ All prefixed with `KB_ARENA_`. Loaded from `.env` or environment.
 pip install -e '.[dev]'
 
 # Run tests
-pytest tests/ -v --ignore=tests/live  # 661 tests
+pytest tests/ -v --ignore=tests/live  # 666 tests
 
 # Lint + format
 ruff check . && ruff format --check .
@@ -1001,7 +1002,7 @@ cd web && npm install && npx next build
 | Frontend | Next.js 14 + Tailwind + Recharts |
 | Models | Pydantic v2 |
 | CLI | Typer + Rich |
-| Testing | pytest (661 tests) |
+| Testing | pytest (666 tests) |
 
 ---
 

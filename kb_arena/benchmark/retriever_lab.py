@@ -211,6 +211,67 @@ def _summarize(records: list[RetrievalMetrics]) -> dict[str, float | int]:
     return _aggregate_means(records)
 
 
+def _summarize_ceiling(
+    top_recalls: list[float], ceiling_recalls: list[float], top_k: int, ceiling_k: int
+) -> dict:
+    """Aggregate the base retriever's recall at the shallow vs deep cutoff.
+
+    `ranking_headroom` = Recall@ceiling_k − Recall@top_k is the share of relevant
+    chunks the retriever already surfaces but ranks below top_k. A large headroom
+    means the bottleneck is RANKING, not retrieval; a small Recall@ceiling_k means
+    the chunks are genuinely missing from the pool. The interpretation is left to
+    the reader — this only reports the measured numbers.
+    """
+    n = len(top_recalls) or 1
+    rt = sum(top_recalls) / n
+    rc = sum(ceiling_recalls) / n
+    return {
+        "top_k": top_k,
+        "ceiling_k": ceiling_k,
+        "recall_at_top_k": rt,
+        "recall_at_ceiling_k": rc,
+        "ranking_headroom": max(rc - rt, 0.0),
+        "questions": len(top_recalls),
+    }
+
+
+async def _retrieval_ceiling(questions, top_k: int, ceiling_k: int) -> dict:
+    """Base-retriever (naive_vector) recall at top_k vs ceiling_k over `questions`.
+
+    naive_vector is the pool every vector reranker shares, so its recall ceiling
+    is the shared retrieval ceiling. Pure retrieval (LLM is already stubbed by the
+    caller); one extra deep query per question, no generation cost.
+    """
+    from kb_arena.strategies import get_strategy
+
+    try:
+        base = get_strategy("naive_vector")
+    except Exception as exc:  # noqa: BLE001 — ceiling is a best-effort diagnostic
+        log.warning("Retrieval ceiling skipped (naive_vector unavailable): %s", exc)
+        return {}
+
+    top_recalls: list[float] = []
+    ceiling_recalls: list[float] = []
+    for q in questions:
+        trace = await _retrieve_only(base, q.question, ceiling_k)
+        retrieved = trace.retrieved
+        expected = set(q.expected_chunks or [])
+        doc_ids = set(q.ground_truth.source_refs)
+        m_top = compute_all(
+            retrieved=retrieved[:top_k], expected_ids=expected, k=top_k, expected_doc_ids=doc_ids
+        )
+        m_ceil = compute_all(
+            retrieved=retrieved[:ceiling_k],
+            expected_ids=expected,
+            k=ceiling_k,
+            expected_doc_ids=doc_ids,
+        )
+        top_recalls.append(m_top.recall_at_k)
+        ceiling_recalls.append(m_ceil.recall_at_k)
+
+    return _summarize_ceiling(top_recalls, ceiling_recalls, top_k, ceiling_k)
+
+
 def _empty_trace_failures(by_strategy: dict, threshold: float = 0.5) -> list[str]:
     """Strategy names whose empty-retrieval count is >= `threshold` of questions.
 
@@ -232,12 +293,14 @@ async def run_retriever_lab(
     strategies_filter: str = "all",
     top_k: int = 5,
     min_recall: float = 0.30,
+    ceiling_k: int | None = None,
 ) -> int:
     """Run retrieval-only benchmark. Returns 0 on success, 1 if min_recall floor breached."""
     from kb_arena.benchmark.runner import _load_strategies
 
     run_id = uuid4().hex[:8]
     timestamp = datetime.now(UTC).isoformat()
+    ceiling_k = ceiling_k if ceiling_k and ceiling_k > top_k else top_k * 4
 
     corpora = discover_corpora() if corpus == "all" else [corpus]
     strategies = _load_strategies(strategies_filter)
@@ -252,11 +315,13 @@ async def run_retriever_lab(
         "run_id": run_id,
         "timestamp": timestamp,
         "top_k": top_k,
+        "ceiling_k": ceiling_k,
         "corpora": {},
+        "retrieval_ceiling": {},
     }
     per_question_rows: list[dict] = []
 
-    console.print(f"[dim]Run ID: {run_id} | top-k: {top_k}[/dim]")
+    console.print(f"[dim]Run ID: {run_id} | top-k: {top_k} | ceiling-k: {ceiling_k}[/dim]")
 
     _llm_patch = _PatchLLMClient()
     _llm_patch.__enter__()
@@ -268,6 +333,7 @@ async def run_retriever_lab(
             min_recall,
             overall,
             per_question_rows,
+            ceiling_k,
         )
     finally:
         _llm_patch.__exit__(None, None, None)
@@ -329,6 +395,7 @@ async def _run_corpora_loop(
     min_recall,
     overall,
     per_question_rows,
+    ceiling_k,
 ):
     for corp in corpora:
         try:
@@ -428,6 +495,16 @@ async def _run_corpora_loop(
             stats["empty_retrieval"] = per_strategy_empty[s.name]
             summary[s.name] = stats
         overall["corpora"][corp] = summary
+
+        ceiling = await _retrieval_ceiling(questions, top_k, ceiling_k)
+        if ceiling.get("questions"):
+            overall["retrieval_ceiling"][corp] = ceiling
+            console.print(
+                f"[cyan]Retrieval ceiling[/cyan] {corp}: naive Recall@{ceiling['top_k']}="
+                f"{ceiling['recall_at_top_k']:.3f}, Recall@{ceiling['ceiling_k']}="
+                f"{ceiling['recall_at_ceiling_k']:.3f}, ranking headroom="
+                f"{ceiling['ranking_headroom']:.3f}"
+            )
 
     return 0
 
