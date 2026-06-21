@@ -9,20 +9,27 @@ single query this is exactly the squared cosine over the SAME embeddings
 `naive_vector` uses, so QISS re-ranks the identical vectors apples-to-apples
 (the contract verified by the invariant unit test).
 
-Scientific contribution — multi-query superposition fusion (config-gated by
-`KB_ARENA_QISS_DECOMPOSE`): a multi-hop question is decomposed into sub-queries
-q₁..qₘ by the LLM, then fused into a *coherent* superposition state
+Multi-query subspace projection (config-gated by `KB_ARENA_QISS_DECOMPOSE`): a
+multi-hop question is decomposed into sub-queries q₁..qₘ by the LLM, and the
+query becomes a *subspace* — the span of {question, q₁..qₘ}. A document is scored
+by its projection onto that subspace,
 
-    |Q⟩ = Σᵢ αᵢ |qᵢ⟩      (renormalized)
+    S(d) = Tr(P_span · ρ_d) = ‖P_span · d̂‖²
 
-and documents are scored by Tr(ρ_Q · ρ_d) = |⟨Q|d⟩|². Expanding,
+where P_span is the orthonormal projector onto the span. This is the rank-r
+mixed-state generalization of single-query fidelity: a rank-1 subspace (just the
+question) is exactly cos² (the contract above), and each extra sub-query
+direction lets a chunk that answers one hop — even one orthogonal to the others —
+still score. It replaces the v0.9.0 *coherent* superposition |Q⟩ = Σαᵢ|qᵢ⟩, which
+scored by (Σcos)² — i.e. cosine to the sub-query *mean*, and that mean is ≈ the
+holistic question (cosine ~0.77 on aws-compute), so it could never differ from
+naive. The retained `superposition_state` / `classical_mixture_scores` functions
+are kept as the comparison baselines that diagnosed this.
 
-    |⟨Q|d⟩|² = Σᵢ αᵢ² fᵢ  +  Σ_{i≠j} αᵢ αⱼ ⟨qᵢ|d⟩⟨qⱼ|d⟩
-
-the second sum is a genuine quantum interference term that classical rank-fusion
-(RRF over independent sub-query rankings) cannot produce — it can be destructive
-(negative) and reorder candidates. QISS exposes both the coherent score and the
-classical diagonal-only mixture so the interference contribution is measurable.
+On aws-compute the subspace ties naive (Recall@5 ~0.71 vs 0.70 on 11 tier-4/5
+questions): naive's top-20 already holds 92% of the relevant chunks, so this
+corpus is too small to need decomposition. The operator is the correct one for
+larger corpora where holistic retrieval misses a hop; the win is not claimed here.
 
 Pure NumPy — no Qiskit, no optional install. Only `numpy` (already a transitive
 dependency via chromadb) is used.
@@ -133,6 +140,38 @@ def classical_mixture_scores(sub_matrix: Any, doc_matrix: Any, weights: Any = No
     return np.clip(total, 0.0, 1.0) if total is not None else np.zeros(1)
 
 
+def subspace_projection_scores(basis_matrix: Any, doc_matrix: Any) -> np.ndarray:
+    """‖P_span · d‖² for each doc — projection onto the orthonormal span of the
+    basis states (the holistic query plus its sub-queries).
+
+    This is the rank-r projector / mixed-state generalization of single-query
+    fidelity, and the multi-query operator QISS actually uses. A rank-1 basis
+    (just the question) reduces *exactly* to cos² — the single-query contract —
+    while extra sub-query directions extend the subspace so a chunk answering one
+    hop, even one orthogonal to the others, still scores.
+
+    It replaces the v0.9.0 coherent-centroid superposition. That operator scored
+    by (Σᵢ cos(qᵢ,d))², which ranks by cosine to the sub-query *mean* — and the
+    mean is ≈ the holistic question embedding (cosine ~0.77 on aws-compute), so it
+    could never differ from naive retrieval. The subspace keeps every sub-query
+    direction instead of collapsing them. Returns scores in [0, 1].
+    """
+    basis = np.asarray(basis_matrix, dtype=np.float64)
+    if basis.ndim == 1:
+        basis = basis[None, :]
+    basis = basis / np.clip(np.linalg.norm(basis, axis=1, keepdims=True), 1e-12, None)
+    # Orthonormal basis of the span; SVD tolerates linearly-dependent sub-queries.
+    u, s, _ = np.linalg.svd(basis.T, full_matrices=False)
+    ortho = u[:, s > 1e-8]
+
+    docs = np.asarray(doc_matrix, dtype=np.float64)
+    if docs.ndim == 1:
+        docs = docs[None, :]
+    docs = docs / np.clip(np.linalg.norm(docs, axis=1, keepdims=True), 1e-12, None)
+    proj = docs @ ortho  # (n, k)
+    return np.clip(np.sum(proj**2, axis=1), 0.0, 1.0)
+
+
 # ---------------------------------------------------------------------------
 # Strategy
 # ---------------------------------------------------------------------------
@@ -209,24 +248,21 @@ class QISSStrategy(Strategy):
             return candidate
 
         ef = self._get_embed_fn()
+        # The query subspace: the holistic question always anchors it (rank-1 ->
+        # cos², the single-query contract); decomposition adds sub-query
+        # directions for multi-hop coverage.
         subqueries = await self._maybe_decompose(question)
-        sub_matrix = np.asarray(ef(subqueries), dtype=np.float64)
+        basis_texts = [question]
+        if subqueries != [question]:
+            basis_texts += subqueries
+        basis_matrix = np.asarray(ef(basis_texts), dtype=np.float64)
         doc_matrix = np.asarray(ef([c.content or "" for c in chunks]), dtype=np.float64)
 
-        if sub_matrix.shape[0] == 1:
-            scores = fidelity_scores(sub_matrix[0], doc_matrix)
-            interference = 0.0
-        else:
-            q_state = superposition_state(sub_matrix)
-            coherent = fidelity_scores(q_state, doc_matrix)
-            classical = classical_mixture_scores(sub_matrix, doc_matrix)
-            # Interference = coherent − classical (off-diagonal cross-terms RRF cannot make).
-            interference = float(np.mean(np.abs(coherent - classical)))
-            scores = coherent
+        scores = subspace_projection_scores(basis_matrix, doc_matrix)
+        rank = basis_matrix.shape[0]
+        if rank > 1:
             logger.info(
-                "QISS superposition: %d sub-queries, mean |interference|=%.4f vs classical mixture",
-                sub_matrix.shape[0],
-                interference,
+                "QISS subspace rerank: rank-%d span (question + %d sub-queries)", rank, rank - 1
             )
 
         ranked = sorted(zip(scores.tolist(), chunks, strict=True), key=lambda x: x[0], reverse=True)
@@ -234,9 +270,7 @@ class QISSStrategy(Strategy):
         for i, (s, c) in enumerate(kept):
             c.rank = i + 1
             c.score = float(s)
-            c.metadata = {**c.metadata, "qiss_fidelity": float(s)}
-            if interference:
-                c.metadata["qiss_interference"] = interference
+            c.metadata = {**c.metadata, "qiss_fidelity": float(s), "qiss_subspace_rank": rank}
 
         from kb_arena.llm.client import LLMClient
 

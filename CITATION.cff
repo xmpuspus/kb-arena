@@ -10,7 +10,7 @@ authors:
 repository-code: "https://github.com/xmpuspus/kb-arena"
 url: "https://github.com/xmpuspus/kb-arena"
 license: MIT
-version: "0.9.1"
+version: "0.9.2"
 date-released: "2026-06-22"
 abstract: >
   KB Arena benchmarks eleven retrieval architectures (naive vector, contextual
