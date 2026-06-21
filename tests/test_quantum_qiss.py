@@ -155,3 +155,58 @@ async def test_qiss_query_empty_candidates_passes_through(mock_chroma_client, mo
     strategy._base.query = AsyncMock(return_value=empty)
     result = await strategy.query("Q", top_k=5)
     assert result.retrieval.retrieved == []
+
+
+# --- Decompose / superposition gating (regression: empty system prompt 400) ---
+
+
+@pytest.mark.asyncio
+async def test_qiss_decompose_off_by_default_returns_single(mock_chroma_client):
+    strategy = QISSStrategy(chroma_client=mock_chroma_client)
+    # qiss_decompose defaults to False -> no LLM call, single query.
+    assert await strategy._maybe_decompose("a multi-hop question") == ["a multi-hop question"]
+
+
+@pytest.mark.asyncio
+async def test_qiss_decompose_uses_nonempty_system_prompt(monkeypatch, mock_chroma_client):
+    # Regression: the decompose call must NOT pass an empty system_prompt — the
+    # Anthropic provider sets cache_control on the system block and 400s on an
+    # empty one, which made the superposition path dead-on-arrival in production.
+    from kb_arena.llm.client import LLMResponse
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(settings, "qiss_decompose", True)
+    captured: dict = {}
+
+    async def fake_generate(query, context="", system_prompt="", **kw):
+        captured["system_prompt"] = system_prompt
+        captured["query"] = query
+        return LLMResponse(text="sub one\nsub two", input_tokens=1, output_tokens=1, cost_usd=0.0)
+
+    class _LLM:
+        generate = staticmethod(fake_generate)
+
+    strategy = QISSStrategy(chroma_client=mock_chroma_client, llm_client=_LLM())
+    subs = await strategy._maybe_decompose("multi-hop question")
+
+    assert captured["system_prompt"].strip() != ""  # the bug was an empty prompt
+    assert captured["query"] == "multi-hop question"
+    assert subs == ["sub one", "sub two"]
+
+
+@pytest.mark.asyncio
+async def test_qiss_decompose_falls_back_on_empty_llm(monkeypatch, mock_chroma_client):
+    from kb_arena.llm.client import LLMResponse
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(settings, "qiss_decompose", True)
+
+    async def empty_generate(query, context="", system_prompt="", **kw):
+        return LLMResponse(text="", input_tokens=0, output_tokens=0, cost_usd=0.0)
+
+    class _LLM:
+        generate = staticmethod(empty_generate)
+
+    strategy = QISSStrategy(chroma_client=mock_chroma_client, llm_client=_LLM())
+    # Empty LLM output (e.g. the retriever-lab stub) -> clean single-query fallback.
+    assert await strategy._maybe_decompose("q") == ["q"]

@@ -172,12 +172,18 @@ class QISSStrategy(Strategy):
             from kb_arena.llm.client import LLMClient
 
             llm = self._llm or LLMClient()
-            prompt = (
-                "Decompose this multi-hop question into 2-3 atomic sub-questions, "
-                "one per line, no numbering. If it is already atomic, return it unchanged.\n\n"
-                f"Question: {question}"
+            # The instruction goes in system_prompt (NOT empty — the Anthropic
+            # provider sets cache_control on the system block and 400s on an empty
+            # one), the question goes in the query.
+            resp = await llm.generate(
+                query=question,
+                context="",
+                system_prompt=(
+                    "Decompose the user's multi-hop question into 2-3 atomic "
+                    "sub-questions, one per line, no numbering. If it is already "
+                    "atomic, return it unchanged."
+                ),
             )
-            resp = await llm.generate(query=prompt, context="", system_prompt="")
             lines = [ln.strip("-• \t") for ln in (resp.text or "").splitlines() if ln.strip()]
             subs = [ln for ln in lines if len(ln) > 3][: settings.qiss_max_subqueries]
             return subs or [question]

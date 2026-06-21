@@ -114,7 +114,7 @@ export default function BenchmarkPage() {
         <h3 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>Methodology</h3>
         <div className="text-xs leading-relaxed space-y-1" style={{ color: "var(--muted)" }}>
           <p>
-            Each question is sent to all 8 strategies. Answers are evaluated through a 4-pass pipeline:
+            Each question is sent to all 10 strategies. Answers are evaluated through a 4-pass pipeline:
             structural checks (must_mention / must_not_claim), entity coverage against source documentation,
             source attribution, and LLM-as-judge scoring for accuracy, completeness, and faithfulness.
           </p>

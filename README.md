@@ -9,7 +9,7 @@ KB Arena is the only open-source benchmark that runs **architecturally distinct*
 
 Embeddings: pluggable across **OpenAI, Voyage-3, Cohere, Gemini, BGE (local), Ollama (local)** via `KB_ARENA_EMBEDDING_PROVIDER`. Rerankers: **BGE-v2-m3 (local), Cohere Rerank, Voyage Rerank** via `KB_ARENA_RERANKER_BACKEND`.
 
-![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-649-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![PyPI](https://img.shields.io/pypi/v/kb-arena) ![CI](https://github.com/xmpuspus/kb-arena/actions/workflows/ci.yml/badge.svg) [![DOI](https://zenodo.org/badge/1182030516.svg)](https://zenodo.org/badge/latestdoi/1182030516)
+![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue) ![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green) ![Tests](https://img.shields.io/badge/tests-656-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![PyPI](https://img.shields.io/pypi/v/kb-arena) ![CI](https://github.com/xmpuspus/kb-arena/actions/workflows/ci.yml/badge.svg) [![DOI](https://zenodo.org/badge/1182030516.svg)](https://zenodo.org/badge/latestdoi/1182030516)
 
 ![KB Arena Demo](docs/demo.gif)
 
@@ -71,7 +71,7 @@ Two new rerankers sit on top of the same `naive_vector` coarse retrieval as `rer
 - **QISS** (`qiss`, strategy #10) — Quantum-Inspired Semantic Similarity. Pure NumPy, no extra install. Scores candidates by quantum state fidelity `Tr(ρ_q·ρ_d) = |⟨q|d⟩|² = cos²` over the *same* embeddings `naive_vector` uses (an apples-to-apples reorder), plus a config-gated multi-query **superposition** mode `|Q⟩ = Σ αᵢ|qᵢ⟩` whose interference cross-terms are something classical rank fusion (RRF) cannot produce.
 - **SQR** (`sqr`, strategy #11) — Simulated Quantum Reranker. PCA-reduces each embedding to 2ⁿ dims, amplitude-encodes it, and reranks by a **real Qiskit Aer SWAP test** (`P(0) = (1 + |⟨ψ_q|ψ_d⟩|²)/2`). Exact statevector by default; shots is an accuracy/speed knob; all candidate circuits run in one batched Aer job. Needs the optional `[quantum]` extra (`pip install 'kb-arena[quantum]'`).
 
-The North Star is honest caveats, surfaced by a new `kb-arena quantum-diagnostics` command (shown above): 4-qubit/16-dim amplitude encoding keeps **~0.68** of the aws-compute corpus variance, SWAP-test error falls ~1/√shots (statevector is exact), and the quantum rerank adds **~+1s** over the coarse retrieval. On aws-compute Recall@5 all three land together — QISS 0.352, SQR 0.349, naive_vector 0.352 — because single-query fidelity is a monotonic reorder of cosine; the differentiation is the superposition path and the SWAP-test machinery, not a recall headline.
+The North Star is honest caveats, surfaced by a new `kb-arena quantum-diagnostics` command (shown above): 4-qubit/16-dim amplitude encoding keeps **~0.68** of the aws-compute corpus variance, SWAP-test error falls ~1/√shots (statevector is exact), and the quantum rerank adds **~+1s** over the coarse retrieval. On aws-compute Recall@5 all three land together — QISS 0.352, SQR 0.349, naive_vector 0.352 — because single-query fidelity is a monotonic reorder of cosine; the differentiation is the superposition path and the SWAP-test machinery, not a recall headline. v0.9.1 puts a number on it: on 11 tier-4/5 (multi-hop) questions the coherent superposition beats the classical incoherent mixture of the same LLM sub-queries (Recall@5 **0.705 vs 0.614** — the interference term genuinely helps) while roughly tying naive_vector (0.705 vs 0.695). n is small, so suggestive, not conclusive — and v0.9.1 fixes the bug that kept the decompose path from ever firing in production (it passed an empty system prompt the Anthropic API rejects).
 
 ```bash
 pip install 'kb-arena[quantum]'
@@ -528,6 +528,7 @@ kb-arena report --format html   # shareable dashboard
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 0.9.1 | 2026-06-22 | Quantum follow-ups + robustness. **Fixes the QISS superposition path**, which was dead-on-arrival in v0.9.0: the LLM decomposition call passed an empty system prompt that the Anthropic API rejects (`cache_control cannot be set for empty text blocks`), so `KB_ARENA_QISS_DECOMPOSE` always threw and silently fell back to single-query. With it fixed, a tier-4/5 validation (11 multi-hop questions) shows the coherent superposition beating the classical incoherent mixture of the same sub-queries (Recall@5 0.705 vs 0.614 — the interference term helps), roughly tying naive_vector. **Dead-strategy guard** in retriever-lab: a strategy returning empty traces for ≥50% of questions is now flagged as a crash, distinct from low recall — exactly the signature that hid the v0.9.0 `rerank_vector` bug (which itself shipped a 0-retrieval result unnoticed). **Frontend** caught up: the web arena/leaderboard strategy list had been stuck at 8 (never even got `rerank_vector`), now lists all 10 core strategies with labels, colors, and descriptions; stale "8 strategies" copy fixed. Regression tests for all three (`rerank_vector` non-empty trace, the empty-trace guard, the decompose system prompt). 656 tests. |
 | 0.9.0 | 2026-06-22 | Two quantum rerankers, strategies #10/#11, folded into the package (not a separate repo) so they reuse the same coarse retrieval, aws-compute ground truth, IR metrics and optimizer statistical layer with **zero new metrics code**. **QISS** (pure NumPy, no extra install) reranks naive_vector candidates by quantum state fidelity `Tr(ρ_q·ρ_d)=cos²` over the same embeddings, plus a config-gated multi-query **superposition fusion** with genuine interference cross-terms that classical RRF cannot produce. **SQR** (optional `[quantum]` extra: qiskit + qiskit-aer + scikit-learn) PCA-reduces to 2ⁿ amplitudes, amplitude-encodes, and reranks by a real Qiskit Aer **SWAP test** — exact statevector by default, shots as an accuracy/speed knob, all candidate circuits batched in one job. New `kb-arena quantum-diagnostics` reports the honest caveats: PCA variance retained per qubit count (16-dim/4-qubit keeps **~0.68** of aws-compute corpus variance, so it loses ~32%), SWAP-test error vs shots (sampled, falls ~1/√shots from ~0.05 at 256 shots to ~0.005 at 16k; statevector mode is exact), and quantum overhead (**~+1s** over the coarse retrieval, dominated by re-embedding). aws-compute Recall@5: QISS 0.352, SQR 0.349, naive_vector 0.352 — single-query fidelity is a monotonic reorder of cosine. Also fixes a latent `rerank_vector` bug (`c.source` → `c.doc_id`, was producing empty traces in retriever-lab) and teaches `--strategies` to accept comma-separated lists. 649 tests. |
 | 0.8.1 | 2026-05-21 | Release-only. Triggers the first Zenodo archive of the repo so the citation badge resolves to a real concept DOI. No code changes. |
 | 0.8.0 | 2026-05-20 | Statistical-rigor metrics layer. ir_metrics gains **MAP / Average Precision**, **R-Precision**, **bpref** (TREC-style robust to partial labels, auto-clamped to [0,1] from a real-run bug surfaced on aws-compute), and a **graded NDCG** switch using exponential gain (2^rel-1) for SIGIR-standard handling of graded relevance. New `kb_arena/benchmark/rank_similarity.py` with **Rank-Biased Overlap** (Webber 2010, extrapolated form) for comparing two strategies' rankings without a gold standard. `optimize` now reports **bootstrap 95% CIs**, **Wilcoxon paired p-value + significance flag**, **win-rate vs baseline**, **NDCG/ms efficiency**, and **Pareto-optimal markers** across strategies — the report finally tells you whether a `+0.003` lift is real or noise. `retriever-lab` JSON gains **per-tier breakdowns** (Recall/NDCG/MAP per difficulty tier 1-5) and bootstrap CIs on aggregate means. scipy added as a runtime dep. 617 tests. |
@@ -976,7 +977,7 @@ All prefixed with `KB_ARENA_`. Loaded from `.env` or environment.
 pip install -e '.[dev]'
 
 # Run tests
-pytest tests/ -v --ignore=tests/live  # 649 tests
+pytest tests/ -v --ignore=tests/live  # 656 tests
 
 # Lint + format
 ruff check . && ruff format --check .
@@ -999,7 +1000,7 @@ cd web && npm install && npx next build
 | Frontend | Next.js 14 + Tailwind + Recharts |
 | Models | Pydantic v2 |
 | CLI | Typer + Rich |
-| Testing | pytest (649 tests) |
+| Testing | pytest (656 tests) |
 
 ---
 
