@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kb-arena"
-version = "0.9.1"
+version = "0.9.2"
 description = "Benchmark 11 retrieval architectures on your documentation — find which KB architecture fits your data"
 readme = "README.md"
 license = "MIT"

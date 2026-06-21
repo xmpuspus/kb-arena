@@ -16,6 +16,7 @@ from kb_arena.strategies.quantum.qiss import (
     density_matrix,
     fidelity,
     fidelity_scores,
+    subspace_projection_scores,
     superposition_state,
     unit,
 )
@@ -88,6 +89,41 @@ def test_superposition_interference_differs_from_classical():
     assert coherent > classical  # constructive on a sum-aligned doc
 
 
+# --- Subspace projection: the multi-query operator (replaces centroid superposition) ---
+
+
+def test_subspace_rank1_equals_cosine_squared():
+    # A rank-1 subspace (just the question) must reduce exactly to cos² — same
+    # contract as single-query fidelity.
+    q = np.array([1.0, 2.0, 3.0, 0.5])
+    docs = np.array([[0.4, 1.1, 2.7, 0.0], [1.0, 2.0, 3.0, 0.5], [0.0, 0.0, 0.0, 1.0]])
+    assert np.allclose(subspace_projection_scores(q[None, :], docs), fidelity_scores(q, docs))
+
+
+def test_subspace_orthonormal_basis_sums_projections():
+    e1, e2 = np.array([1.0, 0, 0, 0]), np.array([0, 1.0, 0, 0])
+    d = unit([0.6, 0.8, 0.0, 0.0])
+    s = subspace_projection_scores(np.vstack([e1, e2]), d[None, :])[0]
+    assert s == pytest.approx(d[0] ** 2 + d[1] ** 2, abs=1e-9)
+
+
+def test_subspace_handles_dependent_basis():
+    # Linearly-dependent sub-queries (q and 2q) collapse to rank 1 -> cos².
+    q = np.array([1.0, 2.0, 3.0, 0.5])
+    docs = np.array([[0.4, 1.1, 2.7, 0.0], [1.0, 2.0, 3.0, 0.5]])
+    assert np.allclose(
+        subspace_projection_scores(np.vstack([q, 2 * q]), docs), fidelity_scores(q, docs)
+    )
+
+
+def test_subspace_scores_in_unit_interval_and_in_span_is_one():
+    e1, e2 = np.array([1.0, 0, 0, 0]), np.array([0, 1.0, 0, 0])
+    in_span = unit([0.3, 0.4, 0.0, 0.0])
+    scores = subspace_projection_scores(np.vstack([e1, e2]), np.vstack([in_span, [0, 0, 1.0, 0]]))
+    assert scores[0] == pytest.approx(1.0, abs=1e-9)  # fully inside the span
+    assert all(0.0 <= s <= 1.0 for s in scores)
+
+
 # --- Query path (mocked base + embeddings, no API) ---
 
 
@@ -155,6 +191,42 @@ async def test_qiss_query_empty_candidates_passes_through(mock_chroma_client, mo
     strategy._base.query = AsyncMock(return_value=empty)
     result = await strategy.query("Q", top_k=5)
     assert result.retrieval.retrieved == []
+
+
+@pytest.mark.asyncio
+async def test_qiss_multiquery_uses_subspace(mock_chroma_client, mock_llm_client):
+    from unittest.mock import AsyncMock
+
+    strategy = QISSStrategy(chroma_client=mock_chroma_client, llm_client=mock_llm_client)
+    chunks = _trace_chunks(["c0", "c1", "c2"])
+    base = AnswerResult(
+        answer="",
+        sources=["doc"],
+        retrieval=RetrievalTrace(query="Q", retrieved=chunks, latency_ms=1.0, top_k=12),
+        strategy="naive_vector",
+    )
+    strategy._base.query = AsyncMock(return_value=base)
+
+    async def fake_decompose(question):
+        return ["s1", "s2"]
+
+    strategy._maybe_decompose = fake_decompose
+    # Basis span = {Q, s1, s2} = first 3 dims. c2 is orthogonal to the span.
+    table = {
+        "Q": [1, 0, 0, 0],
+        "s1": [0, 1, 0, 0],
+        "s2": [0, 0, 1, 0],
+        "c0": [0, 0, 1, 0],  # in span (aligned with s2)
+        "c1": [1, 0, 0, 0],  # in span (== Q)
+        "c2": [0, 0, 0, 1],  # orthogonal -> projection 0
+    }
+    strategy._embed_fn = lambda texts: [table[t] for t in texts]
+
+    result = await strategy.query("Q", top_k=2)
+    kept = result.retrieval.retrieved
+    assert kept[0].metadata["qiss_subspace_rank"] == 3  # question + 2 sub-queries
+    assert "c2" not in [c.content for c in kept]  # orthogonal to the subspace, excluded
+    assert kept[0].score >= kept[1].score
 
 
 # --- Decompose / superposition gating (regression: empty system prompt 400) ---
