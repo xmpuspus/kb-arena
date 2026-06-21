@@ -90,6 +90,15 @@ class Settings(BaseSettings):
     pageindex_beam_width: int = 3
     pageindex_max_depth: int = 4
 
+    # Quantum strategies (#10 qiss, #11 sqr) — both rerank naive_vector candidates.
+    # sqr needs the optional [quantum] extra (qiskit, qiskit-aer, scikit-learn).
+    qiss_fanout: int = 4  # coarse-retrieve top_k * fanout before the fidelity rerank
+    qiss_decompose: bool = False  # gate multi-query superposition fusion (LLM sub-query split)
+    qiss_max_subqueries: int = 3
+    sqr_fanout: int = 4
+    sqr_n_qubits: int = 4  # amplitude-encode into 2^n_qubits dims (4 -> 16)
+    sqr_shots: int = 0  # 0 = exact statevector (benchmark default); >0 = sampled SWAP test
+
     # Paths
     datasets_path: str = "./datasets"
     results_path: str = "./results"

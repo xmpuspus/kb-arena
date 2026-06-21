@@ -10,19 +10,20 @@ authors:
 repository-code: "https://github.com/xmpuspus/kb-arena"
 url: "https://github.com/xmpuspus/kb-arena"
 license: MIT
-version: "0.8.1"
-date-released: "2026-05-21"
+version: "0.9.0"
+date-released: "2026-06-22"
 abstract: >
-  KB Arena benchmarks nine retrieval architectures (naive vector, contextual
+  KB Arena benchmarks eleven retrieval architectures (naive vector, contextual
   vector, QnA pairs, knowledge graph, hybrid via reciprocal rank fusion,
-  RAPTOR, PageIndex, BM25, rerank-vector) head-to-head on user-provided
-  documentation. It auto-generates benchmark questions across five difficulty
-  tiers, computes a layered IR metric stack (Recall@k, Precision@k, Hit@k,
-  MRR, NDCG@k, MAP, R-Precision, bpref) with bootstrap 95% confidence
-  intervals, supports graded NDCG with exponential gain, includes a
-  Rank-Biased Overlap implementation for strategy-vs-strategy comparison,
-  and ships an automated hyperparameter search (kb-arena optimize) that
-  reports Wilcoxon paired significance tests, win-rate, and a Pareto
+  RAPTOR, PageIndex, BM25, rerank-vector, plus two quantum rerankers — QISS, a
+  quantum-inspired state-fidelity reranker, and SQR, a Qiskit Aer SWAP-test
+  reranker) head-to-head on user-provided documentation. It auto-generates
+  benchmark questions across five difficulty tiers, computes a layered IR metric
+  stack (Recall@k, Precision@k, Hit@k, MRR, NDCG@k, MAP, R-Precision, bpref)
+  with bootstrap 95% confidence intervals, supports graded NDCG with exponential
+  gain, includes a Rank-Biased Overlap implementation for strategy-vs-strategy
+  comparison, and ships an automated hyperparameter search (kb-arena optimize)
+  that reports Wilcoxon paired significance tests, win-rate, and a Pareto
   frontier over the (quality, latency) plane.
 keywords:
   - retrieval-augmented-generation
@@ -41,6 +42,9 @@ keywords:
   - rank-biased-overlap
   - bootstrap-confidence-intervals
   - hyperparameter-optimization
+  - quantum-computing
+  - qiskit
+  - swap-test
   - neo4j
   - chromadb
   - python

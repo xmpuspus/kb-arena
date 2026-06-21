@@ -1072,6 +1072,67 @@ def retriever_lab(
         raise typer.Exit(exit_code)
 
 
+@app.command(name="quantum-diagnostics")
+def quantum_diagnostics(
+    corpus: str = typer.Option("aws-compute", help="Corpus to profile"),
+    sample_questions: int = typer.Option(5, "--sample-questions", help="Questions to time SQR on"),
+):
+    """Honest caveats for the quantum strategies: PCA variance loss per qubit count,
+    SWAP-test error vs shots, and SQR's wall-clock overhead over naive_vector.
+
+    Needs the optional [quantum] extra (pip install 'kb-arena[quantum]')."""
+    import asyncio as _asyncio
+    import importlib.util
+    import json as _json
+    from pathlib import Path
+
+    from rich.console import Console as _Console
+    from rich.table import Table as _Table
+
+    if importlib.util.find_spec("qiskit") is None:
+        _Console().print(
+            "[red]The [quantum] extra is required.[/red] "
+            "Install with: pip install 'kb-arena[quantum]'"
+        )
+        raise typer.Exit(1)
+
+    from kb_arena.settings import settings
+    from kb_arena.strategies.quantum.diagnostics import run_quantum_diagnostics
+
+    _preflight(needs_openai=True)
+    console = _Console()
+    diag = _asyncio.run(run_quantum_diagnostics(corpus, sample_questions=sample_questions))
+
+    pca_t = _Table(title=f"PCA variance retained — {corpus} ({diag.n_embedding_samples} samples)")
+    pca_t.add_column("n_qubits", justify="right")
+    pca_t.add_column("encoded dim", justify="right")
+    pca_t.add_column("variance explained", justify="right")
+    for p in diag.pca_variance_curve:
+        marker = " [dim](sqr default)[/dim]" if p.n_qubits == settings.sqr_n_qubits else ""
+        pca_t.add_row(f"{p.n_qubits}{marker}", str(p.encoded_dim), f"{p.variance_explained:.3f}")
+    console.print(pca_t)
+
+    shot_t = _Table(title="SWAP-test error vs shots (statevector = exact)")
+    shot_t.add_column("shots", justify="right")
+    shot_t.add_column("mean abs fidelity error", justify="right")
+    for s in diag.shot_error_curve:
+        shot_t.add_row(str(s.shots), f"{s.mean_abs_error:.4f}")
+    console.print(shot_t)
+
+    console.print(
+        f"[bold]Quantum overhead[/bold]: naive coarse {diag.naive_retrieval_ms:.1f}ms -> "
+        f"SQR total {diag.sqr_total_ms:.1f}ms = "
+        f"[bold]+{diag.mean_quantum_overhead_ms:.1f}ms[/bold] "
+        f"(mean over {diag.sample_questions} questions)"
+    )
+
+    out_dir = Path(settings.results_path)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"quantum_diagnostics_{corpus}.json"
+    out_path.write_text(_json.dumps(diag.model_dump(), indent=2))
+    console.print(f"[green]Written {out_path}[/green]")
+
+
 @app.command(name="label-chunks")
 def label_chunks(
     corpus: str = typer.Option(..., help="Corpus to label"),
