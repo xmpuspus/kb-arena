@@ -7,6 +7,14 @@ DROP CONSTRAINT process_fqn IF EXISTS;
 DROP CONSTRAINT config_fqn IF EXISTS;
 DROP CONSTRAINT constraint_fqn IF EXISTS;
 
+// v0.10 migration: legacy entities cannot be assigned to a corpus reliably.
+// Remove only KB Arena entity labels that lack the new corpus-qualified key.
+MATCH (n)
+WHERE n.entity_id IS NULL
+  AND any(node_label IN labels(n)
+          WHERE node_label IN ['Topic', 'Component', 'Process', 'Config', 'Constraint'])
+DETACH DELETE n;
+
 CREATE CONSTRAINT topic_entity_id IF NOT EXISTS FOR (t:Topic) REQUIRE t.entity_id IS UNIQUE;
 CREATE CONSTRAINT component_entity_id IF NOT EXISTS FOR (c:Component) REQUIRE c.entity_id IS UNIQUE;
 CREATE CONSTRAINT process_entity_id IF NOT EXISTS FOR (p:Process) REQUIRE p.entity_id IS UNIQUE;

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from kb_arena.llm.client import LLMResponse
+from kb_arena.models.document import Document
 from kb_arena.models.retrieval import RetrievalTrace
 from kb_arena.strategies.base import AnswerResult
 
@@ -61,6 +62,29 @@ async def test_pageindex_loads_only_selected_corpus():
 
 
 @pytest.mark.asyncio
+async def test_pageindex_builds_separate_trees_for_mixed_corpora(tmp_path, monkeypatch):
+    from kb_arena.settings import settings
+    from kb_arena.strategies.pageindex import PageIndexStrategy
+
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path))
+    strategy = PageIndexStrategy()
+    strategy._llm = AsyncMock()
+    documents = [
+        Document(id="alpha-doc", source="alpha.md", corpus="alpha", title="Alpha"),
+        Document(id="beta-doc", source="beta.md", corpus="beta", title="Beta"),
+    ]
+
+    await strategy.build_index(documents)
+
+    alpha_tree = strategy._load_tree("alpha")
+    beta_tree = strategy._load_tree("beta")
+    assert alpha_tree is not None
+    assert beta_tree is not None
+    assert [document.id for document in alpha_tree.documents] == ["alpha-doc"]
+    assert [document.id for document in beta_tree.documents] == ["beta-doc"]
+
+
+@pytest.mark.asyncio
 async def test_raptor_filters_each_tree_level_by_corpus():
     from kb_arena.strategies.raptor import RaptorStrategy
 
@@ -76,6 +100,23 @@ async def test_raptor_filters_each_tree_level_by_corpus():
     assert all(
         call.kwargs["where"] == {"corpus": "nist"} for call in collection.query.call_args_list
     )
+
+
+@pytest.mark.asyncio
+async def test_raptor_builds_higher_levels_for_each_corpus():
+    from kb_arena.strategies.raptor import RaptorStrategy
+
+    strategy = RaptorStrategy(chroma_client=MagicMock())
+    strategy._get_collection = MagicMock(side_effect=[MagicMock(), MagicMock()])
+    strategy._build_level = AsyncMock(side_effect=[1, 1])
+    documents = [
+        Document(id="alpha-doc", source="alpha.md", corpus="alpha", title="Alpha"),
+        Document(id="beta-doc", source="beta.md", corpus="beta", title="Beta"),
+    ]
+
+    await strategy.build_index(documents)
+
+    assert [call.args[3] for call in strategy._build_level.await_args_list] == ["alpha", "beta"]
 
 
 @pytest.mark.asyncio

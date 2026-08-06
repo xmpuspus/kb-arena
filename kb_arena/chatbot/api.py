@@ -595,7 +595,7 @@ async def graph_data(request: Request, corpus: str = "all", limit: int = 200) ->
     node_query = (
         "MATCH (n) "
         + ("WHERE n.corpus = $corpus " if corpus != "all" else "")
-        + "RETURN n.fqn AS id, n.name AS name, labels(n)[0] AS type, "
+        + "RETURN coalesce(n.entity_id, n.fqn) AS id, n.name AS name, labels(n)[0] AS type, "
         "n.description AS description LIMIT $limit"
     )
     params = {"limit": limit}
@@ -624,7 +624,8 @@ async def graph_data(request: Request, corpus: str = "all", limit: int = 200) ->
         edge_query = (
             "MATCH (a)-[r]->(b) "
             + ("WHERE a.corpus = $corpus " if corpus != "all" else "")
-            + "RETURN a.fqn AS source, type(r) AS type, b.fqn AS target "
+            + "RETURN coalesce(a.entity_id, a.fqn) AS source, type(r) AS type, "
+            "coalesce(b.entity_id, b.fqn) AS target "
             "LIMIT $edge_limit"
         )
         edge_params = {"edge_limit": limit * 2}

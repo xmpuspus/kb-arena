@@ -209,14 +209,18 @@ class RaptorStrategy(Strategy):
                 )
 
         l1 = self._get_collection(1)
-        corpus = documents[0].corpus if documents else "default"
-        n_l1 = await self._build_level(l0, l1, "l1", corpus)
-        logger.info("RAPTOR: built %d L0 chunks, %d L1 summaries", len(ids), n_l1)
+        corpora = dict.fromkeys(doc.corpus for doc in documents)
+        total_l1 = 0
+        for corpus in corpora:
+            n_l1 = await self._build_level(l0, l1, "l1", corpus)
+            total_l1 += n_l1
 
-        if n_l1 >= 10:
-            l2 = self._get_collection(2)
-            n_l2 = await self._build_level(l1, l2, "l2", corpus)
-            logger.info("RAPTOR: built %d L2 summaries", n_l2)
+            if n_l1 >= 10:
+                l2 = self._get_collection(2)
+                n_l2 = await self._build_level(l1, l2, "l2", corpus)
+                logger.info("RAPTOR: built %d L2 summaries for %s", n_l2, corpus)
+
+        logger.info("RAPTOR: built %d L0 chunks, %d L1 summaries", len(ids), total_l1)
 
     async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Search L0, L1, L2 simultaneously → fuse context → Sonnet."""

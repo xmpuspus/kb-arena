@@ -68,9 +68,11 @@ All notable changes to KB Arena.
 - Updated Typer, Click, FastAPI, and Starlette to compatible releases that address current
   command-execution and HTTP request-processing advisories.
 - Added tested Python 3.13 support and bounded package metadata to Python 3.11 through 3.13.
+- Isolated BM25, PageIndex, and RAPTOR builds by corpus, including default all-corpus builds.
 
 Indexes built before 0.10.0 must be rebuilt once so corpus metadata and namespaced storage IDs are
-present in Chroma and Neo4j.
+present in Chroma and Neo4j. The first graph rebuild removes legacy KB Arena entity nodes whose
+corpus cannot be recovered; rebuild every graph corpus you need after upgrading.
 
 ## [0.9.3] - 2026-06-22 - Retrieval ceiling and cost efficiency
 

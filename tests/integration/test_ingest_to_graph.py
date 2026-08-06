@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from kb_arena.graph.resolver import (
@@ -301,3 +303,24 @@ async def test_neo4j_store_execute_query(mock_neo4j_driver):
 
     rows = await store.execute_query("MATCH (n) RETURN n.fqn AS fqn, labels(n)[0] AS label")
     assert isinstance(rows, list)
+
+
+@pytest.mark.asyncio
+async def test_schema_migrates_legacy_entities_before_new_constraints(mock_neo4j_driver):
+    from kb_arena.graph.neo4j_store import Neo4jStore
+
+    store = Neo4jStore(driver=mock_neo4j_driver)
+    schema_file = Path(__file__).parents[2] / "cypher" / "schema_default.cypher"
+
+    await store.load_schema(schema_file)
+
+    session = mock_neo4j_driver.session.return_value.__aenter__.return_value
+    statements = [call.args[0] for call in session.run.call_args_list]
+    migration_index = next(
+        i for i, statement in enumerate(statements) if "DETACH DELETE n" in statement
+    )
+    constraint_index = next(
+        i for i, statement in enumerate(statements) if "topic_entity_id" in statement
+    )
+    assert "n.entity_id IS NULL" in statements[migration_index]
+    assert migration_index < constraint_index

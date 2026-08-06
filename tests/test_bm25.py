@@ -80,6 +80,58 @@ async def test_build_index(bm25_strategy, sample_docs, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_build_index_uses_document_corpus_without_metadata(bm25_strategy, tmp_path):
+    from kb_arena import settings
+
+    settings.settings.datasets_path = str(tmp_path)
+    document = Document(
+        id="alpha-doc",
+        source="alpha.md",
+        corpus="alpha",
+        title="Alpha",
+        sections=[Section(id="alpha-section", title="Alpha", content="Alpha content")],
+    )
+
+    await bm25_strategy.build_index([document])
+
+    assert (tmp_path / "alpha" / "processed" / "bm25_index.json").is_file()
+    assert not (tmp_path / "default" / "processed" / "bm25_index.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_build_index_separates_mixed_corpora_and_combines_all_query(tmp_path):
+    from kb_arena import settings
+
+    settings.settings.datasets_path = str(tmp_path)
+    documents = [
+        Document(
+            id="alpha-doc",
+            source="alpha.md",
+            corpus="alpha",
+            title="Alpha",
+            sections=[Section(id="alpha-section", title="Alpha", content="Alpha content")],
+        ),
+        Document(
+            id="beta-doc",
+            source="beta.md",
+            corpus="beta",
+            title="Beta",
+            sections=[Section(id="beta-section", title="Beta", content="Beta content")],
+        ),
+    ]
+
+    await BM25Strategy().build_index(documents)
+
+    strategy = BM25Strategy()
+    assert strategy._ensure_index("alpha")
+    assert strategy._corpus_sources == ["alpha-doc"]
+    assert strategy._ensure_index("beta")
+    assert strategy._corpus_sources == ["beta-doc"]
+    assert strategy._ensure_index()
+    assert strategy._corpus_sources == ["alpha-doc", "beta-doc"]
+
+
+@pytest.mark.asyncio
 async def test_query_without_index(bm25_strategy, tmp_path):
     from kb_arena import settings
 

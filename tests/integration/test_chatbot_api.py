@@ -276,6 +276,47 @@ def test_chat_passes_selected_corpus_to_strategy(app_client):
     )
 
 
+def test_graph_data_uses_corpus_qualified_ids_for_aggregate_view(app_client):
+    from kb_arena.chatbot.api import app
+
+    node_result = AsyncMock()
+    node_result.data.return_value = [
+        {"id": "alpha::shared", "name": "Shared", "type": "Topic", "description": ""},
+        {"id": "beta::shared", "name": "Shared", "type": "Topic", "description": ""},
+    ]
+    edge_result = AsyncMock()
+    edge_result.data.return_value = [
+        {"source": "alpha::shared", "type": "CONNECTS_TO", "target": "beta::shared"}
+    ]
+    session = AsyncMock()
+    session.run.side_effect = [node_result, edge_result]
+    context = AsyncMock()
+    context.__aenter__ = AsyncMock(return_value=session)
+    context.__aexit__ = AsyncMock(return_value=False)
+    driver = MagicMock()
+    driver.session.return_value = context
+    app.state.neo4j = driver
+
+    try:
+        response = app_client.get("/api/graph/data?corpus=all")
+    finally:
+        app.state.neo4j = None
+
+    assert response.status_code == 200
+    assert [node["id"] for node in response.json()["nodes"]] == [
+        "alpha::shared",
+        "beta::shared",
+    ]
+    assert response.json()["edges"] == [
+        {"source": "alpha::shared", "target": "beta::shared", "type": "CONNECTS_TO"}
+    ]
+    node_query = session.run.call_args_list[0].args[0]
+    edge_query = session.run.call_args_list[1].args[0]
+    assert "coalesce(n.entity_id, n.fqn) AS id" in node_query
+    assert "coalesce(a.entity_id, a.fqn) AS source" in edge_query
+    assert "coalesce(b.entity_id, b.fqn) AS target" in edge_query
+
+
 def test_chat_response_has_strategy_used(app_client):
     r = app_client.post(
         "/chat", json={"query": "What does json.loads do?", "strategy": "naive_vector"}
