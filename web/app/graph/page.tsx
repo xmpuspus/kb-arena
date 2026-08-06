@@ -99,20 +99,35 @@ export default function GraphPage() {
   const [loading, setLoading] = useState(false);
   const [buildStatus, setBuildStatus] = useState<"idle" | "building" | "done" | "error">("idle");
   const [buildProgress, setBuildProgress] = useState("");
-  const abortRef = useRef<AbortController>(new AbortController());
+  const abortRef = useRef<AbortController | null>(null);
+  const buildEpochRef = useRef(0);
 
   useEffect(() => { fetchCorpora().then(setCorpora); }, []);
 
+  useEffect(() => () => {
+    buildEpochRef.current += 1;
+    abortRef.current?.abort();
+  }, []);
+
   async function handleLiveBuild() {
-    abortRef.current = new AbortController();
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const buildEpoch = buildEpochRef.current + 1;
+    buildEpochRef.current = buildEpoch;
+    const buildCorpus = corpus;
+    const isCurrentBuild = () =>
+      buildEpochRef.current === buildEpoch && !controller.signal.aborted;
     setBuildStatus("building");
     setBuildProgress("Starting...");
     // Clear existing graph so nodes animate in fresh
     setNodes([]);
     setEdges([]);
     try {
-      const build = await triggerGraphBuild(corpus);
-      for await (const event of streamGraphBuild(build.build_id, abortRef.current.signal)) {
+      const build = await triggerGraphBuild(buildCorpus);
+      if (!isCurrentBuild()) return;
+      for await (const event of streamGraphBuild(build.build_id, controller.signal)) {
+        if (!isCurrentBuild()) break;
         if (event.type === "started") {
           setBuildProgress(`Extracting ${event.total_sections} sections...`);
         } else if (event.type === "entity") {
@@ -137,13 +152,23 @@ export default function GraphPage() {
         }
       }
     } catch (err: unknown) {
-      if (err instanceof Error && err.name !== "AbortError") {
+      if (isCurrentBuild() && err instanceof Error && err.name !== "AbortError") {
         setBuildStatus("error");
         setBuildProgress(err.message);
       }
     } finally {
-      setBuildStatus((status) => (status === "building" ? "idle" : status));
+      if (isCurrentBuild()) {
+        setBuildStatus((status) => (status === "building" ? "idle" : status));
+      }
     }
+  }
+
+  function handleCorpusChange(nextCorpus: string) {
+    buildEpochRef.current += 1;
+    abortRef.current?.abort();
+    setBuildStatus("idle");
+    setBuildProgress("");
+    setCorpus(nextCorpus);
   }
 
   useEffect(() => {
@@ -193,7 +218,8 @@ export default function GraphPage() {
         <div className="flex items-center gap-2 sm:shrink-0">
           <select
             value={corpus}
-            onChange={(e) => setCorpus(e.target.value)}
+            onChange={(e) => handleCorpusChange(e.target.value)}
+            disabled={buildStatus === "building"}
             className="px-3 py-1.5 rounded-lg border text-sm"
             style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
           >

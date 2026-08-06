@@ -143,6 +143,7 @@ async def _run_one(
     llm: LLMClient,
     semaphore: asyncio.Semaphore,
     top_k: int = 5,
+    reference_free: bool = False,
 ) -> AnswerRecord:
     async with semaphore:
         attempt = 0
@@ -176,6 +177,12 @@ async def _run_one(
                     sources=sources,
                     llm=llm,
                     question_text=question_text,
+                    context_chunks=(
+                        [chunk.content for chunk in result.retrieval.retrieved if chunk.content]
+                        if result.retrieval
+                        else []
+                    ),
+                    reference_free=reference_free,
                 )
 
                 ir_metrics = None
@@ -379,6 +386,8 @@ async def run_benchmark(
         "query_timeout_s": settings.benchmark_query_timeout_s,
         "top_k": top_k,
         "question_split": split or "all",
+        "reference_free": reference_free,
+        "ragas_enabled": settings.benchmark_enable_ragas,
         "cost_cap_usd": cost_cap,
         "execution_mode": (
             "cost_capped_serial" if cost_cap > 0 else "parallel" if parallel else "serial"
@@ -462,6 +471,7 @@ async def run_benchmark(
                             llm,
                             semaphore,
                             top_k=top_k,
+                            reference_free=reference_free,
                         )
                         for q in questions
                     ]
@@ -532,6 +542,7 @@ async def run_benchmark(
                             llm,
                             semaphore,
                             top_k=top_k,
+                            reference_free=reference_free,
                         )
 
                     if cost_cap > 0:

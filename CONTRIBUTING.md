@@ -60,7 +60,7 @@ pytest tests/live/ -v
 
 ## Project rules
 
-- Support Python 3.11 and 3.12.
+- Support Python 3.11 through 3.13.
 - Use Pydantic models for stored and exchanged data.
 - Keep strategy and service calls asynchronous where the existing interface is asynchronous.
 - Add a regression test before a behavior fix.

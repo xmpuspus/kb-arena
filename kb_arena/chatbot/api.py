@@ -40,6 +40,7 @@ from kb_arena.settings import settings
 # Per-build UUID queues for streaming graph build events to SSE clients.
 # Keyed by build_id (not corpus) so concurrent builds for the same corpus don't collide.
 _graph_build_queues: dict[str, _asyncio.Queue] = {}
+_GRAPH_BUILD_QUEUE_TTL_SECONDS = 300.0
 
 
 class _GraphBuildRequest(BaseModel):
@@ -89,15 +90,10 @@ def _check_rate_limit(client_ip: str) -> bool:
     audit tests, even though the production store is a deque.
     """
     import time as _time
-    from collections import deque
 
     now = _time.time()
     window = 60.0
-    bucket = _rate_store[client_ip]
-    if not isinstance(bucket, deque):
-        # Convert legacy list assignment to deque so popleft works.
-        bucket = deque(bucket, maxlen=RATE_LIMIT_RPM)
-        _rate_store[client_ip] = bucket
+    bucket = _auth_module._rate_bucket(client_ip)
     while bucket and now - bucket[0] >= window:
         bucket.popleft()
     if len(bucket) >= RATE_LIMIT_RPM:
@@ -674,6 +670,12 @@ async def trigger_graph_build(body: _GraphBuildRequest) -> dict:
             await queue.put({"type": "error", "data": {"message": str(exc)}})
         finally:
             await queue.put(None)  # Sentinel that signals the stream end.
+            _asyncio.get_running_loop().call_later(
+                _GRAPH_BUILD_QUEUE_TTL_SECONDS,
+                _graph_build_queues.pop,
+                build_id,
+                None,
+            )
 
     _asyncio.create_task(_run(), name=f"graph_build:{build_id}")
     return {"status": "started", "build_id": build_id, "corpus": corpus}

@@ -116,10 +116,8 @@ async def test_runner_attaches_retrieval_metrics(monkeypatch, tmp_path):
 
     fake_llm = AsyncMock()
     # evaluate() uses LLM judge - mock it to avoid real call
-    monkeypatch.setattr(
-        "kb_arena.benchmark.runner.evaluate",
-        AsyncMock(return_value=Score(accuracy=1.0, faithfulness=1.0)),
-    )
+    evaluate_mock = AsyncMock(return_value=Score(accuracy=1.0, faithfulness=1.0))
+    monkeypatch.setattr("kb_arena.benchmark.runner.evaluate", evaluate_mock)
 
     import asyncio as _aio
 
@@ -134,6 +132,7 @@ async def test_runner_attaches_retrieval_metrics(monkeypatch, tmp_path):
         llm=fake_llm,
         semaphore=sem,
         top_k=5,
+        reference_free=True,
     )
 
     assert record.retrieval_metrics is not None
@@ -142,3 +141,5 @@ async def test_runner_attaches_retrieval_metrics(monkeypatch, tmp_path):
     assert record.retrieval_metrics.recall_at_k == 1.0
     assert record.retrieval_metrics.hit_at_k == 1
     assert record.retrieval_metrics.mrr == 1.0
+    assert evaluate_mock.await_args.kwargs["context_chunks"] == ["x", "x"]
+    assert evaluate_mock.await_args.kwargs["reference_free"] is True

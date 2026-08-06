@@ -237,6 +237,64 @@ def test_run_completed_resume_does_not_require_credentials(tmp_path, monkeypatch
     assert json.loads((base / ".pipeline_state.json").read_text()) == completed
 
 
+def test_run_uses_configured_datasets_path(tmp_path, monkeypatch):
+    base = _corpus(tmp_path)
+    (base / "processed" / "documents.jsonl").write_text(MINIMAL_DOCUMENT)
+    completed = {
+        "ingest": "done",
+        "build_graph": "done",
+        "build_vectors": "done",
+        "generate_questions": "done",
+        "benchmark": "done",
+    }
+    (base / ".pipeline_state.json").write_text(json.dumps(completed))
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path / "datasets"))
+    monkeypatch.setattr(
+        "kb_arena.cli._preflight",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError(kwargs)),
+    )
+
+    result = runner.invoke(app, ["run", "--corpus", "sample"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "Pipeline complete" in result.stdout
+
+
+def test_init_corpus_uses_configured_datasets_path(tmp_path, monkeypatch):
+    datasets = tmp_path / "custom-datasets"
+    monkeypatch.setattr(settings, "datasets_path", str(datasets))
+
+    result = runner.invoke(app, ["init-corpus", "configured"])
+
+    assert result.exit_code == 0, result.stdout
+    assert (datasets / "configured" / "raw").is_dir()
+    assert (datasets / "configured" / "processed").is_dir()
+    assert (datasets / "configured" / "questions").is_dir()
+
+
+def test_ingest_exits_when_no_documents_are_produced(tmp_path, monkeypatch):
+    monkeypatch.setattr("kb_arena.ingest.pipeline.run_ingest", lambda **kwargs: 0)
+
+    result = runner.invoke(app, ["ingest", str(tmp_path), "--corpus", "sample"])
+
+    assert result.exit_code == 1
+    assert "Ingestion produced no documents" in result.stdout
+    assert "Next:" not in result.stdout
+
+
+def test_special_ingest_exits_when_no_documents_are_produced(monkeypatch):
+    monkeypatch.setattr("kb_arena.ingest.pipeline.run_ingest_special", lambda **kwargs: 0)
+
+    result = runner.invoke(
+        app,
+        ["ingest", "https://example.com", "--corpus", "sample"],
+    )
+
+    assert result.exit_code == 1
+    assert "Ingestion produced no documents" in result.stdout
+    assert "Next:" not in result.stdout
+
+
 def test_run_does_not_swallow_unexpected_graph_failures(tmp_path, monkeypatch):
     base = _corpus(tmp_path)
     (base / "processed" / "documents.jsonl").write_text(MINIMAL_DOCUMENT)

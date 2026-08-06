@@ -52,6 +52,39 @@ def test_frontend_ci_runs_lint_before_build() -> None:
     assert lint < build
 
 
+def test_supported_python_versions_match_dependencies_and_ci() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+
+    assert project["requires-python"] == ">=3.11,<3.14"
+    assert "Programming Language :: Python :: 3.13" in project["classifiers"]
+    assert "tiktoken==0.13.0" in project["dependencies"]
+    assert 'python-version: ["3.11", "3.12", "3.13"]' in workflow
+
+
+def test_browser_auth_covers_protected_requests() -> None:
+    auth = (ROOT / "web" / "lib" / "auth.ts").read_text()
+    api = (ROOT / "web" / "lib" / "api.ts").read_text()
+    tools = (ROOT / "web" / "lib" / "tools-api.ts").read_text()
+    arena = (ROOT / "web" / "app" / "arena" / "page.tsx").read_text()
+
+    assert "sessionStorage" in auth
+    assert 'headers.set("Authorization", `Bearer ${token}`)' in auth
+    assert "apiFetch(`${API_URL}/api/graph/build`" in api
+    assert "apiFetch(`${API_URL}/chat/stream`" in api
+    assert tools.count("apiFetch(") == 3
+    assert "apiFetch(`${API}/api/arena/match`" in arena
+    assert "apiFetch(`${API}/api/arena/vote`" in arena
+
+
+def test_graph_build_ui_isolated_from_corpus_changes() -> None:
+    page = (ROOT / "web" / "app" / "graph" / "page.tsx").read_text()
+
+    assert 'disabled={buildStatus === "building"}' in page
+    assert "abortRef.current?.abort()" in page
+    assert "buildEpochRef.current" in page
+
+
 def test_graph_build_client_streams_with_server_build_id() -> None:
     api = (ROOT / "web" / "lib" / "api.ts").read_text()
     page = (ROOT / "web" / "app" / "graph" / "page.tsx").read_text()

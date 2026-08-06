@@ -30,12 +30,19 @@ All notable changes to KB Arena.
   configurations.
 - Forced `kb-arena demo` into read-only mode, skipped model and Neo4j clients there, and disabled
   noisy ChromaDB telemetry callbacks.
-- Prevented unavailable graph strategies and empty artifacts from being recorded as successful
-  one-shot pipeline evidence.
+- Stopped unavailable graph strategies and empty artifacts from producing successful one-shot
+  pipeline evidence.
 - Preserved development, validation, and holdout labels through benchmark and optimization runs.
-- Made capped benchmarks stop launching queued queries after observed spend reaches the boundary.
+- Made capped benchmarks stop launching queued queries when tracked spend reaches the boundary.
 - Fixed provider-aware demo detection, demo readiness, live graph build streaming, and stale
   dashboard result updates.
+- Passed retrieved context and reference-free mode into answer evaluation, and made benchmark dry
+  runs independent of provider credentials.
+- Honored configured dataset roots in corpus scaffolding, ingest previews, and one-shot runs, and
+  made zero-document ingestion fail instead of printing a next step.
+- Added session-only browser token support for protected requests, bounded rate-limit storage,
+  automatic graph-build queue expiry, and stale-build isolation when the selected corpus changes.
+- Added tested Python 3.13 support and bounded package metadata to Python 3.11 through 3.13.
 
 ## [0.9.3] - 2026-06-22 - Retrieval ceiling and cost efficiency
 

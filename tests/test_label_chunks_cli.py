@@ -45,3 +45,15 @@ def test_benchmark_top_k_flag_present():
     result = runner.invoke(app, ["benchmark", "--help"])
     assert result.exit_code == 0
     assert "--top-k" in _clean(result.stdout)
+
+
+def test_benchmark_dry_run_does_not_preflight_credentials(monkeypatch):
+    def unexpected_preflight(**kwargs) -> None:
+        raise AssertionError(f"dry run preflighted credentials: {kwargs}")
+
+    monkeypatch.setattr("kb_arena.cli._preflight", unexpected_preflight)
+
+    result = runner.invoke(app, ["benchmark", "--corpus", "missing", "--dry-run"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "Dry run: benchmark" in _clean(result.stdout)

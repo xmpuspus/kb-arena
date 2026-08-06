@@ -8,7 +8,7 @@ version = "0.10.0"
 description = "Compare retrieval architectures on your documentation and choose with reproducible evidence"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 authors = [{ name = "Xavier Puspus", email = "36430014+xmpuspus@users.noreply.github.com" }]
 keywords = ["rag", "knowledge-graph", "benchmark", "neo4j", "chromadb", "llm", "retrieval", "evaluation", "vector-search", "rag-evaluation", "document-retrieval"]
 classifiers = [
@@ -18,6 +18,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 
 dependencies = [
@@ -37,7 +38,7 @@ dependencies = [
     "uvicorn[standard]==0.34.0",
     "sse-starlette==2.2.1",
     "openai==2.24.0",
-    "tiktoken==0.7.0",
+    "tiktoken==0.13.0",
     "httpx==0.28.1",
     "rank-bm25==0.2.2",
     "scipy>=1.11.0",

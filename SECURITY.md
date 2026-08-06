@@ -28,6 +28,8 @@ agreement.
 
 - LLM-triggering endpoints use `Depends(require_auth)`.
 - When you set `KB_ARENA_API_TOKEN`, clients send `Authorization: Bearer <token>`.
+- Browser users can set that token from the API access control in the navigation bar. The browser
+  keeps it in `sessionStorage`, so it is limited to the current tab and cleared when the tab closes.
 - Token comparison uses `hmac.compare_digest`.
 - `KB_ARENA_DEMO_MODE=true` makes every LLM-triggering endpoint return 503.
 - Read-only result, corpus, health, readiness, and Retriever Lab endpoints do not need a token.

@@ -1,4 +1,5 @@
 import { API_URL } from "./api";
+import { apiFetch } from "./auth";
 
 // ── Types ──
 
@@ -116,7 +117,7 @@ async function* parseSSE<T>(response: Response, eventMap: Record<string, (data: 
 // ── Generate Q&A ──
 
 export async function* streamGenerate(corpus: string, signal?: AbortSignal): AsyncGenerator<GenerateEvent> {
-  const response = await fetch(`${API_URL}/api/tools/generate`, {
+  const response = await apiFetch(`${API_URL}/api/tools/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ corpus }),
@@ -145,7 +146,7 @@ export async function* streamGenerate(corpus: string, signal?: AbortSignal): Asy
 // ── Audit ──
 
 export async function* streamAudit(corpus: string, maxSections: number, signal?: AbortSignal): AsyncGenerator<AuditEvent> {
-  const response = await fetch(`${API_URL}/api/tools/audit`, {
+  const response = await apiFetch(`${API_URL}/api/tools/audit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ corpus, max_sections: maxSections }),
@@ -172,7 +173,7 @@ export async function* streamAudit(corpus: string, maxSections: number, signal?:
 // ── Fix ──
 
 export async function* streamFix(corpus: string, maxSections: number, maxFixes: number, signal?: AbortSignal): AsyncGenerator<FixEvent> {
-  const response = await fetch(`${API_URL}/api/tools/fix`, {
+  const response = await apiFetch(`${API_URL}/api/tools/fix`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ corpus, max_sections: maxSections, max_fixes: maxFixes }),

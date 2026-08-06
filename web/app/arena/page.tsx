@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/auth";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -65,7 +66,7 @@ export default function ArenaPage() {
     setMatch(null);
     setVoteResult(null);
     try {
-      const res = await fetch(`${API}/api/arena/match`, {
+      const res = await apiFetch(`${API}/api/arena/match`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: question.trim() }),
@@ -87,7 +88,7 @@ export default function ArenaPage() {
     if (!match) return;
     setVoting(true);
     try {
-      const res = await fetch(`${API}/api/arena/vote`, {
+      const res = await apiFetch(`${API}/api/arena/vote`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ match_id: match.match_id, winner }),

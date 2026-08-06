@@ -155,6 +155,7 @@ def ingest(
     from pathlib import Path
 
     from kb_arena.ingest.pipeline import _EXT_MAP
+    from kb_arena.settings import settings
 
     detected_format = format
     if format == "auto":
@@ -185,7 +186,7 @@ def ingest(
         for ext, count in sorted(ext_counts.items()):
             parser = _EXT_MAP.get(ext, "unknown")
             console.print(f"    {ext}: {count} ({parser} parser)")
-        out_path = Path("datasets") / corpus / "processed" / "documents.jsonl"
+        out_path = Path(settings.datasets_path) / corpus / "processed" / "documents.jsonl"
         console.print(f"  Output: {out_path}")
         console.print("\n  Remove --dry-run to execute.")
         return
@@ -193,11 +194,15 @@ def ingest(
     if detected_format in ("web", "github"):
         from kb_arena.ingest.pipeline import run_ingest_special
 
-        run_ingest_special(source=path, corpus=corpus, format=detected_format)
+        ingested = run_ingest_special(source=path, corpus=corpus, format=detected_format)
     else:
         from kb_arena.ingest.pipeline import run_ingest
 
-        run_ingest(path=path, corpus=corpus, format=format)
+        ingested = run_ingest(path=path, corpus=corpus, format=format)
+
+    if ingested <= 0:
+        console.print("[red]Ingestion produced no documents.[/red]")
+        raise typer.Exit(1)
 
     _next_step("ingest", corpus)
 
@@ -297,8 +302,6 @@ def benchmark(
     """
     import asyncio
 
-    _preflight(needs_llm=True, needs_embeddings=True)
-
     if strategy_module:
         from kb_arena.strategies import register_plugin_strategy
 
@@ -349,7 +352,9 @@ def benchmark(
         console.print("\n  Remove --dry-run to execute.")
         return
 
-    if ragas:
+    _preflight(needs_llm=True, needs_embeddings=True)
+
+    if ragas or reference_free:
         from kb_arena.settings import settings as _settings
 
         _settings.benchmark_enable_ragas = True
@@ -478,6 +483,8 @@ def init_corpus(
     import re
     from pathlib import Path
 
+    from kb_arena.settings import settings
+
     if not re.match(r"^[a-zA-Z0-9_-]+$", name):
         console.print(
             f"[red]Invalid corpus name '{name}'. "
@@ -485,7 +492,7 @@ def init_corpus(
         )
         raise typer.Exit(1)
 
-    base = Path("datasets") / name
+    base = Path(settings.datasets_path) / name
     if base.exists():
         console.print(f"[yellow]Corpus directory already exists: {base}[/yellow]")
         return
@@ -550,11 +557,13 @@ def run(
 
     from rich.panel import Panel
 
+    from kb_arena.settings import settings
+
     if not re.match(r"^[a-zA-Z0-9_-]+$", corpus):
         console.print(f"[red]Invalid corpus name '{corpus}'.[/red]")
         raise typer.Exit(1)
 
-    base = Path("datasets") / corpus
+    base = Path(settings.datasets_path) / corpus
     if not base.exists():
         console.print(
             f"[red]Corpus directory not found: {base}\n" f"Run: kb-arena init-corpus {corpus}[/red]"

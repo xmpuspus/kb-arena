@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import hmac
 import time
-from collections import defaultdict, deque
+from collections import OrderedDict, deque
 
 from fastapi import Header, HTTPException, Request
 
@@ -21,7 +21,22 @@ from kb_arena.settings import settings
 
 RATE_LIMIT_RPM = 60
 _RATE_LIMIT_MAX_KEYS = 10_000
-_rate_store: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=RATE_LIMIT_RPM))
+_rate_store: OrderedDict[str, deque[float]] = OrderedDict()
+
+
+def _rate_bucket(client_id: str) -> deque[float]:
+    """Return the client's bucket and evict the least recently used key when full."""
+    bucket = _rate_store.get(client_id)
+    if bucket is None:
+        while len(_rate_store) >= _RATE_LIMIT_MAX_KEYS:
+            _rate_store.popitem(last=False)
+        bucket = deque(maxlen=RATE_LIMIT_RPM)
+        _rate_store[client_id] = bucket
+    elif not isinstance(bucket, deque):
+        bucket = deque(bucket, maxlen=RATE_LIMIT_RPM)
+        _rate_store[client_id] = bucket
+    _rate_store.move_to_end(client_id)
+    return bucket
 
 
 def _client_key(request: Request) -> str:
@@ -38,18 +53,13 @@ def check_rate_limit(request: Request) -> None:
     client_id = _client_key(request)
     now = time.time()
     window = 60.0
-    bucket = _rate_store[client_id]
+    bucket = _rate_bucket(client_id)
     # Pop entries older than the window
     while bucket and now - bucket[0] >= window:
         bucket.popleft()
     if len(bucket) >= RATE_LIMIT_RPM:
         raise HTTPException(status_code=429, detail="rate_limited")
     bucket.append(now)
-    # Evict cold keys to keep the dict bounded
-    if len(_rate_store) > _RATE_LIMIT_MAX_KEYS:
-        cold = [k for k, q in _rate_store.items() if not q]
-        for k in cold[: len(cold) // 2]:
-            _rate_store.pop(k, None)
 
 
 def require_auth(

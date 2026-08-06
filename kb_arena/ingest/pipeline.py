@@ -115,7 +115,7 @@ def run_ingest_special(
     format: str = "web",
     max_depth: int = 3,
     max_pages: int = 50,
-) -> None:
+) -> int:
     """Ingest from URL or GitHub repo source."""
     out_dir = Path(settings.datasets_path) / corpus / "processed"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -144,7 +144,7 @@ def run_ingest_special(
 
     if not docs:
         console.print("[yellow]No documents extracted from source.[/yellow]")
-        return
+        return 0
 
     total_sections = 0
     with out_path.open("w", encoding="utf-8") as fout:
@@ -157,3 +157,4 @@ def run_ingest_special(
         f"[green]Done.[/green] {len(docs)} documents, {total_sections} sections "
         f"→ [bold]{out_path}[/bold]"
     )
+    return len(docs)

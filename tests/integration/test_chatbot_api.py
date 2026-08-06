@@ -609,3 +609,36 @@ def test_concurrent_chat_requests(app_client):
     assert all(c in (200, 429) for c in status_codes)
     # At least some should succeed
     assert any(c == 200 for c in status_codes)
+
+
+@pytest.mark.asyncio
+async def test_completed_graph_build_queue_expires_without_stream_client(tmp_path, monkeypatch):
+    import asyncio
+
+    from kb_arena.chatbot import api
+    from kb_arena.settings import settings
+
+    processed = tmp_path / "sample" / "processed"
+    processed.mkdir(parents=True)
+    (processed / "documents.jsonl").write_text("{}\n")
+    extraction_finished = asyncio.Event()
+
+    async def fake_extraction(corpus: str, event_callback) -> None:
+        assert corpus == "sample"
+        await event_callback(
+            {"type": "complete", "data": {"total_entities": 0, "total_relationships": 0}}
+        )
+        extraction_finished.set()
+
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path))
+    monkeypatch.setattr("kb_arena.graph.extractor.run_extraction", fake_extraction)
+    monkeypatch.setattr(api, "_GRAPH_BUILD_QUEUE_TTL_SECONDS", 0.01)
+
+    response = await api.trigger_graph_build(api._GraphBuildRequest(corpus="sample"))
+    build_id = response["build_id"]
+    try:
+        await asyncio.wait_for(extraction_finished.wait(), timeout=1)
+        await asyncio.sleep(0.03)
+        assert build_id not in api._graph_build_queues
+    finally:
+        api._graph_build_queues.pop(build_id, None)

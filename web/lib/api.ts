@@ -1,3 +1,5 @@
+import { apiFetch } from "./auth";
+
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 // Known built-in names. Runtime availability comes from GET /strategies.
@@ -191,7 +193,7 @@ export type GraphBuildEvent =
 export async function triggerGraphBuild(
   corpus: string
 ): Promise<{ status: string; build_id: string; corpus: string }> {
-  const res = await fetch(`${API_URL}/api/graph/build`, {
+  const res = await apiFetch(`${API_URL}/api/graph/build`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ corpus }),
@@ -204,7 +206,7 @@ export async function* streamGraphBuild(
   buildId: string,
   signal?: AbortSignal
 ): AsyncGenerator<GraphBuildEvent> {
-  const response = await fetch(`${API_URL}/api/graph/build/stream/${buildId}`, { signal });
+  const response = await apiFetch(`${API_URL}/api/graph/build/stream/${buildId}`, { signal });
   if (!response.ok) {
     yield { type: "error", message: `HTTP ${response.status}` };
     return;
@@ -304,7 +306,7 @@ export async function* streamChat(
   | { type: "meta"; latencyMs: number; tokensUsed: number; costUsd: number }
   | { type: "error"; message: string }
 > {
-  const response = await fetch(`${API_URL}/chat/stream`, {
+  const response = await apiFetch(`${API_URL}/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, strategy, corpus, history }),
