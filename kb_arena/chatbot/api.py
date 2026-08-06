@@ -1,7 +1,7 @@
-"""FastAPI chatbot API — SSE streaming, strategy routing, health check.
+"""FastAPI chatbot API: SSE streaming, strategy routing, health check.
 
 Lifespan pattern from paper-trail-ph: init services on startup, store on app.state.
-Neo4j unavailability is handled gracefully — strategy falls back to mock data.
+Neo4j unavailability is handled gracefully; the strategy falls back to mock data.
 """
 
 from __future__ import annotations
@@ -71,7 +71,7 @@ RATE_LIMIT_RPM = _auth_module.RATE_LIMIT_RPM
 
 
 def _check_rate_limit(client_ip: str) -> bool:
-    """Back-compat shim — old tests called this directly. Returns True if allowed.
+    """Back-compat shim for old tests. Return True when a request is allowed.
 
     Tolerates plain-list assignment (`_rate_store[ip] = [...]`) used by older
     audit tests, even though the production store is a deque.
@@ -106,6 +106,7 @@ async def lifespan(app: FastAPI):
     from kb_arena.strategies.naive_vector import NaiveVectorStrategy
     from kb_arena.strategies.pageindex import PageIndexStrategy
     from kb_arena.strategies.qna_pairs import QnAPairStrategy
+    from kb_arena.strategies.quantum.qiss import QISSStrategy
     from kb_arena.strategies.raptor import RaptorStrategy
     from kb_arena.strategies.rerank_vector import RerankVectorStrategy
 
@@ -119,62 +120,76 @@ async def lifespan(app: FastAPI):
     if not (has_anthropic or has_openai or is_ollama):
         if not settings.demo_mode:
             logger.info(
-                "No API key configured — auto-enabling KB_ARENA_DEMO_MODE. "
+                "No API key configured; auto-enabling KB_ARENA_DEMO_MODE. "
                 "Static benchmark/leaderboard pages remain available; "
                 "chat/arena/tools endpoints return 503 until a key is set."
             )
             settings.demo_mode = True
 
-    # LLM client (shared across strategies). Tolerate missing keys in demo mode
-    # so the dashboard still loads.
+    # The read-only demo does not need a model client. Configured deployments
+    # share one client across strategies and fall back to demo mode on failure.
     llm: LLMClient | None
-    try:
-        llm = LLMClient()
-    except Exception as exc:  # noqa: BLE001 — failure must not stop the demo
-        logger.warning(
-            "LLMClient init failed (%s) — running in demo mode. "
-            "Set KB_ARENA_ANTHROPIC_API_KEY or KB_ARENA_OPENAI_API_KEY to enable chat.",
-            exc,
-        )
+    if settings.demo_mode:
         llm = None
-        settings.demo_mode = True
-    app.state.llm = llm
-
-    # Neo4j — fail gracefully (Pattern 15: mock fallback)
-    app.state.neo4j = None
-    app.state.neo4j_error = ""
-    try:
-        import neo4j
-    except ImportError:
-        logger.warning("Neo4j driver not installed — graph strategy will use mock data")
-        app.state.neo4j_error = "neo4j driver not installed"
-        neo4j = None  # type: ignore[assignment]
-
-    if neo4j is not None:
+        logger.info("LLM client skipped in demo mode")
+    else:
         try:
-            driver = neo4j.AsyncGraphDatabase.driver(
-                settings.neo4j_uri,
-                auth=(settings.neo4j_user, settings.neo4j_password),
-            )
-            await driver.verify_connectivity()
-            app.state.neo4j = driver
-            logger.info("Neo4j connected at %s", settings.neo4j_uri)
-        except (OSError, neo4j.exceptions.ServiceUnavailable) as exc:
-            app.state.neo4j_error = str(exc)
+            llm = LLMClient()
+        except Exception as exc:  # noqa: BLE001 - failure must not stop the demo
             logger.warning(
-                "Neo4j not available at %s (%s) — knowledge_graph and hybrid will use mock data."
-                " Run: docker compose up neo4j -d",
-                settings.neo4j_uri,
+                "LLMClient init failed (%s); running in demo mode. "
+                "Set KB_ARENA_ANTHROPIC_API_KEY or KB_ARENA_OPENAI_API_KEY to enable chat.",
                 exc,
             )
+            llm = None
+            settings.demo_mode = True
+    app.state.llm = llm
 
-    # ChromaDB (always available — local file)
+    # Neo4j: the read-only demo does not use live graph queries.
+    app.state.neo4j = None
+    app.state.neo4j_error = ""
+    if settings.demo_mode:
+        app.state.neo4j_error = "disabled in demo mode"
+        logger.info("Neo4j connection skipped in demo mode")
+    else:
+        try:
+            import neo4j
+        except ImportError:
+            logger.warning("Neo4j driver not installed; graph strategy will use mock data")
+            app.state.neo4j_error = "neo4j driver not installed"
+            neo4j = None  # type: ignore[assignment]
+
+        if neo4j is not None:
+            try:
+                driver = neo4j.AsyncGraphDatabase.driver(
+                    settings.neo4j_uri,
+                    auth=(settings.neo4j_user, settings.neo4j_password),
+                )
+                await driver.verify_connectivity()
+                app.state.neo4j = driver
+                logger.info("Neo4j connected at %s", settings.neo4j_uri)
+            except (OSError, neo4j.exceptions.ServiceUnavailable) as exc:
+                app.state.neo4j_error = str(exc)
+                logger.warning(
+                    "Neo4j not available at %s (%s); knowledge_graph and hybrid will use mock "
+                    "data. Run: docker compose up neo4j -d",
+                    settings.neo4j_uri,
+                    exc,
+                )
+
+    # ChromaDB 0.5.x can emit telemetry callback errors even when the client is local.
+    import os
+
+    os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
+    logging.getLogger("chromadb.telemetry").setLevel(logging.CRITICAL)
+    logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
+
     import chromadb
 
     chroma = chromadb.PersistentClient(path=settings.chroma_path)
     app.state.chroma = chroma
 
-    # Intent router (skipped when LLM is missing — hybrid then falls back to keyword rules)
+    # When the LLM is missing, hybrid routing falls back to keyword rules.
     router = IntentRouter(llm=llm) if llm is not None else None
     app.state.router = router
 
@@ -194,7 +209,16 @@ async def lifespan(app: FastAPI):
         "pageindex": PageIndexStrategy(),
         "bm25": BM25Strategy(),
         "rerank_vector": RerankVectorStrategy(chroma_client=chroma, llm_client=llm),
+        "qiss": QISSStrategy(chroma_client=chroma, llm_client=llm),
     }
+
+    from kb_arena.strategies.catalog import STRATEGY_CATALOG, missing_optional_modules
+
+    sqr_spec = next(spec for spec in STRATEGY_CATALOG if spec.name == "sqr")
+    if not missing_optional_modules(sqr_spec):
+        from kb_arena.strategies.quantum.sqr import SQRStrategy
+
+        app.state.strategies["sqr"] = SQRStrategy(chroma_client=chroma, llm_client=llm)
 
     # Arena engine
     try:
@@ -221,12 +245,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="KB Arena API",
-    description="Benchmark retrieval strategies on your documentation.",
+    description="Compare retrieval architectures on your documentation with recorded evidence.",
     version=__version__,
     lifespan=lifespan,
 )
 
-# CORS — configurable via KB_ARENA_CORS_ORIGINS, defaults to localhost dev ports
+# CORS is configurable via KB_ARENA_CORS_ORIGINS and defaults to localhost dev ports.
 _cors_origins = settings.cors_origins or [
     "http://localhost:3000",
     "http://localhost:3001",
@@ -303,7 +327,7 @@ async def chat_stream(body: ChatRequest, request: Request) -> EventSourceRespons
     Events: message_id → token* → done (sources + graph_context) → meta (timing)
 
     The done/meta payloads come from the per-call `RetrievalTrace` and metrics that
-    `stream_answer` records on the result side, not from shared instance state — see
+    `stream_answer` records on the result side, not from shared instance state. See
     Strategy.stream_answer for the per-call snapshot.
     """
     strategy = _resolve_strategy(body.strategy, request)
@@ -317,7 +341,7 @@ async def chat_stream(body: ChatRequest, request: Request) -> EventSourceRespons
         try:
             async for token in strategy.stream_answer(body.query, history):
                 if isinstance(token, dict) and "_kb_arena_meta" in token:
-                    # Final meta packet — see Strategy.stream_answer protocol.
+                    # Final metadata packet; see the Strategy.stream_answer protocol.
                     snapshot = token["_kb_arena_meta"]
                     continue
                 yield {"event": "token", "data": json.dumps({"text": token})}
@@ -510,13 +534,16 @@ async def benchmark_results(corpus: str = "all") -> dict:
 
 @app.get("/strategies")
 async def list_strategies(request: Request) -> dict:
-    """List available strategy names."""
-    return {"strategies": list(request.app.state.strategies.keys())}
+    """List loaded names and the status of every built-in strategy."""
+    from kb_arena.strategies.catalog import public_catalog
+
+    loaded = list(request.app.state.strategies)
+    return {"strategies": loaded, "catalog": public_catalog(loaded)}
 
 
 @app.get("/graph/stats")
 async def graph_stats(request: Request) -> dict:
-    """Graph statistics — node/edge counts, centrality hubs, communities."""
+    """Return graph node and edge counts, centrality hubs, and communities."""
     if request.app.state.neo4j is None:
         return {"error": "Neo4j not connected", "stats": None}
 
@@ -641,7 +668,7 @@ async def trigger_graph_build(body: _GraphBuildRequest) -> dict:
         except Exception as exc:
             await queue.put({"type": "error", "data": {"message": str(exc)}})
         finally:
-            await queue.put(None)  # sentinel — signals stream end
+            await queue.put(None)  # Sentinel that signals the stream end.
 
     _asyncio.create_task(_run(), name=f"graph_build:{build_id}")
     return {"status": "started", "build_id": build_id, "corpus": corpus}
@@ -670,7 +697,7 @@ async def graph_build_stream(build_id: str) -> EventSourceResponse:
             except TimeoutError:
                 yield {"event": "heartbeat", "data": "{}"}
                 continue
-            if event is None:  # sentinel — build complete
+            if event is None:  # Sentinel that signals the build is complete.
                 break
             yield {"event": event["type"], "data": json.dumps(event["data"])}
         _graph_build_queues.pop(build_id, None)
@@ -734,7 +761,7 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
 
     Aggregates `results/run_*` JSON files into a per-(corpus, strategy) leaderboard
     with mean accuracy, mean Recall@5, mean NDCG@5, mean cost, and run count.
-    No auth — this is what the hosted demo at kb-arena.dev shows.
+    This unauthenticated endpoint supplies the hosted demo at kb-arena.dev.
     """
     import json
     from collections import defaultdict
@@ -838,7 +865,7 @@ def _avg(items: list[dict], key: str) -> float | None:
 
 @app.get("/health")
 async def health(request: Request) -> dict:
-    """Health check — structured fields suitable for k8s-style probes and dashboards."""
+    """Return structured health fields for probes and dashboards."""
     neo4j_ok = request.app.state.neo4j is not None
     neo4j_error = getattr(request.app.state, "neo4j_error", "")
     return {
@@ -864,7 +891,7 @@ async def health(request: Request) -> dict:
 
 @app.get("/ready")
 async def readiness(request: Request) -> JSONResponse:
-    """Readiness probe — fails if Neo4j is configured but unreachable.
+    """Readiness probe that fails if Neo4j is configured but unreachable.
 
     Use for orchestrators (k8s, docker compose) that need to know when
     the service is actually ready to serve traffic, not just alive.
@@ -917,14 +944,14 @@ async def debug_explain(body: ChatRequest, request: Request) -> dict:
     strategies = request.app.state.strategies
     router = request.app.state.router
 
-    # Step 1: Intent classification
+    # Classify intent before resolving a strategy.
     intent = "unknown"
     try:
         intent = await router.classify(body.query)
     except Exception as exc:
         intent = f"error: {exc}"
 
-    # Step 2: Strategy resolution
+    # Resolve the requested or routed strategy.
     strategy_name = body.strategy
     strategy = strategies.get(strategy_name)
     if not strategy:
@@ -934,7 +961,7 @@ async def debug_explain(body: ChatRequest, request: Request) -> dict:
             "error": f"Unknown strategy: {strategy_name}",
         }
 
-    # Step 3: Query the strategy to get retrieval results
+    # Query the strategy for retrieval results.
     import time as _time
 
     t0 = _time.perf_counter()

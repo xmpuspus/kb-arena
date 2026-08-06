@@ -130,7 +130,7 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
     );
   }, [nodes, search]);
 
-  // Initialize positions — full circle on first load, incremental on live updates
+  // Use a full circle on first load and incremental positions on live updates.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || nodes.length === 0) return;
@@ -774,7 +774,7 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
         </div>
       </div>
 
-      <div className="flex gap-3 flex-1 min-h-[500px]">
+      <div className="flex gap-3 flex-1 min-h-[440px] sm:min-h-[500px]">
         <div className="relative flex-1">
           <canvas
             ref={canvasRef}

@@ -33,7 +33,7 @@ function accuracyColor(val: number) {
 
 function Delta({ a, b }: { a: number; b: number }) {
   const diff = a - b;
-  if (Math.abs(diff) < 0.05) return <span style={{ color: "var(--muted)" }}>—</span>;
+  if (Math.abs(diff) < 0.05) return <span style={{ color: "var(--muted)" }}>n/a</span>;
   const sign = diff > 0 ? "+" : "";
   const color = diff > 0 ? "var(--success)" : "var(--danger)";
   return <span style={{ color }}>{sign}{diff.toFixed(1)}</span>;

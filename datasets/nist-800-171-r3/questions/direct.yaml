@@ -1,0 +1,360 @@
+- id: nist-direct-001
+  tier: 1
+  type: direct
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Maps the requirement's named activity to its control."
+  source_anchors: [sec-sec_03.01.08]
+  question: "What must a system enforce for consecutive invalid logon attempts?"
+  ground_truth:
+    answer: "A limit on consecutive invalid logon attempts during an organization-defined period, followed by one or more selected actions when the maximum is exceeded."
+    source_refs: [nist-03.01.08]
+    required_entities: ["03.01.08", "invalid logon attempts"]
+  constraints:
+    must_mention: ["limit", "organization-defined"]
+    must_not_claim: ["a fixed numeric threshold"]
+    max_tokens: 45
+- id: nist-direct-002
+  tier: 1
+  type: direct
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Uses the control's explicit remote-access duties."
+  source_anchors: [sec-sec_03.01.12]
+  question: "What does the remote access requirement require before a connection is established?"
+  ground_truth:
+    answer: "Authorize each type of remote system access before establishing the connection, under established usage, configuration, and connection requirements."
+    source_refs: [nist-03.01.12]
+    required_entities: ["03.01.12", "remote system access"]
+  constraints:
+    must_mention: ["authorize", "before"]
+    must_not_claim: ["that all remote access is prohibited"]
+    max_tokens: 40
+- id: nist-direct-003
+  tier: 1
+  type: direct
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Directly tests the event-logging selection and review language."
+  source_anchors: [sec-sec_03.03.01]
+  question: "What must be specified and periodically reviewed for event logging?"
+  ground_truth:
+    answer: "Organization-defined event types selected for logging must be specified and reviewed and updated at an organization-defined frequency."
+    source_refs: [nist-03.03.01]
+    required_entities: ["03.03.01", "event types"]
+  constraints:
+    must_mention: ["event types", "review and update"]
+    must_not_claim: ["a prescribed review interval"]
+    max_tokens: 40
+- id: nist-direct-004
+  tier: 1
+  type: direct
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Direct requirement for a current baseline configuration."
+  source_anchors: [sec-sec_03.04.01]
+  question: "What must an organization develop and maintain under configuration control?"
+  ground_truth:
+    answer: "A current baseline configuration of the system, reviewed and updated at an organization-defined frequency and when components are installed or modified."
+    source_refs: [nist-03.04.01]
+    required_entities: ["03.04.01", "baseline configuration"]
+  constraints:
+    must_mention: ["current baseline configuration"]
+    must_not_claim: ["a specific configuration-management tool"]
+    max_tokens: 40
+- id: nist-direct-005
+  tier: 2
+  type: direct
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Covers review, security impact, implementation, documentation, and monitoring."
+  source_anchors: [sec-sec_03.04.03]
+  question: "How must configuration-controlled changes be handled?"
+  ground_truth:
+    answer: "Define the controlled change types; review and approve or disapprove proposed changes with explicit security-impact consideration; implement and document approved changes; and monitor and review associated activities."
+    source_refs: [nist-03.04.03]
+    required_entities: ["03.04.03", "configuration-controlled changes", "security impacts"]
+  constraints:
+    must_mention: ["security impacts", "document"]
+    must_not_claim: ["that every change is automatically approved"]
+    max_tokens: 55
+- id: nist-direct-006
+  tier: 1
+  type: direct
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests the concise MFA requirement."
+  source_anchors: [sec-sec_03.05.03]
+  question: "For which accounts is multi-factor authentication required?"
+  ground_truth:
+    answer: "For access to both privileged and non-privileged accounts."
+    source_refs: [nist-03.05.03]
+    required_entities: ["03.05.03", "multi-factor authentication", "privileged accounts", "non-privileged accounts"]
+  constraints:
+    must_mention: ["privileged", "non-privileged"]
+    must_not_claim: ["a particular authentication factor"]
+    max_tokens: 25
+- id: nist-direct-007
+  tier: 2
+  type: direct
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Uses the incident-handling lifecycle named by the source."
+  source_anchors: [sec-sec_03.06.01]
+  question: "Which activities must an incident-handling capability include?"
+  ground_truth:
+    answer: "It must be consistent with the incident response plan and include preparation, detection and analysis, containment, eradication, and recovery."
+    source_refs: [nist-03.06.01]
+    required_entities: ["03.06.01", "incident response plan", "containment", "recovery"]
+  constraints:
+    must_mention: ["preparation", "detection and analysis", "containment", "eradication", "recovery"]
+    must_not_claim: ["a required incident-reporting deadline"]
+    max_tokens: 45
+- id: nist-direct-008
+  tier: 1
+  type: direct
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Directly asks when media containing CUI must be sanitized."
+  source_anchors: [sec-sec_03.08.03]
+  question: "When must system media that contain CUI be sanitized?"
+  ground_truth:
+    answer: "Before disposal, release out of organizational control, or release for reuse."
+    source_refs: [nist-03.08.03]
+    required_entities: ["03.08.03", "system media", "CUI"]
+  constraints:
+    must_mention: ["before", "disposal", "reuse"]
+    must_not_claim: ["a specific sanitization method"]
+    max_tokens: 30
+- id: nist-direct-009
+  tier: 2
+  type: direct
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Separates termination actions from transfer actions in one control."
+  source_anchors: [sec-sec_03.09.02]
+  question: "What access-related actions are required when employment is terminated?"
+  ground_truth:
+    answer: "Disable system access within an organization-defined period, terminate or revoke associated authenticators and credentials, and retrieve security-related system property."
+    source_refs: [nist-03.09.02]
+    required_entities: ["03.09.02", "system access", "authenticators", "credentials"]
+  constraints:
+    must_mention: ["disable system access", "revoke", "retrieve"]
+    must_not_claim: ["a fixed deadline"]
+    max_tokens: 45
+- id: nist-direct-010
+  tier: 1
+  type: direct
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Directly tests physical-access monitoring and log review."
+  source_anchors: [sec-sec_03.10.02]
+  question: "What must physical access monitoring detect and how must its logs be handled?"
+  ground_truth:
+    answer: "Monitor physical access to the facility where the system resides to detect and respond to physical security incidents, and review physical-access logs at an organization-defined frequency and on specified events or indications."
+    source_refs: [nist-03.10.02]
+    required_entities: ["03.10.02", "physical access", "physical access logs"]
+  constraints:
+    must_mention: ["detect and respond", "logs"]
+    must_not_claim: ["continuous video surveillance"]
+    max_tokens: 55
+- id: nist-direct-011
+  tier: 2
+  type: direct
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests monitoring, remediation, and scan-list updates."
+  source_anchors: [sec-sec_03.11.02]
+  question: "What does the vulnerability monitoring and scanning requirement require?"
+  ground_truth:
+    answer: "Monitor and scan at organization-defined intervals and when relevant vulnerabilities are identified; remediate within organization-defined response times; and update vulnerabilities to be scanned at an organization-defined frequency and when new vulnerabilities are reported."
+    source_refs: [nist-03.11.02]
+    required_entities: ["03.11.02", "vulnerabilities", "scan", "remediate"]
+  constraints:
+    must_mention: ["monitor and scan", "remediate", "update"]
+    must_not_claim: ["a mandated patch window"]
+    max_tokens: 60
+- id: nist-direct-012
+  tier: 2
+  type: direct
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests the specified purpose and update inputs for POA&Ms."
+  source_anchors: [sec-sec_03.12.02]
+  question: "What must a plan of action and milestones document and be updated from?"
+  ground_truth:
+    answer: "It documents planned remediation for weaknesses or deficiencies and reduction or elimination of known vulnerabilities; it is updated from security assessments, audits or reviews, and continuous monitoring activities."
+    source_refs: [nist-03.12.02]
+    required_entities: ["03.12.02", "plan of action and milestones", "security assessments", "continuous monitoring"]
+  constraints:
+    must_mention: ["remediation", "security assessments", "continuous monitoring"]
+    must_not_claim: ["that a POA&M eliminates every risk"]
+    max_tokens: 55
+- id: nist-direct-013
+  tier: 2
+  type: direct
+  hops: 1
+  split: validation
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Covers external and internal interfaces plus separated public components."
+  source_anchors: [sec-sec_03.13.01]
+  question: "What communications and interfaces must boundary protection monitor and control?"
+  ground_truth:
+    answer: "Communications at external managed interfaces and key internal managed interfaces; external systems are connected only through managed interfaces with boundary-protection devices arranged under an organizational security architecture."
+    source_refs: [nist-03.13.01]
+    required_entities: ["03.13.01", "external managed interfaces", "key internal managed interfaces"]
+  constraints:
+    must_mention: ["external", "key internal", "managed interfaces"]
+    must_not_claim: ["that public components may share the internal network"]
+    max_tokens: 60
+- id: nist-direct-014
+  tier: 1
+  type: direct
+  hops: 1
+  split: validation
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Directly tests confidentiality during both transmission and storage."
+  source_anchors: [sec-sec_03.13.08]
+  question: "What must cryptographic mechanisms prevent for CUI?"
+  ground_truth:
+    answer: "Unauthorized disclosure of CUI during transmission and while in storage."
+    source_refs: [nist-03.13.08]
+    required_entities: ["03.13.08", "cryptographic mechanisms", "CUI", "transmission", "storage"]
+  constraints:
+    must_mention: ["unauthorized disclosure", "transmission", "storage"]
+    must_not_claim: ["a named cryptographic algorithm"]
+    max_tokens: 30
+- id: nist-direct-015
+  tier: 1
+  type: direct
+  hops: 1
+  split: validation
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests the organization-defined nature of cryptographic types."
+  source_anchors: [sec-sec_03.13.11]
+  question: "What types of cryptography must be implemented to protect CUI confidentiality?"
+  ground_truth:
+    answer: "The organization-defined types of cryptography specified to protect the confidentiality of CUI."
+    source_refs: [nist-03.13.11]
+    required_entities: ["03.13.11", "cryptography", "confidentiality of CUI"]
+  constraints:
+    must_mention: ["organization-defined", "cryptography"]
+    must_not_claim: ["that the requirement names a specific algorithm"]
+    max_tokens: 25
+- id: nist-direct-016
+  tier: 1
+  type: direct
+  hops: 1
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests flaw handling and update installation."
+  source_anchors: [sec-sec_03.14.01]
+  question: "What actions are required for system flaws and security-relevant updates?"
+  ground_truth:
+    answer: "Identify, report, and correct system flaws, and install security-relevant software and firmware updates within an organization-defined time period after release."
+    source_refs: [nist-03.14.01]
+    required_entities: ["03.14.01", "system flaws", "software and firmware updates"]
+  constraints:
+    must_mention: ["identify", "report", "correct", "updates"]
+    must_not_claim: ["a fixed installation deadline"]
+    max_tokens: 45
+- id: nist-direct-017
+  tier: 1
+  type: direct
+  hops: 1
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Directly tests the policy-and-procedure lifecycle."
+  source_anchors: [sec-sec_03.15.01]
+  question: "What must policies and procedures for protecting CUI do?"
+  ground_truth:
+    answer: "They must be developed, documented, and disseminated to organizational personnel or roles, then reviewed and updated at an organization-defined frequency."
+    source_refs: [nist-03.15.01]
+    required_entities: ["03.15.01", "policies and procedures", "CUI"]
+  constraints:
+    must_mention: ["develop", "document", "disseminate"]
+    must_not_claim: ["a particular policy template"]
+    max_tokens: 45
+- id: nist-direct-018
+  tier: 3
+  type: direct
+  hops: 1
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests the main content categories and protection duty of the system security plan."
+  source_anchors: [sec-sec_03.15.02]
+  question: "What information must a system security plan include and how must it be protected?"
+  ground_truth:
+    answer: "It defines components and information types, describes relevant threats, environment and dependencies, requirements and safeguards, and responsible individuals; it is reviewed and updated at an organization-defined frequency and protected from unauthorized disclosure."
+    source_refs: [nist-03.15.02]
+    required_entities: ["03.15.02", "system security plan", "threats", "safeguards"]
+  constraints:
+    must_mention: ["system components", "threats", "safeguards", "unauthorized disclosure"]
+    must_not_claim: ["that the plan alone satisfies every requirement"]
+    max_tokens: 65
+- id: nist-direct-019
+  tier: 1
+  type: direct
+  hops: 1
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Directly maps security engineering to system development or modification."
+  source_anchors: [sec-sec_03.16.01]
+  question: "When must organization-defined systems security engineering principles be applied?"
+  ground_truth:
+    answer: "During the development or modification of the system and system components."
+    source_refs: [nist-03.16.01]
+    required_entities: ["03.16.01", "systems security engineering principles", "development", "modification"]
+  constraints:
+    must_mention: ["development or modification"]
+    must_not_claim: ["a mandated engineering methodology"]
+    max_tokens: 25
+- id: nist-direct-020
+  tier: 2
+  type: direct
+  hops: 1
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests lifecycle coverage, review, and confidentiality of the supply-chain plan."
+  source_anchors: [sec-sec_03.17.01]
+  question: "What must a supply chain risk management plan cover and how is it maintained?"
+  ground_truth:
+    answer: "It covers supply-chain risks across research and development, design, manufacturing, acquisition, delivery, integration, operations, maintenance, and disposal; it is reviewed and updated at an organization-defined frequency and protected from unauthorized disclosure."
+    source_refs: [nist-03.17.01]
+    required_entities: ["03.17.01", "supply chain risk management plan", "disposal"]
+  constraints:
+    must_mention: ["supply chain risks", "review and update", "unauthorized disclosure"]
+    must_not_claim: ["a required supplier certification"]
+    max_tokens: 70

@@ -1,4 +1,4 @@
-"""KB Arena CLI — multi-stage pipeline (cloudwright Typer + Rich pattern).
+"""KB Arena CLI for a multi-stage retrieval comparison pipeline.
 
 Each command is independently runnable and re-runnable.
 """
@@ -13,7 +13,7 @@ from rich.logging import RichHandler
 
 app = typer.Typer(
     name="kb-arena",
-    help="Benchmark retrieval strategies (vector, graph, hybrid) on your documentation.",
+    help="Compare retrieval architectures on your documentation with reproducible evidence.",
     no_args_is_help=True,
 )
 console = Console()
@@ -30,7 +30,7 @@ def _print_version(value: bool) -> None:
 @app.callback()
 def _setup(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
-    version: bool = typer.Option(  # noqa: ARG001 — handled by callback
+    version: bool = typer.Option(  # noqa: ARG001 - handled by callback
         False,
         "--version",
         "-V",
@@ -78,41 +78,55 @@ def _cli_error(code: str, message: str, fmt: str = "rich") -> None:
 
 
 def _preflight(
-    needs_anthropic: bool = False,
-    needs_openai: bool = False,
+    needs_llm: bool = False,
+    needs_embeddings: bool = False,
     needs_neo4j: bool = False,
 ) -> None:
     """Verify that the credentials this command actually needs are configured.
 
-    Honors `KB_ARENA_LLM_PROVIDER`: when set to `ollama`, neither Anthropic nor
-    OpenAI keys are required. When set to `openai`, an Anthropic key is not
-    required either.
+    Generation and embedding providers are independent. Local Ollama and BGE
+    providers need no API key.
     """
     from kb_arena.settings import settings
 
-    provider = settings.llm_provider
-
-    # Provider-specific overrides — Ollama needs nothing, OpenAI needs only OpenAI.
-    if provider == "ollama":
-        needs_anthropic = False
-        # Embeddings — when on Ollama, we expect an Ollama embedding model;
-        # the OpenAI key requirement only applies to OpenAI/Anthropic providers.
-        needs_openai = False
-    elif provider == "openai":
-        needs_anthropic = False
-
     errors: list[str] = []
-    if needs_anthropic and not settings.anthropic_api_key:
-        errors.append(
-            "Anthropic API key required. Set KB_ARENA_ANTHROPIC_API_KEY, "
-            "or use KB_ARENA_LLM_PROVIDER=ollama for free local inference."
-        )
-    if needs_openai and not settings.openai_api_key:
-        errors.append(
-            "OpenAI API key required (for embeddings). "
-            "Set KB_ARENA_OPENAI_API_KEY, or switch the embedding provider via "
-            "KB_ARENA_EMBEDDING_PROVIDER (bge, ollama, voyage, cohere)."
-        )
+    if needs_llm:
+        llm_provider = settings.llm_provider.lower()
+        if llm_provider == "anthropic" and not (settings.llm_api_key or settings.anthropic_api_key):
+            errors.append(
+                "Anthropic API key required for generation. Set "
+                "KB_ARENA_ANTHROPIC_API_KEY, or use KB_ARENA_LLM_PROVIDER=ollama."
+            )
+        elif llm_provider == "openai" and not (settings.llm_api_key or settings.openai_api_key):
+            errors.append(
+                "OpenAI API key required for generation. Set KB_ARENA_OPENAI_API_KEY, "
+                "or use KB_ARENA_LLM_PROVIDER=ollama."
+            )
+        elif llm_provider not in {"anthropic", "openai", "ollama"}:
+            errors.append(
+                f"Unknown KB_ARENA_LLM_PROVIDER={llm_provider!r}. "
+                "Valid: anthropic, ollama, openai."
+            )
+
+    if needs_embeddings:
+        embedding_provider = settings.embedding_provider.lower()
+        embedding_keys = {
+            "openai": settings.openai_api_key,
+            "voyage": settings.voyage_api_key,
+            "cohere": settings.cohere_api_key,
+            "gemini": settings.gemini_api_key,
+        }
+        if embedding_provider in embedding_keys and not embedding_keys[embedding_provider]:
+            env_name = f"KB_ARENA_{embedding_provider.upper()}_API_KEY"
+            errors.append(
+                f"{embedding_provider.title()} API key required for embeddings. "
+                f"Set {env_name}, or use KB_ARENA_EMBEDDING_PROVIDER=bge or ollama."
+            )
+        elif embedding_provider not in {*embedding_keys, "bge", "ollama"}:
+            errors.append(
+                f"Unknown KB_ARENA_EMBEDDING_PROVIDER={embedding_provider!r}. "
+                "Valid: bge, cohere, gemini, ollama, openai, voyage."
+            )
     if errors:
         for e in errors:
             console.print(f"[red]{e}[/red]")
@@ -199,7 +213,7 @@ def build_graph(
     """
     import asyncio
 
-    _preflight(needs_anthropic=True)
+    _preflight(needs_llm=True)
 
     from kb_arena.graph.extractor import run_extraction
 
@@ -221,7 +235,7 @@ def build_vectors(
     """
     import asyncio
 
-    _preflight(needs_openai=True)
+    _preflight(needs_embeddings=True)
 
     from kb_arena.strategies import build_vector_indexes
 
@@ -267,7 +281,7 @@ def benchmark(
     """
     import asyncio
 
-    _preflight(needs_anthropic=True, needs_openai=True)
+    _preflight(needs_llm=True, needs_embeddings=True)
 
     if strategy_module:
         from kb_arena.strategies import register_plugin_strategy
@@ -496,7 +510,7 @@ def run(
         None,
         "--docs",
         help="Optional path/URL/github: spec to ingest before building. "
-        "If omitted, ingest is skipped (assumes docs already in datasets/{corpus}/raw/).",
+        "If omitted, files in datasets/{corpus}/raw/ are ingested automatically.",
     ),
     skip_graph: bool = typer.Option(
         False, "--skip-graph", help="Skip build-graph (useful when Neo4j is unavailable)"
@@ -546,44 +560,51 @@ def run(
             console.print(f"[dim][skip][/dim] {name} already complete")
             return
         console.print(Panel.fit(f"[bold]{name}[/bold]", style="cyan"))
-        action()
+        if action() is False:
+            return
         state[name] = "done"
         _save_state()
 
-    # 1. ingest (optional)
-    if docs:
+    # 1. ingest explicit input, or automatically use a populated raw directory.
+    ingest_source = docs
+    if not ingest_source:
+        processed = base / "processed"
+        has_processed = processed.exists() and any(processed.glob("*.jsonl"))
+        raw = base / "raw"
+        has_raw = raw.exists() and any(path.is_file() for path in raw.rglob("*"))
+        if not has_processed and has_raw:
+            ingest_source = str(raw)
+        elif not has_processed:
+            console.print(
+                "[red]No documents found to process.[/red]\n"
+                f"Drop files into {raw}/, pass --docs PATH, or run kb-arena ingest separately."
+            )
+            raise typer.Exit(1)
+
+    if ingest_source:
         from kb_arena.ingest.pipeline import run_ingest
 
         def _ingest():
-            run_ingest(path=docs, corpus=corpus, format="auto")
+            run_ingest(path=ingest_source, corpus=corpus, format="auto")
 
         _stage("ingest", _ingest)
-    else:
-        # If processed/ is empty AND no --docs given, we cannot proceed.
-        processed = base / "processed"
-        if not processed.exists() or not any(processed.glob("*.jsonl")):
-            console.print(
-                "[red]No processed documents found and no --docs path given.[/red]\n"
-                f"Drop files into {base / 'raw'}/ then re-run with --docs {base / 'raw'}, "
-                "or run kb-arena ingest separately."
-            )
-            raise typer.Exit(1)
 
     # 2. build-graph (skippable when Neo4j is unavailable)
     if not skip_graph:
         from kb_arena.graph.extractor import run_extraction
 
-        def _graph():
+        def _graph() -> bool | None:
             try:
                 asyncio.run(run_extraction(corpus=corpus))
-            except Exception as exc:  # noqa: BLE001 — surface as warning, continue
+            except Exception as exc:  # noqa: BLE001 - surface as warning, continue
                 console.print(
                     f"[yellow]build-graph failed: {exc}\n"
                     "Continuing with vector strategies. "
                     "Re-run with Neo4j running to enable knowledge_graph + hybrid.[/yellow]"
                 )
                 # Graceful degradation: don't mark stage done so future --resume retries.
-                raise typer.Exit(0)  # leave state unset so we can retry
+                return False
+            return None
 
         _stage("build_graph", _graph)
     else:
@@ -639,7 +660,7 @@ def generate_questions(
     """
     import asyncio
 
-    _preflight(needs_anthropic=True)
+    _preflight(needs_llm=True)
 
     from kb_arena.benchmark.question_gen import run_question_generation
 
@@ -655,11 +676,14 @@ def demo(
 ):
     """Launch the demo with pre-computed aws-compute benchmark results.
 
-    No API keys, no Docker, no setup needed — just explore real results.
+    No API keys, Docker service, or setup is needed to explore the checked results.
     """
+    import os
     import webbrowser
     from pathlib import Path
     from threading import Timer
+
+    from kb_arena.settings import settings
 
     results_dir = Path("results")
     result_files = list(results_dir.glob("aws-compute_*.json")) if results_dir.exists() else []
@@ -733,7 +757,18 @@ def demo(
 
     import uvicorn
 
-    uvicorn.run("kb_arena.chatbot.api:app", host=host, port=actual_port)
+    previous_demo_environment = os.environ.get("KB_ARENA_DEMO_MODE")
+    previous_demo_setting = settings.demo_mode
+    os.environ["KB_ARENA_DEMO_MODE"] = "true"
+    settings.demo_mode = True
+    try:
+        uvicorn.run("kb_arena.chatbot.api:app", host=host, port=actual_port)
+    finally:
+        settings.demo_mode = previous_demo_setting
+        if previous_demo_environment is None:
+            os.environ.pop("KB_ARENA_DEMO_MODE", None)
+        else:
+            os.environ["KB_ARENA_DEMO_MODE"] = previous_demo_environment
 
 
 @app.command()
@@ -748,7 +783,7 @@ def generate_qa(
     """
     import asyncio
 
-    _preflight(needs_anthropic=True)
+    _preflight(needs_llm=True)
 
     from kb_arena.generate.cli_runner import run_generate_qa
 
@@ -768,7 +803,7 @@ def audit(
     """
     import asyncio
 
-    _preflight(needs_anthropic=True)
+    _preflight(needs_llm=True)
 
     from kb_arena.audit.analyzer import run_audit
     from kb_arena.audit.display import display_audit_report
@@ -790,7 +825,7 @@ def fix(
     """
     import asyncio
 
-    _preflight(needs_anthropic=True)
+    _preflight(needs_llm=True)
 
     from kb_arena.audit.analyzer import run_audit
     from kb_arena.audit.display import display_fix_report
@@ -812,7 +847,7 @@ def fix(
 def health(
     format: str = typer.Option("rich", help="Output format: rich, json"),
 ):
-    """Pipeline status — per-corpus progress, service connectivity, API keys."""
+    """Report pipeline progress, service connectivity, and API key status by corpus."""
     import asyncio
     from pathlib import Path
 
@@ -1072,7 +1107,7 @@ def retriever_lab(
 
     from kb_arena.benchmark.retriever_lab import run_retriever_lab
 
-    _preflight(needs_openai=True)
+    _preflight(needs_embeddings=True)
     exit_code = _asyncio.run(
         run_retriever_lab(corpus, strategies, top_k, min_recall, ceiling_k or None)
     )
@@ -1107,11 +1142,11 @@ def quantum_diagnostics(
     from kb_arena.settings import settings
     from kb_arena.strategies.quantum.diagnostics import run_quantum_diagnostics
 
-    _preflight(needs_openai=True)
+    _preflight(needs_embeddings=True)
     console = _Console()
     diag = _asyncio.run(run_quantum_diagnostics(corpus, sample_questions=sample_questions))
 
-    pca_t = _Table(title=f"PCA variance retained — {corpus} ({diag.n_embedding_samples} samples)")
+    pca_t = _Table(title=f"PCA variance retained: {corpus} ({diag.n_embedding_samples} samples)")
     pca_t.add_column("n_qubits", justify="right")
     pca_t.add_column("encoded dim", justify="right")
     pca_t.add_column("variance explained", justify="right")
@@ -1156,7 +1191,7 @@ def label_chunks(
 
     from kb_arena.benchmark.expected_chunks import label_corpus
 
-    _preflight(needs_anthropic=True, needs_openai=True)
+    _preflight(needs_llm=True, needs_embeddings=True)
     result = _asyncio.run(label_corpus(corpus, force=force, n_candidates=n_candidates))
     note = " (halted by cost cap)" if result.get("halted_by_cost_cap") else ""
     console.print(
@@ -1210,7 +1245,7 @@ def optimize(
         return [x.strip() for x in s.split(",") if x.strip()]
 
     if not dry_run:
-        _preflight(needs_openai=True)
+        _preflight(needs_embeddings=True)
 
     exit_code = _asyncio.run(
         run_optimize(

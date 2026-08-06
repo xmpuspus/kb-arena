@@ -1,0 +1,53 @@
+name: Bug report
+description: Report a reproducible KB Arena defect
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include API keys, private corpus text, or other secrets.
+  - type: input
+    id: version
+    attributes:
+      label: KB Arena version
+      placeholder: 0.9.3
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Installation or CLI
+        - Ingestion
+        - Retrieval strategy
+        - Benchmark or metrics
+        - API or dashboard
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Include commands, settings with secrets removed, and the smallest safe input.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or run artifacts
+      description: Remove credentials and private document content.

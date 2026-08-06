@@ -1,4 +1,4 @@
-"""Retrieval strategies — 9 approaches to answering questions from documentation."""
+"""Built-in retrieval strategies and index helpers."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from kb_arena.models.document import Document
 from kb_arena.settings import settings
 from kb_arena.strategies.bm25 import BM25Strategy
+from kb_arena.strategies.catalog import STRATEGY_CATALOG
 from kb_arena.strategies.contextual_vector import ContextualVectorStrategy
 from kb_arena.strategies.hybrid import HybridStrategy
 from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
@@ -43,7 +44,9 @@ STRATEGY_REGISTRY: dict[str, type] = {
 # get_strategy raises a clear install hint when any module is missing, so the
 # benchmark/retriever-lab loaders skip them instead of emitting empty traces.
 _OPTIONAL_DEP_STRATEGIES: dict[str, tuple[tuple[str, ...], str]] = {
-    "sqr": (("qiskit", "qiskit_aer", "sklearn"), "quantum"),
+    spec.name: (spec.required_modules, spec.optional_extra)
+    for spec in STRATEGY_CATALOG
+    if spec.optional_extra is not None
 }
 
 
@@ -238,6 +241,7 @@ def get_strategy(name: str):
 
 __all__ = [
     "STRATEGY_REGISTRY",
+    "STRATEGY_CATALOG",
     "get_strategy",
     "NaiveVectorStrategy",
     "ContextualVectorStrategy",

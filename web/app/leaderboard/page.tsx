@@ -108,21 +108,21 @@ export default function LeaderboardPage() {
                   <td className="px-3 py-2 font-mono">{row.corpus}</td>
                   <td className="px-3 py-2 font-mono">{row.strategy}</td>
                   <td className="px-3 py-2 text-right">
-                    {row.mean_accuracy != null ? (row.mean_accuracy * 100).toFixed(1) + "%" : "—"}
+                    {row.mean_accuracy != null ? (row.mean_accuracy * 100).toFixed(1) + "%" : "n/a"}
                   </td>
                   <td className="px-3 py-2 text-right">
                     {row.mean_recall_at_5 != null
                       ? (row.mean_recall_at_5 * 100).toFixed(1) + "%"
-                      : "—"}
+                      : "n/a"}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    {row.mean_ndcg_at_5 != null ? row.mean_ndcg_at_5.toFixed(3) : "—"}
+                    {row.mean_ndcg_at_5 != null ? row.mean_ndcg_at_5.toFixed(3) : "n/a"}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    {row.mean_cost_usd != null ? "$" + row.mean_cost_usd.toFixed(2) : "—"}
+                    {row.mean_cost_usd != null ? "$" + row.mean_cost_usd.toFixed(2) : "n/a"}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    {row.mean_latency_ms != null ? row.mean_latency_ms.toFixed(0) : "—"}
+                    {row.mean_latency_ms != null ? row.mean_latency_ms.toFixed(0) : "n/a"}
                   </td>
                   <td className="px-3 py-2 text-right">{row.runs}</td>
                 </tr>

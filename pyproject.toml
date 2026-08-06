@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kb-arena"
-version = "0.9.3"
-description = "Benchmark 11 retrieval architectures on your documentation — find which KB architecture fits your data"
+version = "0.10.0"
+description = "Compare retrieval architectures on your documentation and choose with reproducible evidence"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
@@ -64,7 +64,19 @@ Repository = "https://github.com/xmpuspus/kb-arena"
 Issues = "https://github.com/xmpuspus/kb-arena/issues"
 
 [tool.hatch.build.targets.sdist]
-exclude = ["docs/", "datasets/", "web/", "tests/", "cypher/", ".github/", "**/.gitkeep"]
+exclude = [
+    "docs/",
+    "datasets/",
+    "web/",
+    "tests/",
+    "cypher/",
+    ".github/",
+    "tmp/",
+    ".venv/",
+    "results/run_*/",
+    "uv.lock",
+    "**/.gitkeep",
+]
 include = [
     "kb_arena/",
     "kb_arena/data/aws-compute_*.json",

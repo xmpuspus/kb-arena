@@ -1,118 +1,86 @@
 # Security Policy
 
-## Supported Versions
+## Supported versions
 
-| Version | Supported |
-|---------|-----------|
-| 0.6.x   | Yes (active) |
-| 0.5.x   | Critical fixes only |
-| <= 0.4  | No |
+| Version | Support |
+|---|---|
+| 0.9.x | Active fixes |
+| 0.8.x | Critical fixes on a best-effort basis |
+| 0.7.x and earlier | Unsupported |
 
-Patches land on the latest minor; older minors get critical-only patches on best-effort.
+Fixes land on the latest release in the active minor line.
 
-## Reporting a Vulnerability
+## Report a vulnerability
 
-If you discover a security vulnerability, please report it responsibly:
+Do not open a public issue for a suspected vulnerability. Email `xavier@xmpuspus.dev` with:
 
-1. **Do not** open a public GitHub issue
-2. Email security concerns to xavier@xmpuspus.dev
-3. Include a description of the vulnerability, steps to reproduce, and potential impact
-4. You will receive a response within 48 hours
+- the affected version;
+- a clear description and impact;
+- steps or a minimal example that reproduce the issue;
+- any known mitigation.
 
-## Security Model
+The project aims to acknowledge a report within 48 hours. That target is not a service-level
+agreement.
 
-### API Authentication
+## Security boundaries
 
-- Every endpoint that triggers an LLM call is gated by `Depends(require_auth)`:
-  `/chat`, `/chat/stream`, `/api/arena/match`, `/api/arena/vote`, `/api/tools/*`,
-  `/api/graph/build`, `/api/debug/explain`.
-- When `KB_ARENA_API_TOKEN` is set, requests must include
-  `Authorization: Bearer <token>`. The comparison is constant-time (`hmac.compare_digest`).
-- When `KB_ARENA_DEMO_MODE=true`, every LLM-triggering endpoint returns 503
-  regardless of authentication. This is the default state when no API keys are
-  configured, so a freshly installed instance cannot drain credits even if exposed.
-- Read-only endpoints (`/api/leaderboard`, `/api/benchmark/results`, `/api/corpora`,
-  `/api/retriever-lab/*`, `/health`, `/ready`) are intentionally unauthenticated —
-  they read JSON from disk and never invoke the LLM.
+### API access
 
-### Input Validation
+- LLM-triggering endpoints use `Depends(require_auth)`.
+- When you set `KB_ARENA_API_TOKEN`, clients send `Authorization: Bearer <token>`.
+- Token comparison uses `hmac.compare_digest`.
+- `KB_ARENA_DEMO_MODE=true` makes every LLM-triggering endpoint return 503.
+- Read-only result, corpus, health, readiness, and Retriever Lab endpoints do not need a token.
 
-- `ChatRequest.query`, `ArenaMatchRequest.question` are capped at 4 000 chars.
-- History list capped at 20 turns; corpus and strategy names are alphanumeric-only.
-- Arena and tools endpoints use Pydantic models — no raw `request.json()` paths.
-- All YAML loads use `yaml.safe_load`; no `pickle`, no `eval`, no `exec` on user input.
+The default open API mode is intended for local development. Set a token and a narrow CORS list
+before you expose an instance to a network.
 
-### Cypher Safety
+### Input and query handling
 
-- LLM-generated Cypher is rejected if it matches `_WRITE_CYPHER_RE`, which
-  includes APOC write paths (`apoc.create`, `apoc.merge`, `apoc.refactor`,
-  `apoc.cypher.runWrite`, `apoc.periodic.iterate`, `apoc.export`, etc.) and
-  `LOAD CSV`.
-- Defense in depth: every query path opens the Neo4j session with
-  `default_access_mode=neo4j.READ_ACCESS`. The driver enforces read-only at the
-  Bolt protocol level — the regex is the second line, not the only line.
-- Production extraction (`build-graph`) uses parameterized Cypher only.
+- Pydantic validates request bodies and caps questions at 4,000 characters.
+- Corpus and strategy names use allow-listed patterns or the strategy registry.
+- YAML readers use `yaml.safe_load`.
+- The code does not use `pickle`, `eval`, or `exec` on user input.
+- LLM-generated Cypher passes a write-operation block list.
+- Neo4j read paths use `neo4j.READ_ACCESS` at the driver level.
+- Production graph extraction uses parameterized Cypher.
 
-### URL Ingestion (SSRF)
+### URL ingestion
 
-- `WebParser` validates every URL before fetching. Schemes other than `http(s)`
-  are rejected. Hosts are DNS-resolved and the resolved IP is checked against
-  private, loopback, link-local, multicast, and reserved ranges.
-- AWS instance metadata, GCE metadata, and EC2 instance-data hosts are blocked
-  by name regardless of DNS.
-- `follow_redirects` is disabled at the httpx client; redirects are validated
-  per hop with a hard cap of 5.
-- GitHub clones use `--depth 1 --single-branch` and a 120 s timeout.
+- URL ingestion accepts HTTP and HTTPS only.
+- The URL validator checks DNS results against private, loopback, link-local, multicast, and reserved ranges.
+- The URL validator blocks known cloud metadata hosts by name.
+- The parser checks redirects one hop at a time, with a limit of five.
+- GitHub ingestion uses a shallow, single-branch clone with a 120-second timeout.
 
-### Cost Controls
+### Spend and availability
 
-- `KB_ARENA_BENCHMARK_COST_CAP_USD` defaults to **10.0** (was 0/unlimited).
-  Benchmarks halt as soon as cumulative spend exceeds the cap.
-- Demo mode (auto-enabled when no API key is configured) returns 503 from
-  every LLM-triggering endpoint.
-- The benchmark runner distinguishes retryable transients (rate limit, 5xx,
-  network) from permanent errors (auth, validation) — bad keys fail fast
-  instead of burning 7 minutes of retries per run.
+- `KB_ARENA_BENCHMARK_COST_CAP_USD` defaults to `10.0`.
+- Benchmark concurrency, query timeouts, and retries use fixed defaults and environment controls.
+- Demo mode prevents a no-key instance from making LLM calls.
+- The in-memory rate limiter allows 60 requests per minute for each client and caps cold keys.
 
-### Rate Limiting
+### Network and container defaults
 
-- 60 req/min per client, bounded-memory deque per IP, with eviction at 10 000
-  cold keys to prevent memory growth.
-- `KB_ARENA_TRUSTED_PROXY_HEADER` may be set to honour `X-Forwarded-For` first
-  hop when running behind nginx / Cloudflare.
-
-### Network
-
-- CORS is configured via `KB_ARENA_CORS_ORIGINS`; the default localhost list
-  never expands to `*`.
-- The bundled `docker-compose.yml` binds Neo4j to `127.0.0.1` and refuses to
-  start without `KB_ARENA_NEO4J_PASSWORD`.
-
-### Container
-
-- `Dockerfile` runs as a non-root `kbarena` user (UID 1000).
-- `HEALTHCHECK` polls `/health` every 15 s.
-- `KB_ARENA_DEMO_MODE=true` is set by default in the image — public deploys
-  cannot accidentally enable chat without explicitly overriding it AND setting
-  an API token.
+- `KB_ARENA_CORS_ORIGINS` controls allowed browser origins and does not default to `*`.
+- `docker-compose.yml` binds Neo4j to `127.0.0.1` and needs an explicit password.
+- The container runs as the non-root `kbarena` user.
+- The container health check polls `/health`.
 
 ### Dependencies
 
-- All direct dependencies pinned to exact `==` versions in `pyproject.toml`.
-- `uv.lock` is checked in; CI is being migrated to `uv sync --frozen` so
-  transitive deps are reproducible. (Tracked in our roadmap.)
+`pyproject.toml` pins most direct dependencies and sets a minimum SciPy version. The repository does
+not currently publish a tracked transitive lock file. Review resolved dependencies during release
+validation and use an isolated environment for untrusted corpora.
 
-### Input Validation
+## Known limits
 
-- All API request bodies are validated by Pydantic v2 with strict type checking
-- Strategy names are validated against the registry — unknown strategies return a structured error
-- Question YAML files are validated against the `Question` Pydantic model at load time
-
-## Known Limitations
-
-- In-memory rate limiter resets on process restart. For production behind a
-  load balancer use a Redis-backed limiter (open issue).
-- LLM responses are escaped by React's built-in rendering, but custom
-  integrations should sanitize before rendering as HTML.
-- `/api/debug/explain` is gated behind `KB_ARENA_DEBUG=true`. Don't enable
-  debug mode in production.
+- The in-memory rate limiter resets when the process restarts and does not coordinate across workers.
+- A reverse proxy must remove untrusted forwarding headers before you set
+  `KB_ARENA_TRUSTED_PROXY_HEADER`.
+- React escapes normal text output, but custom integrations must sanitize content before rendering
+  it as HTML.
+- `/api/debug/explain` is available only when `KB_ARENA_DEBUG=true`; do not enable it on a public
+  deployment.
+- Document ingestion processes untrusted text. Run parsers with the minimum file and network access
+  needed for the corpus.

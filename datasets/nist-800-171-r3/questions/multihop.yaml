@@ -1,0 +1,298 @@
+- id: nist-multihop-001
+  tier: 4
+  type: multihop
+  hops: 2
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Requires the explicit enforcement link from separation of duties to access enforcement."
+  source_anchors:
+    - sec-sec_03.01.04
+    - sec-sec_03.01.02
+  question: "How do Separation of Duties and Access Enforcement connect defined separated duties to logical access to CUI and system resources?"
+  ground_truth:
+    answer: "03.01.04 requires identifying duties that require separation and defining access authorizations to support that separation. Its discussion states that this requirement is enforced by 03.01.02, which requires enforcement of approved authorizations for logical access to CUI and system resources under applicable access control policies."
+    source_refs:
+      - nist-03.01.04
+      - nist-03.01.02
+    required_entities:
+      - "03.01.04 Separation of Duties"
+      - "03.01.02 Access Enforcement"
+  constraints:
+    must_mention:
+      - "separation of duties"
+      - "approved authorizations"
+      - "logical access"
+    must_not_claim:
+      - "separation of duties alone enforces access"
+    max_tokens: 180
+
+- id: nist-multihop-002
+  tier: 4
+  type: multihop
+  hops: 2
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Requires distinguishing the explicit inactivity-logout requirement from the related device-lock control."
+  source_anchors:
+    - sec-sec_03.01.01
+    - sec-sec_03.01.10
+  question: "How do Account Management and Device Lock distinguish expected-inactivity logout from temporary prevention of access at an unattended system?"
+  ground_truth:
+    answer: "03.01.01 requires users to log out after an organization-defined period of expected inactivity or under organization-defined circumstances, and its discussion points to 03.01.10 for automatic enforcement. 03.01.10 requires preventing access through an inactivity-initiated or user-initiated device lock, retaining that lock until reauthentication, and concealing the prior display. Its discussion says device locks are temporary and are not an acceptable substitute for logging out when logout is required."
+    source_refs:
+      - nist-03.01.01
+      - nist-03.01.10
+    required_entities:
+      - "03.01.01 Account Management"
+      - "03.01.10 Device Lock"
+  constraints:
+    must_mention:
+      - "log out"
+      - "device lock"
+      - "not an acceptable substitute"
+    must_not_claim:
+      - "device locks are a substitute for logging out"
+    max_tokens: 220
+
+- id: nist-multihop-003
+  tier: 5
+  type: multihop
+  hops: 2
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Combines the explicit information-flow requirement with the exchange-agreement requirements for CUI between systems."
+  source_anchors:
+    - sec-sec_03.01.03
+    - sec-sec_03.12.05
+  question: "For an exchange of CUI between the system and another organization’s system, what distinct requirements do Information Flow Enforcement and Information Exchange establish?"
+  ground_truth:
+    answer: "03.01.03 requires enforcement of approved authorizations that control the flow of CUI within the system and between connected systems; its discussion says interorganizational transfers may require an agreement specifying how the flow is enforced. 03.12.05 requires approval and management of CUI exchanges with other systems using agreements or agreements for interconnections, and requires documenting interface characteristics, security requirements, and responsibilities for each exchange."
+    source_refs:
+      - nist-03.01.03
+      - nist-03.12.05
+    required_entities:
+      - "03.01.03 Information Flow Enforcement"
+      - "03.12.05 Information Exchange"
+  constraints:
+    must_mention:
+      - "approved authorizations"
+      - "flow of CUI"
+      - "agreements"
+      - "interface characteristics"
+    must_not_claim:
+      - "information flow control determines who may access CUI"
+    max_tokens: 220
+
+- id: nist-multihop-004
+  tier: 5
+  type: multihop
+  hops: 3
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Requires linking automated audit-record generation to both the selected events and required record content."
+  source_anchors:
+    - sec-sec_03.03.03
+    - sec-sec_03.03.01
+    - sec-sec_03.03.02
+  question: "Which controls jointly determine what audit records are generated: the event types, the record contents, and the generation requirement?"
+  ground_truth:
+    answer: "03.03.01 requires specification and periodic review of the event types selected for logging. 03.03.02 requires audit records to include the event type, time, location, source, outcome, and associated identities, with additional information as needed. 03.03.03 requires generation of audit records for the selected event types and audit-record content specified in 03.03.01 and 03.03.02, and requires retention consistent with the records retention policy."
+    source_refs:
+      - nist-03.03.01
+      - nist-03.03.02
+      - nist-03.03.03
+    required_entities:
+      - "03.03.01 Event Logging"
+      - "03.03.02 Audit Record Content"
+      - "03.03.03 Audit Record Generation"
+  constraints:
+    must_mention:
+      - "event types"
+      - "audit record content"
+      - "generate audit records"
+    must_not_claim:
+      - "audit record content alone selects the event types"
+    max_tokens: 240
+
+- id: nist-multihop-005
+  tier: 4
+  type: multihop
+  hops: 2
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Uses the explicit discussion link from monitored incidents to the incident-handling capability."
+  source_anchors:
+    - sec-sec_03.06.01
+    - sec-sec_03.06.02
+  question: "How does Incident Monitoring, Reporting, and Response Assistance relate the incidents it tracks and reports to the broader Incident Handling capability?"
+  ground_truth:
+    answer: "03.06.02 requires tracking and documenting system security incidents, reporting incident information to organization-defined authorities, and providing a support resource for users handling and reporting incidents. Its discussion states that 03.06.01 provides information on the types of incidents appropriate for monitoring. 03.06.01 requires an incident-handling capability consistent with the incident response plan that includes preparation, detection and analysis, containment, eradication, and recovery."
+    source_refs:
+      - nist-03.06.01
+      - nist-03.06.02
+    required_entities:
+      - "03.06.01 Incident Handling"
+      - "03.06.02 Incident Monitoring, Reporting, and Response Assistance"
+  constraints:
+    must_mention:
+      - "track and document"
+      - "incident handling"
+      - "containment"
+      - "recovery"
+    must_not_claim:
+      - "incident monitoring replaces incident handling"
+    max_tokens: 220
+
+- id: nist-multihop-006
+  tier: 4
+  type: multihop
+  hops: 2
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Uses the explicit statement that user incident-response training may be provided as part of role-based training."
+  source_anchors:
+    - sec-sec_03.06.04
+    - sec-sec_03.02.02
+  question: "How does Incident Response Training connect its role-specific user training to the broader Role-Based Training requirement?"
+  ground_truth:
+    answer: "03.06.04 requires incident response training consistent with assigned roles and responsibilities when the role or system access is assumed, when system changes require it, and thereafter at an organization-defined frequency. Its discussion states that incident-response training for users may be provided as part of 03.02.02. 03.02.02 requires role-based security training before authorizing access to the system or CUI, before assigned duties, and thereafter at an organization-defined frequency, with updates after specified changes or events."
+    source_refs:
+      - nist-03.06.04
+      - nist-03.02.02
+    required_entities:
+      - "03.06.04 Incident Response Training"
+      - "03.02.02 Role-Based Training"
+  constraints:
+    must_mention:
+      - "assigned roles and responsibilities"
+      - "incident response training"
+      - "role-based security training"
+    must_not_claim:
+      - "role-based training alone defines all incident response training content"
+    max_tokens: 220
+
+- id: nist-multihop-007
+  tier: 5
+  type: multihop
+  hops: 2
+  split: validation
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Requires the reciprocal relationship between configuration change control and impact analyses."
+  source_anchors:
+    - sec-sec_03.04.03
+    - sec-sec_03.04.04
+  question: "What do Configuration Change Control and Impact Analyses require before and after a configuration-controlled system change?"
+  ground_truth:
+    answer: "03.04.03 requires defining configuration-controlled change types, reviewing proposed changes, approving or disapproving them with explicit consideration of security impacts, implementing and documenting approved changes, and monitoring related activities. 03.04.04 requires analyzing changes for potential security impacts before implementation and verifying after implementation that system security requirements continue to be satisfied. The discussions identify the two requirements as related and state that not all system changes are configuration controlled."
+    source_refs:
+      - nist-03.04.03
+      - nist-03.04.04
+    required_entities:
+      - "03.04.03 Configuration Change Control"
+      - "03.04.04 Impact Analyses"
+  constraints:
+    must_mention:
+      - "security impacts"
+      - "prior to implementation"
+      - "continue to be satisfied"
+    must_not_claim:
+      - "all system changes are configuration controlled"
+    max_tokens: 220
+
+- id: nist-multihop-008
+  tier: 4
+  type: multihop
+  hops: 2
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Requires the explicit relationship between confidentiality mechanisms and organization-defined cryptography types."
+  source_anchors:
+    - sec-sec_03.13.08
+    - sec-sec_03.13.11
+  question: "How do Transmission and Storage Confidentiality and Cryptographic Protection divide the requirements for protecting CUI with cryptography?"
+  ground_truth:
+    answer: "03.13.08 requires cryptographic mechanisms to prevent unauthorized disclosure of CUI during transmission and while in storage, and its discussion identifies TLS and IPsec as examples for transmission. It states that the requirement relates to 03.13.11. 03.13.11 requires implementation of organization-defined types of cryptography to protect the confidentiality of CUI and states that cryptography is implemented in accordance with applicable laws, Executive Orders, directives, regulations, policies, standards, and guidelines."
+    source_refs:
+      - nist-03.13.08
+      - nist-03.13.11
+    required_entities:
+      - "03.13.08 Transmission and Storage Confidentiality"
+      - "03.13.11 Cryptographic Protection"
+  constraints:
+    must_mention:
+      - "transmission"
+      - "storage"
+      - "organization-defined types of cryptography"
+    must_not_claim:
+      - "03.13.11 mandates one named cryptographic algorithm"
+    max_tokens: 220
+
+- id: nist-multihop-009
+  tier: 5
+  type: multihop
+  hops: 3
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Requires combining media transport accountability with the two controls explicitly related to cryptographic protection of CUI."
+  source_anchors:
+    - sec-sec_03.08.05
+    - sec-sec_03.13.08
+    - sec-sec_03.13.11
+  question: "For system media containing CUI that are transported outside controlled areas, how do Media Transport, Transmission and Storage Confidentiality, and Cryptographic Protection relate?"
+  ground_truth:
+    answer: "03.08.05 requires protecting and controlling CUI media during transport outside controlled areas, maintaining accountability, and documenting transport activities. Its discussion says transport protection can include cryptography or locked containers and explicitly relates the requirement to 03.13.08 and 03.13.11. 03.13.08 requires cryptographic mechanisms to prevent unauthorized disclosure of CUI during transmission and storage, while 03.13.11 requires organization-defined types of cryptography to protect CUI confidentiality."
+    source_refs:
+      - nist-03.08.05
+      - nist-03.13.08
+      - nist-03.13.11
+    required_entities:
+      - "03.08.05 Media Transport"
+      - "03.13.08 Transmission and Storage Confidentiality"
+      - "03.13.11 Cryptographic Protection"
+  constraints:
+    must_mention:
+      - "maintain accountability"
+      - "document transport activities"
+      - "cryptographic mechanisms"
+    must_not_claim:
+      - "cryptography alone supplies media accountability"
+    max_tokens: 240
+
+- id: nist-multihop-010
+  tier: 4
+  type: multihop
+  hops: 2
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Uses the explicit statement that nonlocal-maintenance session authentication reflects the user identification and authentication requirement."
+  source_anchors:
+    - sec-sec_03.07.05
+    - sec-sec_03.05.01
+  question: "How does Nonlocal Maintenance apply User Identification and Authentication requirements when establishing maintenance and diagnostic sessions?"
+  ground_truth:
+    answer: "03.07.05 requires approval and monitoring of nonlocal maintenance and diagnostic activities, multi-factor authentication and replay resistance when establishing the sessions, and termination of session and network connections when maintenance is complete. Its discussion states that authentication techniques for those sessions reflect 03.05.01. 03.05.01 requires unique identification and authentication of system users, association of that identification with processes acting on their behalf, and reauthentication under organization-defined circumstances."
+    source_refs:
+      - nist-03.07.05
+      - nist-03.05.01
+    required_entities:
+      - "03.07.05 Nonlocal Maintenance"
+      - "03.05.01 User Identification and Authentication"
+  constraints:
+    must_mention:
+      - "multi-factor authentication"
+      - "replay resistance"
+      - "unique identification and authentication"
+      - "terminate session and network connections"
+    must_not_claim:
+      - "nonlocal maintenance sessions may remain connected after completion"
+    max_tokens: 220

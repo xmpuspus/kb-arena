@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+import typer
+
 # ---------------------------------------------------------------------------
 # Default values
 # ---------------------------------------------------------------------------
@@ -164,3 +167,39 @@ def test_settings_extra_fields_ignored(monkeypatch):
 
     s = Settings()
     assert s is not None
+
+
+def test_preflight_checks_openai_embeddings_when_generation_uses_ollama(monkeypatch):
+    from kb_arena.cli import _preflight
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(settings, "llm_provider", "ollama")
+    monkeypatch.setattr(settings, "embedding_provider", "openai")
+    monkeypatch.setattr(settings, "openai_api_key", "")
+
+    with pytest.raises(typer.Exit):
+        _preflight(needs_embeddings=True)
+
+
+def test_preflight_checks_openai_generation_with_local_embeddings(monkeypatch):
+    from kb_arena.cli import _preflight
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(settings, "llm_provider", "openai")
+    monkeypatch.setattr(settings, "embedding_provider", "bge")
+    monkeypatch.setattr(settings, "openai_api_key", "")
+
+    with pytest.raises(typer.Exit):
+        _preflight(needs_llm=True)
+
+
+def test_preflight_accepts_fully_local_ollama(monkeypatch):
+    from kb_arena.cli import _preflight
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(settings, "llm_provider", "ollama")
+    monkeypatch.setattr(settings, "embedding_provider", "ollama")
+    monkeypatch.setattr(settings, "openai_api_key", "")
+    monkeypatch.setattr(settings, "anthropic_api_key", "")
+
+    assert _preflight(needs_llm=True, needs_embeddings=True) is None

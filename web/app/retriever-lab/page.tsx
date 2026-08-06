@@ -208,7 +208,7 @@ export default function RetrieverLabPage() {
           Retriever Lab
         </h1>
         <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
-          Classical IR metrics — Recall@k, Precision@k, Hit@k, MRR, NDCG@k. See exactly which chunks
+          Classical IR metrics: Recall@k, Precision@k, Hit@k, MRR, NDCG@k. See exactly which chunks
           surfaced and which the strategy missed.
         </p>
       </div>
@@ -283,7 +283,7 @@ export default function RetrieverLabPage() {
       {!loading && corpusSummary && (
         <section className="space-y-3">
           <h2 className="text-lg font-semibold" style={{ color: "var(--foreground)" }}>
-            Aggregate metrics — {selectedCorpus}
+            Aggregate metrics: {selectedCorpus}
           </h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {Object.entries(corpusSummary).map(([strategy, m]) => (
@@ -312,7 +312,7 @@ export default function RetrieverLabPage() {
                 color: "var(--foreground)",
               }}
             >
-              <option value="">— pick a question to drill in —</option>
+              <option value="">Select a question to inspect</option>
               {uniqueQuestions.map((q) => (
                 <option key={q.question_id} value={q.question_id}>
                   {q.question_id}: {q.question.slice(0, 90)}

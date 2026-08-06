@@ -1,0 +1,360 @@
+- id: nist-paraphrased-001
+  tier: 2
+  type: paraphrased
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Paraphrases lockout behavior without repeating the requirement title."
+  source_anchors: [sec-sec_03.01.08]
+  question: "After repeated failed sign-ins, what kind of threshold and follow-up response does the publication call for?"
+  ground_truth:
+    answer: "Set an organization-defined limit on consecutive invalid attempts in an organization-defined period and automatically take one or more selected actions once the limit is exceeded."
+    source_refs: [nist-03.01.08]
+    required_entities: ["03.01.08", "consecutive invalid logon attempts"]
+  constraints:
+    must_mention: ["organization-defined limit", "automatically"]
+    must_not_claim: ["a universal lockout count"]
+    max_tokens: 45
+- id: nist-paraphrased-002
+  tier: 2
+  type: paraphrased
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Asks about off-site connectivity in non-title language."
+  source_anchors: [sec-sec_03.01.12]
+  question: "Before staff connect from outside the organization, what authorization and routing conditions apply?"
+  ground_truth:
+    answer: "Each allowable remote-access type is authorized before connection, and remote access is routed through authorized and managed access-control points under established restrictions and requirements."
+    source_refs: [nist-03.01.12]
+    required_entities: ["03.01.12", "remote access", "managed access control points"]
+  constraints:
+    must_mention: ["authorize", "managed access control points"]
+    must_not_claim: ["that remote work is forbidden"]
+    max_tokens: 50
+- id: nist-paraphrased-003
+  tier: 2
+  type: paraphrased
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests log-scope governance with different phrasing."
+  source_anchors: [sec-sec_03.03.01]
+  question: "How does the publication govern the selection of system activities recorded in logs?"
+  ground_truth:
+    answer: "It requires specified organization-defined event types for logging and review and update of that selection at an organization-defined frequency."
+    source_refs: [nist-03.03.01]
+    required_entities: ["03.03.01", "event types", "logging"]
+  constraints:
+    must_mention: ["event types", "organization-defined frequency"]
+    must_not_claim: ["a required set of logged events"]
+    max_tokens: 40
+- id: nist-paraphrased-004
+  tier: 2
+  type: paraphrased
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests the maintained system-state reference without title wording."
+  source_anchors: [sec-sec_03.04.01]
+  question: "What controlled record of the system's current state must be kept current when components change?"
+  ground_truth:
+    answer: "A current baseline configuration kept under configuration control, reviewed and updated at an organization-defined frequency and when components are installed or modified."
+    source_refs: [nist-03.04.01]
+    required_entities: ["03.04.01", "baseline configuration", "system components"]
+  constraints:
+    must_mention: ["baseline configuration", "configuration control"]
+    must_not_claim: ["a specific inventory format"]
+    max_tokens: 45
+- id: nist-paraphrased-005
+  tier: 3
+  type: paraphrased
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Uses a change-approval scenario while retaining the required steps."
+  source_anchors: [sec-sec_03.04.03]
+  question: "A proposed system alteration is under formal control. What sequence of governance activities is required?"
+  ground_truth:
+    answer: "Define controlled change types; review proposed changes and approve or disapprove them with explicit security-impact consideration; implement and document approved changes; then monitor and review associated activities."
+    source_refs: [nist-03.04.03]
+    required_entities: ["03.04.03", "security impacts", "approved changes"]
+  constraints:
+    must_mention: ["approve or disapprove", "security impacts", "document"]
+    must_not_claim: ["that approval is merely informal"]
+    max_tokens: 60
+- id: nist-paraphrased-006
+  tier: 1
+  type: paraphrased
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Uses elevated and ordinary accounts instead of the control title."
+  source_anchors: [sec-sec_03.05.03]
+  question: "Does the authentication requirement distinguish between administrator-level and ordinary accounts?"
+  ground_truth:
+    answer: "No. Multi-factor authentication is required for access to both privileged and non-privileged accounts."
+    source_refs: [nist-03.05.03]
+    required_entities: ["03.05.03", "multi-factor authentication", "privileged", "non-privileged"]
+  constraints:
+    must_mention: ["both privileged and non-privileged"]
+    must_not_claim: ["a prescribed factor combination"]
+    max_tokens: 30
+- id: nist-paraphrased-007
+  tier: 2
+  type: paraphrased
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Asks for the response lifecycle as an operational sequence."
+  source_anchors: [sec-sec_03.06.01]
+  question: "What stages belong in the capability for dealing with a security event?"
+  ground_truth:
+    answer: "A capability consistent with the incident response plan includes preparation, detection and analysis, containment, eradication, and recovery."
+    source_refs: [nist-03.06.01]
+    required_entities: ["03.06.01", "incident response plan", "eradication"]
+  constraints:
+    must_mention: ["preparation", "detection and analysis", "containment", "eradication", "recovery"]
+    must_not_claim: ["a required notification recipient"]
+    max_tokens: 45
+- id: nist-paraphrased-008
+  tier: 1
+  type: paraphrased
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Uses disposal and reuse scenarios rather than the requirement label."
+  source_anchors: [sec-sec_03.08.03]
+  question: "What must happen to CUI-bearing storage media before it leaves control or is reused?"
+  ground_truth:
+    answer: "It must be sanitized before disposal, release out of organizational control, or release for reuse."
+    source_refs: [nist-03.08.03]
+    required_entities: ["03.08.03", "system media", "CUI", "sanitize"]
+  constraints:
+    must_mention: ["sanitized", "before"]
+    must_not_claim: ["one mandatory sanitization technique"]
+    max_tokens: 30
+- id: nist-paraphrased-009
+  tier: 2
+  type: paraphrased
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests offboarding actions using a personnel scenario."
+  source_anchors: [sec-sec_03.09.02]
+  question: "When a worker leaves, what must happen to access, credentials, and security-related property?"
+  ground_truth:
+    answer: "Disable system access within an organization-defined period, terminate or revoke associated authenticators and credentials, and retrieve security-related system property."
+    source_refs: [nist-03.09.02]
+    required_entities: ["03.09.02", "system access", "credentials", "security-related system property"]
+  constraints:
+    must_mention: ["disable", "revoke", "retrieve"]
+    must_not_claim: ["a prescribed number of hours"]
+    max_tokens: 45
+- id: nist-paraphrased-010
+  tier: 2
+  type: paraphrased
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Reframes facility protection around evidence and incident response."
+  source_anchors: [sec-sec_03.10.02]
+  question: "How should access to the building that hosts the system be observed and reviewed?"
+  ground_truth:
+    answer: "Monitor physical access to detect and respond to physical security incidents, and review physical-access logs at an organization-defined frequency and when specified events or indications occur."
+    source_refs: [nist-03.10.02]
+    required_entities: ["03.10.02", "physical access", "physical access logs"]
+  constraints:
+    must_mention: ["monitor", "physical access logs"]
+    must_not_claim: ["a named monitoring technology"]
+    max_tokens: 50
+- id: nist-paraphrased-011
+  tier: 3
+  type: paraphrased
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests vulnerability lifecycle rather than a scanner product."
+  source_anchors: [sec-sec_03.11.02]
+  question: "When new weaknesses affecting a system become known, what recurring detection and correction work is expected?"
+  ground_truth:
+    answer: "Monitor and scan at organization-defined intervals and when relevant vulnerabilities are identified, remediate within organization-defined response times, and update the vulnerabilities to be scanned at an organization-defined frequency and when new ones are reported."
+    source_refs: [nist-03.11.02]
+    required_entities: ["03.11.02", "vulnerabilities", "scan", "remediate"]
+  constraints:
+    must_mention: ["scan", "remediate", "update"]
+    must_not_claim: ["a vendor or scan cadence"]
+    max_tokens: 65
+- id: nist-paraphrased-012
+  tier: 3
+  type: paraphrased
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Asks about remediation tracking from assessment sources."
+  source_anchors: [sec-sec_03.12.02]
+  question: "Which record tracks fixes for assessed weaknesses, and what findings refresh it?"
+  ground_truth:
+    answer: "The plan of action and milestones documents planned remediation and vulnerability reduction or elimination; it is updated from security assessments, audits or reviews, and continuous monitoring activities."
+    source_refs: [nist-03.12.02]
+    required_entities: ["03.12.02", "plan of action and milestones", "continuous monitoring"]
+  constraints:
+    must_mention: ["plan of action and milestones", "security assessments", "continuous monitoring"]
+    must_not_claim: ["that all weaknesses are immediately fixed"]
+    max_tokens: 55
+- id: nist-paraphrased-013
+  tier: 3
+  type: paraphrased
+  hops: 1
+  split: validation
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Reframes boundary protection around connections and network separation."
+  source_anchors: [sec-sec_03.13.01]
+  question: "How should a system separate public-facing components and connect to outside systems?"
+  ground_truth:
+    answer: "Publicly accessible components use subnetworks physically or logically separated from internal networks, and connections to external systems use managed interfaces with boundary-protection devices arranged under the organizational security architecture."
+    source_refs: [nist-03.13.01]
+    required_entities: ["03.13.01", "publicly accessible system components", "managed interfaces", "boundary protection devices"]
+  constraints:
+    must_mention: ["separated from internal networks", "managed interfaces"]
+    must_not_claim: ["that a particular firewall is required"]
+    max_tokens: 60
+- id: nist-paraphrased-014
+  tier: 1
+  type: paraphrased
+  hops: 1
+  split: validation
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests protected data at rest and in motion."
+  source_anchors: [sec-sec_03.13.08]
+  question: "What disclosure risk must cryptographic safeguards address for data at rest and in transit?"
+  ground_truth:
+    answer: "They prevent unauthorized disclosure of CUI during transmission and while in storage."
+    source_refs: [nist-03.13.08]
+    required_entities: ["03.13.08", "unauthorized disclosure", "CUI"]
+  constraints:
+    must_mention: ["unauthorized disclosure", "transmission", "storage"]
+    must_not_claim: ["a specific cipher"]
+    max_tokens: 30
+- id: nist-paraphrased-015
+  tier: 2
+  type: paraphrased
+  hops: 1
+  split: validation
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests the flexible cryptography selection rather than naming an algorithm."
+  source_anchors: [sec-sec_03.13.11]
+  question: "Who determines the kinds of cryptography used to keep CUI confidential under this requirement?"
+  ground_truth:
+    answer: "The requirement calls for organization-defined types of cryptography to protect the confidentiality of CUI."
+    source_refs: [nist-03.13.11]
+    required_entities: ["03.13.11", "organization-defined types of cryptography", "CUI"]
+  constraints:
+    must_mention: ["organization-defined", "cryptography"]
+    must_not_claim: ["that NIST specifies an algorithm here"]
+    max_tokens: 30
+- id: nist-paraphrased-016
+  tier: 2
+  type: paraphrased
+  hops: 1
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Asks about the defect-to-update workflow without repeating its title."
+  source_anchors: [sec-sec_03.14.01]
+  question: "What is required after a system defect is found, and how are security-relevant releases handled?"
+  ground_truth:
+    answer: "Identify, report, and correct system flaws, and install security-relevant software and firmware updates within an organization-defined period after release."
+    source_refs: [nist-03.14.01]
+    required_entities: ["03.14.01", "system flaws", "security-relevant updates"]
+  constraints:
+    must_mention: ["identify", "report", "correct", "install"]
+    must_not_claim: ["an exact release-to-install duration"]
+    max_tokens: 45
+- id: nist-paraphrased-017
+  tier: 2
+  type: paraphrased
+  hops: 1
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Uses organizational communication language for the policy requirement."
+  source_anchors: [sec-sec_03.15.01]
+  question: "How must an organization make its CUI-protection rules available and keep them current?"
+  ground_truth:
+    answer: "Develop and document the policies and procedures, disseminate them to organizational personnel or roles, and review and update them at an organization-defined frequency."
+    source_refs: [nist-03.15.01]
+    required_entities: ["03.15.01", "policies and procedures", "organizational personnel or roles"]
+  constraints:
+    must_mention: ["disseminate", "review and update"]
+    must_not_claim: ["a mandatory publication channel"]
+    max_tokens: 45
+- id: nist-paraphrased-018
+  tier: 3
+  type: paraphrased
+  hops: 1
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests plan content and confidentiality in scenario-neutral language."
+  source_anchors: [sec-sec_03.15.02]
+  question: "Which system context, responsibilities, and protections belong in the documented security plan?"
+  ground_truth:
+    answer: "The plan defines components and information types; describes relevant threats, environment, dependencies, requirements, safeguards, and responsible individuals; is reviewed and updated at an organization-defined frequency; and is protected from unauthorized disclosure."
+    source_refs: [nist-03.15.02]
+    required_entities: ["03.15.02", "system security plan", "system components", "safeguards"]
+  constraints:
+    must_mention: ["components", "threats", "safeguards", "unauthorized disclosure"]
+    must_not_claim: ["that it is a generic corporate policy"]
+    max_tokens: 70
+- id: nist-paraphrased-019
+  tier: 2
+  type: paraphrased
+  hops: 1
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Uses design-change language for the engineering-principles control."
+  source_anchors: [sec-sec_03.16.01]
+  question: "At what point in building or changing a system should the organization-defined security engineering principles be used?"
+  ground_truth:
+    answer: "During development or modification of the system and its components."
+    source_refs: [nist-03.16.01]
+    required_entities: ["03.16.01", "systems security engineering principles", "system components"]
+  constraints:
+    must_mention: ["development or modification"]
+    must_not_claim: ["a named lifecycle model"]
+    max_tokens: 25
+- id: nist-paraphrased-020
+  tier: 3
+  type: paraphrased
+  hops: 1
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Covers the full supply-chain lifecycle in different wording."
+  source_anchors: [sec-sec_03.17.01]
+  question: "Across which lifecycle activities must the organization manage supplier-related system risk, and what safeguards apply to that plan?"
+  ground_truth:
+    answer: "Manage supply-chain risks across research and development, design, manufacturing, acquisition, delivery, integration, operations, maintenance, and disposal; review and update the plan at an organization-defined frequency and protect it from unauthorized disclosure."
+    source_refs: [nist-03.17.01]
+    required_entities: ["03.17.01", "supply chain risk management plan", "research and development", "disposal"]
+  constraints:
+    must_mention: ["supply-chain risks", "review and update", "unauthorized disclosure"]
+    must_not_claim: ["a particular supplier audit requirement"]
+    max_tokens: 70

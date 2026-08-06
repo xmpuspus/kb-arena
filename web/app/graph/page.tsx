@@ -176,8 +176,8 @@ export default function GraphPage() {
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--foreground)" }}>
             Knowledge graph
           </h1>
@@ -185,7 +185,7 @@ export default function GraphPage() {
             Explore the entity dependency graph extracted from your documentation. Hover to highlight neighbors, drag to pan, scroll to zoom, double-click to focus.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:shrink-0">
           <select
             value={corpus}
             onChange={(e) => setCorpus(e.target.value)}
@@ -217,7 +217,7 @@ export default function GraphPage() {
           className="px-3 py-2 rounded-lg text-xs"
           style={{ background: "var(--border)", color: "var(--muted)" }}
         >
-          Showing sample data — Neo4j not connected. Run <code className="mono">docker compose up -d neo4j</code> and <code className="mono">kb-arena build-graph --corpus {corpus}</code> to see your real graph.
+          Showing sample data because Neo4j is not connected. Run <code className="mono">docker compose up -d neo4j</code> and <code className="mono">kb-arena build-graph --corpus {corpus}</code> to see your graph.
         </div>
       )}
 
@@ -276,7 +276,7 @@ export default function GraphPage() {
         <h3 className="text-sm font-semibold mb-2" style={{ color: "var(--foreground)" }}>About the graph</h3>
         <p className="text-xs leading-relaxed" style={{ color: "var(--muted)" }}>
           The knowledge graph is built by the LLM entity extractor during <code className="mono">kb-arena build-graph</code>.
-          Entities and relationships are extracted using a universal schema — Topics, Components, Processes, Configs,
+          Entities and relationships use a shared schema: Topics, Components, Processes, Configs,
           and Constraints, connected by DEPENDS_ON, CONTAINS, CONNECTS_TO, TRIGGERS, CONFIGURES, ALTERNATIVE_TO,
           and EXTENDS relationships. The graph is stored in Neo4j and queried with Cypher templates matched to question intent.
         </p>

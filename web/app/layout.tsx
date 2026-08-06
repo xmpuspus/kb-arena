@@ -4,9 +4,9 @@ import Nav from "@/components/Nav";
 import ClientErrorBoundary from "@/components/ClientErrorBoundary";
 
 export const metadata: Metadata = {
-  title: "KB Arena — Knowledge Base Benchmark",
+  title: "KB Arena | Retrieval Architecture Decision Lab",
   description:
-    "Benchmark 8 retrieval strategies on your documentation. Find which KB architecture works best for your data.",
+    "Compare retrieval architectures on your documentation with reproducible quality, latency, cost, and reliability evidence.",
 };
 
 export default function RootLayout({
@@ -21,16 +21,16 @@ export default function RootLayout({
         </main>
         <footer className="border-t mt-16 py-8 text-center text-sm" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
           <a
-            href="https://github.com/xavier/kb-arena"
+            href="https://github.com/xmpuspus/kb-arena"
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:opacity-70 transition-opacity"
+            className="inline-flex min-h-11 items-center px-2 hover:opacity-70 transition-opacity"
             style={{ color: "var(--accent)" }}
           >
             GitHub
           </a>
           <span className="mx-2">·</span>
-          <span>KB Arena — Knowledge Base Benchmark</span>
+          <span>KB Arena | Retrieval Architecture Decision Lab</span>
         </footer>
       </body>
     </html>

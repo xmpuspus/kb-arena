@@ -1,0 +1,379 @@
+- id: "nist-scenario-001"
+  tier: 2
+  type: scenario
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests account disablement when a user's organizational relationship ends."
+  source_anchors: ["sec-sec_03.01.01"]
+  question: "A contractor's engagement ends and their system account remains active. What account-management actions does 03.01.01 address?"
+  ground_truth:
+    answer: "03.01.01 requires accounts to be disabled when they are no longer associated with a user or individual, and requires notification to account managers and designated personnel within organization-defined periods when users are terminated or transferred."
+    source_refs: ["nist-03.01.01"]
+    required_entities: ["system account", "account managers", "terminated or transferred"]
+  constraints:
+    must_mention: ["disable", "terminated or transferred"]
+    must_not_claim: ["accounts may remain active indefinitely"]
+    max_tokens: 100
+
+- id: "nist-scenario-002"
+  tier: 2
+  type: scenario
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests logical-access enforcement for a requested CUI resource."
+  source_anchors: ["sec-sec_03.01.02"]
+  question: "A user requests access to a CUI repository. What does 03.01.02 require the system to enforce before granting logical access?"
+  ground_truth:
+    answer: "03.01.02 requires enforcement of approved authorizations for logical access to CUI and system resources in accordance with applicable access control policies."
+    source_refs: ["nist-03.01.02"]
+    required_entities: ["approved authorizations", "logical access", "CUI"]
+  constraints:
+    must_mention: ["approved authorizations"]
+    must_not_claim: ["any authenticated user may access CUI"]
+    max_tokens: 80
+
+- id: "nist-scenario-003"
+  tier: 3
+  type: scenario
+  hops: 2
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests least privilege and privileged-account separation."
+  source_anchors: ["sec-sec_03.01.05", "sec-sec_03.01.06"]
+  question: "An administrator uses an elevated account to read ordinary project documents and retains unused privileges. Which access-control requirements apply?"
+  ground_truth:
+    answer: "03.01.05 requires only access needed for assigned tasks and periodic review with reassignment or removal of unnecessary privileges. 03.01.06 restricts privileged accounts to organization-defined personnel or roles and requires their users to use non-privileged accounts for non-security functions or information."
+    source_refs: ["nist-03.01.05", "nist-03.01.06"]
+    required_entities: ["least privilege", "privileged accounts", "non-privileged accounts"]
+  constraints:
+    must_mention: ["remove privileges", "non-privileged accounts"]
+    must_not_claim: ["privileged accounts are required for ordinary documents"]
+    max_tokens: 130
+
+- id: "nist-scenario-004"
+  tier: 2
+  type: scenario
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests automatic session termination without inventing a time value."
+  source_anchors: ["sec-sec_03.01.11"]
+  question: "A remote user leaves a session open. What does 03.01.11 require for session termination?"
+  ground_truth:
+    answer: "03.01.11 requires automatic termination of a user session after organization-defined conditions or trigger events requiring session disconnect."
+    source_refs: ["nist-03.01.11"]
+    required_entities: ["user session", "automatic termination", "trigger events"]
+  constraints:
+    must_mention: ["automatic", "organization-defined"]
+    must_not_claim: ["a fixed NIST timeout value"]
+    max_tokens: 75
+
+- id: "nist-scenario-005"
+  tier: 2
+  type: scenario
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests wireless authorization, disabled capability, authentication, and encryption."
+  source_anchors: ["sec-sec_03.01.16"]
+  question: "A laptop with unused Wi-Fi capability is issued to a user, and a new wireless connection is proposed. What does 03.01.16 cover?"
+  ground_truth:
+    answer: "03.01.16 requires usage, configuration, and connection requirements for each wireless type; authorization before connection; disabling unused wireless capability before issuance and deployment; and protection of wireless access with authentication and encryption."
+    source_refs: ["nist-03.01.16"]
+    required_entities: ["wireless access", "authorization", "authentication", "encryption"]
+  constraints:
+    must_mention: ["authorize", "disable"]
+    must_not_claim: ["wireless access needs no encryption"]
+    max_tokens: 110
+
+- id: "nist-scenario-006"
+  tier: 2
+  type: scenario
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests training after a system change and social-engineering reporting."
+  source_anchors: ["sec-sec_03.02.01"]
+  question: "After a system change, users need updated security instruction and phishing-reporting guidance. What does 03.02.01 require?"
+  ground_truth:
+    answer: "03.02.01 requires security literacy training for new users and at organization-defined intervals, when required by system changes or defined events, and on recognizing and reporting insider-threat, social-engineering, and social-mining indicators. It also requires training content updates at organization-defined intervals and after defined events."
+    source_refs: ["nist-03.02.01"]
+    required_entities: ["security literacy training", "system changes", "social engineering"]
+  constraints:
+    must_mention: ["system changes", "reporting"]
+    must_not_claim: ["training occurs only at hire"]
+    max_tokens: 120
+
+- id: "nist-scenario-007"
+  tier: 3
+  type: scenario
+  hops: 2
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests audit event selection, record content, generation, and retention."
+  source_anchors: ["sec-sec_03.03.01", "sec-sec_03.03.02", "sec-sec_03.03.03"]
+  question: "A service logs only an event name and time. What audit requirements describe the missing content and the logging process?"
+  ground_truth:
+    answer: "03.03.01 requires organization-defined event types to be selected and reviewed. 03.03.02 requires audit records to include event type, time, location, source, outcome, and associated identities or entities. 03.03.03 requires generation of records for the selected types and content, with retention consistent with records policy."
+    source_refs: ["nist-03.03.01", "nist-03.03.02", "nist-03.03.03"]
+    required_entities: ["audit records", "event type", "source", "outcome"]
+  constraints:
+    must_mention: ["source", "outcome", "retain"]
+    must_not_claim: ["an event name and time alone meet all audit content"]
+    max_tokens: 145
+
+- id: "nist-scenario-008"
+  tier: 3
+  type: scenario
+  hops: 2
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests baseline configuration and security-impact approval for a change."
+  source_anchors: ["sec-sec_03.04.01", "sec-sec_03.04.03"]
+  question: "A team plans to install a new system component. What configuration-management requirements apply before and after the change?"
+  ground_truth:
+    answer: "03.04.01 requires a current baseline configuration under configuration control and its review and update when components are installed or modified. 03.04.03 requires defined configuration-controlled change types, review and approval or disapproval with explicit security-impact consideration, implementation and documentation of approved changes, and monitoring and review of related activities."
+    source_refs: ["nist-03.04.01", "nist-03.04.03"]
+    required_entities: ["baseline configuration", "security impacts", "approved changes"]
+  constraints:
+    must_mention: ["baseline configuration", "security impacts"]
+    must_not_claim: ["all changes may proceed without approval"]
+    max_tokens: 145
+
+- id: "nist-scenario-009"
+  tier: 2
+  type: scenario
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests identity association and reauthentication conditions."
+  source_anchors: ["sec-sec_03.05.01"]
+  question: "A background process acts for a signed-in user. What identity and authentication requirement does 03.05.01 state?"
+  ground_truth:
+    answer: "03.05.01 requires unique identification and authentication of system users and association of that unique identity with processes acting for those users. It also requires reauthentication in organization-defined circumstances or situations."
+    source_refs: ["nist-03.05.01"]
+    required_entities: ["unique identification", "authentication", "processes"]
+  constraints:
+    must_mention: ["unique", "processes"]
+    must_not_claim: ["processes need no user identity association"]
+    max_tokens: 95
+
+- id: "nist-scenario-010"
+  tier: 2
+  type: scenario
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests the stated MFA scope for both account classes."
+  source_anchors: ["sec-sec_03.05.03"]
+  question: "A program proposes multi-factor authentication only for administrators. What account scope does 03.05.03 state?"
+  ground_truth:
+    answer: "03.05.03 requires multi-factor authentication for access to both privileged and non-privileged accounts."
+    source_refs: ["nist-03.05.03"]
+    required_entities: ["multi-factor authentication", "privileged accounts", "non-privileged accounts"]
+  constraints:
+    must_mention: ["privileged", "non-privileged"]
+    must_not_claim: ["MFA applies only to administrators"]
+    max_tokens: 70
+
+- id: "nist-scenario-011"
+  tier: 2
+  type: scenario
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests the named incident-handling lifecycle elements."
+  source_anchors: ["sec-sec_03.06.01"]
+  question: "An incident team detects malicious activity and asks what phases its capability must include. What does 03.06.01 list?"
+  ground_truth:
+    answer: "03.06.01 requires an incident-handling capability consistent with the incident response plan that includes preparation, detection and analysis, containment, eradication, and recovery."
+    source_refs: ["nist-03.06.01"]
+    required_entities: ["incident-handling capability", "containment", "eradication", "recovery"]
+  constraints:
+    must_mention: ["detection and analysis", "recovery"]
+    must_not_claim: ["incident handling ends at detection"]
+    max_tokens: 90
+
+- id: "nist-scenario-012"
+  tier: 3
+  type: scenario
+  hops: 2
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests physical storage and role-based media access."
+  source_anchors: ["sec-sec_03.08.01", "sec-sec_03.08.02"]
+  question: "Removable media containing CUI is stored in an office. What media-protection requirements govern storage and access?"
+  ground_truth:
+    answer: "03.08.01 requires physical control and secure storage of system media containing CUI. 03.08.02 requires access to CUI on system media to be restricted to authorized personnel or roles."
+    source_refs: ["nist-03.08.01", "nist-03.08.02"]
+    required_entities: ["system media", "CUI", "authorized personnel or roles"]
+  constraints:
+    must_mention: ["securely store", "authorized"]
+    must_not_claim: ["all office staff may access CUI media"]
+    max_tokens: 95
+
+- id: "nist-scenario-013"
+  tier: 2
+  type: scenario
+  hops: 1
+  split: validation
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests media sanitization at disposal, release, and reuse boundaries."
+  source_anchors: ["sec-sec_03.08.03"]
+  question: "A drive with CUI will be reused by another team rather than discarded. What does 03.08.03 require before reuse?"
+  ground_truth:
+    answer: "03.08.03 requires sanitization of system media containing CUI before disposal, release out of organizational control, or release for reuse."
+    source_refs: ["nist-03.08.03"]
+    required_entities: ["sanitize", "system media", "CUI"]
+  constraints:
+    must_mention: ["sanitize", "reuse"]
+    must_not_claim: ["sanitization is required only for disposal"]
+    max_tokens: 75
+
+- id: "nist-scenario-014"
+  tier: 2
+  type: scenario
+  hops: 1
+  split: validation
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests transport protection, accountability, and documentation."
+  source_anchors: ["sec-sec_03.08.05"]
+  question: "CUI media is sent by courier outside a controlled area. What does 03.08.05 require during that transport?"
+  ground_truth:
+    answer: "03.08.05 requires protection and control of CUI media during transport outside controlled areas, accountability for the media during that transport, and documentation of transport activities."
+    source_refs: ["nist-03.08.05"]
+    required_entities: ["transport", "accountability", "documentation"]
+  constraints:
+    must_mention: ["accountability", "document"]
+    must_not_claim: ["transport activities need not be documented"]
+    max_tokens: 90
+
+- id: "nist-scenario-015"
+  tier: 2
+  type: scenario
+  hops: 1
+  split: validation
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests initial screening and conditional rescreening."
+  source_anchors: ["sec-sec_03.09.01"]
+  question: "A person seeks system access and later meets a defined rescreening condition. What does 03.09.01 state?"
+  ground_truth:
+    answer: "03.09.01 requires screening individuals before authorizing system access and rescreening them under organization-defined conditions requiring rescreening."
+    source_refs: ["nist-03.09.01"]
+    required_entities: ["screen individuals", "authorize access", "rescreening"]
+  constraints:
+    must_mention: ["before authorizing", "rescreen"]
+    must_not_claim: ["screening is optional before access"]
+    max_tokens: 80
+
+- id: "nist-scenario-016"
+  tier: 3
+  type: scenario
+  hops: 2
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests vulnerability scanning, remediation timing, and risk assessment."
+  source_anchors: ["sec-sec_03.11.01", "sec-sec_03.11.02"]
+  question: "A new vulnerability affects a system that processes CUI. What do 03.11.01 and 03.11.02 require the organization to address?"
+  ground_truth:
+    answer: "03.11.01 requires assessment of unauthorized-disclosure risk, including supply chain risk, from CUI processing, storage, or transmission, with organization-defined assessment updates. 03.11.02 requires vulnerability monitoring and scanning at organization-defined intervals and when new affecting vulnerabilities are identified, remediation within organization-defined response times, and updates to what is scanned."
+    source_refs: ["nist-03.11.01", "nist-03.11.02"]
+    required_entities: ["risk assessment", "vulnerabilities", "remediate"]
+  constraints:
+    must_mention: ["new vulnerabilities", "organization-defined response times"]
+    must_not_claim: ["NIST sets one universal remediation deadline"]
+    max_tokens: 145
+
+- id: "nist-scenario-017"
+  tier: 2
+  type: scenario
+  hops: 1
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests assessment of system and environment security requirements."
+  source_anchors: ["sec-sec_03.12.01"]
+  question: "A system assessment is planned. What does 03.12.01 require the assessment to determine?"
+  ground_truth:
+    answer: "03.12.01 requires assessment of security requirements for the system and its environment of operation at an organization-defined frequency to determine whether the requirements have been satisfied."
+    source_refs: ["nist-03.12.01"]
+    required_entities: ["security requirements", "environment of operation", "satisfied"]
+  constraints:
+    must_mention: ["environment of operation", "satisfied"]
+    must_not_claim: ["assessments cover only software"]
+    max_tokens: 85
+
+- id: "nist-scenario-018"
+  tier: 3
+  type: scenario
+  hops: 2
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests managed interfaces and separated public components."
+  source_anchors: ["sec-sec_03.13.01"]
+  question: "A public-facing component needs to communicate with an internal system and an external service. What boundary conditions does 03.13.01 state?"
+  ground_truth:
+    answer: "03.13.01 requires monitoring and control at external managed interfaces and key internal managed interfaces. It requires publicly accessible components to use subnetworks physically or logically separated from internal networks, and external connections only through managed interfaces with boundary protection devices arranged under an organizational security architecture."
+    source_refs: ["nist-03.13.01"]
+    required_entities: ["managed interfaces", "publicly accessible", "boundary protection devices"]
+  constraints:
+    must_mention: ["separated", "managed interfaces"]
+    must_not_claim: ["public components must share the internal network"]
+    max_tokens: 135
+
+- id: "nist-scenario-019"
+  tier: 3
+  type: scenario
+  hops: 2
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests cryptographic protection of CUI in transmission and storage."
+  source_anchors: ["sec-sec_03.13.08", "sec-sec_03.13.11"]
+  question: "A team protects CUI only while it travels over a network. What do 03.13.08 and 03.13.11 state about confidentiality protection?"
+  ground_truth:
+    answer: "03.13.08 requires cryptographic mechanisms to prevent unauthorized CUI disclosure during transmission and while in storage. 03.13.11 requires organization-defined types of cryptography to protect CUI confidentiality."
+    source_refs: ["nist-03.13.08", "nist-03.13.11"]
+    required_entities: ["cryptographic mechanisms", "transmission", "storage", "confidentiality"]
+  constraints:
+    must_mention: ["while in storage", "organization-defined"]
+    must_not_claim: ["cryptography is required only in transit"]
+    max_tokens: 100
+
+- id: "nist-scenario-020"
+  tier: 3
+  type: scenario
+  hops: 2
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests flaw correction and malicious-code protection at entry and exit points."
+  source_anchors: ["sec-sec_03.14.01", "sec-sec_03.14.02"]
+  question: "A security-relevant firmware update is released while downloaded external files enter the system. What do 03.14.01 and 03.14.02 require?"
+  ground_truth:
+    answer: "03.14.01 requires identification, reporting, and correction of system flaws and installation of security-relevant software and firmware updates within organization-defined periods after release. 03.14.02 requires malicious-code protection at system entry and exit points, updates to that protection, scans at organization-defined frequency and real-time scanning of external files as downloaded, opened, or executed, plus blocking, quarantine, or other mitigation after detection."
+    source_refs: ["nist-03.14.01", "nist-03.14.02"]
+    required_entities: ["system flaws", "firmware updates", "malicious code", "external files"]
+  constraints:
+    must_mention: ["security-relevant", "real-time scans"]
+    must_not_claim: ["NIST sets a fixed update deadline"]
+    max_tokens: 155

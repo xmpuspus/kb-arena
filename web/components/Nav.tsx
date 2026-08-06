@@ -25,7 +25,7 @@ export default function Nav() {
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-8">
-          <Link href="/" className="font-bold text-lg tracking-tight" style={{ color: "var(--foreground)" }}>
+          <Link href="/" className="inline-flex min-h-11 items-center font-bold text-lg tracking-tight" style={{ color: "var(--foreground)" }}>
             KB Arena
           </Link>
           <div className="hidden sm:flex items-center gap-1">
@@ -48,7 +48,7 @@ export default function Nav() {
           </div>
         </div>
         <button
-          className="sm:hidden p-2 rounded"
+          className="sm:hidden min-h-11 min-w-11 p-2 rounded"
           style={{ color: "var(--muted)" }}
           onClick={() => setOpen(!open)}
           aria-label="Toggle navigation"
@@ -71,7 +71,7 @@ export default function Nav() {
                 key={l.href}
                 href={l.href}
                 onClick={() => setOpen(false)}
-                className="text-sm px-3 py-2 rounded transition-colors"
+                className="flex min-h-11 items-center text-sm px-3 py-2 rounded transition-colors"
                 style={{
                   color: active ? "var(--accent)" : "var(--muted)",
                   background: active ? "var(--background)" : "transparent",

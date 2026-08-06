@@ -21,6 +21,69 @@ interface Props {
 }
 
 type SortKey = "strategy" | "avg" | "latencyMs" | "costUsd" | `tier${number}`;
+type SortDirection = "asc" | "desc";
+
+interface SortableHeaderProps {
+  column: SortKey;
+  label: string;
+  sortKey: SortKey;
+  sortDirection: SortDirection;
+  onSort: (key: SortKey) => void;
+}
+
+function SortableHeader({
+  column,
+  label,
+  sortKey,
+  sortDirection,
+  onSort,
+}: SortableHeaderProps) {
+  const active = sortKey === column;
+  return (
+    <th
+      onClick={() => onSort(column)}
+      className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap"
+      style={{ color: active ? "var(--accent)" : "var(--muted)" }}
+      aria-sort={active ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}
+    >
+      {label} {active ? (sortDirection === "asc" ? "^" : "v") : ""}
+    </th>
+  );
+}
+
+interface TierHeaderProps extends Omit<SortableHeaderProps, "column" | "label"> {
+  tierNumber: number;
+}
+
+function TierHeader({
+  tierNumber,
+  sortKey,
+  sortDirection,
+  onSort,
+}: TierHeaderProps) {
+  const column = `tier${tierNumber}` as SortKey;
+  const active = sortKey === column;
+  const info = TIER_INFO[tierNumber];
+  return (
+    <th
+      onClick={() => onSort(column)}
+      className="px-3 py-2 text-center cursor-pointer select-none"
+      style={{ color: active ? "var(--accent)" : "var(--muted)" }}
+      aria-sort={active ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <div
+        className="text-[10px] font-medium uppercase tracking-wider"
+        style={{ color: "var(--muted)", opacity: 0.7 }}
+      >
+        Tier {tierNumber} {active ? (sortDirection === "asc" ? "^" : "v") : ""}
+      </div>
+      <div className="text-xs font-semibold flex items-center justify-center gap-0.5">
+        {info?.label ?? `T${tierNumber}`}
+        {info && <InfoTip text={info.description} />}
+      </div>
+    </th>
+  );
+}
 
 function avg(tiers: number[]) {
   return tiers.reduce((a, b) => a + b, 0) / tiers.length;
@@ -34,7 +97,7 @@ function accuracyColor(val: number) {
 
 export default function BenchmarkTable({ rows }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("avg");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [sortDir, setSortDir] = useState<SortDirection>("desc");
 
   function handleSort(key: SortKey) {
     if (sortKey === key) {
@@ -71,55 +134,18 @@ export default function BenchmarkTable({ rows }: Props) {
 
   const tierCount = rows[0]?.tiers.length ?? 5;
 
-  function Th({ k, label }: { k: SortKey; label: string }) {
-    const active = sortKey === k;
-    return (
-      <th
-        onClick={() => handleSort(k)}
-        className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap"
-        style={{ color: active ? "var(--accent)" : "var(--muted)" }}
-      >
-        {label} {active ? (sortDir === "asc" ? "\u2191" : "\u2193") : ""}
-      </th>
-    );
-  }
-
-  function TierTh({ tierNum }: { tierNum: number }) {
-    const k = `tier${tierNum}` as SortKey;
-    const active = sortKey === k;
-    const info = TIER_INFO[tierNum];
-    return (
-      <th
-        onClick={() => handleSort(k)}
-        className="px-3 py-2 text-center cursor-pointer select-none"
-        style={{ color: active ? "var(--accent)" : "var(--muted)" }}
-      >
-        <div
-          className="text-[10px] font-medium uppercase tracking-wider"
-          style={{ color: "var(--muted)", opacity: 0.7 }}
-        >
-          Tier {tierNum} {active ? (sortDir === "asc" ? "\u2191" : "\u2193") : ""}
-        </div>
-        <div className="text-xs font-semibold flex items-center justify-center gap-0.5">
-          {info?.label ?? `T${tierNum}`}
-          {info && <InfoTip text={info.description} />}
-        </div>
-      </th>
-    );
-  }
-
   return (
     <div className="overflow-x-auto rounded-lg border" style={{ borderColor: "var(--border)" }}>
       <table className="w-full text-sm border-collapse">
         <thead>
           <tr style={{ background: "var(--background)", borderBottom: "2px solid var(--border)" }}>
-            <Th k="strategy" label="Strategy" />
+            <SortableHeader column="strategy" label="Strategy" sortKey={sortKey} sortDirection={sortDir} onSort={handleSort} />
             {Array.from({ length: tierCount }, (_, i) => (
-              <TierTh key={i} tierNum={i + 1} />
+              <TierHeader key={i} tierNumber={i + 1} sortKey={sortKey} sortDirection={sortDir} onSort={handleSort} />
             ))}
-            <Th k="avg" label="Avg %" />
-            <Th k="latencyMs" label="Latency" />
-            <Th k="costUsd" label="Cost/Q" />
+            <SortableHeader column="avg" label="Avg %" sortKey={sortKey} sortDirection={sortDir} onSort={handleSort} />
+            <SortableHeader column="latencyMs" label="Latency" sortKey={sortKey} sortDirection={sortDir} onSort={handleSort} />
+            <SortableHeader column="costUsd" label="Cost/Q" sortKey={sortKey} sortDirection={sortDir} onSort={handleSort} />
           </tr>
         </thead>
         <tbody>

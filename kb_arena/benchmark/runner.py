@@ -26,21 +26,11 @@ from kb_arena.models.benchmark import (
 )
 from kb_arena.settings import settings
 from kb_arena.strategies.base import Strategy
+from kb_arena.strategies.catalog import default_strategy_names
 
 console = Console()
 
-STRATEGY_NAMES = [
-    "naive_vector",
-    "contextual_vector",
-    "qna_pairs",
-    "knowledge_graph",
-    "hybrid",
-    "raptor",
-    "pageindex",
-    "bm25",
-    "rerank_vector",
-    "qiss",
-]
+STRATEGY_NAMES = list(default_strategy_names())
 # Note: `sqr` is intentionally NOT in the default "all" set — it needs the
 # optional [quantum] extra (qiskit/qiskit-aer/scikit-learn). Run it explicitly
 # with `--strategies sqr`; get_strategy("sqr") raises a clear install hint when

@@ -75,9 +75,7 @@ def app_client():
         settings.demo_mode = prior_demo_mode
 
 
-# ---------------------------------------------------------------------------
 # GET /health
-# ---------------------------------------------------------------------------
 
 
 def test_health_returns_200(app_client):
@@ -109,9 +107,47 @@ def test_health_lists_strategies(app_client):
     assert "hybrid" in data["strategies"]
 
 
-# ---------------------------------------------------------------------------
+def test_demo_lifespan_skips_external_clients_and_disables_chroma_telemetry(monkeypatch):
+    import os
+
+    import chromadb
+    import neo4j
+
+    from kb_arena.chatbot.api import app
+    from kb_arena.llm import client as llm_client_module
+    from kb_arena.settings import settings
+
+    captured: dict = {"llm_initialized": False}
+
+    def fake_persistent_client(*args, **kwargs):
+        captured.update(kwargs)
+        captured["anonymized_telemetry"] = os.environ.get("ANONYMIZED_TELEMETRY")
+        return MagicMock()
+
+    def fail_if_neo4j_connects(*args, **kwargs):
+        raise AssertionError("demo mode must not connect to Neo4j")
+
+    def record_llm_initialization(*args, **kwargs):
+        captured["llm_initialized"] = True
+        return MagicMock()
+
+    prior_demo_mode = settings.demo_mode
+    monkeypatch.setattr(settings, "demo_mode", True)
+    monkeypatch.setattr(chromadb, "PersistentClient", fake_persistent_client)
+    monkeypatch.setattr(neo4j.AsyncGraphDatabase, "driver", fail_if_neo4j_connects)
+    monkeypatch.setattr(llm_client_module, "LLMClient", record_llm_initialization)
+
+    try:
+        with TestClient(app):
+            assert "qiss" in app.state.strategies
+    finally:
+        settings.demo_mode = prior_demo_mode
+
+    assert captured["anonymized_telemetry"] == "False"
+    assert captured["llm_initialized"] is False
+
+
 # GET /strategies
-# ---------------------------------------------------------------------------
 
 
 def test_strategies_returns_200(app_client):
@@ -131,9 +167,19 @@ def test_strategies_returns_all_five(app_client):
     assert "hybrid" in names
 
 
-# ---------------------------------------------------------------------------
-# POST /chat — happy path
-# ---------------------------------------------------------------------------
+def test_strategies_returns_full_catalog_with_runtime_status(app_client):
+    data = app_client.get("/strategies").json()
+
+    assert len(data["catalog"]) == 11
+    by_name = {record["name"]: record for record in data["catalog"]}
+    assert by_name["naive_vector"]["status"] == "loaded"
+    assert by_name["bm25"]["status"] == "unavailable"
+    assert by_name["qiss"]["experimental"] is True
+    assert by_name["sqr"]["optional_extra"] == "quantum"
+    assert by_name["sqr"]["default_benchmark"] is False
+
+
+# POST /chat happy path
 
 
 def test_chat_returns_200(app_client):
@@ -201,9 +247,7 @@ def test_chat_default_strategy_is_hybrid(app_client):
     assert data["strategy_used"] == "hybrid"
 
 
-# ---------------------------------------------------------------------------
-# POST /chat — each strategy
-# ---------------------------------------------------------------------------
+# POST /chat for each strategy
 
 
 @pytest.mark.parametrize(
@@ -223,9 +267,7 @@ def test_chat_each_strategy(app_client, strategy):
     assert data["strategy_used"] == strategy
 
 
-# ---------------------------------------------------------------------------
-# POST /chat — error cases
-# ---------------------------------------------------------------------------
+# POST /chat error cases
 
 
 def test_chat_invalid_strategy_returns_error(app_client):
@@ -252,9 +294,7 @@ def test_chat_wrong_content_type_returns_422(app_client):
     assert r.status_code in (400, 415, 422)
 
 
-# ---------------------------------------------------------------------------
-# POST /chat — history handling
-# ---------------------------------------------------------------------------
+# POST /chat history handling
 
 
 def test_chat_with_empty_history(app_client):
@@ -296,9 +336,7 @@ def test_chat_with_extra_fields_ignored(app_client):
     assert r.status_code == 200
 
 
-# ---------------------------------------------------------------------------
-# POST /chat/stream — SSE events
-# ---------------------------------------------------------------------------
+# POST /chat/stream SSE events
 
 
 def test_chat_stream_returns_200(app_client):
@@ -436,9 +474,7 @@ def test_chat_stream_invalid_strategy_returns_error(app_client):
         assert r.status_code in (400, 422)
 
 
-# ---------------------------------------------------------------------------
 # CORS headers
-# ---------------------------------------------------------------------------
 
 
 def test_cors_headers_present(app_client):
@@ -453,9 +489,7 @@ def test_cors_headers_present(app_client):
     assert r.status_code in (200, 204)
 
 
-# ---------------------------------------------------------------------------
 # Special input handling
-# ---------------------------------------------------------------------------
 
 
 def test_chat_unicode_query(app_client):
@@ -491,9 +525,7 @@ def test_chat_very_long_query(app_client):
     assert r.status_code in (200, 400, 422)
 
 
-# ---------------------------------------------------------------------------
 # Concurrent requests
-# ---------------------------------------------------------------------------
 
 
 def test_concurrent_chat_requests(app_client):
