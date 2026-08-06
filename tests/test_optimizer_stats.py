@@ -10,6 +10,7 @@ from kb_arena.benchmark.optimizer import (
     OptimizeResult,
     TrialConfig,
     TrialResult,
+    _bootstrap_ci,
     pareto_optimal_strategies,
     summarize_optimization,
 )
@@ -55,6 +56,21 @@ def test_summarize_picks_best_and_computes_bootstrap_ci():
     lo, hi = res.best_score_ci
     assert 0.0 <= lo <= res.best_score <= hi <= 1.0
     assert hi - lo < 1e-6  # zero variance → degenerate CI
+
+
+def test_constant_bootstrap_ci_does_not_import_optional_dependencies(monkeypatch):
+    import builtins
+
+    real_import = builtins.__import__
+
+    def reject_scipy(name, *args, **kwargs):
+        if name.startswith("scipy"):
+            raise ImportError("scipy unavailable")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", reject_scipy)
+
+    assert _bootstrap_ci([0.55] * 30) == (0.55, 0.55)
 
 
 def test_summarize_wilcoxon_significant_when_clear_lift():

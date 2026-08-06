@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { clearApiToken, getApiToken, setApiToken } from "@/lib/auth";
@@ -21,10 +21,20 @@ export default function Nav() {
   const [tokenOpen, setTokenOpen] = useState(false);
   const [token, setToken] = useState("");
   const [hasToken, setHasToken] = useState(false);
+  const tokenTriggerRef = useRef<HTMLButtonElement>(null);
+  const tokenDialogRef = useRef<HTMLDivElement>(null);
+  const tokenInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setHasToken(Boolean(getApiToken()));
   }, []);
+
+  useEffect(() => {
+    if (!tokenOpen) return;
+    const tokenTrigger = tokenTriggerRef.current;
+    tokenInputRef.current?.focus();
+    return () => tokenTrigger?.focus();
+  }, [tokenOpen]);
 
   function openTokenDialog() {
     setToken(getApiToken());
@@ -76,6 +86,7 @@ export default function Nav() {
           </div>
           <div className="flex items-center gap-1">
             <button
+              ref={tokenTriggerRef}
               type="button"
               className="relative flex min-h-11 min-w-11 items-center justify-center rounded border transition-colors"
               style={{
@@ -146,13 +157,36 @@ export default function Nav() {
           }}
         >
           <div
+            ref={tokenDialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="api-access-title"
             className="w-full max-w-sm rounded-lg border p-5 shadow-xl"
             style={{ background: "var(--card)", borderColor: "var(--border)" }}
             onKeyDown={(event) => {
-              if (event.key === "Escape") setTokenOpen(false);
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setTokenOpen(false);
+                return;
+              }
+              if (event.key !== "Tab") return;
+
+              const focusable = Array.from(
+                tokenDialogRef.current?.querySelectorAll<HTMLElement>(
+                  'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+                ) ?? [],
+              );
+              if (focusable.length === 0) return;
+
+              const first = focusable[0];
+              const last = focusable[focusable.length - 1];
+              if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+              } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+              }
             }}
           >
             <div className="flex items-center justify-between gap-4">
@@ -179,10 +213,10 @@ export default function Nav() {
               Bearer token
             </label>
             <input
+              ref={tokenInputRef}
               id="api-token"
               type="password"
               autoComplete="off"
-              autoFocus
               value={token}
               onChange={(event) => setToken(event.target.value)}
               onKeyDown={(event) => {

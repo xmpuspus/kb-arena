@@ -67,6 +67,7 @@ def test_browser_auth_covers_protected_requests() -> None:
     api = (ROOT / "web" / "lib" / "api.ts").read_text()
     tools = (ROOT / "web" / "lib" / "tools-api.ts").read_text()
     arena = (ROOT / "web" / "app" / "arena" / "page.tsx").read_text()
+    nav = (ROOT / "web" / "components" / "Nav.tsx").read_text()
 
     assert "sessionStorage" in auth
     assert 'headers.set("Authorization", `Bearer ${token}`)' in auth
@@ -75,6 +76,8 @@ def test_browser_auth_covers_protected_requests() -> None:
     assert tools.count("apiFetch(") == 3
     assert "apiFetch(`${API}/api/arena/match`" in arena
     assert "apiFetch(`${API}/api/arena/vote`" in arena
+    assert 'event.key !== "Tab"' in nav
+    assert "tokenTrigger?.focus()" in nav
 
 
 def test_graph_build_ui_isolated_from_corpus_changes() -> None:
@@ -83,6 +86,9 @@ def test_graph_build_ui_isolated_from_corpus_changes() -> None:
     assert 'disabled={buildStatus === "building"}' in page
     assert "abortRef.current?.abort()" in page
     assert "buildEpochRef.current" in page
+    assert "await fetchGraphData(buildCorpus)" in page
+    assert "setConnected(data.connected)" in page
+    assert "setNodes(apiToGraphNodes(data.nodes))" in page
 
 
 def test_graph_build_client_streams_with_server_build_id() -> None:

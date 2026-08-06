@@ -21,6 +21,7 @@ import tempfile
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from statistics import fmean
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -80,19 +81,11 @@ class TrialResult(BaseModel):
 
     @property
     def mean_score(self) -> float:
-        return (
-            sum(self.per_question_scores) / len(self.per_question_scores)
-            if self.per_question_scores
-            else 0.0
-        )
+        return fmean(self.per_question_scores) if self.per_question_scores else 0.0
 
     @property
     def mean_latency_ms(self) -> float:
-        return (
-            sum(self.per_question_latency_ms) / len(self.per_question_latency_ms)
-            if self.per_question_latency_ms
-            else 0.0
-        )
+        return fmean(self.per_question_latency_ms) if self.per_question_latency_ms else 0.0
 
 
 class OptimizeResult(BaseModel):
@@ -257,12 +250,13 @@ def _bootstrap_ci(
     """Percentile bootstrap CI on the mean — Sakai's standard for IR."""
     if not values:
         return (0.0, 0.0)
+    if all(v == values[0] for v in values):
+        mean = fmean(values)
+        return (mean, mean)
     try:
         import numpy as np
         from scipy.stats import bootstrap as scipy_bootstrap
 
-        if all(v == values[0] for v in values):
-            return (values[0], values[0])
         res = scipy_bootstrap(
             (np.asarray(values),),
             statistic=np.mean,
@@ -273,7 +267,7 @@ def _bootstrap_ci(
         )
         return (float(res.confidence_interval.low), float(res.confidence_interval.high))
     except Exception:  # noqa: BLE001 — graceful degradation if scipy missing
-        m = sum(values) / len(values)
+        m = fmean(values)
         return (m, m)
 
 

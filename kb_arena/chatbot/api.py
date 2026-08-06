@@ -40,7 +40,18 @@ from kb_arena.settings import settings
 # Per-build UUID queues for streaming graph build events to SSE clients.
 # Keyed by build_id (not corpus) so concurrent builds for the same corpus don't collide.
 _graph_build_queues: dict[str, _asyncio.Queue] = {}
+_GRAPH_BUILD_QUEUE_MAX_EVENTS = 1000
 _GRAPH_BUILD_QUEUE_TTL_SECONDS = 300.0
+
+
+def _enqueue_graph_build_event(queue: _asyncio.Queue, event: dict | None) -> None:
+    """Add an event without allowing an unattended build queue to grow forever."""
+    if queue.full():
+        try:
+            queue.get_nowait()
+        except _asyncio.QueueEmpty:
+            pass
+    queue.put_nowait(event)
 
 
 class _GraphBuildRequest(BaseModel):
@@ -655,11 +666,11 @@ async def trigger_graph_build(body: _GraphBuildRequest) -> dict:
         )
 
     build_id = str(uuid4())
-    queue: _asyncio.Queue = _asyncio.Queue()
+    queue: _asyncio.Queue = _asyncio.Queue(maxsize=_GRAPH_BUILD_QUEUE_MAX_EVENTS)
     _graph_build_queues[build_id] = queue
 
     async def _callback(event: dict | None) -> None:
-        await queue.put(event)
+        _enqueue_graph_build_event(queue, event)
 
     async def _run() -> None:
         from kb_arena.graph.extractor import run_extraction
@@ -667,9 +678,9 @@ async def trigger_graph_build(body: _GraphBuildRequest) -> dict:
         try:
             await run_extraction(corpus=corpus, event_callback=_callback)
         except Exception as exc:
-            await queue.put({"type": "error", "data": {"message": str(exc)}})
+            _enqueue_graph_build_event(queue, {"type": "error", "data": {"message": str(exc)}})
         finally:
-            await queue.put(None)  # Sentinel that signals the stream end.
+            _enqueue_graph_build_event(queue, None)  # Sentinel that signals stream end.
             _asyncio.get_running_loop().call_later(
                 _GRAPH_BUILD_QUEUE_TTL_SECONDS,
                 _graph_build_queues.pop,

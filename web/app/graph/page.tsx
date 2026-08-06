@@ -143,7 +143,13 @@ export default function GraphPage() {
         } else if (event.type === "section_done") {
           setBuildProgress(`Processing documents...`);
         } else if (event.type === "complete") {
-          setConnected(true);
+          const data = await fetchGraphData(buildCorpus);
+          if (!isCurrentBuild()) break;
+          setConnected(data.connected);
+          if (data.connected) {
+            setNodes(apiToGraphNodes(data.nodes));
+            setEdges(apiToGraphEdges(data.edges));
+          }
           setBuildStatus("done");
           setBuildProgress(`Complete: ${event.total_entities} entities, ${event.total_relationships} relationships`);
         } else if (event.type === "error") {
