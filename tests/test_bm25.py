@@ -1,5 +1,6 @@
 """Tests for BM25 strategy."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -129,6 +130,37 @@ async def test_build_index_separates_mixed_corpora_and_combines_all_query(tmp_pa
     assert strategy._corpus_sources == ["beta-doc"]
     assert strategy._ensure_index()
     assert strategy._corpus_sources == ["alpha-doc", "beta-doc"]
+
+
+@pytest.mark.asyncio
+async def test_aggregate_query_skips_legacy_bm25_indexes(tmp_path):
+    from kb_arena import settings
+
+    settings.settings.datasets_path = str(tmp_path)
+    document = Document(
+        id="alpha-doc",
+        source="alpha.md",
+        corpus="alpha",
+        title="Alpha",
+        sections=[Section(id="alpha-section", title="Alpha", content="Alpha content")],
+    )
+    await BM25Strategy().build_index([document])
+    legacy_path = tmp_path / "default" / "processed" / "bm25_index.json"
+    legacy_path.parent.mkdir(parents=True)
+    legacy_path.write_text(
+        json.dumps(
+            {
+                "texts": ["Legacy content"],
+                "sources": ["legacy-doc"],
+                "chunk_ids": ["legacy-doc::section"],
+            }
+        )
+    )
+
+    strategy = BM25Strategy()
+    assert strategy._ensure_index()
+    assert strategy._corpus_sources == ["alpha-doc"]
+    assert not strategy._ensure_index("default")
 
 
 @pytest.mark.asyncio

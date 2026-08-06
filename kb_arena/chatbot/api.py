@@ -577,7 +577,14 @@ async def graph_stats(request: Request) -> dict:
 
     return {
         "node_count": sum(1 for _ in centrality),
-        "top_hubs": [{"fqn": fqn, "centrality": round(c, 4)} for fqn, c in top_hubs],
+        "top_hubs": [
+            {
+                "entity_id": entity_id,
+                "fqn": entity_id.split("::", 1)[-1],
+                "centrality": round(centrality_score, 4),
+            }
+            for entity_id, centrality_score in top_hubs
+        ],
         "community_count": len(communities),
     }
 
@@ -593,9 +600,10 @@ async def graph_data(request: Request, corpus: str = "all", limit: int = 200) ->
 
     # Fetch nodes
     node_query = (
-        "MATCH (n) "
+        "MATCH (n:KBArenaEntity) "
         + ("WHERE n.corpus = $corpus " if corpus != "all" else "")
-        + "RETURN coalesce(n.entity_id, n.fqn) AS id, n.name AS name, labels(n)[0] AS type, "
+        + "RETURN n.entity_id AS id, n.name AS name, "
+        "head([label IN labels(n) WHERE label <> 'KBArenaEntity']) AS type, "
         "n.description AS description LIMIT $limit"
     )
     params = {"limit": limit}
@@ -622,10 +630,9 @@ async def graph_data(request: Request, corpus: str = "all", limit: int = 200) ->
     edges = []
     if node_ids:
         edge_query = (
-            "MATCH (a)-[r]->(b) "
+            "MATCH (a:KBArenaEntity)-[r]->(b:KBArenaEntity) "
             + ("WHERE a.corpus = $corpus " if corpus != "all" else "")
-            + "RETURN coalesce(a.entity_id, a.fqn) AS source, type(r) AS type, "
-            "coalesce(b.entity_id, b.fqn) AS target "
+            + "RETURN a.entity_id AS source, type(r) AS type, b.entity_id AS target "
             "LIMIT $edge_limit"
         )
         edge_params = {"edge_limit": limit * 2}

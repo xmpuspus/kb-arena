@@ -17,6 +17,11 @@ from kb_arena.models.document import Document, Section
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.strategies.chroma_index import (
+    finalize_collection_build,
+    index_metadata,
+    index_where,
+)
 from kb_arena.strategies.embeddings import get_embedding_function
 
 COLLECTION_NAME = "qna_pairs"
@@ -106,6 +111,7 @@ class QnAPairStrategy(Strategy):
                             "chunk_id": f"qna:{pair_id}",
                             "section_id": section.id,
                             "section_ref": pair.get("section_ref", ""),
+                            **index_metadata(),
                         }
                     )
 
@@ -117,6 +123,7 @@ class QnAPairStrategy(Strategy):
                     documents=questions[start : start + batch],
                     metadatas=metadatas[start : start + batch],
                 )
+        finalize_collection_build(collection, (doc.corpus for doc in documents), ids)
 
     async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Match question embedding → retrieve pre-generated answer.
@@ -132,8 +139,7 @@ class QnAPairStrategy(Strategy):
             "n_results": top_k,
             "include": ["documents", "metadatas", "distances"],
         }
-        if corpus != "all":
-            query_kwargs["where"] = {"corpus": corpus}
+        query_kwargs["where"] = index_where(corpus)
         results = collection.query(**query_kwargs)
         metas = results["metadatas"][0] if results["metadatas"] else []
         matched_questions = results["documents"][0] if results["documents"] else []

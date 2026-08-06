@@ -37,16 +37,18 @@ _WRITE_CYPHER_RE = re.compile(
     )\b""",
     re.IGNORECASE | re.VERBOSE,
 )
+_OWNED_GRAPH_LABEL_RE = re.compile(r":\s*KBArenaEntity\b", re.IGNORECASE)
 
 # --- Cypher templates (Pattern 6 from PLAN.md) ---
 
 MULTI_HOP_QUERY = """
-MATCH path = (start)-[*1..{depth}]-(connected)
+MATCH path = (start:KBArenaEntity)-[*1..{depth}]-(connected:KBArenaEntity)
 WHERE start.fqn = $target
+  AND ALL(n IN nodes(path) WHERE n:KBArenaEntity)
   AND ($corpus = 'all' OR ALL(n IN nodes(path) WHERE n.corpus = $corpus))
   AND ALL(r IN relationships(path) WHERE type(r) IN $allowed_rel_types)
 RETURN connected.name AS name, connected.fqn AS fqn,
-       labels(connected)[0] AS type,
+       head([label IN labels(connected) WHERE label <> 'KBArenaEntity']) AS type,
        connected.source_doc_id AS source_doc_id,
        connected.source_section_id AS source_section_id,
        length(path) AS hops,
@@ -56,11 +58,12 @@ LIMIT 50
 """
 
 COMPARISON_QUERY = """
-MATCH (a)-[r1]-(shared)-[r2]-(b)
+MATCH (a:KBArenaEntity)-[r1]-(shared:KBArenaEntity)-[r2]-(b:KBArenaEntity)
 WHERE a.fqn = $entity_a AND b.fqn = $entity_b
   AND ($corpus = 'all' OR ALL(n IN [a, shared, b] WHERE n.corpus = $corpus))
 RETURN shared.name AS shared_entity, shared.name AS name,
-       shared.fqn AS fqn, labels(shared)[0] AS shared_type,
+       shared.fqn AS fqn,
+       head([label IN labels(shared) WHERE label <> 'KBArenaEntity']) AS shared_type,
        shared.source_doc_id AS source_doc_id,
        shared.source_section_id AS source_section_id,
        type(r1) AS rel_to_a, type(r2) AS rel_to_b
@@ -68,11 +71,14 @@ LIMIT 50
 """
 
 DEPENDENCY_CHAIN = """
-MATCH path = (source)-[:DEPENDS_ON|CONNECTS_TO|TRIGGERS|EXTENDS|CONFIGURES*1..4]->(dep)
+MATCH path = (source:KBArenaEntity)
+  -[:DEPENDS_ON|CONNECTS_TO|TRIGGERS|EXTENDS|CONFIGURES*1..4]->(dep:KBArenaEntity)
 WHERE source.fqn = $start
+  AND ALL(n IN nodes(path) WHERE n:KBArenaEntity)
   AND ($corpus = 'all' OR ALL(n IN nodes(path) WHERE n.corpus = $corpus))
 WITH path, dep, length(path) AS depth
-RETURN dep.name AS name, dep.fqn AS fqn, labels(dep)[0] AS type,
+RETURN dep.name AS name, dep.fqn AS fqn,
+       head([label IN labels(dep) WHERE label <> 'KBArenaEntity']) AS type,
        dep.source_doc_id AS source_doc_id,
        dep.source_section_id AS source_section_id, depth,
        [n IN nodes(path) | n.name] AS chain
@@ -82,9 +88,10 @@ LIMIT 100
 
 FULLTEXT_SEARCH = """
 CALL db.index.fulltext.queryNodes('entity_search', $query) YIELD node, score
-WHERE $corpus = 'all' OR node.corpus = $corpus
+WHERE node:KBArenaEntity AND ($corpus = 'all' OR node.corpus = $corpus)
 RETURN node.name AS name, node.fqn AS fqn,
-       labels(node)[0] AS type, node.description AS description,
+       head([label IN labels(node) WHERE label <> 'KBArenaEntity']) AS type,
+       node.description AS description,
        node.source_doc_id AS source_doc_id,
        node.source_section_id AS source_section_id, score
 ORDER BY score DESC
@@ -92,12 +99,13 @@ LIMIT 20
 """
 
 ENTITY_LOOKUP = """
-MATCH (n)
+MATCH (n:KBArenaEntity)
 WHERE (n.fqn = $fqn OR toLower(n.name) = toLower($name))
   AND ($corpus = 'all' OR n.corpus = $corpus)
-OPTIONAL MATCH (n)-[r]-(neighbor)
+OPTIONAL MATCH (n)-[r]-(neighbor:KBArenaEntity)
 WHERE $corpus = 'all' OR neighbor.corpus = $corpus
-RETURN n.name AS name, n.fqn AS fqn, labels(n)[0] AS type,
+RETURN n.name AS name, n.fqn AS fqn,
+       head([label IN labels(n) WHERE label <> 'KBArenaEntity']) AS type,
        n.description AS description,
        n.source_doc_id AS source_doc_id,
        n.source_section_id AS source_section_id,
@@ -120,6 +128,7 @@ Relationship types: {rel_types}
 Write a Cypher query to answer: {{question}}
 
 Rules:
+- Require the :KBArenaEntity label on every matched node
 - Return only the Cypher query, no explanation
 - Use LIMIT 50 to cap results
 - Always return: name, fqn, type, source_doc_id, source_section_id, and any
@@ -379,8 +388,8 @@ class KnowledgeGraphStrategy(Strategy):
         cypher_cost = resp.cost_usd
         cypher = _extract_cypher(resp.text)
 
-        if _WRITE_CYPHER_RE.search(cypher):
-            logger.warning("Blocked LLM-generated write Cypher: %.200s", cypher)
+        if _WRITE_CYPHER_RE.search(cypher) or not _OWNED_GRAPH_LABEL_RE.search(cypher):
+            logger.warning("Blocked unsafe or unscoped LLM-generated Cypher: %.200s", cypher)
             records = await self._run_cypher(
                 FULLTEXT_SEARCH,
                 {"query": question, "corpus": "all"},

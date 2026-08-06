@@ -312,9 +312,11 @@ def test_graph_data_uses_corpus_qualified_ids_for_aggregate_view(app_client):
     ]
     node_query = session.run.call_args_list[0].args[0]
     edge_query = session.run.call_args_list[1].args[0]
-    assert "coalesce(n.entity_id, n.fqn) AS id" in node_query
-    assert "coalesce(a.entity_id, a.fqn) AS source" in edge_query
-    assert "coalesce(b.entity_id, b.fqn) AS target" in edge_query
+    assert "MATCH (n:KBArenaEntity)" in node_query
+    assert "n.entity_id AS id" in node_query
+    assert "MATCH (a:KBArenaEntity)-[r]->(b:KBArenaEntity)" in edge_query
+    assert "a.entity_id AS source" in edge_query
+    assert "b.entity_id AS target" in edge_query
 
 
 def test_chat_response_has_strategy_used(app_client):

@@ -49,8 +49,11 @@ network. Set a token and a narrow CORS list before any network exposure.
 - YAML readers use `yaml.safe_load`.
 - The code does not use `pickle`, `eval`, or `exec` on user input.
 - LLM-generated Cypher passes a write-operation block list.
+- Built-in graph queries match only nodes with the `KBArenaEntity` ownership label.
 - Neo4j read paths use `neo4j.READ_ACCESS` at the driver level.
 - Production graph extraction uses parameterized Cypher.
+- Use a Neo4j database dedicated to KB Arena. Schema setup removes legacy KB Arena constraints by
+  name during an upgrade and is not designed for a shared application database.
 
 ### URL ingestion
 

@@ -19,6 +19,7 @@ from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
 
 log = logging.getLogger(__name__)
+BM25_INDEX_FORMAT_VERSION = 2
 
 SYSTEM_PROMPT = (
     "You are a documentation assistant. Answer the question using ONLY the "
@@ -75,8 +76,13 @@ class BM25Strategy(Strategy):
             index_dir = Path(settings.datasets_path) / corpus / "processed"
             index_dir.mkdir(parents=True, exist_ok=True)
             index_path = index_dir / "bm25_index.json"
+            payload = {
+                "format_version": BM25_INDEX_FORMAT_VERSION,
+                "corpus": corpus,
+                **passages,
+            }
             index_path.write_text(
-                json.dumps(passages, ensure_ascii=False),
+                json.dumps(payload, ensure_ascii=False),
             )
             log.info("BM25 index built for %s: %d passages", corpus, len(passages["texts"]))
 
@@ -123,6 +129,13 @@ class BM25Strategy(Strategy):
             if path.exists():
                 try:
                     data = json.loads(path.read_text())
+                    stored_corpus = data.get("corpus")
+                    if (
+                        data.get("format_version") != BM25_INDEX_FORMAT_VERSION
+                        or stored_corpus != path.parent.parent.name
+                    ):
+                        log.warning("Skipping legacy or mismatched BM25 index at %s", path)
+                        continue
                     chunk_ids = data.get("chunk_ids") or [
                         f"{src}::passage-{i}" for i, src in enumerate(data["sources"])
                     ]

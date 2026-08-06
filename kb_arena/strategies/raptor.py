@@ -18,6 +18,11 @@ from kb_arena.models.document import Document
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.strategies.chroma_index import (
+    finalize_collection_build,
+    index_metadata,
+    index_where,
+)
 from kb_arena.strategies.embeddings import get_embedding_function
 from kb_arena.tokenizer import detokenize, tokenize
 
@@ -131,10 +136,10 @@ class RaptorStrategy(Strategy):
         target_collection,
         level_tag: str,
         corpus: str,
-    ) -> int:
+    ) -> list[str]:
         """Cluster source_collection and upsert summaries to target_collection."""
         data = source_collection.get(
-            where={"corpus": corpus},
+            where=index_where(corpus),
             include=["embeddings", "documents"],
         )
         ids_list = data.get("ids") or []
@@ -143,7 +148,7 @@ class RaptorStrategy(Strategy):
         docs = data.get("documents") or []
 
         if not ids_list:
-            return 0
+            return []
 
         emb_array = np.array(embeddings, dtype=np.float32)
         k = max(1, len(ids_list) // 5)
@@ -164,6 +169,7 @@ class RaptorStrategy(Strategy):
                     "corpus": corpus,
                     "chunk_id": f"{level_tag}_cluster_{ci}",
                     "level": int(level_tag[-1]),
+                    **index_metadata(),
                 }
             )
 
@@ -176,7 +182,7 @@ class RaptorStrategy(Strategy):
                     metadatas=summary_metas[start : start + batch],
                 )
 
-        return len(summary_ids)
+        return summary_ids
 
     async def build_index(self, documents: list[Document]) -> None:
         """Chunk all sections → L0. Cluster L0 → L1 summaries. Optionally L1 → L2."""
@@ -196,8 +202,13 @@ class RaptorStrategy(Strategy):
                             "corpus": doc.corpus,
                             "chunk_id": chunk_id,
                             "level": 0,
+                            **index_metadata(),
                         }
                     )
+
+        corpora = list(dict.fromkeys(doc.corpus for doc in documents))
+        l1 = self._get_collection(1)
+        l2 = self._get_collection(2)
 
         if ids:
             batch = 500
@@ -207,18 +218,18 @@ class RaptorStrategy(Strategy):
                     documents=texts[start : start + batch],
                     metadatas=metadatas[start : start + batch],
                 )
+        finalize_collection_build(l0, corpora, ids)
 
-        l1 = self._get_collection(1)
-        corpora = dict.fromkeys(doc.corpus for doc in documents)
         total_l1 = 0
         for corpus in corpora:
-            n_l1 = await self._build_level(l0, l1, "l1", corpus)
-            total_l1 += n_l1
+            l1_ids = await self._build_level(l0, l1, "l1", corpus)
+            finalize_collection_build(l1, [corpus], l1_ids)
+            total_l1 += len(l1_ids)
 
-            if n_l1 >= 10:
-                l2 = self._get_collection(2)
-                n_l2 = await self._build_level(l1, l2, "l2", corpus)
-                logger.info("RAPTOR: built %d L2 summaries for %s", n_l2, corpus)
+            l2_ids = await self._build_level(l1, l2, "l2", corpus) if len(l1_ids) >= 10 else []
+            finalize_collection_build(l2, [corpus], l2_ids)
+            if l2_ids:
+                logger.info("RAPTOR: built %d L2 summaries for %s", len(l2_ids), corpus)
 
         logger.info("RAPTOR: built %d L0 chunks, %d L1 summaries", len(ids), total_l1)
 
@@ -243,8 +254,7 @@ class RaptorStrategy(Strategy):
                     "n_results": n,
                     "include": ["documents", "metadatas", "distances"],
                 }
-                if corpus != "all":
-                    query_kwargs["where"] = {"corpus": corpus}
+                query_kwargs["where"] = index_where(corpus)
                 results = coll.query(**query_kwargs)
                 chunks = results["documents"][0] if results["documents"] else []
                 metas = results["metadatas"][0] if results["metadatas"] else []

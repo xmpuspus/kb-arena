@@ -15,6 +15,11 @@ from kb_arena.models.document import Document
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.strategies.chroma_index import (
+    finalize_collection_build,
+    index_metadata,
+    index_where,
+)
 from kb_arena.strategies.embeddings import get_embedding_function
 from kb_arena.tokenizer import detokenize, tokenize
 
@@ -110,6 +115,7 @@ class NaiveVectorStrategy(Strategy):
                             "source_id": doc.id,
                             "corpus": doc.corpus,
                             "chunk_id": chunk_id,
+                            **index_metadata(),
                         }
                     )
 
@@ -122,6 +128,7 @@ class NaiveVectorStrategy(Strategy):
                     documents=texts[start : start + batch],
                     metadatas=metadatas[start : start + batch],
                 )
+        finalize_collection_build(collection, (doc.corpus for doc in documents), ids)
 
     async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Top-k cosine similarity → concatenate chunks → Sonnet."""
@@ -134,8 +141,7 @@ class NaiveVectorStrategy(Strategy):
             "n_results": top_k,
             "include": ["documents", "metadatas", "distances"],
         }
-        if corpus != "all":
-            query_kwargs["where"] = {"corpus": corpus}
+        query_kwargs["where"] = index_where(corpus)
         results = collection.query(**query_kwargs)
         chunks = results["documents"][0] if results["documents"] else []
         metas = results["metadatas"][0] if results["metadatas"] else []

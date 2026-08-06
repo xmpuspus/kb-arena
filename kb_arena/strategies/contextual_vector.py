@@ -15,6 +15,11 @@ from kb_arena.models.document import Document, Section
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.strategies.chroma_index import (
+    finalize_collection_build,
+    index_metadata,
+    index_where,
+)
 from kb_arena.strategies.embeddings import get_embedding_function
 from kb_arena.strategies.naive_vector import _chunk_text
 
@@ -100,7 +105,7 @@ class ContextualVectorStrategy(Strategy):
                     enriched = _enrich_chunk(chunk, section)
                     ids.append(f"{doc.corpus}::{chunk_id}")
                     texts.append(enriched)
-                    metadatas.append({**meta, "chunk_id": chunk_id})
+                    metadatas.append({**meta, "chunk_id": chunk_id, **index_metadata()})
 
         if ids:
             batch = 500
@@ -110,6 +115,7 @@ class ContextualVectorStrategy(Strategy):
                     documents=texts[start : start + batch],
                     metadatas=metadatas[start : start + batch],
                 )
+        finalize_collection_build(collection, (doc.corpus for doc in documents), ids)
 
     async def query(
         self,
@@ -128,12 +134,7 @@ class ContextualVectorStrategy(Strategy):
             "n_results": top_k,
             "include": ["documents", "metadatas", "distances"],
         }
-        if where and corpus != "all":
-            query_kwargs["where"] = {"$and": [where, {"corpus": corpus}]}
-        elif where:
-            query_kwargs["where"] = where
-        elif corpus != "all":
-            query_kwargs["where"] = {"corpus": corpus}
+        query_kwargs["where"] = index_where(corpus, where)
 
         results = collection.query(**query_kwargs)
         chunks = results["documents"][0] if results["documents"] else []

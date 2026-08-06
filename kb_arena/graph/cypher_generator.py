@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Minimal Cypher syntax check — catches unterminated strings and bare MATCH-less queries.
 _CYPHER_SAFE_PATTERN = re.compile(r"\b(MATCH|CALL|RETURN|WITH|UNWIND)\b", re.IGNORECASE)
+_OWNED_GRAPH_LABEL_PATTERN = re.compile(r":\s*KBArenaEntity\b", re.IGNORECASE)
 
 # Reject write operations to defend against LLM-generated destructive queries (ASI05).
 # Includes APOC write paths that bypass the bare-keyword check.
@@ -49,6 +50,7 @@ Relationship types: {rel_types}
 
 Rules:
 - Use ONLY the node and relationship types listed above
+- Require the :KBArenaEntity label on every matched node
 - Always use parameterized queries ($param), never interpolate values
 - Return only the Cypher query, no explanation, no markdown fences
 - The query must start with MATCH, CALL, or WITH
@@ -57,10 +59,10 @@ Rules:
 
 
 def _validate_cypher(cypher: str) -> bool:
-    """Check that query contains a read clause and no write operations."""
+    """Check that a read query is scoped to KB Arena-owned nodes."""
     if _CYPHER_WRITE_PATTERN.search(cypher):
         return False
-    return bool(_CYPHER_SAFE_PATTERN.search(cypher))
+    return bool(_CYPHER_SAFE_PATTERN.search(cypher) and _OWNED_GRAPH_LABEL_PATTERN.search(cypher))
 
 
 def _pick_template(query: str) -> str | None:

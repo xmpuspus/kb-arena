@@ -80,12 +80,19 @@ def test_pick_template_returns_none_for_unknown():
 
 
 def test_validate_cypher_accepts_match():
-    assert _validate_cypher("MATCH (n) RETURN n") is True
+    assert _validate_cypher("MATCH (n:KBArenaEntity) RETURN n") is True
 
 
 def test_validate_cypher_accepts_call():
-    cypher = "CALL db.index.fulltext.queryNodes('x', 'q') YIELD node RETURN node"
+    cypher = (
+        "CALL db.index.fulltext.queryNodes('x', 'q') YIELD node "
+        "WHERE node:KBArenaEntity RETURN node"
+    )
     assert _validate_cypher(cypher) is True
+
+
+def test_validate_cypher_rejects_unowned_match():
+    assert _validate_cypher("MATCH (n) RETURN n") is False
 
 
 def test_validate_cypher_rejects_plain_text():
@@ -124,7 +131,7 @@ async def test_generator_uses_llm_when_valid():
     mock_llm = AsyncMock()
     from kb_arena.llm.client import LLMResponse
 
-    mock_llm.extract.return_value = LLMResponse(text="MATCH (n {fqn: $fqn}) RETURN n")
+    mock_llm.extract.return_value = LLMResponse(text="MATCH (n:KBArenaEntity {fqn: $fqn}) RETURN n")
 
     gen = CypherGenerator(mock_llm, "aws-compute")
     cypher, params = await gen.generate("find Lambda", {"fqn": "lambda"})

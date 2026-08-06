@@ -45,15 +45,18 @@ class GraphAnalyzer:
             return cached
 
         nodes = await self._store.execute_query(
-            "MATCH (n) RETURN n.fqn AS fqn, labels(n)[0] AS label"
+            "MATCH (n:KBArenaEntity) "
+            "RETURN n.entity_id AS entity_id, n.fqn AS fqn, "
+            "head([label IN labels(n) WHERE label <> 'KBArenaEntity']) AS label"
         )
         edges = await self._store.execute_query(
-            "MATCH (a)-[r]->(b) RETURN a.fqn AS src, b.fqn AS dst, type(r) AS rel"
+            "MATCH (a:KBArenaEntity)-[r]->(b:KBArenaEntity) "
+            "RETURN a.entity_id AS src, b.entity_id AS dst, type(r) AS rel"
         )
 
         graph: nx.Graph = nx.Graph()
         for row in nodes:
-            graph.add_node(row["fqn"], label=row["label"])
+            graph.add_node(row["entity_id"], fqn=row["fqn"], label=row["label"])
         for row in edges:
             graph.add_edge(row["src"], row["dst"], rel=row["rel"], weight=1)
 
@@ -72,15 +75,18 @@ class GraphAnalyzer:
             return cached
 
         nodes = await self._store.execute_query(
-            "MATCH (n) RETURN n.fqn AS fqn, labels(n)[0] AS label"
+            "MATCH (n:KBArenaEntity) "
+            "RETURN n.entity_id AS entity_id, n.fqn AS fqn, "
+            "head([label IN labels(n) WHERE label <> 'KBArenaEntity']) AS label"
         )
         edges = await self._store.execute_query(
-            "MATCH (a)-[r]->(b) RETURN a.fqn AS src, b.fqn AS dst, type(r) AS rel"
+            "MATCH (a:KBArenaEntity)-[r]->(b:KBArenaEntity) "
+            "RETURN a.entity_id AS src, b.entity_id AS dst, type(r) AS rel"
         )
 
         graph: nx.DiGraph = nx.DiGraph()
         for row in nodes:
-            graph.add_node(row["fqn"], label=row["label"])
+            graph.add_node(row["entity_id"], fqn=row["fqn"], label=row["label"])
         for row in edges:
             graph.add_edge(row["src"], row["dst"], rel=row["rel"])
 
@@ -93,7 +99,7 @@ class GraphAnalyzer:
         """Louvain community detection.
 
         CPU-bound — runs in thread pool to avoid blocking the event loop.
-        Returns list of sets, each containing fqn strings in that community.
+        Returns list of sets, each containing corpus-qualified entity IDs.
         """
         graph = await self._build_networkx_graph()
         communities = await asyncio.to_thread(
@@ -102,23 +108,30 @@ class GraphAnalyzer:
         return [set(c) for c in communities]
 
     async def find_dependency_chains(self, start_fqn: str, max_depth: int = 4) -> list[list[str]]:
-        """Find all simple paths from start_fqn up to max_depth hops.
+        """Find paths from an entity ID or FQN up to max_depth hops.
 
         Caps at 100 paths to avoid combinatorial explosion (climate-money-ph lesson).
         """
         graph = await self._build_directed_graph()
-        if start_fqn not in graph:
+        start_nodes = (
+            [start_fqn]
+            if start_fqn in graph
+            else [
+                node_id for node_id, data in graph.nodes(data=True) if data.get("fqn") == start_fqn
+            ]
+        )
+        if not start_nodes:
             return []
-
-        targets = [n for n in graph.nodes if n != start_fqn]
 
         paths = await asyncio.to_thread(
             lambda: list(
                 itertools.islice(
                     (
                         p
-                        for t in targets
-                        for p in nx.all_simple_paths(graph, start_fqn, t, cutoff=max_depth)
+                        for start_node in start_nodes
+                        for target in graph.nodes
+                        if target != start_node
+                        for p in nx.all_simple_paths(graph, start_node, target, cutoff=max_depth)
                     ),
                     100,
                 )

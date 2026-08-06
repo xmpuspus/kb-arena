@@ -1,4 +1,4 @@
-// Universal documentation schema — idempotent, safe to run on every startup
+// Universal documentation schema - idempotent for a database dedicated to KB Arena
 // Works for any documentation domain (AWS, software docs, wikis, etc.)
 
 DROP CONSTRAINT topic_fqn IF EXISTS;
@@ -7,21 +7,15 @@ DROP CONSTRAINT process_fqn IF EXISTS;
 DROP CONSTRAINT config_fqn IF EXISTS;
 DROP CONSTRAINT constraint_fqn IF EXISTS;
 
-// v0.10 migration: legacy entities cannot be assigned to a corpus reliably.
-// Remove only KB Arena entity labels that lack the new corpus-qualified key.
-MATCH (n)
-WHERE n.entity_id IS NULL
-  AND any(node_label IN labels(n)
-          WHERE node_label IN ['Topic', 'Component', 'Process', 'Config', 'Constraint'])
-DETACH DELETE n;
-
+CREATE CONSTRAINT kb_arena_entity_id IF NOT EXISTS
+FOR (n:KBArenaEntity) REQUIRE n.entity_id IS UNIQUE;
 CREATE CONSTRAINT topic_entity_id IF NOT EXISTS FOR (t:Topic) REQUIRE t.entity_id IS UNIQUE;
 CREATE CONSTRAINT component_entity_id IF NOT EXISTS FOR (c:Component) REQUIRE c.entity_id IS UNIQUE;
 CREATE CONSTRAINT process_entity_id IF NOT EXISTS FOR (p:Process) REQUIRE p.entity_id IS UNIQUE;
 CREATE CONSTRAINT config_entity_id IF NOT EXISTS FOR (c:Config) REQUIRE c.entity_id IS UNIQUE;
 CREATE CONSTRAINT constraint_entity_id IF NOT EXISTS FOR (c:Constraint) REQUIRE c.entity_id IS UNIQUE;
 
-// Multi-label fulltext index for cross-entity search
+// Queries also require the KBArenaEntity ownership label.
 CREATE FULLTEXT INDEX entity_search IF NOT EXISTS
 FOR (n:Topic|Component|Process|Config|Constraint)
 ON EACH [n.name, n.description, n.fqn];

@@ -109,7 +109,7 @@ class Neo4jStore:
             node.setdefault("entity_id", f"{node['corpus']}::{node['fqn']}")
         query = f"""
         UNWIND $records AS record
-        MERGE (n:{label.value} {{entity_id: record.entity_id}})
+        MERGE (n:{label.value}:KBArenaEntity {{entity_id: record.entity_id}})
         SET n += record
         """
         async with self._driver.session() as session:
@@ -147,8 +147,8 @@ class Neo4jStore:
             )
         query = f"""
         UNWIND $records AS record
-        MATCH (a {{entity_id: record.source_entity_id}})
-        MATCH (b {{entity_id: record.target_entity_id}})
+        MATCH (a:KBArenaEntity {{entity_id: record.source_entity_id}})
+        MATCH (b:KBArenaEntity {{entity_id: record.target_entity_id}})
         MERGE (a)-[r:{rel_type.value}]->(b)
         SET r.source_section_id = record.source_section_id,
             r.extraction_confidence = record.extraction_confidence,

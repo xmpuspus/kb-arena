@@ -10,6 +10,7 @@ from kb_arena.llm.client import LLMResponse
 from kb_arena.models.document import Document
 from kb_arena.models.retrieval import RetrievalTrace
 from kb_arena.strategies.base import AnswerResult
+from kb_arena.strategies.chroma_index import INDEX_FORMAT_VERSION
 
 
 def _empty_vector_response() -> dict:
@@ -44,7 +45,9 @@ async def test_chroma_strategies_filter_selected_corpus(strategy_path):
 
     await strategy.query("question", corpus="nist")
 
-    assert collection.query.call_args.kwargs["where"] == {"corpus": "nist"}
+    assert collection.query.call_args.kwargs["where"] == {
+        "$and": [{"index_version": INDEX_FORMAT_VERSION}, {"corpus": "nist"}]
+    }
 
 
 @pytest.mark.asyncio
@@ -98,7 +101,9 @@ async def test_raptor_filters_each_tree_level_by_corpus():
 
     assert collection.query.call_count == 3
     assert all(
-        call.kwargs["where"] == {"corpus": "nist"} for call in collection.query.call_args_list
+        call.kwargs["where"]
+        == {"$and": [{"index_version": INDEX_FORMAT_VERSION}, {"corpus": "nist"}]}
+        for call in collection.query.call_args_list
     )
 
 
@@ -107,8 +112,8 @@ async def test_raptor_builds_higher_levels_for_each_corpus():
     from kb_arena.strategies.raptor import RaptorStrategy
 
     strategy = RaptorStrategy(chroma_client=MagicMock())
-    strategy._get_collection = MagicMock(side_effect=[MagicMock(), MagicMock()])
-    strategy._build_level = AsyncMock(side_effect=[1, 1])
+    strategy._get_collection = MagicMock(side_effect=[MagicMock(), MagicMock(), MagicMock()])
+    strategy._build_level = AsyncMock(side_effect=[["alpha::l1"], ["beta::l1"]])
     documents = [
         Document(id="alpha-doc", source="alpha.md", corpus="alpha", title="Alpha"),
         Document(id="beta-doc", source="beta.md", corpus="beta", title="Beta"),
@@ -155,4 +160,24 @@ async def test_graph_template_receives_selected_corpus():
 
     params = strategy._run_cypher.await_args.args[1]
     assert params["corpus"] == "nist"
+    assert "KBArenaEntity" in strategy._run_cypher.await_args.args[0]
     assert strategy._llm.extract.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_unscoped_generated_cypher_falls_back_to_owned_fulltext_query():
+    from kb_arena.strategies.knowledge_graph import FULLTEXT_SEARCH, KnowledgeGraphStrategy
+
+    strategy = KnowledgeGraphStrategy(neo4j_driver=MagicMock())
+    strategy._llm = AsyncMock()
+    strategy._llm.extract.return_value = LLMResponse(text="MATCH (n) RETURN n.name AS name")
+    strategy._run_cypher = AsyncMock(return_value=[])
+
+    records, cypher, _ = await strategy._generate_cypher("question")
+
+    assert records == []
+    assert cypher == FULLTEXT_SEARCH
+    strategy._run_cypher.assert_awaited_once_with(
+        FULLTEXT_SEARCH,
+        {"query": "question", "corpus": "all"},
+    )
