@@ -284,9 +284,10 @@ def test_arena_startup_failure_is_logged_not_silently_swallowed(monkeypatch, cap
     monkeypatch.setattr(api_module, "ArenaEngine", _explode)
 
     with caplog.at_level(logging.ERROR, logger="kb_arena.chatbot.api"):
-        state = api_module._build_arena({"a": object(), "b": object()})
+        state, reason = api_module._build_arena({"a": object(), "b": object()})
 
     assert state is None
+    assert reason == "corrupt arena state"
     assert "corrupt arena state" in caplog.text
 
 
@@ -307,6 +308,34 @@ def test_arena_match_reports_unavailable_strategy_as_503(app_client):
 
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "strategy_unavailable"
+
+
+def test_arena_match_reports_a_raising_strategy_as_503(app_client):
+    """A strategy that raises is the same outage as one that returns mock data."""
+    from kb_arena.exceptions import StrategyError
+
+    arena = MagicMock()
+    arena.create_match = AsyncMock(side_effect=StrategyError("Chroma unavailable"))
+    app_client.app.state.arena = arena
+
+    response = app_client.post(
+        "/api/arena/match",
+        json={"question": "What is the control?", "corpus": "nist"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "strategy_unavailable"
+
+
+def test_health_reports_a_failed_arena(app_client):
+    """A broken arena must be visible on the diagnostic surface, not only in the log."""
+    app_client.app.state.arena = None
+    app_client.app.state.arena_error = "corrupt arena state"
+
+    body = app_client.get("/health").json()
+
+    assert body["arena"]["available"] is False
+    assert body["arena"]["last_error"] == "corrupt arena state"
 
 
 def test_arena_match_redacts_internal_error_without_debug(app_client, monkeypatch):
