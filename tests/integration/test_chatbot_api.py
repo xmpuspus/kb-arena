@@ -852,6 +852,7 @@ async def test_graph_build_stream_rejects_a_second_subscriber():
 
         assert event["event"] == "error"
         assert "already has a subscriber" in event["data"]
+        await second.body_iterator.aclose()
         await first.body_iterator.aclose()
     finally:
         api._graph_build_queues.pop(build_id, None)

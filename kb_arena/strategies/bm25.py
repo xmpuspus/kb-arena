@@ -106,7 +106,10 @@ class BM25Strategy(Strategy):
     def _ensure_index(self, corpus: str = "") -> bool:
         """Load BM25 index from disk if not already loaded."""
         requested_corpus = corpus or "all"
-        if self._bm25 is not None and requested_corpus == self._loaded_corpus:
+        if self._bm25 is not None and (
+            requested_corpus == self._loaded_corpus
+            or (requested_corpus == "all" and not self._loaded_corpus)
+        ):
             return True
 
         if corpus:
