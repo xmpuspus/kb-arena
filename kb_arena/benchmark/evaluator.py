@@ -12,6 +12,7 @@ import json
 import logging
 import math
 import re
+import weakref
 from collections import OrderedDict
 
 from kb_arena.llm.client import LLMClient
@@ -44,6 +45,14 @@ _eval_cache: OrderedDict[_EvalCacheKey, Score] = OrderedDict()
 _eval_inflight: dict[
     tuple[asyncio.AbstractEventLoop, _ClientIdentity, str], asyncio.Task[Score]
 ] = {}
+# The judge cost belongs to whoever receives the result, not to whoever started the
+# task. asyncio.shield keeps a shared evaluation running after its creator is
+# cancelled, so tying the cost to creation would charge real spend to nobody. The
+# weak keys drop themselves when the task goes away, including when every waiter is
+# cancelled and no one claims the cost.
+_eval_cost_unclaimed: weakref.WeakKeyDictionary[asyncio.Task[Score], bool] = (
+    weakref.WeakKeyDictionary()
+)
 
 
 class EvaluationExecutionError(RuntimeError):
@@ -317,7 +326,6 @@ async def evaluate(
     loop = asyncio.get_running_loop()
     inflight_key = (loop, client_identity, cache_key)
     task = _eval_inflight.get(inflight_key)
-    owns_task = task is None
     if task is None:
         task = asyncio.create_task(
             _evaluate_uncached(
@@ -332,6 +340,7 @@ async def evaluate(
             )
         )
         _eval_inflight[inflight_key] = task
+        _eval_cost_unclaimed[task] = True
 
         def _finish(completed: asyncio.Task[Score]) -> None:
             if _eval_inflight.get(inflight_key) is completed:
@@ -350,7 +359,7 @@ async def evaluate(
         task.add_done_callback(_finish)
 
     score = await asyncio.shield(task)
-    if owns_task:
+    if _eval_cost_unclaimed.pop(task, False):
         return score
     shared = score.model_copy()
     shared.evaluation_cost_usd = 0.0

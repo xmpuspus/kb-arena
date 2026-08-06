@@ -417,6 +417,78 @@ async def test_evaluate_does_not_share_cache_between_llm_instances():
 
 
 @pytest.mark.asyncio
+async def test_evaluate_charges_the_judge_cost_to_a_surviving_caller():
+    """Cancelling the first caller must not make the shared judge spend disappear."""
+    import asyncio
+
+    from kb_arena.benchmark.evaluator import _eval_cache, _eval_inflight
+    from kb_arena.llm.client import LLMResponse
+
+    _eval_cache.clear()
+    _eval_inflight.clear()
+    constraints = Constraints(must_mention=["Lambda"])
+    ground_truth = GroundTruth(answer="Lambda runs code serverlessly.")
+    release = asyncio.Event()
+
+    class BlockingJudge:
+        __hash__ = None
+
+        async def judge(self, **kwargs):
+            await release.wait()
+            return LLMResponse(
+                text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}',
+                cost_usd=0.25,
+            )
+
+    llm = BlockingJudge()
+    first = asyncio.ensure_future(evaluate("Lambda runs code.", ground_truth, constraints, llm=llm))
+    while not _eval_inflight:
+        await asyncio.sleep(0)
+    second = asyncio.ensure_future(
+        evaluate("Lambda runs code.", ground_truth, constraints, llm=llm)
+    )
+    await asyncio.sleep(0)
+
+    first.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await first
+
+    release.set()
+    survivor = await second
+
+    # The judge really spent this, so exactly one surviving caller must report it.
+    assert survivor.evaluation_cost_usd == pytest.approx(0.25)
+
+
+@pytest.mark.asyncio
+async def test_evaluate_reports_its_own_cost_for_a_single_caller():
+    """Guard the opposite failure: the claim must not double-count the ordinary path."""
+    from kb_arena.benchmark.evaluator import _eval_cache, _eval_inflight
+    from kb_arena.llm.client import LLMResponse
+
+    _eval_cache.clear()
+    _eval_inflight.clear()
+
+    class Judge:
+        __hash__ = None
+
+        async def judge(self, **kwargs):
+            return LLMResponse(
+                text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}',
+                cost_usd=0.25,
+            )
+
+    score = await evaluate(
+        "Lambda runs code.",
+        GroundTruth(answer="Lambda runs code serverlessly."),
+        Constraints(must_mention=["Lambda"]),
+        llm=Judge(),
+    )
+
+    assert score.evaluation_cost_usd == pytest.approx(0.25)
+
+
+@pytest.mark.asyncio
 async def test_evaluate_cache_supports_unhashable_llm_clients():
     from kb_arena.benchmark.evaluator import _eval_cache, _eval_inflight
     from kb_arena.llm.client import LLMResponse
