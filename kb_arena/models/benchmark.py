@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import statistics
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -34,6 +35,7 @@ class Question(BaseModel):
     ground_truth: GroundTruth
     constraints: Constraints = Field(default_factory=Constraints)
     expected_chunks: list[str] = Field(default_factory=list)
+    split: Literal["development", "validation", "holdout", "unspecified"] = "unspecified"
 
 
 class RetrievalMetrics(BaseModel):
@@ -148,6 +150,7 @@ class BenchmarkResult(BaseModel):
     config_snapshot: dict = Field(default_factory=dict)
     total_questions: int = 0
     records: list[AnswerRecord] = Field(default_factory=list)
+    stopped_by_cost_cap: bool = False
 
     # Accuracy dimensions
     accuracy_by_tier: dict[int, float] = Field(default_factory=dict)

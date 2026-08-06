@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -442,3 +442,35 @@ def test_cosine_kmeans_fewer_than_k():
     embeddings = np.random.rand(3, 8).astype(np.float32)
     assignments = _cosine_kmeans(embeddings, k=5)
     assert assignments == [0, 1, 2]
+
+
+@pytest.mark.asyncio
+async def test_naive_only_index_build_does_not_initialize_llm(
+    monkeypatch, mock_chroma_client, sample_documents
+):
+    from kb_arena.strategies import build_vector_indexes
+
+    llm = MagicMock(side_effect=AssertionError("naive_vector build must not initialize an LLM"))
+    build = AsyncMock()
+    monkeypatch.setattr("chromadb.PersistentClient", lambda **kwargs: mock_chroma_client)
+    monkeypatch.setattr("kb_arena.strategies.load_documents", lambda corpus: sample_documents)
+    monkeypatch.setattr("kb_arena.llm.client.LLMClient", llm)
+    monkeypatch.setattr("kb_arena.strategies.NaiveVectorStrategy.build_index", build)
+
+    await build_vector_indexes("sample", strategy="naive_vector")
+
+    llm.assert_not_called()
+    build.assert_awaited_once_with(sample_documents)
+
+
+@pytest.mark.asyncio
+async def test_index_build_rejects_corpus_without_processed_documents(
+    monkeypatch, mock_chroma_client
+):
+    from kb_arena.strategies import build_vector_indexes
+
+    monkeypatch.setattr("chromadb.PersistentClient", lambda **kwargs: mock_chroma_client)
+    monkeypatch.setattr("kb_arena.strategies.load_documents", lambda corpus: [])
+
+    with pytest.raises(ValueError, match="No processed documents"):
+        await build_vector_indexes("empty", strategy="naive_vector")

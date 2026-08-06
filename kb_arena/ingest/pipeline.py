@@ -34,13 +34,14 @@ _EXT_MAP: dict[str, str] = {
     ".csv": "csv",
     ".tsv": "csv",
 }
+SUPPORTED_EXTENSIONS = frozenset(_EXT_MAP)
 
 
 def _detect_format(path: Path, corpus: str) -> str:
     return _EXT_MAP.get(path.suffix.lower(), "html")
 
 
-def run_ingest(path: str, corpus: str = "custom", format: str = "auto") -> None:
+def run_ingest(path: str, corpus: str = "custom", format: str = "auto") -> int:
     """Parse raw documents and write JSONL to datasets/{corpus}/processed/."""
     src = Path(path)
     if not src.exists():
@@ -48,18 +49,19 @@ def run_ingest(path: str, corpus: str = "custom", format: str = "auto") -> None:
         raise SystemExit(1)
 
     # Collect files — if path is a file, wrap it; otherwise glob recursively
-    supported_exts = set(_EXT_MAP.keys())
     if src.is_file():
-        if src.suffix.lower() not in supported_exts and format == "auto":
+        if src.suffix.lower() not in SUPPORTED_EXTENSIONS and format == "auto":
             console.print(f"[yellow]Unsupported file type: {src.suffix}[/yellow]")
-            return
+            return 0
         files = [src]
     else:
-        files = [f for f in src.rglob("*") if f.is_file() and f.suffix.lower() in supported_exts]
+        files = [
+            f for f in src.rglob("*") if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS
+        ]
 
     if not files:
         console.print(f"[yellow]No supported files found in {src}[/yellow]")
-        return
+        return 0
 
     out_dir = Path(settings.datasets_path) / corpus / "processed"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -104,6 +106,7 @@ def run_ingest(path: str, corpus: str = "custom", format: str = "auto") -> None:
         f"[green]Done.[/green] {total_docs} documents, {total_sections} sections "
         f"→ [bold]{out_path}[/bold]"
     )
+    return total_docs
 
 
 def run_ingest_special(

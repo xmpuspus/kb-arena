@@ -559,6 +559,7 @@ async def run_optimize(
     seed: int = 0,
     dry_run: bool = False,
     out_dir: str | None = None,
+    split: str = "auto",
 ) -> int:
     """Sweep, score, report. Returns 0 on success, 1 on hard failure."""
     from rich.console import Console
@@ -574,6 +575,10 @@ async def run_optimize(
         return 1
 
     strategies = _resolve_strategies(strategies_filter)
+    valid_splits = {"auto", "all", "development", "validation", "holdout", "unspecified"}
+    if split not in valid_splits:
+        console.print(f"[red]Unknown split {split!r}. Use one of {sorted(valid_splits)}[/red]")
+        return 1
 
     if dry_run:
         plan = plan_optimize(
@@ -601,10 +606,19 @@ async def run_optimize(
 
     documents = load_documents(corpus)
     try:
-        questions = load_questions(corpus)
+        all_questions = load_questions(corpus)
     except FileNotFoundError:
         console.print(f"[red]No questions for {corpus}. Run generate-questions first.[/red]")
         return 1
+    effective_split = split
+    if split == "auto":
+        labeled = {getattr(q, "split", "unspecified") for q in all_questions} - {"unspecified"}
+        effective_split = "development" if labeled else "all"
+    questions = (
+        all_questions
+        if effective_split == "all"
+        else [q for q in all_questions if getattr(q, "split", "unspecified") == effective_split]
+    )
     if not questions:
         console.print(f"[red]No questions for {corpus}.[/red]")
         return 1
@@ -644,6 +658,7 @@ async def run_optimize(
         "corpus": corpus,
         "metric": metric,
         "method": method,
+        "question_split": effective_split,
         "strategies": {
             name: {
                 "best_config": r.best_config.model_dump(),

@@ -10,12 +10,14 @@ from kb_arena.models.benchmark import Question
 from kb_arena.settings import settings
 
 EXPECTED_CHUNKS_FILE = "expected_chunks.yaml"
+QUESTION_SPLITS = frozenset({"development", "validation", "holdout", "unspecified"})
 
 
 def load_questions(
     corpus: str,
     tier: int = 0,
     question_type: str = "",
+    split: str = "",
 ) -> list[Question]:
     """Load and validate questions from YAML files for a corpus.
 
@@ -25,7 +27,10 @@ def load_questions(
         corpus: corpus name (e.g. aws-compute, my-docs)
         tier: filter to specific tier (0 = all tiers)
         question_type: filter to specific type (empty = all types)
+        split: development, validation, holdout, unspecified, or empty for all
     """
+    if split and split not in QUESTION_SPLITS:
+        raise ValueError(f"Unknown question split {split!r}. Valid: {sorted(QUESTION_SPLITS)}")
     questions_dir = Path(settings.datasets_path) / corpus / "questions"
     if not questions_dir.exists():
         raise FileNotFoundError(f"Questions directory not found: {questions_dir}")
@@ -55,6 +60,8 @@ def load_questions(
                 continue
             if question_type and q.type != question_type:
                 continue
+            if split and q.split != split:
+                continue
             questions.append(q)
 
     return questions
@@ -72,12 +79,14 @@ def discover_corpora() -> list[str]:
     )
 
 
-def load_all_questions(tier: int = 0, question_type: str = "") -> list[Question]:
+def load_all_questions(tier: int = 0, question_type: str = "", split: str = "") -> list[Question]:
     """Load questions across all discovered corpora."""
     all_questions: list[Question] = []
     for corpus in discover_corpora():
         try:
-            all_questions.extend(load_questions(corpus, tier=tier, question_type=question_type))
+            all_questions.extend(
+                load_questions(corpus, tier=tier, question_type=question_type, split=split)
+            )
         except FileNotFoundError:
             pass
     return all_questions

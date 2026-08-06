@@ -188,7 +188,9 @@ export type GraphBuildEvent =
   | { type: "error"; message: string }
   | { type: "heartbeat" };
 
-export async function triggerGraphBuild(corpus: string): Promise<{ status: string }> {
+export async function triggerGraphBuild(
+  corpus: string
+): Promise<{ status: string; build_id: string; corpus: string }> {
   const res = await fetch(`${API_URL}/api/graph/build`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -199,10 +201,10 @@ export async function triggerGraphBuild(corpus: string): Promise<{ status: strin
 }
 
 export async function* streamGraphBuild(
-  corpus: string,
+  buildId: string,
   signal?: AbortSignal
 ): AsyncGenerator<GraphBuildEvent> {
-  const response = await fetch(`${API_URL}/api/graph/build/stream/${corpus}`, { signal });
+  const response = await fetch(`${API_URL}/api/graph/build/stream/${buildId}`, { signal });
   if (!response.ok) {
     yield { type: "error", message: `HTTP ${response.status}` };
     return;

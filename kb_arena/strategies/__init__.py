@@ -83,37 +83,69 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
 
     from kb_arena.llm.client import LLMClient
 
-    chroma = chromadb.PersistentClient(path=settings.chroma_path)
     documents = load_documents(corpus)
 
     if not documents:
-        logger.warning("No documents found for corpus=%s — skipping index build", corpus)
-        return
+        raise ValueError(f"No processed documents found for corpus={corpus}")
 
-    llm = LLMClient()
-    raptor = RaptorStrategy(chroma_client=chroma)
-    raptor._llm = llm
-    pageindex = PageIndexStrategy()
-    pageindex._llm = llm
-
-    # Strategies that need explicit build_index(). qiss/sqr build through the
-    # naive_vector collection they wrap, so building them is idempotent with it.
-    buildable = {
-        "naive_vector": NaiveVectorStrategy(chroma_client=chroma),
-        "contextual_vector": ContextualVectorStrategy(chroma_client=chroma),
-        "qna_pairs": QnAPairStrategy(chroma_client=chroma),
-        "raptor": raptor,
-        "pageindex": pageindex,
-        "bm25": BM25Strategy(),
-        "qiss": QISSStrategy(chroma_client=chroma),
-        "sqr": SQRStrategy(chroma_client=chroma),
-    }
-
-    targets = (
-        buildable
-        if strategy == "all"
-        else {name: inst for name, inst in buildable.items() if name == strategy}
+    buildable_names = (
+        "naive_vector",
+        "contextual_vector",
+        "qna_pairs",
+        "raptor",
+        "pageindex",
+        "bm25",
+        "qiss",
+        "sqr",
     )
+    if strategy != "all" and strategy not in buildable_names:
+        raise ValueError(f"Unknown build strategy: {strategy}")
+    target_names = buildable_names if strategy == "all" else (strategy,)
+
+    chroma_strategies = {
+        "naive_vector",
+        "contextual_vector",
+        "qna_pairs",
+        "raptor",
+        "qiss",
+        "sqr",
+    }
+    chroma = (
+        chromadb.PersistentClient(path=settings.chroma_path)
+        if set(target_names) & chroma_strategies
+        else None
+    )
+    llm_build_strategies = {"contextual_vector", "qna_pairs", "raptor", "pageindex"}
+    llm = LLMClient() if set(target_names) & llm_build_strategies else None
+
+    def _contextual():
+        instance = ContextualVectorStrategy(chroma_client=chroma)
+        instance._llm = llm
+        return instance
+
+    def _raptor():
+        instance = RaptorStrategy(chroma_client=chroma)
+        instance._llm = llm
+        return instance
+
+    def _pageindex():
+        instance = PageIndexStrategy()
+        instance._llm = llm
+        return instance
+
+    # qiss/sqr build through the naive_vector collection they wrap, so building
+    # them is idempotent with the dense index.
+    factories = {
+        "naive_vector": lambda: NaiveVectorStrategy(chroma_client=chroma),
+        "contextual_vector": _contextual,
+        "qna_pairs": lambda: QnAPairStrategy(chroma_client=chroma, llm_client=llm),
+        "raptor": _raptor,
+        "pageindex": _pageindex,
+        "bm25": BM25Strategy,
+        "qiss": lambda: QISSStrategy(chroma_client=chroma),
+        "sqr": lambda: SQRStrategy(chroma_client=chroma),
+    }
+    targets = {name: factories[name]() for name in target_names}
 
     with Progress(
         SpinnerColumn(),

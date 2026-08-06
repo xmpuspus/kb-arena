@@ -138,13 +138,74 @@ def test_demo_lifespan_skips_external_clients_and_disables_chroma_telemetry(monk
     monkeypatch.setattr(llm_client_module, "LLMClient", record_llm_initialization)
 
     try:
-        with TestClient(app):
+        with TestClient(app) as client:
             assert "qiss" in app.state.strategies
+            ready = client.get("/ready")
+            assert ready.status_code == 200
+            assert ready.json() == {
+                "ready": True,
+                "checks": {"demo_mode": True, "neo4j_required": False, "llm_required": False},
+            }
     finally:
         settings.demo_mode = prior_demo_mode
 
     assert captured["anonymized_telemetry"] == "False"
     assert captured["llm_initialized"] is False
+
+
+def test_lifespan_accepts_generic_key_for_selected_generation_provider(monkeypatch):
+    import chromadb
+
+    from kb_arena.chatbot.api import app
+    from kb_arena.llm import client as llm_client_module
+    from kb_arena.settings import settings
+
+    initialized = {"llm": False}
+
+    def fake_llm(*args, **kwargs):
+        initialized["llm"] = True
+        return MagicMock()
+
+    monkeypatch.setattr(settings, "demo_mode", False)
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(settings, "llm_api_key", "generic-key")
+    monkeypatch.setattr(settings, "anthropic_api_key", "")
+    monkeypatch.setattr(settings, "openai_api_key", "embedding-only")
+    monkeypatch.setattr(llm_client_module, "LLMClient", fake_llm)
+    monkeypatch.setattr(chromadb, "PersistentClient", lambda *args, **kwargs: MagicMock())
+    monkeypatch.setattr(
+        "neo4j.AsyncGraphDatabase.driver", MagicMock(side_effect=OSError("Neo4j unavailable"))
+    )
+
+    with TestClient(app):
+        assert settings.demo_mode is False
+
+    assert initialized["llm"] is True
+
+
+def test_configured_llm_initialization_failure_stops_startup(monkeypatch):
+    from kb_arena.chatbot.api import app
+    from kb_arena.llm import client as llm_client_module
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(settings, "demo_mode", False)
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(settings, "llm_api_key", "configured-key")
+    monkeypatch.setattr(llm_client_module, "LLMClient", MagicMock(side_effect=RuntimeError("boom")))
+
+    with pytest.raises(RuntimeError, match="boom"), TestClient(app):
+        pass
+
+
+def test_unknown_generation_provider_stops_startup(monkeypatch):
+    from kb_arena.chatbot.api import app
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(settings, "demo_mode", False)
+    monkeypatch.setattr(settings, "llm_provider", "unknown")
+
+    with pytest.raises(ValueError, match="Unknown KB_ARENA_LLM_PROVIDER"), TestClient(app):
+        pass
 
 
 # GET /strategies

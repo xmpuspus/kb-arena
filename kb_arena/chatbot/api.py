@@ -70,6 +70,18 @@ _rate_store = _auth_module._rate_store
 RATE_LIMIT_RPM = _auth_module.RATE_LIMIT_RPM
 
 
+def _generation_configured() -> bool:
+    """Return whether the selected generation provider has usable credentials."""
+    provider = settings.llm_provider.lower()
+    if provider == "ollama":
+        return True
+    if provider == "anthropic":
+        return bool(settings.llm_api_key or settings.anthropic_api_key)
+    if provider == "openai":
+        return bool(settings.llm_api_key or settings.openai_api_key)
+    return False
+
+
 def _check_rate_limit(client_ip: str) -> bool:
     """Back-compat shim for old tests. Return True when a request is allowed.
 
@@ -114,10 +126,12 @@ async def lifespan(app: FastAPI):
     # auto-enable demo_mode so /chat etc. return 503 instead of crashing on the
     # first request. The static dashboard, /api/benchmark/results, /api/corpora,
     # and the public arena/leaderboard read-only endpoints all keep working.
-    has_anthropic = bool(settings.anthropic_api_key)
-    has_openai = bool(settings.openai_api_key)
-    is_ollama = settings.llm_provider == "ollama"
-    if not (has_anthropic or has_openai or is_ollama):
+    if settings.llm_provider.lower() not in {"anthropic", "openai", "ollama"}:
+        raise ValueError(
+            f"Unknown KB_ARENA_LLM_PROVIDER={settings.llm_provider!r}. "
+            "Valid: anthropic, ollama, openai."
+        )
+    if not _generation_configured():
         if not settings.demo_mode:
             logger.info(
                 "No API key configured; auto-enabling KB_ARENA_DEMO_MODE. "
@@ -127,22 +141,13 @@ async def lifespan(app: FastAPI):
             settings.demo_mode = True
 
     # The read-only demo does not need a model client. Configured deployments
-    # share one client across strategies and fall back to demo mode on failure.
+    # share one client across strategies; initialization failures stop startup.
     llm: LLMClient | None
     if settings.demo_mode:
         llm = None
         logger.info("LLM client skipped in demo mode")
     else:
-        try:
-            llm = LLMClient()
-        except Exception as exc:  # noqa: BLE001 - failure must not stop the demo
-            logger.warning(
-                "LLMClient init failed (%s); running in demo mode. "
-                "Set KB_ARENA_ANTHROPIC_API_KEY or KB_ARENA_OPENAI_API_KEY to enable chat.",
-                exc,
-            )
-            llm = None
-            settings.demo_mode = True
+        llm = LLMClient()
     app.state.llm = llm
 
     # Neo4j: the read-only demo does not use live graph queries.
@@ -878,11 +883,8 @@ async def health(request: Request) -> dict:
         },
         "llm": {
             "provider": settings.llm_provider,
-            "configured": bool(
-                settings.anthropic_api_key
-                or settings.openai_api_key
-                or settings.llm_provider == "ollama"
-            ),
+            "configured": _generation_configured(),
+            "available": request.app.state.llm is not None,
         },
         "strategies": list(request.app.state.strategies.keys()),
         "demo_mode": settings.demo_mode,
@@ -896,6 +898,18 @@ async def readiness(request: Request) -> JSONResponse:
     Use for orchestrators (k8s, docker compose) that need to know when
     the service is actually ready to serve traffic, not just alive.
     """
+    if settings.demo_mode:
+        return JSONResponse(
+            {
+                "ready": True,
+                "checks": {
+                    "demo_mode": True,
+                    "neo4j_required": False,
+                    "llm_required": False,
+                },
+            }
+        )
+
     checks: dict[str, bool] = {}
     ready = True
 
@@ -920,7 +934,7 @@ async def readiness(request: Request) -> JSONResponse:
         checks["neo4j"] = True  # not needed
 
     # LLM: check if at least one API key is configured
-    checks["llm_configured"] = bool(settings.anthropic_api_key or settings.openai_api_key)
+    checks["llm_configured"] = _generation_configured() and request.app.state.llm is not None
     if not checks["llm_configured"]:
         ready = False
 

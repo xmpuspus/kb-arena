@@ -111,8 +111,8 @@ export default function GraphPage() {
     setNodes([]);
     setEdges([]);
     try {
-      await triggerGraphBuild(corpus);
-      for await (const event of streamGraphBuild(corpus, abortRef.current.signal)) {
+      const build = await triggerGraphBuild(corpus);
+      for await (const event of streamGraphBuild(build.build_id, abortRef.current.signal)) {
         if (event.type === "started") {
           setBuildProgress(`Extracting ${event.total_sections} sections...`);
         } else if (event.type === "entity") {
@@ -142,13 +142,15 @@ export default function GraphPage() {
         setBuildProgress(err.message);
       }
     } finally {
-      if (buildStatus === "building") setBuildStatus("idle");
+      setBuildStatus((status) => (status === "building" ? "idle" : status));
     }
   }
 
   useEffect(() => {
+    let active = true;
     setLoading(true);
     fetchGraphData(corpus).then((data) => {
+      if (!active) return;
       setConnected(data.connected);
       if (data.connected && data.nodes.length > 0) {
         setNodes(apiToGraphNodes(data.nodes));
@@ -159,6 +161,9 @@ export default function GraphPage() {
       }
       setLoading(false);
     });
+    return () => {
+      active = false;
+    };
   }, [corpus]);
 
   const maxDegree = Math.max(

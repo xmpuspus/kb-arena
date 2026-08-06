@@ -74,6 +74,22 @@ def test_nist_questions_match_the_approved_type_and_split_counts():
     }
 
 
+def test_nist_question_loader_preserves_holdout_boundary(monkeypatch):
+    from kb_arena.benchmark.questions import load_questions
+
+    monkeypatch.setattr("kb_arena.benchmark.questions.settings.datasets_path", str(CORPUS.parent))
+
+    questions = load_questions("nist-800-171-r3")
+    holdout = load_questions("nist-800-171-r3", split="holdout")
+
+    assert Counter(q.split for q in questions) == {
+        "development": 48,
+        "validation": 12,
+        "holdout": 20,
+    }
+    assert len(holdout) == 20
+
+
 def test_nist_questions_have_traceable_draft_reviews_and_no_duplicates():
     questions = _questions()
     normalized = [" ".join(item["question"].lower().split()) for item in questions]

@@ -22,6 +22,8 @@ def test_release_metadata_is_aligned() -> None:
     assert citation["version"] == TARGET_VERSION
     assert str(citation["date-released"]) == TARGET_DATE
     assert f"## [{TARGET_VERSION}] - {TARGET_DATE}" in changelog
+    security = (ROOT / "SECURITY.md").read_text()
+    assert "| 0.10.x | Active fixes |" in security
 
 
 def test_readme_links_resolve_from_package_indexes() -> None:
@@ -41,3 +43,19 @@ def test_sdist_excludes_local_and_generated_work() -> None:
     excluded = set(project["tool"]["hatch"]["build"]["targets"]["sdist"]["exclude"])
 
     assert {"tmp/", ".venv/", "results/run_*/", "uv.lock"} <= excluded
+
+
+def test_frontend_ci_runs_lint_before_build() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    lint = workflow.index("- run: npm run lint")
+    build = workflow.index("- run: npx next build")
+    assert lint < build
+
+
+def test_graph_build_client_streams_with_server_build_id() -> None:
+    api = (ROOT / "web" / "lib" / "api.ts").read_text()
+    page = (ROOT / "web" / "app" / "graph" / "page.tsx").read_text()
+
+    assert "build_id: string" in api
+    assert "/api/graph/build/stream/${buildId}" in api
+    assert "streamGraphBuild(build.build_id" in page

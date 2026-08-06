@@ -161,21 +161,34 @@ export default function RetrieverLabPage() {
 
   useEffect(() => {
     if (!selectedRun) return;
+    const controller = new AbortController();
+    let active = true;
     setLoading(true);
     setError("");
-    fetch(`${API_URL}/api/retriever-lab/${selectedRun}`)
+    fetch(`${API_URL}/api/retriever-lab/${selectedRun}`, { signal: controller.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`status ${r.status}`);
         return r.json();
       })
       .then((j: RunData) => {
+        if (!active) return;
         setData(j);
         const firstCorpus = Object.keys(j.corpora)[0] ?? "";
         setSelectedCorpus(firstCorpus);
         setSelectedQid("");
       })
-      .catch((e) => setError(`Failed to load run: ${e}`))
-      .finally(() => setLoading(false));
+      .catch((e) => {
+        if (e instanceof Error && e.name !== "AbortError") {
+          setError(`Failed to load run: ${e}`);
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [selectedRun]);
 
   const corpusSummary = useMemo(() => {
@@ -246,7 +259,7 @@ export default function RetrieverLabPage() {
           </select>
         </div>
         {data && (
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
             <label className="text-xs font-medium" style={{ color: "var(--muted)" }}>
               Corpus
             </label>
@@ -305,7 +318,7 @@ export default function RetrieverLabPage() {
             <select
               value={selectedQid}
               onChange={(e) => setSelectedQid(e.target.value)}
-              className="px-3 py-1.5 rounded-lg border text-sm flex-1 max-w-2xl"
+              className="w-full min-w-0 px-3 py-1.5 rounded-lg border text-sm sm:flex-1 sm:max-w-2xl"
               style={{
                 background: "var(--card)",
                 borderColor: "var(--border)",

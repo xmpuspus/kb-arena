@@ -43,5 +43,7 @@ The planned distribution is:
 | Cross-control or multi-hop question | 10 |
 
 The split is 48 development, 12 validation, and 20 holdout questions. Do not tune on the holdout.
+Use `kb-arena optimize --split development`, validate the selected configuration with
+`--split validation`, and reserve `kb-arena benchmark --split holdout` for the final comparison.
 
 This corpus is an evaluation fixture. It is not compliance advice.

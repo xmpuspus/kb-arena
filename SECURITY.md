@@ -4,9 +4,9 @@
 
 | Version | Support |
 |---|---|
-| 0.9.x | Active fixes |
-| 0.8.x | Critical fixes on a best-effort basis |
-| 0.7.x and earlier | Unsupported |
+| 0.10.x | Active fixes |
+| 0.9.x | Critical fixes on a best-effort basis |
+| 0.8.x and earlier | Unsupported |
 
 Fixes land on the latest release in the active minor line.
 
@@ -32,8 +32,10 @@ agreement.
 - `KB_ARENA_DEMO_MODE=true` makes every LLM-triggering endpoint return 503.
 - Read-only result, corpus, health, readiness, and Retriever Lab endpoints do not need a token.
 
-The default open API mode is intended for local development. Set a token and a narrow CORS list
-before you expose an instance to a network.
+The default open API mode is intended for local development. The token controls LLM-triggering
+operations; it is not a confidentiality boundary for read-only corpus, result, graph, Q&A, or
+Retriever Lab data. Do not expose an instance containing private corpus data to an untrusted
+network. Set a token and a narrow CORS list before any network exposure.
 
 ### Input and query handling
 

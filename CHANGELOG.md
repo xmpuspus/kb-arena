@@ -30,6 +30,12 @@ All notable changes to KB Arena.
   configurations.
 - Forced `kb-arena demo` into read-only mode, skipped model and Neo4j clients there, and disabled
   noisy ChromaDB telemetry callbacks.
+- Prevented unavailable graph strategies and empty artifacts from being recorded as successful
+  one-shot pipeline evidence.
+- Preserved development, validation, and holdout labels through benchmark and optimization runs.
+- Made capped benchmarks stop launching queued queries after observed spend reaches the boundary.
+- Fixed provider-aware demo detection, demo readiness, live graph build streaming, and stale
+  dashboard result updates.
 
 ## [0.9.3] - 2026-06-22 - Retrieval ceiling and cost efficiency
 

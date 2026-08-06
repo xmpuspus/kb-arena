@@ -235,7 +235,20 @@ def build_vectors(
     """
     import asyncio
 
-    _preflight(needs_embeddings=True)
+    llm_build_strategies = {"all", "contextual_vector", "qna_pairs", "raptor", "pageindex"}
+    embedding_build_strategies = {
+        "all",
+        "naive_vector",
+        "contextual_vector",
+        "qna_pairs",
+        "raptor",
+        "qiss",
+        "sqr",
+    }
+    _preflight(
+        needs_llm=strategy in llm_build_strategies,
+        needs_embeddings=strategy in embedding_build_strategies,
+    )
 
     from kb_arena.strategies import build_vector_indexes
 
@@ -253,6 +266,9 @@ def benchmark(
         "qna_pairs, knowledge_graph, hybrid, raptor, pageindex",
     ),
     tier: int = typer.Option(0, help="Tier filter (0 = all tiers)"),
+    split: str = typer.Option(
+        "", "--split", help="Question split: development, validation, holdout, or all"
+    ),
     parallel: bool = typer.Option(
         True, "--parallel/--no-parallel", help="Run strategies in parallel"
     ),
@@ -300,7 +316,7 @@ def benchmark(
         total_queries = 0
         for corp in corpora:
             try:
-                questions = load_questions(corp, tier=tier)
+                questions = load_questions(corp, tier=tier, split=split)
             except FileNotFoundError:
                 console.print(f"  [yellow]{corp}: no questions found[/yellow]")
                 continue
@@ -345,6 +361,7 @@ def benchmark(
             corpus=corpus,
             strategy=strategy,
             tier=tier,
+            split=split,
             parallel=parallel,
             reference_free=reference_free,
             top_k=top_k,
@@ -544,6 +561,8 @@ def run(
         )
         raise typer.Exit(1)
 
+    _preflight(needs_llm=True, needs_embeddings=True)
+
     state_path = base / ".pipeline_state.json"
     state: dict = {}
     if resume and state_path.exists():
@@ -565,13 +584,30 @@ def run(
         state[name] = "done"
         _save_state()
 
+    from kb_arena.strategies import load_documents
+
+    def _has_documents() -> bool:
+        return bool(load_documents(corpus))
+
+    def _has_questions() -> bool:
+        from kb_arena.benchmark.questions import load_questions
+
+        try:
+            return bool(load_questions(corpus))
+        except FileNotFoundError:
+            return False
+
     # 1. ingest explicit input, or automatically use a populated raw directory.
     ingest_source = docs
     if not ingest_source:
-        processed = base / "processed"
-        has_processed = processed.exists() and any(processed.glob("*.jsonl"))
+        has_processed = _has_documents()
         raw = base / "raw"
-        has_raw = raw.exists() and any(path.is_file() for path in raw.rglob("*"))
+        from kb_arena.ingest.pipeline import SUPPORTED_EXTENSIONS
+
+        has_raw = raw.exists() and any(
+            path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS
+            for path in raw.rglob("*")
+        )
         if not has_processed and has_raw:
             ingest_source = str(raw)
         elif not has_processed:
@@ -585,18 +621,26 @@ def run(
         from kb_arena.ingest.pipeline import run_ingest
 
         def _ingest():
-            run_ingest(path=ingest_source, corpus=corpus, format="auto")
+            ingested = run_ingest(path=ingest_source, corpus=corpus, format="auto")
+            if ingested <= 0:
+                console.print("[red]Ingestion produced no documents; pipeline stopped.[/red]")
+                raise typer.Exit(1)
 
         _stage("ingest", _ingest)
 
     # 2. build-graph (skippable when Neo4j is unavailable)
+    graph_available = bool(resume and state.get("build_graph") == "done" and not skip_graph)
     if not skip_graph:
+        from neo4j.exceptions import ServiceUnavailable
+
         from kb_arena.graph.extractor import run_extraction
 
         def _graph() -> bool | None:
+            nonlocal graph_available
             try:
                 asyncio.run(run_extraction(corpus=corpus))
-            except Exception as exc:  # noqa: BLE001 - surface as warning, continue
+            except (OSError, ConnectionError, ServiceUnavailable) as exc:
+                graph_available = False
                 console.print(
                     f"[yellow]build-graph failed: {exc}\n"
                     "Continuing with vector strategies. "
@@ -604,6 +648,7 @@ def run(
                 )
                 # Graceful degradation: don't mark stage done so future --resume retries.
                 return False
+            graph_available = True
             return None
 
         _stage("build_graph", _graph)
@@ -619,12 +664,17 @@ def run(
     _stage("build_vectors", _vectors)
 
     # 4. generate-questions (only if no questions exist)
-    has_questions = (base / "questions").exists() and any((base / "questions").glob("*.yaml"))
+    has_questions = _has_questions()
     if not has_questions:
         from kb_arena.benchmark.question_gen import run_question_generation
 
         def _questions():
             asyncio.run(run_question_generation(corpus=corpus, count=questions))
+            if not _has_questions():
+                console.print(
+                    "[red]Question generation produced no questions; pipeline stopped.[/red]"
+                )
+                raise typer.Exit(1)
 
         _stage("generate_questions", _questions)
     else:
@@ -632,9 +682,16 @@ def run(
 
     # 5. benchmark
     from kb_arena.benchmark.runner import run_benchmark
+    from kb_arena.strategies.catalog import default_strategy_names
+
+    benchmark_strategies = "all"
+    if not graph_available:
+        benchmark_strategies = ",".join(
+            name for name in default_strategy_names() if name not in {"knowledge_graph", "hybrid"}
+        )
 
     def _bench():
-        asyncio.run(run_benchmark(corpus=corpus, strategy="all"))
+        asyncio.run(run_benchmark(corpus=corpus, strategy=benchmark_strategies))
 
     _stage("benchmark", _bench)
 
@@ -1090,6 +1147,9 @@ def retriever_lab(
     corpus: str = typer.Option("all", help="Corpus to evaluate"),
     top_k: int = typer.Option(5, "--top-k", help="Top-k chunks per query"),
     strategies: str = typer.Option("all", help="Strategy filter (or 'all')"),
+    split: str = typer.Option(
+        "", "--split", help="Question split: development, validation, holdout, or all"
+    ),
     min_recall: float = typer.Option(
         0.30,
         "--min-recall",
@@ -1109,7 +1169,7 @@ def retriever_lab(
 
     _preflight(needs_embeddings=True)
     exit_code = _asyncio.run(
-        run_retriever_lab(corpus, strategies, top_k, min_recall, ceiling_k or None)
+        run_retriever_lab(corpus, strategies, top_k, min_recall, ceiling_k or None, split=split)
     )
     if exit_code:
         raise typer.Exit(exit_code)
@@ -1205,6 +1265,14 @@ def label_chunks(
 def optimize(
     corpus: str = typer.Option(..., help="Corpus to optimize against"),
     strategies: str = typer.Option("all", help="Strategy filter: 'all' or comma-separated names"),
+    split: str = typer.Option(
+        "auto",
+        "--split",
+        help=(
+            "Question split: auto (development when labeled), development, validation, "
+            "holdout, or all"
+        ),
+    ),
     top_ks: str = typer.Option("3,5,10", "--top-ks", help="Comma-separated top-k values to sweep"),
     chunk_sizes: str = typer.Option(
         "", "--chunk-sizes", help="Comma-separated chunk-token sizes (chunking strategies only)"
@@ -1260,6 +1328,7 @@ def optimize(
             max_trials=max_trials,
             seed=seed,
             dry_run=dry_run,
+            split=split,
         )
     )
     if exit_code:

@@ -166,6 +166,38 @@ def test_questions_type_filter(questions_yaml_dir, monkeypatch):
     assert len(qs) == 2
 
 
+def test_questions_retain_and_filter_split(tmp_path, monkeypatch):
+    from kb_arena.benchmark.questions import load_questions
+
+    questions_dir = tmp_path / "datasets" / "sample" / "questions"
+    questions_dir.mkdir(parents=True)
+    entries = [
+        {**SAMPLE_QUESTIONS_YAML[0], "id": "dev", "split": "development"},
+        {**SAMPLE_QUESTIONS_YAML[1], "id": "hold", "split": "holdout"},
+    ]
+    (questions_dir / "questions.yaml").write_text(yaml.safe_dump(entries))
+    monkeypatch.setattr(
+        "kb_arena.benchmark.questions.settings.datasets_path", str(tmp_path / "datasets")
+    )
+
+    all_questions = load_questions("sample")
+    holdout = load_questions("sample", split="holdout")
+
+    assert [q.split for q in all_questions] == ["development", "holdout"]
+    assert [q.id for q in holdout] == ["hold"]
+
+
+def test_questions_reject_invalid_split(questions_yaml_dir, monkeypatch):
+    from kb_arena.benchmark.questions import load_questions
+
+    monkeypatch.setattr(
+        "kb_arena.benchmark.questions.settings.datasets_path", str(questions_yaml_dir / "datasets")
+    )
+
+    with pytest.raises(ValueError, match="split"):
+        load_questions("aws-compute", split="training")
+
+
 def test_missing_corpus_raises(tmp_path, monkeypatch):
     from kb_arena.benchmark.questions import load_questions
 

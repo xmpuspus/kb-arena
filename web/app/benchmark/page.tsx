@@ -25,10 +25,15 @@ export default function BenchmarkPage() {
   }, []);
 
   useEffect(() => {
+    let active = true;
     fetchBenchmarkResults(corpus).then((data) => {
+      if (!active) return;
       setRows(data);
       setSource(data === MOCK_BENCHMARK_DATA ? "mock" : "file");
     });
+    return () => {
+      active = false;
+    };
   }, [corpus]);
 
   return (

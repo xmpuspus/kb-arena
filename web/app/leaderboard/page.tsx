@@ -27,8 +27,9 @@ export default function LeaderboardPage() {
   const [filter, setFilter] = useState<string>("all");
 
   useEffect(() => {
+    const controller = new AbortController();
     const url = `${apiBase}/api/leaderboard?corpus=${encodeURIComponent(filter)}`;
-    fetch(url)
+    fetch(url, { signal: controller.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -37,7 +38,10 @@ export default function LeaderboardPage() {
         setData(d);
         setError(null);
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => {
+        if (e instanceof Error && e.name !== "AbortError") setError(String(e));
+      });
+    return () => controller.abort();
   }, [filter]);
 
   const corpora = useMemo(() => ["all", ...(data?.corpora ?? [])], [data?.corpora]);

@@ -355,6 +355,7 @@ async def run_benchmark(
     corpus: str = "all",
     strategy: str = "all",
     tier: int = 0,
+    split: str = "",
     parallel: bool = True,
     reference_free: bool = False,
     top_k: int = 5,
@@ -370,12 +371,18 @@ async def run_benchmark(
 
     run_id = uuid4().hex[:8]
     timestamp = datetime.now(UTC).isoformat()
+    cost_cap = settings.benchmark_cost_cap_usd
     config_snap = {
         "llm_provider": settings.llm_provider,
         "generate_model": settings.generate_model,
         "max_concurrent": settings.benchmark_max_concurrent,
         "query_timeout_s": settings.benchmark_query_timeout_s,
         "top_k": top_k,
+        "question_split": split or "all",
+        "cost_cap_usd": cost_cap,
+        "execution_mode": (
+            "cost_capped_serial" if cost_cap > 0 else "parallel" if parallel else "serial"
+        ),
     }
 
     llm = LLMClient()
@@ -390,16 +397,19 @@ async def run_benchmark(
         console.print("[red]No strategies available. Run build_vectors / build_graph first.[/red]")
         return
 
-    cost_cap = settings.benchmark_cost_cap_usd
     cumulative_total_cost = 0.0
 
     console.print(f"[dim]Run ID: {run_id}[/dim]")
     if cost_cap > 0:
         console.print(f"[dim]Cost cap: ${cost_cap:.2f}[/dim]")
+        if parallel:
+            console.print(
+                "[dim]Capped runs launch one query at a time so queued work stops at the cap.[/dim]"
+            )
 
     for corp in corpora:
         try:
-            questions = load_questions(corp, tier=tier)
+            questions = load_questions(corp, tier=tier, split=split)
         except FileNotFoundError:
             console.print(f"[yellow]No questions for corpus: {corp}[/yellow]")
             continue
@@ -419,7 +429,7 @@ async def run_benchmark(
             run_path = run_dir / f"{bench.corpus}_{bench.strategy}.json"
             run_path.write_text(bench.model_dump_json(indent=2))
 
-        if parallel and len(strategies) > 1:
+        if parallel and len(strategies) > 1 and cost_cap <= 0:
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
@@ -511,8 +521,8 @@ async def run_benchmark(
                         config_snapshot=config_snap,
                     )
 
-                    coros = [
-                        _run_one(
+                    async def _run_question(q):
+                        return await _run_one(
                             strat,
                             q.id,
                             q.question,
@@ -523,11 +533,20 @@ async def run_benchmark(
                             semaphore,
                             top_k=top_k,
                         )
-                        for q in questions
-                    ]
 
-                    for coro in asyncio.as_completed(coros):
-                        rec = await coro
+                    if cost_cap > 0:
+                        records = []
+                        for question in questions:
+                            records.append(await _run_question(question))
+                            if cumulative_total_cost + sum(r.cost_usd for r in records) >= cost_cap:
+                                break
+                    else:
+                        records = []
+                        coros = [_run_question(question) for question in questions]
+                        for coro in asyncio.as_completed(coros):
+                            records.append(await coro)
+
+                    for rec in records:
                         bench.records.append(rec)
                         cumulative_cost += rec.cost_usd
                         cumulative_total_cost += rec.cost_usd
@@ -539,9 +558,10 @@ async def run_benchmark(
 
                         if cost_cap > 0 and cumulative_total_cost >= cost_cap:
                             console.print(
-                                f"\n[red]Cost cap exceeded: ${cumulative_total_cost:.4f} >= "
+                                f"\n[red]Cost cap reached: ${cumulative_total_cost:.4f} >= "
                                 f"${cost_cap:.2f}. Halting benchmark.[/red]"
                             )
+                            bench.stopped_by_cost_cap = True
                             bench = _aggregate(bench, questions_map)
                             _write_result(bench)
                             return

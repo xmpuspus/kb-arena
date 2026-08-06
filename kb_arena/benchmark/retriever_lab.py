@@ -294,6 +294,8 @@ async def run_retriever_lab(
     top_k: int = 5,
     min_recall: float = 0.30,
     ceiling_k: int | None = None,
+    *,
+    split: str = "",
 ) -> int:
     """Run retrieval-only benchmark. Returns 0 on success, 1 if min_recall floor breached."""
     from kb_arena.benchmark.runner import _load_strategies
@@ -316,6 +318,7 @@ async def run_retriever_lab(
         "timestamp": timestamp,
         "top_k": top_k,
         "ceiling_k": ceiling_k,
+        "question_split": split or "all",
         "corpora": {},
         "retrieval_ceiling": {},
     }
@@ -334,6 +337,7 @@ async def run_retriever_lab(
             overall,
             per_question_rows,
             ceiling_k,
+            split,
         )
     finally:
         _llm_patch.__exit__(None, None, None)
@@ -396,10 +400,11 @@ async def _run_corpora_loop(
     overall,
     per_question_rows,
     ceiling_k,
+    split,
 ):
     for corp in corpora:
         try:
-            questions = load_questions(corp)
+            questions = load_questions(corp, split=split)
         except FileNotFoundError:
             console.print(f"[yellow]No questions for {corp}; skipping[/yellow]")
             continue

@@ -61,6 +61,26 @@ async def test_run_optimize_writes_report_with_best_and_delta(patched):
 
 
 @pytest.mark.asyncio
+async def test_run_optimize_auto_uses_development_split_and_records_it(patched, monkeypatch):
+    development = _Q(1)
+    development.split = "development"
+    holdout = _Q(2)
+    holdout.split = "holdout"
+    monkeypatch.setattr(opt, "load_questions", lambda corpus: [development, holdout])
+
+    code = await opt.run_optimize(
+        "aws-compute",
+        "naive_vector",
+        top_ks=[5],
+        out_dir=str(patched),
+    )
+
+    assert code == 0
+    report = json.loads((patched / "optimize.json").read_text())
+    assert report["question_split"] == "development"
+
+
+@pytest.mark.asyncio
 async def test_dry_run_plans_without_scoring(monkeypatch, tmp_path):
     monkeypatch.setattr(opt, "load_documents", lambda corpus: ["doc"])
     monkeypatch.setattr(opt, "load_questions", lambda corpus: [_Q(1)])

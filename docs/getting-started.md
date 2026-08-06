@@ -118,7 +118,7 @@ Important settings:
 
 | Variable | Default | Purpose |
 |---|---:|---|
-| `KB_ARENA_BENCHMARK_COST_CAP_USD` | `10.0` | Stops a run after the cumulative cost passes the cap |
+| `KB_ARENA_BENCHMARK_COST_CAP_USD` | `10.0` | Stops launching queries after observed cumulative cost reaches the cap |
 | `KB_ARENA_BENCHMARK_MAX_CONCURRENT` | `5` | Limits concurrent benchmark queries |
 | `KB_ARENA_BENCHMARK_QUERY_TIMEOUT_S` | `120` | Limits each strategy query |
 | `KB_ARENA_BENCHMARK_MAX_RETRIES` | `2` | Retries transient failures |
@@ -127,3 +127,7 @@ Important settings:
 | `KB_ARENA_RESULTS_PATH` | `./results` | Stores benchmark artifacts |
 
 Run `kb-arena health` to inspect corpus state and local service connectivity.
+
+Capped runs launch one query at a time so queued work stops at the boundary. The final in-flight
+query can make recorded cost exceed the cap. Set the cap to `0` to use parallel execution without
+a spend boundary.

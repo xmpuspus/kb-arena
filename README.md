@@ -159,10 +159,14 @@ comparison:
 ```bash
 kb-arena optimize \
   --corpus my-docs \
+  --split development \
   --strategies bm25,naive_vector,contextual_vector,raptor \
   --top-ks 3,5,10 \
   --metric ndcg
 ```
+
+After you choose the configuration, run the public comparison with
+`kb-arena benchmark --split holdout`.
 
 Read [the evaluation method](https://github.com/xmpuspus/kb-arena/blob/main/docs/methodology.md) before interpreting small score differences or
 synthetic question sets.
