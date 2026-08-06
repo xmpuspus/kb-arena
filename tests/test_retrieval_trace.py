@@ -279,6 +279,44 @@ async def test_hybrid_merges_sub_traces():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("intent", "mock_vector", "mock_graph"),
+    [
+        ("relational", False, True),
+        ("factoid", True, False),
+        ("procedural", False, True),
+    ],
+)
+async def test_hybrid_propagates_the_mock_flag(intent, mock_vector, mock_graph):
+    """Hybrid builds a fresh result, so it must carry the outage flag forward."""
+    from kb_arena.strategies.base import AnswerResult
+    from kb_arena.strategies.hybrid import HybridStrategy
+
+    s = HybridStrategy()
+    fake_vector = AsyncMock()
+    fake_vector.query = AsyncMock(
+        return_value=AnswerResult(
+            answer="vec answer", sources=["d1"], strategy="vec", mock=mock_vector
+        )
+    )
+    fake_graph = AsyncMock()
+    fake_graph.query = AsyncMock(
+        return_value=AnswerResult(
+            answer="graph answer", sources=["d3"], strategy="graph", mock=mock_graph
+        )
+    )
+    s._vector_strategy = fake_vector
+    s._graph_strategy = fake_graph
+    s._llm = AsyncMock()
+    s._llm.generate = AsyncMock(return_value=_llm_resp())
+    s._classify = AsyncMock(return_value=intent)
+
+    result = await s.query("q", top_k=5)
+
+    assert result.mock is True
+
+
+@pytest.mark.asyncio
 async def test_hybrid_procedural_dedupes():
     """Procedural intent should fuse both, dedupe on chunk_id, and re-rank by score."""
     from kb_arena.models.retrieval import RetrievalTrace as RetTrace
