@@ -39,6 +39,7 @@ class BM25Strategy(Strategy):
         self._corpus_sources: list[str] = []
         self._chunk_ids: list[str] = []
         self._index_path: Path | None = None
+        self._loaded_corpus = ""
         self._llm = None
 
     def _get_llm(self):
@@ -85,11 +86,12 @@ class BM25Strategy(Strategy):
             )
         )
         self._index_path = index_path
+        self._loaded_corpus = corpus_name
         log.info("BM25 index built: %d passages", len(texts))
 
     def _ensure_index(self, corpus: str = "") -> bool:
         """Load BM25 index from disk if not already loaded."""
-        if self._bm25 is not None:
+        if self._bm25 is not None and (not corpus or corpus == self._loaded_corpus):
             return True
 
         # Try to find the index
@@ -98,9 +100,9 @@ class BM25Strategy(Strategy):
             search_paths.append(
                 Path(settings.datasets_path) / corpus / "processed" / "bm25_index.json"
             )
-        # Glob for any corpus
+        # Without an explicit corpus, preserve the legacy single-index discovery path.
         datasets = Path(settings.datasets_path)
-        if datasets.exists():
+        if not corpus and datasets.exists():
             for p in datasets.glob("*/processed/bm25_index.json"):
                 search_paths.append(p)
 
@@ -118,16 +120,18 @@ class BM25Strategy(Strategy):
                     tokenized = [t.lower().split() for t in self._corpus_texts]
                     self._bm25 = BM25Okapi(tokenized)
                     self._index_path = path
+                    self._loaded_corpus = path.parent.parent.name
                     return True
                 except (json.JSONDecodeError, KeyError):
                     log.warning("Corrupt BM25 index at %s", path)
                     continue
         return False
 
-    async def query(self, question: str, top_k: int = 5) -> AnswerResult:
+    async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         start = self._start_timer()
 
-        if not self._ensure_index():
+        selected_corpus = "" if corpus == "all" else corpus
+        if not self._ensure_index(selected_corpus):
             return AnswerResult(
                 answer="BM25 index not built. Run: kb-arena build-vectors --strategy bm25",
                 sources=[],

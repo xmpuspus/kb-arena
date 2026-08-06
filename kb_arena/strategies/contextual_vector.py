@@ -44,6 +44,7 @@ def _section_metadata(doc: Document, section: Section) -> dict:
     """Rich metadata for ChromaDB where-filtering."""
     return {
         "source_id": doc.id,
+        "corpus": doc.corpus,
         "source_doc": doc.source,
         "section_path": " > ".join(section.heading_path) if section.heading_path else section.title,
         "module": section.heading_path[0] if section.heading_path else "",
@@ -97,9 +98,9 @@ class ContextualVectorStrategy(Strategy):
                 for i, chunk in enumerate(raw_chunks):
                     chunk_id = f"{doc.id}::{section.id}::{i}"
                     enriched = _enrich_chunk(chunk, section)
-                    ids.append(chunk_id)
+                    ids.append(f"{doc.corpus}::{chunk_id}")
                     texts.append(enriched)
-                    metadatas.append(meta)
+                    metadatas.append({**meta, "chunk_id": chunk_id})
 
         if ids:
             batch = 500
@@ -110,7 +111,13 @@ class ContextualVectorStrategy(Strategy):
                     metadatas=metadatas[start : start + batch],
                 )
 
-    async def query(self, question: str, top_k: int = 5, where: dict | None = None) -> AnswerResult:
+    async def query(
+        self,
+        question: str,
+        top_k: int = 5,
+        where: dict | None = None,
+        corpus: str = "all",
+    ) -> AnswerResult:
         """Similarity search with optional metadata pre-filter."""
         start = self._start_timer()
         collection = self._get_collection()
@@ -121,8 +128,12 @@ class ContextualVectorStrategy(Strategy):
             "n_results": top_k,
             "include": ["documents", "metadatas", "distances"],
         }
-        if where:
+        if where and corpus != "all":
+            query_kwargs["where"] = {"$and": [where, {"corpus": corpus}]}
+        elif where:
             query_kwargs["where"] = where
+        elif corpus != "all":
+            query_kwargs["where"] = {"corpus": corpus}
 
         results = collection.query(**query_kwargs)
         chunks = results["documents"][0] if results["documents"] else []
@@ -133,7 +144,13 @@ class ContextualVectorStrategy(Strategy):
 
         retrieved_chunks = [
             RetrievedChunk(
-                chunk_id=ids[i] if i < len(ids) else f"unknown-{i}",
+                chunk_id=(
+                    metas[i].get("chunk_id")
+                    if i < len(metas) and metas[i].get("chunk_id")
+                    else ids[i]
+                    if i < len(ids)
+                    else f"unknown-{i}"
+                ),
                 doc_id=(metas[i].get("source_id") if i < len(metas) else "") or "",
                 content=chunks[i] if i < len(chunks) else "",
                 score=1.0 - (distances[i] if i < len(distances) else 0.0),

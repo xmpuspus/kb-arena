@@ -29,9 +29,8 @@ services:
 
   api:
     build: .
-    # Public-facing — bound to 0.0.0.0, but auth defaults to demo_mode in the
-    # Dockerfile so /chat etc return 503 unless you set KB_ARENA_DEMO_MODE=false
-    # AND KB_ARENA_API_TOKEN.
+    # Public-facing: the Dockerfile binds to 0.0.0.0. Demo mode blocks model calls
+    # by default, and non-loopback model requests require KB_ARENA_API_TOKEN.
     ports:
       - "8000:8000"
     environment:

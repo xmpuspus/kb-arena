@@ -135,13 +135,17 @@ class RerankVectorStrategy(Strategy):
     async def build_index(self, documents: list[Document]) -> None:
         await self._base.build_index(documents)
 
-    async def query(self, question: str, top_k: int = 5) -> AnswerResult:
+    async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         start = self._start_timer()
         # Retrieve a wider pool first.
         candidate_k = max(top_k * RERANK_FANOUT, top_k + 5)
 
         retrieve_t0 = time.perf_counter()
-        candidate = await self._base.query(question, top_k=candidate_k)
+        candidate = await self._base.query(
+            question,
+            top_k=candidate_k,
+            corpus=corpus,
+        )
         retrieve_ms = (time.perf_counter() - retrieve_t0) * 1000
 
         chunks: list[RetrievedChunk] = (

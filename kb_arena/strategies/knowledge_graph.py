@@ -42,7 +42,9 @@ _WRITE_CYPHER_RE = re.compile(
 
 MULTI_HOP_QUERY = """
 MATCH path = (start)-[*1..{depth}]-(connected)
-WHERE start.fqn = $target AND ALL(r IN relationships(path) WHERE type(r) IN $allowed_rel_types)
+WHERE start.fqn = $target
+  AND ($corpus = 'all' OR ALL(n IN nodes(path) WHERE n.corpus = $corpus))
+  AND ALL(r IN relationships(path) WHERE type(r) IN $allowed_rel_types)
 RETURN connected.name AS name, connected.fqn AS fqn,
        labels(connected)[0] AS type,
        connected.source_doc_id AS source_doc_id,
@@ -56,6 +58,7 @@ LIMIT 50
 COMPARISON_QUERY = """
 MATCH (a)-[r1]-(shared)-[r2]-(b)
 WHERE a.fqn = $entity_a AND b.fqn = $entity_b
+  AND ($corpus = 'all' OR ALL(n IN [a, shared, b] WHERE n.corpus = $corpus))
 RETURN shared.name AS shared_entity, shared.name AS name,
        shared.fqn AS fqn, labels(shared)[0] AS shared_type,
        shared.source_doc_id AS source_doc_id,
@@ -67,6 +70,7 @@ LIMIT 50
 DEPENDENCY_CHAIN = """
 MATCH path = (source)-[:DEPENDS_ON|CONNECTS_TO|TRIGGERS|EXTENDS|CONFIGURES*1..4]->(dep)
 WHERE source.fqn = $start
+  AND ($corpus = 'all' OR ALL(n IN nodes(path) WHERE n.corpus = $corpus))
 WITH path, dep, length(path) AS depth
 RETURN dep.name AS name, dep.fqn AS fqn, labels(dep)[0] AS type,
        dep.source_doc_id AS source_doc_id,
@@ -78,6 +82,7 @@ LIMIT 100
 
 FULLTEXT_SEARCH = """
 CALL db.index.fulltext.queryNodes('entity_search', $query) YIELD node, score
+WHERE $corpus = 'all' OR node.corpus = $corpus
 RETURN node.name AS name, node.fqn AS fqn,
        labels(node)[0] AS type, node.description AS description,
        node.source_doc_id AS source_doc_id,
@@ -88,8 +93,10 @@ LIMIT 20
 
 ENTITY_LOOKUP = """
 MATCH (n)
-WHERE n.fqn = $fqn OR toLower(n.name) = toLower($name)
+WHERE (n.fqn = $fqn OR toLower(n.name) = toLower($name))
+  AND ($corpus = 'all' OR n.corpus = $corpus)
 OPTIONAL MATCH (n)-[r]-(neighbor)
+WHERE $corpus = 'all' OR neighbor.corpus = $corpus
 RETURN n.name AS name, n.fqn AS fqn, labels(n)[0] AS type,
        n.description AS description,
        n.source_doc_id AS source_doc_id,
@@ -323,7 +330,12 @@ class KnowledgeGraphStrategy(Strategy):
         entities.extend(re.findall(r"\b([A-Z][a-zA-Z0-9]+)\b", question))
         return list(dict.fromkeys(entities))[:3]  # deduplicate, limit
 
-    async def _template_query(self, question: str, intent: str) -> tuple[list[dict], str]:
+    async def _template_query(
+        self,
+        question: str,
+        intent: str,
+        corpus: str,
+    ) -> tuple[list[dict], str]:
         """Run the appropriate Cypher template and return (records, cypher_used)."""
         entities = self._extract_entities(question)
         primary = entities[0] if entities else ""
@@ -333,20 +345,24 @@ class KnowledgeGraphStrategy(Strategy):
 
         if intent == "comparison" and primary and secondary:
             cypher = COMPARISON_QUERY
-            params = {"entity_a": primary, "entity_b": secondary}
+            params = {"entity_a": primary, "entity_b": secondary, "corpus": corpus}
         elif intent == "dependency" and primary:
             cypher = DEPENDENCY_CHAIN
-            params = {"start": primary}
+            params = {"start": primary, "corpus": corpus}
         elif intent == "entity_lookup" and primary:
             cypher = ENTITY_LOOKUP
-            params = {"fqn": primary, "name": primary}
+            params = {"fqn": primary, "name": primary, "corpus": corpus}
         elif intent == "multi_hop" and primary:
             cypher = MULTI_HOP_QUERY.format(depth=3)
-            params = {"target": primary, "allowed_rel_types": allowed_rels}
+            params = {
+                "target": primary,
+                "allowed_rel_types": allowed_rels,
+                "corpus": corpus,
+            }
         else:
             # Fulltext search as catch-all
             cypher = FULLTEXT_SEARCH
-            params = {"query": question}
+            params = {"query": question, "corpus": corpus}
 
         records = await self._run_cypher(cypher, params)
         return records, cypher
@@ -365,7 +381,10 @@ class KnowledgeGraphStrategy(Strategy):
 
         if _WRITE_CYPHER_RE.search(cypher):
             logger.warning("Blocked LLM-generated write Cypher: %.200s", cypher)
-            records = await self._run_cypher(FULLTEXT_SEARCH, {"query": question})
+            records = await self._run_cypher(
+                FULLTEXT_SEARCH,
+                {"query": question, "corpus": "all"},
+            )
             return records, FULLTEXT_SEARCH, cypher_cost
 
         try:
@@ -373,10 +392,13 @@ class KnowledgeGraphStrategy(Strategy):
             return records, cypher, cypher_cost
         except Exception:
             # Cypher generation can produce invalid queries — fall through to fulltext
-            records = await self._run_cypher(FULLTEXT_SEARCH, {"query": question})
+            records = await self._run_cypher(
+                FULLTEXT_SEARCH,
+                {"query": question, "corpus": "all"},
+            )
             return records, FULLTEXT_SEARCH, cypher_cost
 
-    async def query(self, question: str, top_k: int = 5) -> AnswerResult:
+    async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Intent → Cypher template → execute → LLM answer."""
         start = self._start_timer()
 
@@ -396,11 +418,11 @@ class KnowledgeGraphStrategy(Strategy):
 
         retrieval_start = time.perf_counter()
         intent = await self._classify_intent(question)
-        records, cypher_used = await self._template_query(question, intent)
+        records, cypher_used = await self._template_query(question, intent, corpus)
         cypher_cost = 0.0
 
         # If template returns nothing, try Text-to-Cypher
-        if not records:
+        if not records and corpus == "all":
             records, cypher_used, cypher_cost = await self._generate_cypher(question)
         retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
@@ -443,7 +465,12 @@ class KnowledgeGraphStrategy(Strategy):
             cost_usd=total_cost,
         )
 
-    async def stream_answer(self, question: str, history: list[dict] | None = None):
+    async def stream_answer(
+        self,
+        question: str,
+        history: list[dict] | None = None,
+        corpus: str = "all",
+    ):
         """Stream the final answer after synchronous graph retrieval."""
         start = self._start_timer()
 
@@ -453,8 +480,8 @@ class KnowledgeGraphStrategy(Strategy):
             return
 
         intent = await self._classify_intent(question)
-        records, cypher_used = await self._template_query(question, intent)
-        if not records:
+        records, cypher_used = await self._template_query(question, intent, corpus)
+        if not records and corpus == "all":
             records, cypher_used, _ = await self._generate_cypher(question)
 
         context = _results_to_context(records)

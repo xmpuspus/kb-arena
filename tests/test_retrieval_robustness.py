@@ -104,6 +104,18 @@ async def test_retrieve_only_rejects_missing_retrieval_trace():
 
 
 @pytest.mark.asyncio
+async def test_retrieve_only_rejects_pageindex_zero_llm_evidence():
+    class PageIndexStrategy:
+        name = "pageindex"
+
+        async def query(self, question, top_k):
+            raise AssertionError("query-independent traversal must not run")
+
+    with pytest.raises(RetrievalExecutionError, match="not supported"):
+        await _retrieve_only(PageIndexStrategy(), "Question", 5)
+
+
+@pytest.mark.asyncio
 async def test_retrieval_only_llm_mode_does_not_stub_concurrent_task(monkeypatch):
     from kb_arena.benchmark.retriever_lab import _PatchLLMClient
     from kb_arena.llm.client import LLMClient, LLMResponse
@@ -143,7 +155,7 @@ async def test_retriever_lab_records_error_and_excludes_failed_query(monkeypatch
     class BrokenStrategy:
         name = "broken"
 
-        async def query(self, question, top_k):
+        async def query(self, question, top_k, corpus="all"):
             raise RuntimeError("backend unavailable")
 
     question = SimpleNamespace(
@@ -183,7 +195,7 @@ async def test_retriever_lab_fails_and_records_retrieval_ceiling_error(monkeypat
     class WorkingStrategy:
         name = "working"
 
-        async def query(self, question, top_k):
+        async def query(self, question, top_k, corpus="all"):
             return AnswerResult(
                 answer="",
                 retrieval=RetrievalTrace(query=question, retrieved=[], top_k=top_k),
@@ -193,7 +205,7 @@ async def test_retriever_lab_fails_and_records_retrieval_ceiling_error(monkeypat
     class BrokenCeilingStrategy:
         name = "naive_vector"
 
-        async def query(self, question, top_k):
+        async def query(self, question, top_k, corpus="all"):
             raise ConnectionError("deep index unavailable")
 
     question = SimpleNamespace(

@@ -32,7 +32,10 @@ def _make_mock_strategy(
     )
     strategy.query = AsyncMock(return_value=result)
 
-    async def _stream(question, history=None):
+    strategy.stream_calls = []
+
+    async def _stream(question, history=None, corpus="all"):
+        strategy.stream_calls.append((question, history, corpus))
         for word in answer.split():
             yield word + " "
 
@@ -257,6 +260,20 @@ def test_chat_response_has_answer(app_client):
     data = r.json()
     assert "answer" in data
     assert data["answer"]
+
+
+def test_chat_passes_selected_corpus_to_strategy(app_client):
+    from kb_arena.chatbot.api import app
+
+    response = app_client.post(
+        "/chat",
+        json={"query": "What is X?", "strategy": "naive_vector", "corpus": "nist"},
+    )
+
+    assert response.status_code == 200
+    app.state.strategies["naive_vector"].query.assert_awaited_with(
+        "What is X?", top_k=5, corpus="nist"
+    )
 
 
 def test_chat_response_has_strategy_used(app_client):

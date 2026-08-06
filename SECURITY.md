@@ -32,6 +32,9 @@ agreement.
   keeps it in `sessionStorage`, so it is limited to the current tab and cleared when the tab closes.
 - Token comparison uses `hmac.compare_digest`.
 - `KB_ARENA_DEMO_MODE=true` makes every LLM-triggering endpoint return 503.
+- Without a token, LLM-triggering endpoints accept loopback clients only. Remote clients receive
+  401 even when the process is bound to a non-loopback interface.
+- The live graph-build event stream uses the same authentication gate as graph-build creation.
 - Read-only result, corpus, health, readiness, and Retriever Lab endpoints do not need a token.
 
 The default open API mode is intended for local development. The token controls LLM-triggering
@@ -60,6 +63,7 @@ network. Set a token and a narrow CORS list before any network exposure.
 ### Spend and availability
 
 - `KB_ARENA_BENCHMARK_COST_CAP_USD` defaults to `10.0`.
+- Cost caps and quality thresholds reject negative or non-finite values before a run starts.
 - Benchmark concurrency, query timeouts, and retries use fixed defaults and environment controls.
 - Demo mode prevents a no-key instance from making LLM calls.
 - The in-memory rate limiter allows 60 requests per minute for each client and caps cold keys.
@@ -67,6 +71,7 @@ network. Set a token and a narrow CORS list before any network exposure.
 ### Network and container defaults
 
 - `KB_ARENA_CORS_ORIGINS` controls allowed browser origins and does not default to `*`.
+- `kb-arena serve` binds to `127.0.0.1` by default.
 - `docker-compose.yml` binds Neo4j to `127.0.0.1` and needs an explicit password.
 - The container runs as the non-root `kbarena` user.
 - The container health check polls `/health`.

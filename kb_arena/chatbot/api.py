@@ -312,11 +312,11 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
     # Track conversation history per session (X-Session-ID header preferred, IP fallback)
     client_ip = request.client.host if request.client else "unknown"
     session_id = request.headers.get("x-session-id", client_ip)
-    session_key = f"{session_id}:{body.strategy}"
+    session_key = f"{session_id}:{body.corpus}:{body.strategy}"
     session = _session_store.get(session_key)
     session.add_turn("user", body.query)
 
-    result = await strategy.query(body.query, top_k=5)
+    result = await strategy.query(body.query, top_k=5, corpus=body.corpus)
 
     session.add_turn("assistant", result.answer)
 
@@ -350,7 +350,11 @@ async def chat_stream(body: ChatRequest, request: Request) -> EventSourceRespons
 
         snapshot: dict | None = None
         try:
-            async for token in strategy.stream_answer(body.query, history):
+            async for token in strategy.stream_answer(
+                body.query,
+                history,
+                corpus=body.corpus,
+            ):
                 if isinstance(token, dict) and "_kb_arena_meta" in token:
                     # Final metadata packet; see the Strategy.stream_answer protocol.
                     snapshot = token["_kb_arena_meta"]
@@ -514,10 +518,12 @@ async def benchmark_results(corpus: str = "all") -> dict:
     for result in all_results:
         strategy = result.get("strategy", "")
         for rec in result.get("records", []):
-            try:
-                tier = int(rec.get("question_id", "").split("-t")[1].split("-")[0])
-            except (IndexError, ValueError):
-                tier = 0
+            tier = rec.get("question_tier", 0)
+            if not tier:
+                try:
+                    tier = int(rec.get("question_id", "").split("-t")[1].split("-")[0])
+                except (IndexError, ValueError):
+                    tier = 0
             score = rec.get("score", {})
             strategy_tiers[strategy][tier].append(score.get("accuracy", 0))
             strategy_latency[strategy].append(rec.get("latency_ms", 0))
@@ -711,7 +717,10 @@ async def trigger_graph_build(body: _GraphBuildRequest) -> dict:
     return {"status": "started", "build_id": build_id, "corpus": corpus}
 
 
-@app.get("/api/graph/build/stream/{build_id}")
+@app.get(
+    "/api/graph/build/stream/{build_id}",
+    dependencies=[Depends(require_auth)],
+)
 async def graph_build_stream(build_id: str) -> EventSourceResponse:
     """SSE stream of graph build events for a specific build."""
     queue = _graph_build_queues.get(build_id)

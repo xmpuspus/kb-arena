@@ -81,6 +81,8 @@ class AnswerRecord(BaseModel):
     """Record of a single strategy answering a single question."""
 
     question_id: str
+    question_tier: int = 0
+    question_type: str = "unknown"
     strategy: str
     answer: str
     score: Score

@@ -103,9 +103,15 @@ class NaiveVectorStrategy(Strategy):
                 chunks = _chunk_text(section.content)
                 for i, chunk in enumerate(chunks):
                     chunk_id = f"{doc.id}::{section.id}::{i}"
-                    ids.append(chunk_id)
+                    ids.append(f"{doc.corpus}::{chunk_id}")
                     texts.append(chunk)
-                    metadatas.append({"source_id": doc.id})
+                    metadatas.append(
+                        {
+                            "source_id": doc.id,
+                            "corpus": doc.corpus,
+                            "chunk_id": chunk_id,
+                        }
+                    )
 
         if ids:
             # ChromaDB upsert in batches of 500 to avoid payload limits
@@ -117,17 +123,20 @@ class NaiveVectorStrategy(Strategy):
                     metadatas=metadatas[start : start + batch],
                 )
 
-    async def query(self, question: str, top_k: int = 5) -> AnswerResult:
+    async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Top-k cosine similarity → concatenate chunks → Sonnet."""
         start = self._start_timer()
         collection = self._get_collection()
 
         retrieval_start = time.perf_counter()
-        results = collection.query(
-            query_texts=[question],
-            n_results=top_k,
-            include=["documents", "metadatas", "distances"],
-        )
+        query_kwargs = {
+            "query_texts": [question],
+            "n_results": top_k,
+            "include": ["documents", "metadatas", "distances"],
+        }
+        if corpus != "all":
+            query_kwargs["where"] = {"corpus": corpus}
+        results = collection.query(**query_kwargs)
         chunks = results["documents"][0] if results["documents"] else []
         metas = results["metadatas"][0] if results["metadatas"] else []
         ids = results["ids"][0] if results.get("ids") else []
@@ -136,7 +145,13 @@ class NaiveVectorStrategy(Strategy):
 
         retrieved_chunks = [
             RetrievedChunk(
-                chunk_id=ids[i] if i < len(ids) else f"unknown-{i}",
+                chunk_id=(
+                    metas[i].get("chunk_id")
+                    if i < len(metas) and metas[i].get("chunk_id")
+                    else ids[i]
+                    if i < len(ids)
+                    else f"unknown-{i}"
+                ),
                 doc_id=(metas[i].get("source_id") if i < len(metas) else "") or "",
                 content=chunks[i] if i < len(chunks) else "",
                 score=1.0 - (distances[i] if i < len(distances) else 0.0),

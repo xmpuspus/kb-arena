@@ -422,6 +422,26 @@ async def test_evaluate_rejects_invalid_judge_scores(judge_text):
 
 
 @pytest.mark.asyncio
+async def test_evaluate_rejects_boolean_judge_scores():
+    from kb_arena.benchmark.evaluator import EvaluationExecutionError, _eval_cache
+    from kb_arena.llm.client import LLMResponse
+
+    _eval_cache.clear()
+    mock_llm = AsyncMock()
+    mock_llm.judge.return_value = LLMResponse(
+        text='{"accuracy": true, "completeness": 0.8, "faithfulness": 1.0}'
+    )
+
+    with pytest.raises(EvaluationExecutionError, match="JSON numbers"):
+        await evaluate(
+            "Lambda runs code.",
+            GroundTruth(answer="Lambda runs code serverlessly."),
+            Constraints(must_mention=["Lambda"]),
+            llm=mock_llm,
+        )
+
+
+@pytest.mark.asyncio
 async def test_reference_free_cache_separates_question_and_context(monkeypatch):
     from kb_arena.benchmark.evaluator import _eval_cache
     from kb_arena.llm.client import LLMResponse
@@ -546,15 +566,27 @@ def test_aggregate_cost_per_correct():
     assert result.cost_per_correct == pytest.approx(0.02)
 
 
-def test_aggregate_question_id_without_tier():
-    """Question IDs that don't match pattern should go to tier 0."""
+def test_aggregate_uses_declared_tier_for_id_without_tier():
     from kb_arena.benchmark.runner import _aggregate
 
     bench = BenchmarkResult(corpus="aws-compute", strategy="naive_vector")
     bench.records = [_make_record("no-tier-in-id", 0.9)]
 
+    result = _aggregate(bench, {"no-tier-in-id": ("direct", 3)})
+    assert result.accuracy_by_tier == {3: pytest.approx(0.9)}
+    assert result.records[0].question_tier == 3
+    assert result.records[0].question_type == "direct"
+
+
+def test_aggregate_reliability_faithfulness_is_not_double_counted():
+    from kb_arena.benchmark.runner import _aggregate
+
+    bench = BenchmarkResult(corpus="test", strategy="naive_vector")
+    bench.records = [_make_record("test-t1-001", 0.8)]
+
     result = _aggregate(bench, {})
-    assert 0 in result.accuracy_by_tier
+
+    assert result.reliability.avg_faithfulness == pytest.approx(1.0)
 
 
 # ---------------------------------------------------------------------------

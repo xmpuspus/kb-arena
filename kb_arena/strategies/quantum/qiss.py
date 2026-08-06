@@ -230,7 +230,7 @@ class QISSStrategy(Strategy):
             logger.warning("QISS decomposition failed (%s) — using single query", exc)
             return [question]
 
-    async def query(self, question: str, top_k: int = 5) -> AnswerResult:
+    async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         from kb_arena.settings import settings
 
         start = self._start_timer()
@@ -238,7 +238,11 @@ class QISSStrategy(Strategy):
         candidate_k = max(top_k * fanout, top_k + 5)
 
         retrieve_t0 = time.perf_counter()
-        candidate = await self._base.query(question, top_k=candidate_k)
+        candidate = await self._base.query(
+            question,
+            top_k=candidate_k,
+            corpus=corpus,
+        )
         retrieve_ms = (time.perf_counter() - retrieve_t0) * 1000
 
         chunks: list[RetrievedChunk] = (

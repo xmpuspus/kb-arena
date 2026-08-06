@@ -94,6 +94,8 @@ def _parse_json_response(text: str) -> dict:
 def _score_value(parsed: dict, field: str) -> float:
     if field not in parsed:
         raise RAGASExecutionError(f"metric judge score missing field: {field}")
+    if isinstance(parsed[field], bool) or not isinstance(parsed[field], int | float):
+        raise RAGASExecutionError(f"metric judge field {field} must be a JSON number")
     try:
         score = float(parsed[field])
     except (TypeError, ValueError) as exc:

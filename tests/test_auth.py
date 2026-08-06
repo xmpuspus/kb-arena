@@ -89,3 +89,27 @@ def test_invalid_bearers_are_rate_limited(monkeypatch):
         assert exc_info.value.status_code == 429
     finally:
         auth._rate_store.clear()
+
+
+def test_open_mode_allows_loopback_requests(monkeypatch):
+    from kb_arena.chatbot import auth
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(settings, "api_token", "")
+    monkeypatch.setattr(settings, "demo_mode", False)
+
+    assert auth.require_auth(_request("127.0.0.1")) is None
+
+
+def test_open_mode_rejects_remote_requests(monkeypatch):
+    from kb_arena.chatbot import auth
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(settings, "api_token", "")
+    monkeypatch.setattr(settings, "demo_mode", False)
+
+    with pytest.raises(HTTPException) as exc_info:
+        auth.require_auth(_request("192.0.2.10"))
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "api_token_required_for_remote_access"

@@ -203,6 +203,11 @@ async def _evaluate_uncached(
             missing = required - parsed.keys()
             if missing:
                 raise ValueError(f"judge score missing fields: {sorted(missing)}")
+            if any(
+                isinstance(parsed[field], bool) or not isinstance(parsed[field], int | float)
+                for field in required
+            ):
+                raise ValueError("judge scores must be JSON numbers between 0 and 1")
             judge_scores = {
                 field: float(parsed[field])
                 for field in ("accuracy", "completeness", "faithfulness")

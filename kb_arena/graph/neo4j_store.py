@@ -96,7 +96,7 @@ class Neo4jStore:
     async def load_nodes(self, nodes: list[dict[str, Any]], label: NodeType) -> int:
         """UNWIND/MERGE batch load for a single node label.
 
-        MERGE on fqn (unique key), then SET remaining properties.
+        MERGE on the corpus-qualified entity ID, then SET remaining properties.
         Returns count of newly created nodes.
         """
         if not nodes:
@@ -104,9 +104,12 @@ class Neo4jStore:
 
         created = 0
         safe_nodes = _prepare_for_neo4j(nodes)
+        for node in safe_nodes:
+            node.setdefault("corpus", "default")
+            node.setdefault("entity_id", f"{node['corpus']}::{node['fqn']}")
         query = f"""
         UNWIND $records AS record
-        MERGE (n:{label.value} {{fqn: record.fqn}})
+        MERGE (n:{label.value} {{entity_id: record.entity_id}})
         SET n += record
         """
         async with self._driver.session() as session:
@@ -132,10 +135,20 @@ class Neo4jStore:
 
         created = 0
         safe_edges = _prepare_for_neo4j(edges)
+        for edge in safe_edges:
+            edge.setdefault("corpus", "default")
+            edge.setdefault(
+                "source_entity_id",
+                f"{edge['corpus']}::{edge['source_fqn']}",
+            )
+            edge.setdefault(
+                "target_entity_id",
+                f"{edge['corpus']}::{edge['target_fqn']}",
+            )
         query = f"""
         UNWIND $records AS record
-        MATCH (a {{fqn: record.source_fqn}})
-        MATCH (b {{fqn: record.target_fqn}})
+        MATCH (a {{entity_id: record.source_entity_id}})
+        MATCH (b {{entity_id: record.target_entity_id}})
         MERGE (a)-[r:{rel_type.value}]->(b)
         SET r.source_section_id = record.source_section_id,
             r.extraction_confidence = record.extraction_confidence,

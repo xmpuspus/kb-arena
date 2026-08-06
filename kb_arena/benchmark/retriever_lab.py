@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 import sys
 from datetime import UTC, datetime
@@ -62,10 +63,22 @@ class _PatchLLMClient:
         return False
 
 
-async def _retrieve_only(strategy: Strategy, question_text: str, top_k: int) -> RetrievalTrace:
+async def _retrieve_only(
+    strategy: Strategy,
+    question_text: str,
+    top_k: int,
+    corpus: str = "all",
+) -> RetrievalTrace:
     """Run query() under the LLM-stub patch and return the retrieval trace."""
+    if strategy.name == "pageindex":
+        raise RetrievalExecutionError(
+            "strategy 'pageindex' is not supported in zero-LLM Retriever Lab runs"
+        )
     try:
-        result = await strategy.query(question_text, top_k=top_k)
+        if corpus == "all":
+            result = await strategy.query(question_text, top_k=top_k)
+        else:
+            result = await strategy.query(question_text, top_k=top_k, corpus=corpus)
     except Exception as exc:
         raise RetrievalExecutionError(
             f"strategy {strategy.name!r} failed to retrieve for {question_text!r}: {exc}"
@@ -213,7 +226,12 @@ def _summarize_ceiling(
     }
 
 
-async def _retrieval_ceiling(questions, top_k: int, ceiling_k: int) -> dict:
+async def _retrieval_ceiling(
+    questions,
+    top_k: int,
+    ceiling_k: int,
+    corpus: str = "all",
+) -> dict:
     """Base-retriever (naive_vector) recall at top_k vs ceiling_k over `questions`.
 
     naive_vector is the pool every vector reranker shares, so its recall ceiling
@@ -238,7 +256,7 @@ async def _retrieval_ceiling(questions, top_k: int, ceiling_k: int) -> dict:
     ceiling_recalls: list[float] = []
     for q in questions:
         try:
-            trace = await _retrieve_only(base, q.question, ceiling_k)
+            trace = await _retrieve_only(base, q.question, ceiling_k, corpus=corpus)
         except RetrievalExecutionError as exc:
             log.warning("Retrieval ceiling failed: %s", exc)
             cause = exc.__cause__ or exc
@@ -282,12 +300,18 @@ async def run_retriever_lab(
     """Run retrieval-only benchmark. Returns 0 on success, 1 if min_recall floor breached."""
     from kb_arena.benchmark.runner import _load_strategies
 
+    if not math.isfinite(min_recall) or not 0.0 <= min_recall <= 1.0:
+        console.print("[red]min_recall must be a finite number between 0 and 1.[/red]")
+        return 1
+
     run_id = uuid4().hex[:8]
     timestamp = datetime.now(UTC).isoformat()
     ceiling_k = ceiling_k if ceiling_k and ceiling_k > top_k else top_k * 4
 
     corpora = discover_corpora() if corpus == "all" else [corpus]
     strategies = _load_strategies(strategies_filter)
+    if strategies_filter == "all":
+        strategies = [strategy for strategy in strategies if strategy.name != "pageindex"]
     if not strategies:
         console.print("[red]No strategies available. Run build-vectors first.[/red]")
         return 1
@@ -431,7 +455,7 @@ async def _run_corpora_loop(
             for s in strategies:
                 for q in questions:
                     try:
-                        trace = await _retrieve_only(s, q.question, top_k)
+                        trace = await _retrieve_only(s, q.question, top_k, corpus=corp)
                     except RetrievalExecutionError as exc:
                         per_strategy_errors[s.name] += 1
                         per_question_rows.append(
@@ -513,7 +537,7 @@ async def _run_corpora_loop(
             summary[s.name] = stats
         overall["corpora"][corp] = summary
 
-        ceiling = await _retrieval_ceiling(questions, top_k, ceiling_k)
+        ceiling = await _retrieval_ceiling(questions, top_k, ceiling_k, corpus=corp)
         overall["retrieval_ceiling"][corp] = ceiling
         if ceiling.get("status") == "error":
             error = ceiling["execution_error"]

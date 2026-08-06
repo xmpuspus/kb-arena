@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+import pytest
 from typer.testing import CliRunner
 
 from kb_arena.cli import app
@@ -57,3 +58,31 @@ def test_benchmark_dry_run_does_not_preflight_credentials(monkeypatch):
 
     assert result.exit_code == 0, result.stdout
     assert "Dry run: benchmark" in _clean(result.stdout)
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf", "-0.1", "1.1"])
+@pytest.mark.parametrize(
+    "command,option",
+    [
+        ("benchmark", "--fail-below"),
+        ("retriever-lab", "--min-recall"),
+    ],
+)
+def test_quality_floor_rejects_invalid_values_before_preflight(monkeypatch, command, option, value):
+    def unexpected_preflight(**kwargs) -> None:
+        raise AssertionError(f"invalid threshold preflighted credentials: {kwargs}")
+
+    monkeypatch.setattr("kb_arena.cli._preflight", unexpected_preflight)
+
+    result = runner.invoke(app, [command, option, value])
+
+    assert result.exit_code == 1
+    assert "finite number between 0 and 1" in _clean(result.stdout)
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf", "-0.1", "1.1"])
+def test_eval_threshold_rejects_invalid_values(value):
+    result = runner.invoke(app, ["eval", "--ci", "--threshold", f"accuracy={value}"])
+
+    assert result.exit_code == 1
+    assert "finite number between 0 and 1" in _clean(result.stdout)

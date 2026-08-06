@@ -77,6 +77,16 @@ def _cli_error(code: str, message: str, fmt: str = "rich") -> None:
     raise typer.Exit(1)
 
 
+def _validate_unit_interval(value: float, option: str) -> None:
+    import math
+
+    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+        _cli_error(
+            "BAD_THRESHOLD",
+            f"{option} must be a finite number between 0 and 1.",
+        )
+
+
 def _preflight(
     needs_llm: bool = False,
     needs_embeddings: bool = False,
@@ -302,6 +312,8 @@ def benchmark(
     """
     import asyncio
 
+    _validate_unit_interval(fail_below, "--fail-below")
+
     if strategy_module:
         from kb_arena.strategies import register_plugin_strategy
 
@@ -458,7 +470,7 @@ def report(
 
 @app.command()
 def serve(
-    host: str = typer.Option("0.0.0.0", help="Host to bind to"),
+    host: str = typer.Option("127.0.0.1", help="Host to bind to"),
     port: int = typer.Option(8000, help="Port to listen on"),
     reload: bool = typer.Option(False, help="Enable auto-reload for development"),
 ):
@@ -673,11 +685,14 @@ def run(
     if ingest_source:
 
         def _ingest():
-            if ingest_source.startswith(("http://", "https://")):
+            from urllib.parse import urlsplit
+
+            source_scheme = urlsplit(ingest_source).scheme.lower()
+            if source_scheme in {"http", "https"}:
                 from kb_arena.ingest.pipeline import run_ingest_special
 
                 ingested = run_ingest_special(source=ingest_source, corpus=corpus, format="web")
-            elif ingest_source.startswith("github:"):
+            elif source_scheme == "github":
                 from kb_arena.ingest.pipeline import run_ingest_special
 
                 ingested = run_ingest_special(source=ingest_source, corpus=corpus, format="github")
@@ -1164,6 +1179,7 @@ def eval(
             parsed_thresholds[metric.strip()] = float(val.strip())
         except ValueError:
             _cli_error("BAD_THRESHOLD", f"Invalid threshold value: {val}")
+        _validate_unit_interval(parsed_thresholds[metric.strip()], "--threshold")
 
     results = _load_results(corpus if corpus != "all" else None)
     if not results:
@@ -1241,6 +1257,7 @@ def retriever_lab(
 
     from kb_arena.benchmark.retriever_lab import run_retriever_lab
 
+    _validate_unit_interval(min_recall, "--min-recall")
     _preflight(needs_embeddings=True)
     exit_code = _asyncio.run(
         run_retriever_lab(corpus, strategies, top_k, min_recall, ceiling_k or None, split=split)

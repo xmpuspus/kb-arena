@@ -1,11 +1,17 @@
 // Universal documentation schema — idempotent, safe to run on every startup
 // Works for any documentation domain (AWS, software docs, wikis, etc.)
 
-CREATE CONSTRAINT topic_fqn IF NOT EXISTS FOR (t:Topic) REQUIRE t.fqn IS UNIQUE;
-CREATE CONSTRAINT component_fqn IF NOT EXISTS FOR (c:Component) REQUIRE c.fqn IS UNIQUE;
-CREATE CONSTRAINT process_fqn IF NOT EXISTS FOR (p:Process) REQUIRE p.fqn IS UNIQUE;
-CREATE CONSTRAINT config_fqn IF NOT EXISTS FOR (c:Config) REQUIRE c.fqn IS UNIQUE;
-CREATE CONSTRAINT constraint_fqn IF NOT EXISTS FOR (c:Constraint) REQUIRE c.fqn IS UNIQUE;
+DROP CONSTRAINT topic_fqn IF EXISTS;
+DROP CONSTRAINT component_fqn IF EXISTS;
+DROP CONSTRAINT process_fqn IF EXISTS;
+DROP CONSTRAINT config_fqn IF EXISTS;
+DROP CONSTRAINT constraint_fqn IF EXISTS;
+
+CREATE CONSTRAINT topic_entity_id IF NOT EXISTS FOR (t:Topic) REQUIRE t.entity_id IS UNIQUE;
+CREATE CONSTRAINT component_entity_id IF NOT EXISTS FOR (c:Component) REQUIRE c.entity_id IS UNIQUE;
+CREATE CONSTRAINT process_entity_id IF NOT EXISTS FOR (p:Process) REQUIRE p.entity_id IS UNIQUE;
+CREATE CONSTRAINT config_entity_id IF NOT EXISTS FOR (c:Config) REQUIRE c.entity_id IS UNIQUE;
+CREATE CONSTRAINT constraint_entity_id IF NOT EXISTS FOR (c:Constraint) REQUIRE c.entity_id IS UNIQUE;
 
 // Multi-label fulltext index for cross-entity search
 CREATE FULLTEXT INDEX entity_search IF NOT EXISTS

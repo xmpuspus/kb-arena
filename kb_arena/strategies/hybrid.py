@@ -130,7 +130,7 @@ class HybridStrategy(Strategy):
         await self._get_vector().build_index(documents)
         await self._get_graph().build_index(documents)
 
-    async def query(self, question: str, top_k: int = 5) -> AnswerResult:
+    async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Route by intent. Procedural fuses passages via RRF, then generates one final answer."""
         start = self._start_timer()
         intent = await self._classify(question)
@@ -146,7 +146,11 @@ class HybridStrategy(Strategy):
 
         if intent in ("comparison", "relational"):
             retrieval_start = time.perf_counter()
-            graph_result = await self._get_graph().query(question, top_k=top_k)
+            graph_result = await self._get_graph().query(
+                question,
+                top_k=top_k,
+                corpus=corpus,
+            )
             retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
             answer = graph_result.answer
             sources = graph_result.sources
@@ -159,7 +163,11 @@ class HybridStrategy(Strategy):
 
         elif intent in ("factoid", "exploratory"):
             retrieval_start = time.perf_counter()
-            vector_result = await self._get_vector().query(question, top_k=top_k)
+            vector_result = await self._get_vector().query(
+                question,
+                top_k=top_k,
+                corpus=corpus,
+            )
             retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
             answer = vector_result.answer
             sources = vector_result.sources
@@ -173,8 +181,8 @@ class HybridStrategy(Strategy):
             # Procedural — RRF fuse passages, generate one final answer over fused context.
             retrieval_start = time.perf_counter()
             vector_result, graph_result = await asyncio.gather(
-                self._get_vector().query(question, top_k=top_k * 2),
-                self._get_graph().query(question, top_k=top_k * 2),
+                self._get_vector().query(question, top_k=top_k * 2, corpus=corpus),
+                self._get_graph().query(question, top_k=top_k * 2, corpus=corpus),
             )
             retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
@@ -265,13 +273,18 @@ class HybridStrategy(Strategy):
             cost_usd=total_cost,
         )
 
-    async def stream_answer(self, question: str, history: list[dict] | None = None):
+    async def stream_answer(
+        self,
+        question: str,
+        history: list[dict] | None = None,
+        corpus: str = "all",
+    ):
         """Stream from the routed sub-strategy. Procedural falls back to vector for latency."""
         intent = await self._classify(question, history)
         primary = (
             self._get_graph() if intent in ("comparison", "relational") else self._get_vector()
         )
-        async for token in primary.stream_answer(question, history):
+        async for token in primary.stream_answer(question, history, corpus=corpus):
             yield token
         # The sub-strategy's stream_answer already yields a meta packet at the end;
         # api.py consumes the LAST one it sees, so no extra emission here.

@@ -52,11 +52,25 @@ All notable changes to KB Arena.
   treating their missing metrics as numeric results.
 - Made benchmark, judge, retrieval-ceiling, and empty-question-set failures explicit. Included
   evaluator spend in cost caps and kept partial capped runs out of successful checkpoints.
+- Scoped chat, benchmark, Retriever Lab, vector, hierarchy, lexical, and graph retrieval to the
+  selected corpus. Shared Chroma and Neo4j identifiers now include the corpus while retrieval
+  traces keep their original qrel-compatible chunk IDs.
+- Rejected non-finite spend and quality controls, boolean judge scores, mock graph answers, and
+  query-independent PageIndex results in retrieval-only runs. Benchmark records now persist the
+  declared question tier and type instead of relying on an ID naming convention.
+- Defaulted the local server to loopback, rejected unauthenticated LLM requests from remote
+  clients, authenticated graph-build streams, and reconnected interrupted browser streams without
+  launching duplicate builds.
+- Honored HTTP, HTTPS, and GitHub sources in one-shot runs regardless of scheme casing, and
+  invalidated downstream checkpoints when an explicit source changes.
 - Published ingested corpora atomically, bounded optimizer search construction, and expanded
   evaluation cache keys to cover every input that can change a score.
 - Updated Typer, Click, FastAPI, and Starlette to compatible releases that address current
   command-execution and HTTP request-processing advisories.
 - Added tested Python 3.13 support and bounded package metadata to Python 3.11 through 3.13.
+
+Indexes built before 0.10.0 must be rebuilt once so corpus metadata and namespaced storage IDs are
+present in Chroma and Neo4j.
 
 ## [0.9.3] - 2026-06-22 - Retrieval ceiling and cost efficiency
 

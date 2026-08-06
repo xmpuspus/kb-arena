@@ -125,9 +125,18 @@ class RaptorStrategy(Strategy):
         )
         return resp.text.strip()
 
-    async def _build_level(self, source_collection, target_collection, level_tag: str) -> int:
+    async def _build_level(
+        self,
+        source_collection,
+        target_collection,
+        level_tag: str,
+        corpus: str,
+    ) -> int:
         """Cluster source_collection and upsert summaries to target_collection."""
-        data = source_collection.get(include=["embeddings", "documents"])
+        data = source_collection.get(
+            where={"corpus": corpus},
+            include=["embeddings", "documents"],
+        )
         ids_list = data.get("ids") or []
         embeddings_raw = data.get("embeddings")
         embeddings = embeddings_raw if embeddings_raw is not None else []
@@ -147,9 +156,16 @@ class RaptorStrategy(Strategy):
         summary_ids, summary_texts, summary_metas = [], [], []
         for ci, texts in clusters.items():
             summary = await self._summarize_cluster(texts)
-            summary_ids.append(f"{level_tag}_cluster_{ci}")
+            summary_ids.append(f"{corpus}::{level_tag}_cluster_{ci}")
             summary_texts.append(summary)
-            summary_metas.append({"source_id": f"cluster_{ci}", "level": int(level_tag[-1])})
+            summary_metas.append(
+                {
+                    "source_id": f"cluster_{ci}",
+                    "corpus": corpus,
+                    "chunk_id": f"{level_tag}_cluster_{ci}",
+                    "level": int(level_tag[-1]),
+                }
+            )
 
         if summary_ids:
             batch = 500
@@ -172,9 +188,16 @@ class RaptorStrategy(Strategy):
                 chunks = _chunk_text(section.content)
                 for i, chunk in enumerate(chunks):
                     chunk_id = f"{doc.id}::{section.id}::{i}"
-                    ids.append(chunk_id)
+                    ids.append(f"{doc.corpus}::{chunk_id}")
                     texts.append(chunk)
-                    metadatas.append({"source_id": doc.id, "level": 0})
+                    metadatas.append(
+                        {
+                            "source_id": doc.id,
+                            "corpus": doc.corpus,
+                            "chunk_id": chunk_id,
+                            "level": 0,
+                        }
+                    )
 
         if ids:
             batch = 500
@@ -186,15 +209,16 @@ class RaptorStrategy(Strategy):
                 )
 
         l1 = self._get_collection(1)
-        n_l1 = await self._build_level(l0, l1, "l1")
+        corpus = documents[0].corpus if documents else "default"
+        n_l1 = await self._build_level(l0, l1, "l1", corpus)
         logger.info("RAPTOR: built %d L0 chunks, %d L1 summaries", len(ids), n_l1)
 
         if n_l1 >= 10:
             l2 = self._get_collection(2)
-            n_l2 = await self._build_level(l1, l2, "l2")
+            n_l2 = await self._build_level(l1, l2, "l2", corpus)
             logger.info("RAPTOR: built %d L2 summaries", n_l2)
 
-    async def query(self, question: str, top_k: int = 5) -> AnswerResult:
+    async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Search L0, L1, L2 simultaneously → fuse context → Sonnet."""
         start = self._start_timer()
 
@@ -210,11 +234,14 @@ class RaptorStrategy(Strategy):
                 if count == 0:
                     continue
                 n = min(top_k, count)
-                results = coll.query(
-                    query_texts=[question],
-                    n_results=n,
-                    include=["documents", "metadatas", "distances"],
-                )
+                query_kwargs = {
+                    "query_texts": [question],
+                    "n_results": n,
+                    "include": ["documents", "metadatas", "distances"],
+                }
+                if corpus != "all":
+                    query_kwargs["where"] = {"corpus": corpus}
+                results = coll.query(**query_kwargs)
                 chunks = results["documents"][0] if results["documents"] else []
                 metas = results["metadatas"][0] if results["metadatas"] else []
                 ids = results["ids"][0] if results.get("ids") else []
@@ -224,7 +251,13 @@ class RaptorStrategy(Strategy):
                     src = (metas[i].get("source_id") if i < len(metas) else "") or ""
                     if src:
                         all_sources.add(src)
-                    raw_id = ids[i] if i < len(ids) else f"unknown-{i}"
+                    raw_id = (
+                        metas[i].get("chunk_id")
+                        if i < len(metas) and metas[i].get("chunk_id")
+                        else ids[i]
+                        if i < len(ids)
+                        else f"unknown-{i}"
+                    )
                     retrieved_chunks.append(
                         RetrievedChunk(
                             chunk_id=f"L{level}:{raw_id}",

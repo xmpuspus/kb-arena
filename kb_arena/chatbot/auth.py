@@ -12,6 +12,7 @@ pages still work because they read JSON without invoking LLMs.
 from __future__ import annotations
 
 import hmac
+import ipaddress
 import time
 from collections import OrderedDict, deque
 from threading import RLock
@@ -97,3 +98,11 @@ def require_auth(
             provided = authorization[len("Bearer ") :].strip()
         if not provided or not hmac.compare_digest(provided, expected):
             raise HTTPException(status_code=401, detail="unauthorized")
+    else:
+        client_host = request.client.host if request.client else ""
+        try:
+            is_loopback = ipaddress.ip_address(client_host).is_loopback
+        except ValueError:
+            is_loopback = client_host.lower() == "localhost"
+        if not is_loopback:
+            raise HTTPException(status_code=401, detail="api_token_required_for_remote_access")

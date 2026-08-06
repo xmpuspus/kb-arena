@@ -206,57 +206,85 @@ export async function* streamGraphBuild(
   buildId: string,
   signal?: AbortSignal
 ): AsyncGenerator<GraphBuildEvent> {
-  const response = await apiFetch(`${API_URL}/api/graph/build/stream/${buildId}`, { signal });
-  if (!response.ok) {
-    yield { type: "error", message: `HTTP ${response.status}` };
-    return;
-  }
+  const maxReconnects = 3;
 
-  const reader = response.body?.getReader();
-  if (!reader) {
-    yield { type: "error", message: "No response body" };
-    return;
-  }
+  for (let attempt = 0; attempt <= maxReconnects; attempt += 1) {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let eventType = "";
-  let dataLine = "";
+    try {
+      const response = await apiFetch(`${API_URL}/api/graph/build/stream/${buildId}`, { signal });
+      if (!response.ok) {
+        yield { type: "error", message: `HTTP ${response.status}` };
+        return;
+      }
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const rawLine of lines) {
-      const line = rawLine.replace(/\r$/, "");
-      if (line.startsWith("event:")) {
-        eventType = line.slice(6).trim();
-      } else if (line.startsWith("data:")) {
-        dataLine = line.slice(5).trim();
-      } else if (line === "" && eventType && dataLine) {
-        try {
-          const parsed = JSON.parse(dataLine);
-          if (eventType === "entity")
-            yield { type: "entity", id: parsed.id, name: parsed.name, nodeType: parsed.type };
-          else if (eventType === "relationship")
-            yield { type: "relationship", source: parsed.source, target: parsed.target, relType: parsed.type };
-          else if (eventType === "started")
-            yield { type: "started", corpus: parsed.corpus, total_sections: parsed.total_sections };
-          else if (eventType === "section_done")
-            yield { type: "section_done", doc_id: parsed.doc_id, entities_count: parsed.entities_count, rels_count: parsed.rels_count };
-          else if (eventType === "complete")
-            yield { type: "complete", total_entities: parsed.total_entities, total_relationships: parsed.total_relationships };
-          else if (eventType === "error")
-            yield { type: "error", message: parsed.message };
-          else if (eventType === "heartbeat")
-            yield { type: "heartbeat" };
-        } catch { /* skip malformed SSE */ }
-        eventType = "";
-        dataLine = "";
+      const reader = response.body?.getReader();
+      if (!reader) {
+        yield { type: "error", message: "No response body" };
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let eventType = "";
+      let dataLine = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const rawLine of lines) {
+          const line = rawLine.replace(/\r$/, "");
+          if (line.startsWith("event:")) {
+            eventType = line.slice(6).trim();
+          } else if (line.startsWith("data:")) {
+            dataLine = line.slice(5).trim();
+          } else if (line === "" && eventType && dataLine) {
+            let event: GraphBuildEvent | undefined;
+            try {
+              const parsed = JSON.parse(dataLine);
+              if (eventType === "entity")
+                event = { type: "entity", id: parsed.id, name: parsed.name, nodeType: parsed.type };
+              else if (eventType === "relationship")
+                event = { type: "relationship", source: parsed.source, target: parsed.target, relType: parsed.type };
+              else if (eventType === "started")
+                event = { type: "started", corpus: parsed.corpus, total_sections: parsed.total_sections };
+              else if (eventType === "section_done")
+                event = { type: "section_done", doc_id: parsed.doc_id, entities_count: parsed.entities_count, rels_count: parsed.rels_count };
+              else if (eventType === "complete")
+                event = { type: "complete", total_entities: parsed.total_entities, total_relationships: parsed.total_relationships };
+              else if (eventType === "error")
+                event = { type: "error", message: parsed.message };
+              else if (eventType === "heartbeat")
+                event = { type: "heartbeat" };
+            } catch { /* skip malformed SSE */ }
+            eventType = "";
+            dataLine = "";
+            if (event) {
+              yield event;
+              if (event.type === "complete" || event.type === "error") return;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) {
+        throw error;
+      }
+      if (attempt === maxReconnects) {
+        yield { type: "error", message: "Graph build stream disconnected after 4 attempts." };
+        return;
       }
     }
+
+    if (attempt === maxReconnects) {
+      yield { type: "error", message: "Graph build stream disconnected after 4 attempts." };
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
   }
 }
 

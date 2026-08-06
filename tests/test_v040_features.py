@@ -74,6 +74,17 @@ class TestRagasMetrics:
         score = await compute_context_recall("reference answer", ["ctx"], mock_llm)
         assert score == 1.0
 
+    async def test_boolean_metric_score_is_rejected(self, mock_llm):
+        from kb_arena.benchmark.ragas_metrics import (
+            RAGASExecutionError,
+            compute_answer_relevancy,
+        )
+
+        mock_llm.judge.return_value = MagicMock(text='{"relevancy": true}')
+
+        with pytest.raises(RAGASExecutionError, match="JSON number"):
+            await compute_answer_relevancy("what is X?", "X is a thing", mock_llm)
+
     async def test_empty_input_returns_zero(self, mock_llm):
         from kb_arena.benchmark.ragas_metrics import (
             compute_answer_relevancy,

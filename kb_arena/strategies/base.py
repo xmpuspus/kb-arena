@@ -95,17 +95,20 @@ class Strategy(ABC):
         """
 
     @abstractmethod
-    async def query(self, question: str, top_k: int = 5) -> AnswerResult:
+    async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Answer a question using this strategy's retrieval approach.
 
         Returns a structured AnswerResult with answer, sources, metrics.
         """
 
     async def stream_answer(
-        self, question: str, history: list[dict] | None = None
+        self,
+        question: str,
+        history: list[dict] | None = None,
+        corpus: str = "all",
     ) -> AsyncIterator[str | dict]:
         """Stream answer tokens. Default: call query() and yield full answer + meta."""
-        result = await self.query(question)
+        result = await self.query(question, corpus=corpus)
         yield result.answer
         yield meta_packet(result)
 

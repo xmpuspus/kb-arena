@@ -361,13 +361,16 @@ class PageIndexStrategy(Strategy):
             total_calls,
         )
 
-    async def query(self, question: str, top_k: int = 5) -> AnswerResult:
+    async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Answer by LLM-driven tree traversal — no vectors, no embeddings."""
         start = self._start_timer()
         llm = self._get_llm()
 
-        # Load all available trees
-        trees = self._load_all_trees()
+        if corpus == "all":
+            trees = self._load_all_trees()
+        else:
+            tree = self._load_tree(corpus)
+            trees = [tree] if tree else []
         if not trees:
             latency_ms = self._record_metrics(start)
             return AnswerResult(

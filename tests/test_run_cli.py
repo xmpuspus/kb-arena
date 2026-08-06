@@ -76,7 +76,9 @@ def test_run_ingests_files_already_in_raw_directory(tmp_path, monkeypatch):
     ("source", "source_format"),
     [
         ("https://example.com/docs", "web"),
+        ("HTTPS://example.com/docs", "web"),
         ("github:example/docs", "github"),
+        ("GITHUB:example/docs", "github"),
     ],
 )
 def test_run_dispatches_special_docs_to_special_ingest(

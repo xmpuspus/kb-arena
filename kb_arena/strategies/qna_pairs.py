@@ -96,12 +96,14 @@ class QnAPairStrategy(Strategy):
 
                     pair_id = f"qna::{doc.id}::{section.id}::{pair_counter}"
                     pair_counter += 1
-                    ids.append(pair_id)
+                    ids.append(f"{doc.corpus}::{pair_id}")
                     questions.append(q)
                     metadatas.append(
                         {
                             "answer": a[:2000],  # ChromaDB metadata value limit
                             "source_id": doc.id,
+                            "corpus": doc.corpus,
+                            "chunk_id": f"qna:{pair_id}",
                             "section_id": section.id,
                             "section_ref": pair.get("section_ref", ""),
                         }
@@ -116,7 +118,7 @@ class QnAPairStrategy(Strategy):
                     metadatas=metadatas[start : start + batch],
                 )
 
-    async def query(self, question: str, top_k: int = 5) -> AnswerResult:
+    async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Match question embedding → retrieve pre-generated answer.
 
         No LLM call for the answer itself — just embedding lookup.
@@ -125,11 +127,14 @@ class QnAPairStrategy(Strategy):
         collection = self._get_collection()
 
         retrieval_start = time.perf_counter()
-        results = collection.query(
-            query_texts=[question],
-            n_results=top_k,
-            include=["documents", "metadatas", "distances"],
-        )
+        query_kwargs = {
+            "query_texts": [question],
+            "n_results": top_k,
+            "include": ["documents", "metadatas", "distances"],
+        }
+        if corpus != "all":
+            query_kwargs["where"] = {"corpus": corpus}
+        results = collection.query(**query_kwargs)
         metas = results["metadatas"][0] if results["metadatas"] else []
         matched_questions = results["documents"][0] if results["documents"] else []
         ids = results["ids"][0] if results.get("ids") else []
@@ -138,7 +143,13 @@ class QnAPairStrategy(Strategy):
 
         retrieved_chunks = [
             RetrievedChunk(
-                chunk_id=f"qna:{ids[i]}" if i < len(ids) else f"qna:unknown-{i}",
+                chunk_id=(
+                    metas[i].get("chunk_id")
+                    if i < len(metas) and metas[i].get("chunk_id")
+                    else f"qna:{ids[i]}"
+                    if i < len(ids)
+                    else f"qna:unknown-{i}"
+                ),
                 doc_id=(metas[i].get("source_id") if i < len(metas) else "") or "",
                 content=(
                     f"Q: {matched_questions[i]}\nA: {metas[i].get('answer', '')}"

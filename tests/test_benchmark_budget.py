@@ -86,6 +86,46 @@ async def test_query_failure_aborts_instead_of_becoming_zero_score(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_mock_strategy_result_aborts_benchmark_evidence(monkeypatch):
+    import asyncio
+
+    from kb_arena.benchmark import runner
+    from kb_arena.strategies.base import AnswerResult
+
+    class MockStrategy:
+        name = "knowledge_graph"
+
+        async def query(self, question, top_k):
+            return AnswerResult(answer="demo", strategy=self.name, mock=True)
+
+    monkeypatch.setattr(runner.settings, "benchmark_max_retries", 0)
+
+    with pytest.raises(runner.BenchmarkExecutionError, match="mock result"):
+        await runner._run_one(
+            MockStrategy(),
+            "q1",
+            "question",
+            GroundTruth(answer="answer"),
+            Constraints(),
+            [],
+            object(),
+            asyncio.Semaphore(1),
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cost_cap", [float("nan"), float("inf"), -1.0])
+async def test_benchmark_defensively_rejects_invalid_cost_cap(tmp_path, monkeypatch, cost_cap):
+    from kb_arena.benchmark import runner
+
+    monkeypatch.setattr(runner.settings, "benchmark_cost_cap_usd", cost_cap)
+    monkeypatch.setattr(runner.settings, "results_path", str(tmp_path))
+
+    with pytest.raises(runner.BenchmarkExecutionError, match="cost cap"):
+        await runner.run_benchmark("sample")
+
+
+@pytest.mark.asyncio
 async def test_answer_record_cost_includes_generation_and_evaluation(monkeypatch):
     import asyncio
 

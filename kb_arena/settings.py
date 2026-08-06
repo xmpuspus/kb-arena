@@ -1,5 +1,8 @@
 """Application settings via pydantic-settings. All config from environment."""
 
+import math
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -56,7 +59,7 @@ class Settings(BaseSettings):
     reranker_model: str = ""  # blank = backend default
 
     # Server
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 8000
     debug: bool = False
     cors_origins: list[str] = []  # Override via KB_ARENA_CORS_ORIGINS='["http://myapp:3000"]'
@@ -102,6 +105,13 @@ class Settings(BaseSettings):
     # Paths
     datasets_path: str = "./datasets"
     results_path: str = "./results"
+
+    @field_validator("benchmark_cost_cap_usd")
+    @classmethod
+    def _validate_benchmark_cost_cap(cls, value: float) -> float:
+        if not math.isfinite(value) or value < 0:
+            raise ValueError("benchmark cost cap must be a finite non-negative number")
+        return value
 
 
 settings = Settings()

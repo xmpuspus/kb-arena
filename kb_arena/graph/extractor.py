@@ -315,11 +315,18 @@ async def run_extraction(corpus: str = "custom", schema: str = "auto", event_cal
 
     nodes_by_type: dict[str, list[dict]] = defaultdict(list)
     for e in all_entities:
-        nodes_by_type[e.type].append(e.model_dump(exclude={"embedding"}))
+        record = e.model_dump(exclude={"embedding"})
+        record["corpus"] = corpus
+        record["entity_id"] = f"{corpus}::{e.fqn}"
+        nodes_by_type[e.type].append(record)
 
     edges_by_type: dict[str, list[dict]] = defaultdict(list)
     for r in all_relationships:
-        edges_by_type[r.type].append(r.model_dump())
+        record = r.model_dump()
+        record["corpus"] = corpus
+        record["source_entity_id"] = f"{corpus}::{r.source_fqn}"
+        record["target_entity_id"] = f"{corpus}::{r.target_fqn}"
+        edges_by_type[r.type].append(record)
 
     total_loads = len(nodes_by_type) + len(edges_by_type)
     with Progress(

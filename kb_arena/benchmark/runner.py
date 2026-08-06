@@ -7,6 +7,7 @@ and reliability tracking.
 from __future__ import annotations
 
 import asyncio
+import math
 import random
 import time
 from collections.abc import AsyncIterator, Awaitable, Iterable
@@ -192,6 +193,7 @@ async def _run_one(
     semaphore: asyncio.Semaphore,
     top_k: int = 5,
     reference_free: bool = False,
+    corpus: str = "all",
 ) -> AnswerRecord:
     async with semaphore:
         attempt = 0
@@ -204,10 +206,19 @@ async def _run_one(
             attempt += 1
             t0 = time.perf_counter()
             try:
+                query_call = (
+                    strategy.query(question_text, top_k=top_k)
+                    if corpus == "all"
+                    else strategy.query(question_text, top_k=top_k, corpus=corpus)
+                )
                 result = await asyncio.wait_for(
-                    strategy.query(question_text, top_k=top_k),
+                    query_call,
                     timeout=query_timeout,
                 )
+                if result.mock:
+                    raise BenchmarkExecutionError(
+                        f"{strategy.name}/{question_id} returned a mock result"
+                    )
                 latency_ms = (time.perf_counter() - t0) * 1000
                 answer = result.answer
                 sources = result.sources
@@ -293,7 +304,7 @@ async def _run_one(
 
 def _aggregate(
     bench: BenchmarkResult,
-    questions_map: dict[str, str],
+    questions_map: dict[str, str | tuple[str, int]],
 ) -> BenchmarkResult:
     if not bench.records:
         return bench
@@ -316,11 +327,20 @@ def _aggregate(
     response_lengths: list[int] = []
 
     for rec in bench.records:
-        try:
-            tier = int(rec.question_id.split("-t")[1].split("-")[0])
-        except (IndexError, ValueError):
-            tier = 0
-        qtype = questions_map.get(rec.question_id, "unknown")
+        question_meta = questions_map.get(rec.question_id)
+        if isinstance(question_meta, tuple):
+            qtype, tier = question_meta
+        else:
+            qtype = question_meta or rec.question_type
+            if rec.question_tier > 0:
+                tier = rec.question_tier
+            else:
+                try:
+                    tier = int(rec.question_id.split("-t")[1].split("-")[0])
+                except (IndexError, ValueError):
+                    tier = 0
+        rec.question_tier = tier
+        rec.question_type = qtype
 
         accuracy_by_tier.setdefault(tier, []).append(rec.score.accuracy)
         completeness_by_tier.setdefault(tier, []).append(rec.score.completeness)
@@ -418,6 +438,8 @@ async def run_benchmark(
     run_id = uuid4().hex[:8]
     timestamp = datetime.now(UTC).isoformat()
     cost_cap = settings.benchmark_cost_cap_usd
+    if not math.isfinite(cost_cap) or cost_cap < 0:
+        raise BenchmarkExecutionError("Benchmark cost cap must be finite and non-negative")
     config_snap = {
         "llm_provider": settings.llm_provider,
         "generate_model": settings.generate_model,
@@ -473,7 +495,7 @@ async def run_benchmark(
             continue
         selected_questions = True
 
-        questions_map = {q.id: q.type for q in questions}
+        questions_map = {q.id: (q.type, q.tier) for q in questions}
 
         def _write_result(bench: BenchmarkResult) -> None:
             # Latest (backward compat)
@@ -519,6 +541,7 @@ async def run_benchmark(
                             semaphore,
                             top_k=top_k,
                             reference_free=reference_free,
+                            corpus=corp,
                         )
                         for q in questions
                     )
@@ -593,6 +616,7 @@ async def run_benchmark(
                             semaphore,
                             top_k=top_k,
                             reference_free=reference_free,
+                            corpus=corp,
                         )
 
                     if cost_cap > 0:

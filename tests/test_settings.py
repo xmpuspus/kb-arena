@@ -52,11 +52,23 @@ def test_settings_default_port():
     assert s.port == 8000
 
 
-def test_settings_default_host():
+def test_settings_default_host(monkeypatch):
     from kb_arena.settings import Settings
 
-    s = Settings()
-    assert s.host == "0.0.0.0"
+    monkeypatch.delenv("KB_ARENA_HOST", raising=False)
+    s = Settings(_env_file=None)
+    assert s.host == "127.0.0.1"
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf", "-1"])
+def test_settings_rejects_invalid_benchmark_cost_cap(monkeypatch, value):
+    from pydantic import ValidationError
+
+    monkeypatch.setenv("KB_ARENA_BENCHMARK_COST_CAP_USD", value)
+    from kb_arena.settings import Settings
+
+    with pytest.raises(ValidationError, match="cost cap"):
+        Settings(_env_file=None)
 
 
 def test_settings_default_debug_false():
