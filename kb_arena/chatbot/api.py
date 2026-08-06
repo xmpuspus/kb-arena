@@ -339,7 +339,7 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
 async def chat_stream(body: ChatRequest, request: Request) -> EventSourceResponse:
     """SSE streaming with 4 event types (Pattern 10 from PLAN.md).
 
-    Events: message_id → token* → done (sources + graph_context) → meta (timing)
+    Events: message_id, token*, done (sources + graph_context), meta (timing)
 
     The done/meta payloads come from the per-call `RetrievalTrace` and metrics that
     `stream_answer` records on the result side, not from shared instance state. See

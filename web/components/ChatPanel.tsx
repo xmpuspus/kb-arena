@@ -162,7 +162,6 @@ export default function ChatPanel({ strategy, query, corpus, history, trigger, d
         )}
       </div>
 
-      {/* Footer with metrics and sources. */}
       {state === "complete" && result && (
         <div className="px-3 py-2 border-t space-y-2" style={{ borderColor: "var(--border)" }}>
           <div className="flex flex-wrap gap-1.5">

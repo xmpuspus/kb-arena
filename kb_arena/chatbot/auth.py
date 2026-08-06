@@ -6,7 +6,7 @@ the token is constant-time compared.
 
 Demo mode (`KB_ARENA_DEMO_MODE=true`) returns 503 from any LLM-triggering endpoint
 so a hosted public demo cannot drain credits. The static benchmark/leaderboard
-pages still work — they read JSON without invoking LLMs.
+pages still work because they read JSON without invoking LLMs.
 """
 
 from __future__ import annotations

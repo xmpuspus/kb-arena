@@ -7,11 +7,11 @@ only when the experiment keeps its data, judgments, configuration, and limits vi
 
 ### Retrieval-only
 
-`kb-arena retriever-lab` asks each strategy for ranked chunks and compares them with qrels. This
-track isolates indexing and ranking from answer generation.
+`kb-arena retriever-lab` asks each strategy for ranked chunks and compares them with relevance
+judgments, commonly called qrels. This track isolates indexing and ranking from answer generation.
 
 Metrics include Recall@k, Precision@k, Hit@k, MRR, NDCG@k, MAP, R-Precision, and bpref. Reports can
-also include per-tier results, bootstrap confidence intervals, and a deeper retrieval ceiling.
+include per-tier results, bootstrap confidence intervals, and a deeper retrieval ceiling.
 
 ### Full answer evaluation
 

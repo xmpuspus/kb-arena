@@ -1,6 +1,6 @@
-"""Retriever Lab — retrieval-only benchmark with classical IR metrics.
+"""Retriever Lab retrieval-only benchmark with classical IR metrics.
 
-No LLM generation calls — strategies emit retrieval traces, IR metrics computed
+Strategies emit retrieval traces without LLM generation. IR metrics are computed
 against ground truth, results streamed to a Rich table. Roughly an order of
 magnitude cheaper than `kb-arena benchmark` since the generator step is skipped.
 """
@@ -124,7 +124,7 @@ def _build_table(
                 str(n),
             )
         else:
-            t.add_row(s.name, "—", "—", "—", "—", "—", "0")
+            t.add_row(s.name, "n/a", "n/a", "n/a", "n/a", "n/a", "0")
     return t
 
 
@@ -185,13 +185,13 @@ def _summarize_with_tiers(
 ) -> dict:
     """Aggregate means + per-tier breakdown + 95% bootstrap CIs on key metrics.
 
-    Per-tier breakdown answers "does the win hold on hard queries?" — a
+    Per-tier breakdown answers whether the win holds on hard queries, a
     strategy can dominate on tier-1 lookups and lose badly on tier-5
     architecture queries while the overall mean masks it.
     """
     out = _aggregate_means([m for _, m in rows])
 
-    # 95% CIs on the headline metrics — Sakai's standard.
+    # Use Sakai's standard 95% CIs on the headline metrics.
     out["ci_ndcg_at_k"] = _bootstrap_ci([m.ndcg_at_k for _, m in rows])
     out["ci_recall_at_k"] = _bootstrap_ci([m.recall_at_k for _, m in rows])
     out["ci_average_precision"] = _bootstrap_ci([m.average_precision for _, m in rows])
@@ -216,11 +216,11 @@ def _summarize_ceiling(
 ) -> dict:
     """Aggregate the base retriever's recall at the shallow vs deep cutoff.
 
-    `ranking_headroom` = Recall@ceiling_k − Recall@top_k is the share of relevant
+    `ranking_headroom` = Recall@ceiling_k - Recall@top_k is the share of relevant
     chunks the retriever already surfaces but ranks below top_k. A large headroom
     means the bottleneck is RANKING, not retrieval; a small Recall@ceiling_k means
     the chunks are genuinely missing from the pool. The interpretation is left to
-    the reader — this only reports the measured numbers.
+    the reader. This function only reports the measured numbers.
     """
     n = len(top_recalls) or 1
     rt = sum(top_recalls) / n
@@ -246,7 +246,7 @@ async def _retrieval_ceiling(questions, top_k: int, ceiling_k: int) -> dict:
 
     try:
         base = get_strategy("naive_vector")
-    except Exception as exc:  # noqa: BLE001 — ceiling is a best-effort diagnostic
+    except Exception as exc:  # noqa: BLE001 - ceiling is a best-effort diagnostic
         log.warning("Retrieval ceiling skipped (naive_vector unavailable): %s", exc)
         return {}
 
@@ -277,7 +277,7 @@ def _empty_trace_failures(by_strategy: dict, threshold: float = 0.5) -> list[str
 
     An empty trace means the strategy raised and `_retrieve_only` swallowed it,
     not that it retrieved irrelevant chunks. A strategy empty on most questions is
-    crashing, not merely scoring low — caught separately from the recall floor.
+    crashing rather than merely scoring low, so it is handled separately from the recall floor.
     """
     failures: list[str] = []
     for sname, m in by_strategy.items():
@@ -347,7 +347,7 @@ async def run_retriever_lab(
         json.dumps({**overall, "questions": per_question_rows}, indent=2, ensure_ascii=False)
     )
 
-    md_lines = [f"# Retriever Lab — run {run_id}", "", f"Top-k: {top_k}", ""]
+    md_lines = [f"# Retriever Lab: run {run_id}", "", f"Top-k: {top_k}", ""]
     for corp_name, by_strategy in overall["corpora"].items():
         md_lines += [
             f"## {corp_name}",
@@ -371,14 +371,14 @@ async def run_retriever_lab(
         # crash signature (the strategy raised and _retrieve_only swallowed it
         # into an empty trace), NOT a genuine low-recall result. Flag it
         # distinctly so a silently-broken strategy can't masquerade as "0 recall"
-        # — exactly how the rerank_vector c.source bug hid.
+        # This is how the rerank_vector c.source bug previously went undetected.
         crashed = set(_empty_trace_failures(by_strategy))
         for sname, m in by_strategy.items():
             if sname in crashed:
                 console.print(
                     f"[red]FAIL[/red] {corp_name}/{sname} returned EMPTY retrieval for "
-                    f"{m['empty_retrieval']}/{m['questions']} questions — likely a crash, "
-                    f"not a result"
+                    f"{m['empty_retrieval']}/{m['questions']} questions, likely a crash, "
+                    "not a result"
                 )
                 floor_violation = True
             elif m["mean_recall_at_k"] < min_recall:
@@ -417,7 +417,7 @@ async def _run_corpora_loop(
         }
         # Crash signature: count questions where a strategy surfaced zero chunks.
         per_strategy_empty: dict[str, int] = {s.name: 0 for s in strategies}
-        title = f"Retriever Lab — {corp} (top-{top_k})"
+        title = f"Retriever Lab: {corp} (top-{top_k})"
 
         # Live updates are TTY-only; in non-TTY contexts (CI, pipes, captured
         # subprocesses) Rich.Live silently buffers everything until exit, which

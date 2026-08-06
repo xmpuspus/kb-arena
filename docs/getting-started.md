@@ -21,7 +21,7 @@ cp -R /path/to/docs/. datasets/my-docs/raw/
 Supported input includes Markdown, HTML, text, CSV, and TSV in the core install. Install
 `kb-arena[pdf]`, `kb-arena[docx]`, or `kb-arena[all-formats]` for other file types.
 
-You can also ingest a URL or public GitHub repository:
+You can ingest a URL or public GitHub repository with the same command:
 
 ```bash
 kb-arena ingest https://docs.example.com --corpus my-docs
@@ -76,7 +76,7 @@ kb-arena run --corpus my-docs
 If graph extraction fails, the pipeline leaves that stage incomplete and continues with the
 vector-capable stages. A later run retries graph extraction.
 
-## Create ground truth
+## Create and review relevance labels
 
 Generated questions are useful for coverage discovery. Review them and add production questions
 when possible.

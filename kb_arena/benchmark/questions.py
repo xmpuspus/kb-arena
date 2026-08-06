@@ -1,4 +1,4 @@
-"""YAML question loader — reads benchmark questions from datasets/{corpus}/questions/."""
+"""Load YAML benchmark questions from datasets/{corpus}/questions/."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Benchmark runner — orchestrates strategy x question evaluation.
+"""Orchestrate strategy by question benchmark evaluation.
 
 Enhanced with per-query timeouts, retry logic, latency percentiles,
 and reliability tracking.
@@ -31,7 +31,7 @@ from kb_arena.strategies.catalog import default_strategy_names
 console = Console()
 
 STRATEGY_NAMES = list(default_strategy_names())
-# Note: `sqr` is intentionally NOT in the default "all" set — it needs the
+# Note: `sqr` is intentionally not in the default "all" set because it needs the
 # optional [quantum] extra (qiskit/qiskit-aer/scikit-learn). Run it explicitly
 # with `--strategies sqr`; get_strategy("sqr") raises a clear install hint when
 # the extra is missing, so _load_strategies skips it rather than emitting empty
@@ -51,7 +51,7 @@ def _is_retryable(exc: BaseException) -> bool:
     if isinstance(exc, TimeoutError | asyncio.TimeoutError):
         return True
 
-    # Anthropic / OpenAI / generic SDK exception class names — match by name to
+    # Match Anthropic, OpenAI, and generic SDK exception class names to
     # avoid hard-importing every SDK at runtime.
     transient = {
         "RateLimitError",
@@ -82,7 +82,7 @@ def _is_retryable(exc: BaseException) -> bool:
         return True
     if any(code in msg for code in ("401", "403", "404", "400")):
         return False
-    return False  # unknown — better to fail fast than retry forever
+    return False  # Fail fast on unknown errors instead of retrying forever.
 
 
 def _classify_error(exc_or_message) -> str:

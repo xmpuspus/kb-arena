@@ -83,7 +83,7 @@ export default function LeaderboardPage() {
         </div>
       )}
 
-      {!data && !error && <p>Loading…</p>}
+      {!data && !error && <p>Loading...</p>}
 
       {data && data.leaderboard.length === 0 && (
         <p className="text-sm text-gray-600">

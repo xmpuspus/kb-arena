@@ -253,7 +253,7 @@ export default function RetrieverLabPage() {
             {runs.length === 0 && <option value="">No runs yet</option>}
             {runs.map((r) => (
               <option key={r.run_id} value={r.run_id}>
-                {r.run_id} · top-{r.top_k} · {r.timestamp.slice(0, 19)}
+                {r.run_id} | top-{r.top_k} | {r.timestamp.slice(0, 19)}
               </option>
             ))}
           </select>
@@ -291,7 +291,7 @@ export default function RetrieverLabPage() {
         )}
       </div>
 
-      {loading && <div style={{ color: "var(--muted)" }}>Loading…</div>}
+      {loading && <div style={{ color: "var(--muted)" }}>Loading...</div>}
 
       {!loading && corpusSummary && (
         <section className="space-y-3">
@@ -349,9 +349,9 @@ export default function RetrieverLabPage() {
                       {STRATEGY_LABELS[row.strategy as Strategy] ?? row.strategy}
                     </h3>
                     <span className="text-xs font-mono" style={{ color: "var(--muted)" }}>
-                      R@{data!.top_k}={fmtPct(row.recall_at_k)} · MRR={fmt3(row.mrr)} · NDCG=
+                      R@{data!.top_k}={fmtPct(row.recall_at_k)} | MRR={fmt3(row.mrr)} | NDCG=
                       {fmt3(row.ndcg_at_k)}
-                      {row.fallback_doc_level && " · doc-level"}
+                      {row.fallback_doc_level && " | doc-level"}
                     </span>
                   </div>
                   <div className="space-y-1.5">

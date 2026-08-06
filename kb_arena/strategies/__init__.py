@@ -207,7 +207,7 @@ def get_strategy(name: str):
     if cls is None:
         raise ValueError(f"Unknown strategy: {name}. Available: {list(STRATEGY_REGISTRY)}")
 
-    # Optional-dependency strategies (e.g. sqr) — fail with a clear install hint
+    # Give optional-dependency strategies such as sqr a clear install hint.
     # when the extra is absent, so loaders skip them rather than running empty.
     if name in _OPTIONAL_DEP_STRATEGIES:
         import importlib.util
@@ -248,7 +248,7 @@ def get_strategy(name: str):
             )
             return cls(neo4j_driver=driver)
         except Exception as e:
-            logger.warning("Neo4j not available for %s: %s — using mock fallback", name, e)
+            logger.warning("Neo4j not available for %s: %s; using mock fallback", name, e)
             return cls()
 
     # Hybrid needs both, plus the IntentRouter for the advertised three-stage classification.

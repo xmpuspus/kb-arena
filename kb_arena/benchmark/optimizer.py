@@ -245,7 +245,7 @@ def select_best(
 def _bootstrap_ci(
     values: list[float], n_resamples: int = 1000, ci: float = 0.95
 ) -> tuple[float, float]:
-    """Percentile bootstrap CI on the mean — Sakai's standard for IR."""
+    """Percentile bootstrap CI on the mean, following Sakai's standard for IR."""
     if not values:
         return (0.0, 0.0)
     if all(v == values[0] for v in values):
@@ -264,7 +264,7 @@ def _bootstrap_ci(
             random_state=0,
         )
         return (float(res.confidence_interval.low), float(res.confidence_interval.high))
-    except Exception:  # noqa: BLE001 — graceful degradation if scipy missing
+    except Exception:  # noqa: BLE001 - degrade gracefully if scipy is missing
         m = fmean(values)
         return (m, m)
 
@@ -274,7 +274,7 @@ def _wilcoxon(baseline: list[float], best: list[float]) -> float | None:
     if len(baseline) != len(best) or len(baseline) < 2:
         return None
     if all(b == a for a, b in zip(baseline, best, strict=True)):
-        return 1.0  # no paired difference — definitely not significant
+        return 1.0  # No paired difference means no significant difference.
     try:
         from scipy.stats import wilcoxon
 
@@ -298,7 +298,7 @@ def summarize_optimization(
 ) -> OptimizeResult:
     """Pick the best trial and attach the statistical layer (CI, p, win-rate, efficiency).
 
-    Delta is computed against the baseline trial — the trial whose config
+    Delta is computed against the baseline trial, whose config
     equals `baseline`, falling back to the first trial when none matches.
     """
     if not trials:
@@ -377,7 +377,7 @@ def pareto_optimal_strategies(results: list[OptimizeResult]) -> list[OptimizeRes
 
 
 def baseline_config(strategy: str) -> TrialConfig:
-    """The current-settings configuration — what the user gets today."""
+    """Return the configuration produced by the current settings."""
     return TrialConfig(
         strategy=strategy,
         top_k=5,
@@ -509,7 +509,7 @@ async def _score_trial(strategy, cfg, documents, questions, metric, baseline) ->
             if rebuild and hasattr(inst, "build_index"):
                 try:
                     await inst.build_index(documents)
-                except Exception as exc:  # noqa: BLE001 — a dead config scores 0, not crash
+                except Exception as exc:  # noqa: BLE001 - score unusable configurations as zero
                     log.warning("optimize: build_index failed for %s %s: %s", strategy, cfg, exc)
                     return TrialResult(cfg=cfg, per_question_scores=[0.0] * len(questions))
             scores: list[float] = []
@@ -583,7 +583,7 @@ async def run_optimize(
             max_trials=max_trials,
             seed=seed,
         )
-        t = Table(title=f"optimize plan — {corpus} (metric={metric}, method={method})")
+        t = Table(title=f"optimize plan: {corpus} (metric={metric}, method={method})")
         t.add_column("Strategy", style="bold")
         t.add_column("Trials", justify="right")
         t.add_column("Rebuilds", justify="right")
@@ -674,7 +674,7 @@ async def run_optimize(
     }
     (out / "optimize.json").write_text(json.dumps(report, indent=2))
 
-    table = Table(title=f"optimize — {corpus} (metric={metric})")
+    table = Table(title=f"optimize: {corpus} (metric={metric})")
     table.add_column("Strategy", style="bold")
     table.add_column(f"default {metric}", justify="right")
     table.add_column(f"best {metric} [95% CI]", justify="right")
@@ -688,10 +688,10 @@ async def run_optimize(
         bc = r.best_config.model_dump(exclude={"strategy"})
         bc = {k: v for k, v in bc.items() if v is not None}
         ci_lo, ci_hi = r.best_score_ci
-        p_str = f"{r.p_value:.3g}" if r.p_value is not None else "—"
+        p_str = f"{r.p_value:.3g}" if r.p_value is not None else "n/a"
         sig_color = "green" if r.significant else "dim"
         delta_fmt = f"[{sig_color}]{sign}{r.delta:.4f}[/{sig_color}]"
-        pareto_tag = " ★" if r.pareto_optimal else ""
+        pareto_tag = " [Pareto]" if r.pareto_optimal else ""
         table.add_row(
             name + pareto_tag,
             f"{r.baseline_score:.4f}",
@@ -704,7 +704,7 @@ async def run_optimize(
         )
     console.print(table)
     console.print(
-        "[dim]★ = Pareto-optimal on (score, score/ms). "
+        "[dim][Pareto] = Pareto-optimal on (score, score/ms). "
         "Significance: green delta = Wilcoxon p<0.05 + positive lift.[/dim]"
     )
     console.print(f"[green]Report: {out / 'optimize.json'}[/green]")

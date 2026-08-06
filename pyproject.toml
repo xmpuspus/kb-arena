@@ -51,7 +51,7 @@ docx = ["mammoth==1.8.0"]
 web = ["httpx==0.28.1"]
 all-formats = ["PyMuPDF==1.25.3", "mammoth==1.8.0", "httpx==0.28.1"]
 # Quantum strategies #10 (qiss is pure-NumPy and needs nothing here) and #11
-# (sqr — Qiskit Aer SWAP test + PCA reduction). Lazy-imported, so the core
+# (sqr, Qiskit Aer SWAP test + PCA reduction). Lazy-imported, so the core
 # install and CI stay light; install with `pip install 'kb-arena[quantum]'`.
 quantum = ["qiskit==2.4.2", "qiskit-aer==0.17.2", "scikit-learn==1.9.0"]
 

@@ -1,4 +1,4 @@
-"""Benchmark models — question definitions, evaluation results, scoring."""
+"""Benchmark question, evaluation result, and scoring models."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ class RetrievalMetrics(BaseModel):
     hit_at_k: int = Field(ge=0, le=1, default=0)
     mrr: float = Field(ge=0.0, le=1.0, default=0.0)
     ndcg_at_k: float = Field(ge=0.0, le=1.0, default=0.0)
-    # v0.8.0 additions — universal IR baselines + partial-pool robustness.
+    # v0.8.0 added universal IR baselines and partial-pool robustness.
     average_precision: float = Field(ge=0.0, le=1.0, default=0.0)
     r_precision: float = Field(ge=0.0, le=1.0, default=0.0)
     bpref: float = Field(ge=0.0, le=1.0, default=0.0)
@@ -141,7 +141,7 @@ class ReliabilityStats(BaseModel):
 
 
 class BenchmarkResult(BaseModel):
-    """Full benchmark results for a corpus × strategy."""
+    """Full benchmark results for a corpus and strategy."""
 
     corpus: str
     strategy: str
@@ -170,7 +170,7 @@ class BenchmarkResult(BaseModel):
     total_cost_usd: float = 0.0
     cost_per_correct: float = 0.0
 
-    # Retrieval Quality (IR metrics) — populated when records have retrieval_metrics
+    # Retrieval quality metrics are populated when records have retrieval_metrics.
     ir_top_k: int = 5
     mean_recall_at_k: float = 0.0
     mean_precision_at_k: float = 0.0

@@ -173,7 +173,7 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
     dirty.current = true;
   }, [nodes]);
 
-  // Hit test: screen coords → node
+  // Hit test screen coordinates against each node.
   const hitTest = useCallback((sx: number, sy: number): GraphNode | null => {
     const { scale, tx, ty } = transform.current;
     const wx = (sx - tx) / scale;
@@ -589,7 +589,7 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
     return () => { running = false; cancelAnimationFrame(animRef.current); };
   }, [nodes, edges, search, selected, degreeMap, neighborMap, edgeGroups, nodeMap, visibleIds, hitTest]);
 
-  // --- Interaction handlers ---
+  // Interaction handlers
 
   function handleMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -774,8 +774,8 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
         </div>
       </div>
 
-      <div className="flex gap-3 flex-1 min-h-[440px] sm:min-h-[500px]">
-        <div className="relative flex-1">
+      <div className="flex flex-col gap-3 flex-1 min-h-[440px] sm:min-h-[500px] sm:flex-row">
+        <div className="relative min-h-[320px] min-w-0 flex-1">
           <canvas
             ref={canvasRef}
             className="w-full h-full rounded-lg border cursor-grab active:cursor-grabbing"
@@ -818,7 +818,7 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
 
         {selected && (
           <div
-            className="w-64 rounded-lg border p-4 overflow-y-auto shrink-0"
+            className="w-full max-h-56 rounded-lg border p-4 overflow-y-auto shrink-0 sm:max-h-none sm:w-64"
             style={{ borderColor: "var(--border)", background: "var(--card)" }}
           >
             <div className="flex items-center gap-2 mb-3">

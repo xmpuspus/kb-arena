@@ -191,7 +191,7 @@ All notable changes to KB Arena.
   enables `demo_mode`, and continues serving the dashboard.
 - **Ollama free path** - `_preflight()` reads `settings.llm_provider` and
   skips Anthropic/OpenAI key checks when set to `ollama`.
-- **APOC Cypher write bypass** - write regex now also rejects
+- **APOC Cypher write bypass** - write regex now rejects
   `apoc.create|merge|refactor|delete|remove|set|drop|iterate|cypher.runWrite|export|trigger`,
   and every read path opens the Neo4j session with `default_access_mode=READ_ACCESS`.
 - **SSRF in `kb-arena ingest <url>`** - `WebParser` rejects `file://`, private,

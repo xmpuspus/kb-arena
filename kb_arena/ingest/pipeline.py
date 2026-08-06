@@ -20,7 +20,7 @@ from kb_arena.settings import settings
 console = Console()
 log = logging.getLogger(__name__)
 
-# Extension → parser key mapping for auto-detect
+# Map extensions to parser keys for automatic detection.
 _EXT_MAP: dict[str, str] = {
     ".md": "markdown",
     ".markdown": "markdown",
@@ -48,7 +48,7 @@ def run_ingest(path: str, corpus: str = "custom", format: str = "auto") -> int:
         console.print(f"[red]Path does not exist: {src}[/red]")
         raise SystemExit(1)
 
-    # Collect files — if path is a file, wrap it; otherwise glob recursively
+    # Wrap a single file or collect supported files recursively.
     if src.is_file():
         if src.suffix.lower() not in SUPPORTED_EXTENSIONS and format == "auto":
             console.print(f"[yellow]Unsupported file type: {src.suffix}[/yellow]")
@@ -104,7 +104,7 @@ def run_ingest(path: str, corpus: str = "custom", format: str = "auto") -> int:
 
     console.print(
         f"[green]Done.[/green] {total_docs} documents, {total_sections} sections "
-        f"→ [bold]{out_path}[/bold]"
+        f"-> [bold]{out_path}[/bold]"
     )
     return total_docs
 
@@ -155,6 +155,6 @@ def run_ingest_special(
 
     console.print(
         f"[green]Done.[/green] {len(docs)} documents, {total_sections} sections "
-        f"→ [bold]{out_path}[/bold]"
+        f"-> [bold]{out_path}[/bold]"
     )
     return len(docs)

@@ -2,8 +2,8 @@
 
 > Status: Draft only. Do not post automatically.
 
-Choosing a retrieval architecture should start with evidence from your own documents, not a
-generic leaderboard.
+Choosing a retrieval architecture should not start with a generic leaderboard but with evidence
+from your own documents.
 
 KB Arena 0.10.0 reframes the project as a retrieval architecture decision lab. It runs lexical,
 dense, graph, hybrid, hierarchical, and reranked retrieval against the same corpus and question

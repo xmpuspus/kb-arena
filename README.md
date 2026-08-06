@@ -52,7 +52,7 @@ The tracked Retriever Lab run `855aac4e` is a historical, reproducible example:
 - Run date: 2026-04-26
 - Questions: 75 across five tiers
 - Cutoff: top 5 chunks
-- Chunk-level labels: 35 questions have labels; 40 do not
+- Chunk-level labels: 35 questions have labels, and 40 do not
 - Scope: eight strategies from the version available on the run date
 
 | Strategy | Recall@5 | MRR | NDCG@5 |
@@ -72,17 +72,17 @@ Source: [tracked report](https://github.com/xmpuspus/kb-arena/blob/main/results/
 These numbers show the report format and calculation path. The corpus is too small, and
 its chunk labels are too incomplete, to support a general winner claim. Q&A Pairs and Knowledge
 Graph from that run have zero chunk-level scores because their retrieved identifiers did not map
-to the available labels. Their zeroes are evaluation gaps, not proof that the methods cannot
-retrieve useful context.
+to the available labels. Those zeroes reflect gaps in the current evaluation, not evidence that the
+methods cannot retrieve useful context.
 
 ## A larger public corpus for method development
 
-The repository also includes a deterministic NIST SP 800-171 Revision 3 corpus built from the
+The repository includes a deterministic NIST SP 800-171 Revision 3 corpus built from the
 official publication. It has 130 control documents and 80 questions across direct,
 paraphrased, scenario, boundary, and multi-control categories. Each question maps to source control
 sections, with 48 development, 12 validation, and 20 holdout items.
 
-The question set is a machine-generated draft, not a human-approved benchmark. Do not publish a
+The question set is not a human-approved benchmark but a machine-generated draft. Do not publish a
 strategy winner from it until a qualified reviewer checks the questions, answers, constraints, and
 holdout isolation. See the [corpus notes](https://github.com/xmpuspus/kb-arena/blob/main/datasets/nist-800-171-r3/README.md),
 [source manifest](https://github.com/xmpuspus/kb-arena/blob/main/datasets/nist-800-171-r3/source-manifest.json), and
@@ -145,7 +145,7 @@ kb-arena retriever-lab --corpus my-docs --top-k 5
 It reports Recall@k, Precision@k, Hit@k, MRR, NDCG@k, MAP, R-Precision, bpref,
 bootstrap confidence intervals, and per-tier breakdowns.
 
-Use the full benchmark when you also need generated-answer scoring, source attribution, latency,
+Use the full benchmark for generated-answer scoring, source attribution, latency,
 cost, and reliability:
 
 ```bash
@@ -169,7 +169,7 @@ After you choose the configuration, run the public comparison with
 `kb-arena benchmark --split holdout`.
 
 Optimization remains retrieval-only. QnA Pairs and RAPTOR reuse their prebuilt indexes and sweep
-top-k only; they do not regenerate pairs or summaries during a search.
+top-k only. They do not regenerate pairs or summaries during a search.
 
 Read [the evaluation method](https://github.com/xmpuspus/kb-arena/blob/main/docs/methodology.md) before interpreting small score differences or
 synthetic question sets.
@@ -192,7 +192,7 @@ strategies at `GET /strategies`.
 | BM25 | Lexical | Yes | Keyless keyword baseline |
 | Rerank Vector | Reranked dense | Yes | Rescores dense candidates with a cross-encoder |
 | QISS | Experimental | Yes | Pure NumPy fidelity reranker over dense candidates |
-| SQR | Experimental | No | Qiskit Aer SWAP-test reranker; install `kb-arena[quantum]` |
+| SQR | Experimental | No | Qiskit Aer SWAP-test reranker, install `kb-arena[quantum]` |
 
 See [strategy details](https://github.com/xmpuspus/kb-arena/blob/main/docs/strategy-catalog.md) and the
 [plugin guide](https://github.com/xmpuspus/kb-arena/blob/main/CONTRIBUTING.md#add-a-strategy).

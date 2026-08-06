@@ -29,7 +29,7 @@ export default function RootLayout({
           >
             GitHub
           </a>
-          <span className="mx-2">·</span>
+          <span className="mx-2">|</span>
           <span>KB Arena | Retrieval Architecture Decision Lab</span>
         </footer>
       </body>
