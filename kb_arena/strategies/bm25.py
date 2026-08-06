@@ -136,9 +136,13 @@ class BM25Strategy(Strategy):
                     ):
                         log.warning("Skipping legacy or mismatched BM25 index at %s", path)
                         continue
-                    chunk_ids = data.get("chunk_ids") or [
-                        f"{src}::passage-{i}" for i, src in enumerate(data["sources"])
-                    ]
+                    # Format 2 always writes real section IDs. A present-but-empty list
+                    # means the index is corrupt, and synthesising passage IDs here would
+                    # score fabricated provenance against the expected chunks.
+                    chunk_ids = data["chunk_ids"]
+                    if not isinstance(chunk_ids, list) or len(chunk_ids) != len(data["sources"]):
+                        log.warning("Corrupt BM25 index at %s: chunk_ids mismatch sources", path)
+                        continue
                     combined["texts"].extend(data["texts"])
                     combined["sources"].extend(data["sources"])
                     combined["chunk_ids"].extend(chunk_ids)

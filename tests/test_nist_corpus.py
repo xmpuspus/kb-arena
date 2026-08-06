@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -54,6 +55,40 @@ def test_nist_processed_documents_have_stable_control_provenance():
     assert all(document.metadata["source_anchor"].startswith("sec-sec_") for document in documents)
     assert all(document.sections for document in documents)
     assert all(document.sections[0].id == document.metadata["control_id"] for document in documents)
+
+
+def test_nist_controls_exclude_the_document_bibliography():
+    """The final control must stop at the bibliography instead of absorbing all 84 entries."""
+    documents = _documents()
+    contents = {
+        document.id: "\n".join(section.content for section in document.sections)
+        for document in documents
+    }
+
+    assert not any(re.search(r"^\[\d+\] ", text, re.MULTILINE) for text in contents.values())
+    assert "Executive Order 13556" not in contents["nist-03.17.03"]
+
+    counts = {document.id: document.raw_token_count for document in documents}
+    largest = max(counts.values())
+    assert counts["nist-03.17.03"] < 1000
+    assert largest < 1000
+
+
+def test_nist_source_controls_keep_control_enhancements():
+    """AC-02(03) is a distinct source control and must not collapse to AC-02."""
+    documents = _documents()
+    by_id = {document.id: document for document in documents}
+    account_management = by_id["nist-03.01.01"]
+
+    assert "AC-02(03)" in account_management.metadata["source_controls"]
+    assert "AC-02" in account_management.metadata["source_controls"]
+
+    for document in documents:
+        text = "\n".join(section.content for section in document.sections)
+        for enhancement in set(re.findall(r"\b[A-Z]{2}-\d{2}\(\d{2}\)", text)):
+            assert (
+                enhancement in document.metadata["source_controls"]
+            ), f"{document.id} dropped {enhancement}"
 
 
 def test_nist_questions_match_the_approved_type_and_split_counts():

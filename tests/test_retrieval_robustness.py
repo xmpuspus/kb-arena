@@ -108,6 +108,34 @@ async def test_rerank_vector_backend_failure_is_not_reported_as_success(
 
 
 @pytest.mark.asyncio
+async def test_rerank_vector_rejects_non_finite_scores(mock_chroma_client, mock_llm_client):
+    """A NaN score sorts unpredictably, so it must fail rather than reorder the answer."""
+    from kb_arena.strategies.rerank_vector import RerankVectorStrategy
+
+    strategy = RerankVectorStrategy(chroma_client=mock_chroma_client, llm_client=mock_llm_client)
+    strategy._base.query = AsyncMock(
+        return_value=AnswerResult(
+            answer="base answer",
+            retrieval=RetrievalTrace(query="Q", retrieved=_candidates(2), latency_ms=1.0, top_k=12),
+            strategy="naive_vector",
+        )
+    )
+
+    class _NaNReranker:
+        def score(self, query, passages):
+            return [float("nan"), 0.9]
+
+    strategy._reranker = _NaNReranker()
+
+    from kb_arena.exceptions import RerankerError
+
+    with pytest.raises(RerankerError, match="finite"):
+        await strategy.query("Q", top_k=2)
+
+    mock_llm_client.generate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_rerank_vector_caps_candidate_count(mock_chroma_client, mock_llm_client):
     from kb_arena.strategies.base import MAX_RETRIEVAL_CANDIDATES
     from kb_arena.strategies.rerank_vector import RerankVectorStrategy

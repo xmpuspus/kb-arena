@@ -164,6 +164,33 @@ async def test_aggregate_query_skips_legacy_bm25_indexes(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_current_format_index_with_empty_chunk_ids_is_rejected(tmp_path):
+    """Format 2 always writes real section IDs, so an empty list means the index is corrupt."""
+    from kb_arena import settings
+    from kb_arena.strategies.bm25 import BM25_INDEX_FORMAT_VERSION
+
+    settings.settings.datasets_path = str(tmp_path)
+    corrupt_path = tmp_path / "alpha" / "processed" / "bm25_index.json"
+    corrupt_path.parent.mkdir(parents=True)
+    corrupt_path.write_text(
+        json.dumps(
+            {
+                "format_version": BM25_INDEX_FORMAT_VERSION,
+                "corpus": "alpha",
+                "texts": ["alpha"],
+                "sources": ["doc"],
+                "chunk_ids": [],
+            }
+        )
+    )
+
+    strategy = BM25Strategy()
+
+    # Must not synthesise "doc::passage-0" provenance that was never in the index.
+    assert not strategy._ensure_index("alpha")
+
+
+@pytest.mark.asyncio
 async def test_query_without_index(bm25_strategy, tmp_path):
     from kb_arena import settings
 

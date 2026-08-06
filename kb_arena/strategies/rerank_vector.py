@@ -19,6 +19,7 @@ between "naive_vector" and "naive_vector + BGE rerank".
 
 from __future__ import annotations
 
+import math
 import time
 from typing import Any
 
@@ -167,6 +168,14 @@ class RerankVectorStrategy(Strategy):
             scores = self._get_reranker().score(question, passages)
         except Exception as exc:
             raise RerankerError(f"Reranker backend failed: {exc}") from exc
+
+        # A NaN compares False against everything, so it can hold rank 1 and silently
+        # push the genuinely relevant chunk out of the generated context.
+        for position, score in enumerate(scores):
+            if isinstance(score, bool) or not isinstance(score, int | float):
+                raise RerankerError(f"Reranker returned a non-numeric score at position {position}")
+            if not math.isfinite(score):
+                raise RerankerError(f"Reranker returned a non-finite score at position {position}")
 
         ranked: list[tuple[float, RetrievedChunk]] = sorted(
             zip(scores, chunks, strict=True), key=lambda x: x[0], reverse=True

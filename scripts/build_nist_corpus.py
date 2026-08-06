@@ -23,7 +23,11 @@ QRELS_OUTPUT = QUESTIONS / "expected_chunks.yaml"
 CONTROL_HEADING = re.compile(r"^(\d{2}\.\d{2}\.\d{2})\s+(.+)$")
 FAMILY_HEADING = re.compile(r"^3\.(\d+)\s+(.+)$")
 CONTROL_REFERENCE = re.compile(r"\b\d{2}\.\d{2}\.\d{2}\b")
-SOURCE_CONTROL = re.compile(r"\b[A-Z]{2}-\d{2}(?:\(\d{2}\))?\b")
+# A trailing \b cannot match after the closing parenthesis, so it would silently
+# drop every enhancement and keep only the base control.
+SOURCE_CONTROL = re.compile(r"\b[A-Z]{2}-\d{2}(?!\d)(?:\(\d{2}\))?")
+# The document bibliography follows the last control and is not part of it.
+BIBLIOGRAPHY_CLASSES = {"BiblioHead", "BiblioEntry"}
 
 
 def _text(tag: Tag) -> str:
@@ -55,6 +59,8 @@ def _parts(heading: Tag) -> dict[str, list[str]]:
         if not isinstance(sibling, Tag):
             continue
         if sibling.name in {"h2", "h3"}:
+            break
+        if BIBLIOGRAPHY_CLASSES.intersection(sibling.get("class") or ()):
             break
         if sibling.name == "h4":
             label = _text(sibling).lower()
