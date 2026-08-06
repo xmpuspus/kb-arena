@@ -181,9 +181,11 @@ def test_questions_retain_and_filter_split(tmp_path, monkeypatch):
     )
 
     all_questions = load_questions("sample")
+    explicit_all_questions = load_questions("sample", split="all")
     holdout = load_questions("sample", split="holdout")
 
     assert [q.split for q in all_questions] == ["development", "holdout"]
+    assert explicit_all_questions == all_questions
     assert [q.id for q in holdout] == ["hold"]
 
 

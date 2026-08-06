@@ -159,6 +159,84 @@ def test_run_rebuilds_empty_artifacts_instead_of_checkpointing_them(tmp_path, mo
     assert state["generate_questions"] == "done"
 
 
+def test_run_invalidates_stale_checkpoints_for_empty_artifacts(tmp_path, monkeypatch):
+    base = _corpus(tmp_path)
+    (base / "raw" / "guide.md").write_text("# Guide\n\nLocal documentation.\n")
+    (base / "processed" / "documents.jsonl").write_text("")
+    (base / "questions" / "questions.yaml").write_text("")
+    (base / ".pipeline_state.json").write_text(
+        json.dumps(
+            {
+                "ingest": "done",
+                "build_graph": "done",
+                "build_vectors": "done",
+                "generate_questions": "done",
+                "benchmark": "done",
+            }
+        )
+    )
+    calls: list[str] = []
+
+    def fake_ingest(path: str, corpus: str, format: str) -> int:
+        calls.append("ingest")
+        (base / "processed" / "documents.jsonl").write_text(MINIMAL_DOCUMENT)
+        return 1
+
+    async def fake_vectors(corpus: str, strategy: str = "all") -> None:
+        calls.append("vectors")
+
+    async def fake_questions(corpus: str, count: int) -> None:
+        calls.append("questions")
+        (base / "questions" / "questions.yaml").write_text(MINIMAL_QUESTION)
+
+    async def fake_benchmark(corpus: str, strategy: str, **kwargs) -> None:
+        calls.append("benchmark")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("kb_arena.cli._preflight", lambda **kwargs: None)
+    monkeypatch.setattr("kb_arena.ingest.pipeline.run_ingest", fake_ingest)
+    monkeypatch.setattr("kb_arena.strategies.build_vector_indexes", fake_vectors)
+    monkeypatch.setattr("kb_arena.benchmark.question_gen.run_question_generation", fake_questions)
+    monkeypatch.setattr("kb_arena.benchmark.runner.run_benchmark", fake_benchmark)
+
+    result = runner.invoke(app, ["run", "--corpus", "sample", "--skip-graph"])
+
+    assert result.exit_code == 0, result.stdout
+    assert calls == ["ingest", "vectors", "questions", "benchmark"]
+    state = json.loads((base / ".pipeline_state.json").read_text())
+    assert "build_graph" not in state
+    assert all(
+        state[name] == "done"
+        for name in ("ingest", "build_vectors", "generate_questions", "benchmark")
+    )
+
+
+def test_run_completed_resume_does_not_require_credentials(tmp_path, monkeypatch):
+    base = _corpus(tmp_path)
+    (base / "processed" / "documents.jsonl").write_text(MINIMAL_DOCUMENT)
+    completed = {
+        "ingest": "done",
+        "build_graph": "done",
+        "build_vectors": "done",
+        "generate_questions": "done",
+        "benchmark": "done",
+    }
+    (base / ".pipeline_state.json").write_text(json.dumps(completed))
+
+    monkeypatch.chdir(tmp_path)
+
+    def unexpected_preflight(**kwargs) -> None:
+        raise AssertionError(f"completed resume preflighted credentials: {kwargs}")
+
+    monkeypatch.setattr("kb_arena.cli._preflight", unexpected_preflight)
+
+    result = runner.invoke(app, ["run", "--corpus", "sample"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "Pipeline complete" in result.stdout
+    assert json.loads((base / ".pipeline_state.json").read_text()) == completed
+
+
 def test_run_does_not_swallow_unexpected_graph_failures(tmp_path, monkeypatch):
     base = _corpus(tmp_path)
     (base / "processed" / "documents.jsonl").write_text(MINIMAL_DOCUMENT)

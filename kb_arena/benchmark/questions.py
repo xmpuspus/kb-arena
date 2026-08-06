@@ -27,9 +27,10 @@ def load_questions(
         corpus: corpus name (e.g. aws-compute, my-docs)
         tier: filter to specific tier (0 = all tiers)
         question_type: filter to specific type (empty = all types)
-        split: development, validation, holdout, unspecified, or empty for all
+        split: development, validation, holdout, unspecified, "all", or empty for all
     """
-    if split and split not in QUESTION_SPLITS:
+    split_filter = "" if split == "all" else split
+    if split_filter and split_filter not in QUESTION_SPLITS:
         raise ValueError(f"Unknown question split {split!r}. Valid: {sorted(QUESTION_SPLITS)}")
     questions_dir = Path(settings.datasets_path) / corpus / "questions"
     if not questions_dir.exists():
@@ -60,7 +61,7 @@ def load_questions(
                 continue
             if question_type and q.type != question_type:
                 continue
-            if split and q.split != split:
+            if split_filter and q.split != split_filter:
                 continue
             questions.append(q)
 

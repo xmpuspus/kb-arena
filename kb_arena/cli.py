@@ -561,8 +561,6 @@ def run(
         )
         raise typer.Exit(1)
 
-    _preflight(needs_llm=True, needs_embeddings=True)
-
     state_path = base / ".pipeline_state.json"
     state: dict = {}
     if resume and state_path.exists():
@@ -597,10 +595,19 @@ def run(
         except FileNotFoundError:
             return False
 
+    has_documents = _has_documents()
+    has_questions = _has_questions()
+    state_changed = False
+    if resume and not has_documents:
+        for stage_name in ("ingest", "build_graph", "build_vectors", "benchmark"):
+            state_changed = state.pop(stage_name, None) is not None or state_changed
+    if resume and not has_questions:
+        for stage_name in ("generate_questions", "benchmark"):
+            state_changed = state.pop(stage_name, None) is not None or state_changed
+
     # 1. ingest explicit input, or automatically use a populated raw directory.
     ingest_source = docs
     if not ingest_source:
-        has_processed = _has_documents()
         raw = base / "raw"
         from kb_arena.ingest.pipeline import SUPPORTED_EXTENSIONS
 
@@ -608,14 +615,33 @@ def run(
             path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS
             for path in raw.rglob("*")
         )
-        if not has_processed and has_raw:
+        if not has_documents and has_raw:
             ingest_source = str(raw)
-        elif not has_processed:
+        elif not has_documents:
             console.print(
                 "[red]No documents found to process.[/red]\n"
                 f"Drop files into {raw}/, pass --docs PATH, or run kb-arena ingest separately."
             )
             raise typer.Exit(1)
+
+    needs_llm = any(
+        (
+            not skip_graph and not (resume and state.get("build_graph") == "done"),
+            not (resume and state.get("build_vectors") == "done"),
+            not has_questions and not (resume and state.get("generate_questions") == "done"),
+            not (resume and state.get("benchmark") == "done"),
+        )
+    )
+    needs_embeddings = any(
+        (
+            not (resume and state.get("build_vectors") == "done"),
+            not (resume and state.get("benchmark") == "done"),
+        )
+    )
+    if needs_llm or needs_embeddings:
+        _preflight(needs_llm=needs_llm, needs_embeddings=needs_embeddings)
+    if state_changed:
+        _save_state()
 
     if ingest_source:
         from kb_arena.ingest.pipeline import run_ingest
@@ -664,7 +690,6 @@ def run(
     _stage("build_vectors", _vectors)
 
     # 4. generate-questions (only if no questions exist)
-    has_questions = _has_questions()
     if not has_questions:
         from kb_arena.benchmark.question_gen import run_question_generation
 
