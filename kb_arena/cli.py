@@ -359,19 +359,23 @@ def benchmark(
 
         _settings.benchmark_enable_ragas = True
 
-    from kb_arena.benchmark.runner import run_benchmark
+    from kb_arena.benchmark.runner import BenchmarkExecutionError, run_benchmark
 
-    asyncio.run(
-        run_benchmark(
-            corpus=corpus,
-            strategy=strategy,
-            tier=tier,
-            split=split,
-            parallel=parallel,
-            reference_free=reference_free,
-            top_k=top_k,
+    try:
+        asyncio.run(
+            run_benchmark(
+                corpus=corpus,
+                strategy=strategy,
+                tier=tier,
+                split=split,
+                parallel=parallel,
+                reference_free=reference_free,
+                top_k=top_k,
+            )
         )
-    )
+    except BenchmarkExecutionError as exc:
+        console.print(f"[red]Benchmark failed: {exc}[/red]")
+        raise typer.Exit(1) from None
 
     if fail_below > 0:
         from kb_arena.benchmark.reporter import _load_results

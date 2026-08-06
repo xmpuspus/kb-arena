@@ -97,6 +97,28 @@ def test_random_method_is_seed_deterministic_and_capped():
     assert a[0] == _base("naive_vector")  # baseline still first
 
 
+@pytest.mark.parametrize("method", ["grid", "random"])
+def test_max_trials_bounds_search_space_construction(method, monkeypatch):
+    def product_must_not_run(*args, **kwargs):
+        raise AssertionError("cartesian product was consumed past max_trials")
+
+    monkeypatch.setattr("kb_arena.benchmark.optimizer.itertools.product", product_must_not_run)
+    values = list(range(1_000))
+
+    trials = build_trials(
+        "naive_vector",
+        top_ks=values,
+        chunk_sizes=values,
+        embedding_providers=[f"provider-{i}" for i in values],
+        reranker_backends=[],
+        baseline=_base("naive_vector"),
+        method=method,
+        max_trials=1,
+    )
+
+    assert trials == [_base("naive_vector")]
+
+
 def test_select_best_picks_max_and_reports_delta():
     base = _base("naive_vector")
     better = base.model_copy(update={"top_k": 10})
@@ -170,9 +192,10 @@ async def test_score_trial_stubs_llm_during_index_rebuild(monkeypatch):
         async def build_index(self, documents):
             nonlocal build_called
             build_called = True
-            await LLMClient.generate(object())
+            client = object.__new__(LLMClient)
+            await client.generate(query="q", context="", system_prompt="test")
 
-    monkeypatch.setattr(LLMClient, "generate", reject_live_generation)
+    monkeypatch.setattr(LLMClient, "_call", reject_live_generation)
     monkeypatch.setattr(strategies, "get_strategy", lambda name: FakeStrategy())
 
     base = _base("naive_vector")

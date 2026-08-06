@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 from kb_arena.settings import settings
 
 logger = logging.getLogger(__name__)
+_retrieval_only_mode: ContextVar[bool] = ContextVar("kb_arena_retrieval_only", default=False)
 
 # Per-million-token pricing (USD). Update when providers change pricing.
 _MODEL_PRICING: dict[str, dict[str, float]] = {
@@ -130,6 +132,8 @@ class LLMClient:
         **kwargs,
     ) -> str:
         """Cheap classification call. Fast model, ~20 tokens, <50ms."""
+        if _retrieval_only_mode.get():
+            return ""
         user_content = query
         if history:
             turns = history[-6:]  # last 6 turns
@@ -155,6 +159,8 @@ class LLMClient:
         **kwargs,
     ) -> LLMResponse:
         """Full generation call. Generate model."""
+        if _retrieval_only_mode.get():
+            return LLMResponse(text="", input_tokens=0, output_tokens=0, cost_usd=0.0)
         user_content = f"Context:\n{context}\n\nQuery: {query}" if context else query
         return await self._call("generate", system_prompt, user_content, **kwargs)
 
@@ -165,6 +171,8 @@ class LLMClient:
         **kwargs,
     ) -> LLMResponse:
         """Entity/relationship extraction. Generate model, structured output."""
+        if _retrieval_only_mode.get():
+            return LLMResponse(text="", input_tokens=0, output_tokens=0, cost_usd=0.0)
         return await self._call("generate", system_prompt, text, **kwargs)
 
     async def judge(

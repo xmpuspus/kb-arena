@@ -40,6 +40,14 @@ STRATEGY_NAMES = list(default_strategy_names())
 RETRY_BASE_S = 1.0  # base for exponential backoff: 1s, 2s, 4s, ...
 
 
+class BenchmarkExecutionError(RuntimeError):
+    """A benchmark could not produce a complete, trustworthy result."""
+
+
+class BenchmarkIncompleteError(BenchmarkExecutionError):
+    """A benchmark stopped at its budget boundary before all queries ran."""
+
+
 def _is_retryable(exc: BaseException) -> bool:
     """Distinguish transient errors (rate limit, network, server 5xx, timeout)
     from configuration errors (auth, validation, missing model). Retrying the
@@ -148,6 +156,7 @@ async def _run_one(
     async with semaphore:
         attempt = 0
         last_error = ""
+        last_exception: BaseException | None = None
         max_retries = settings.benchmark_max_retries
         query_timeout = settings.benchmark_query_timeout_s
 
@@ -203,7 +212,9 @@ async def _run_one(
                     retrieval_latency_ms=retrieval_latency_ms,
                     generation_latency_ms=generation_latency_ms,
                     tokens_used=tokens,
-                    cost_usd=cost,
+                    cost_usd=cost + score.evaluation_cost_usd,
+                    generation_cost_usd=cost,
+                    evaluation_cost_usd=score.evaluation_cost_usd,
                     sources=sources,
                     is_error=is_error,
                     is_empty=is_empty,
@@ -215,6 +226,7 @@ async def _run_one(
             except TimeoutError as e:
                 latency_ms = (time.perf_counter() - t0) * 1000
                 last_error = f"Timeout after {query_timeout}s"
+                last_exception = e
                 if attempt <= max_retries:
                     delay = RETRY_BASE_S * (2 ** (attempt - 1)) + random.uniform(0, 0.5)
                     await asyncio.sleep(delay)
@@ -224,6 +236,7 @@ async def _run_one(
             except Exception as e:
                 latency_ms = (time.perf_counter() - t0) * 1000
                 last_error = str(e)
+                last_exception = e
                 # Don't retry permanent errors (bad API key, missing model, etc.)
                 # Burning 7 minutes per benchmark run on a typo is worse than failing fast.
                 if attempt <= max_retries and _is_retryable(e):
@@ -233,23 +246,9 @@ async def _run_one(
                 else:
                     break
 
-        # All retries exhausted
-        from kb_arena.models.benchmark import Score
-
-        error_score = Score(accuracy=0.0, completeness=0.0, faithfulness=0.0)
-
-        return AnswerRecord(
-            question_id=question_id,
-            strategy=strategy.name,
-            answer=f"[ERROR] {last_error}",
-            score=error_score,
-            latency_ms=latency_ms,
-            is_error=True,
-            is_empty=True,
-            error_message=last_error,
-            attempt_count=attempt,
-            response_length=0,
-        )
+        raise BenchmarkExecutionError(
+            f"{strategy.name}/{question_id} failed after {attempt} attempt(s): {last_error}"
+        ) from last_exception
 
 
 def _aggregate(
@@ -403,10 +402,12 @@ async def run_benchmark(
     strategies = _load_strategies(strategy)
 
     if not strategies:
-        console.print("[red]No strategies available. Run build_vectors / build_graph first.[/red]")
-        return
+        raise BenchmarkExecutionError(
+            "No strategies available. Run build_vectors / build_graph first."
+        )
 
     cumulative_total_cost = 0.0
+    selected_questions = False
 
     console.print(f"[dim]Run ID: {run_id}[/dim]")
     if cost_cap > 0:
@@ -420,11 +421,17 @@ async def run_benchmark(
         try:
             questions = load_questions(corp, tier=tier, split=split)
         except FileNotFoundError:
+            if corpus != "all":
+                raise BenchmarkExecutionError(f"No questions for corpus: {corp}") from None
             console.print(f"[yellow]No questions for corpus: {corp}[/yellow]")
             continue
 
         if not questions:
+            if corpus != "all":
+                selected = f" for split {split!r}" if split else ""
+                raise BenchmarkExecutionError(f"No questions selected for corpus {corp}{selected}")
             continue
+        selected_questions = True
 
         questions_map = {q.id: q.type for q in questions}
 
@@ -507,7 +514,9 @@ async def run_benchmark(
                     f"[red]Cost cap exceeded: ${cumulative_total_cost:.4f} >= "
                     f"${cost_cap:.2f}. Halting benchmark.[/red]"
                 )
-                return
+                raise BenchmarkIncompleteError(
+                    f"Cost cap reached at ${cumulative_total_cost:.4f} before the run completed"
+                )
         else:
             # Sequential path
             with Progress(
@@ -575,7 +584,10 @@ async def run_benchmark(
                             bench.stopped_by_cost_cap = True
                             bench = _aggregate(bench, questions_map)
                             _write_result(bench)
-                            return
+                            raise BenchmarkIncompleteError(
+                                f"Cost cap reached at ${cumulative_total_cost:.4f} "
+                                "before the run completed"
+                            )
 
                     bench = _aggregate(bench, questions_map)
                     _write_result(bench)
@@ -596,3 +608,6 @@ async def run_benchmark(
             f"[green]Done {corp}:[/green] {len(strategies)} strategies, "
             f"${cumulative_cost:.4f} total"
         )
+
+    if not selected_questions:
+        raise BenchmarkExecutionError("No benchmark questions were selected")

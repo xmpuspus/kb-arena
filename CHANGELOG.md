@@ -48,6 +48,12 @@ All notable changes to KB Arena.
   regenerating their LLM-built artifacts during a sweep.
 - Stopped retrieval execution failures from becoming valid zero-score observations or optimizer
   recommendations, and made concurrent rate-limit consumption atomic.
+- Kept retrieval-only LLM stubs task-local and rendered failed Retriever Lab queries without
+  treating their missing metrics as numeric results.
+- Made benchmark, judge, retrieval-ceiling, and empty-question-set failures explicit. Included
+  evaluator spend in cost caps and kept partial capped runs out of successful checkpoints.
+- Published ingested corpora atomically, bounded optimizer search construction, and expanded
+  evaluation cache keys to cover every input that can change a score.
 - Updated Typer, Click, FastAPI, and Starlette to compatible releases that address current
   command-execution and HTTP request-processing advisories.
 - Added tested Python 3.13 support and bounded package metadata to Python 3.11 through 3.13.

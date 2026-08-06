@@ -294,17 +294,82 @@ async def test_evaluate_calls_llm_on_structural_pass():
 
 
 @pytest.mark.asyncio
-async def test_evaluate_graceful_on_llm_failure():
+async def test_evaluate_fails_when_llm_judge_is_unavailable():
+    from kb_arena.benchmark.evaluator import EvaluationExecutionError, _eval_cache
+
+    _eval_cache.clear()
     constraints = Constraints(must_mention=["Lambda"], must_not_claim=[])
     ground_truth = GroundTruth(answer="Lambda runs code serverlessly.")
     mock_llm = AsyncMock()
     mock_llm.judge.side_effect = RuntimeError("API timeout")
 
-    score = await evaluate("Lambda runs code on demand.", ground_truth, constraints, llm=mock_llm)
+    with pytest.raises(EvaluationExecutionError, match="API timeout"):
+        await evaluate("Lambda runs code on demand.", ground_truth, constraints, llm=mock_llm)
 
-    # Structural score should stand
-    assert score.structural_pass is True
-    assert score.accuracy >= 0.0
+
+@pytest.mark.asyncio
+async def test_evaluate_tracks_new_judge_spend_but_not_cache_hits():
+    from kb_arena.benchmark.evaluator import _eval_cache
+    from kb_arena.llm.client import LLMResponse
+
+    _eval_cache.clear()
+    constraints = Constraints(must_mention=["Lambda"])
+    ground_truth = GroundTruth(answer="Lambda runs code serverlessly.")
+    mock_llm = AsyncMock()
+    mock_llm.judge.return_value = LLMResponse(
+        text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}',
+        cost_usd=0.25,
+    )
+
+    first = await evaluate("Lambda runs code.", ground_truth, constraints, llm=mock_llm)
+    cached = await evaluate("Lambda runs code.", ground_truth, constraints, llm=mock_llm)
+
+    assert first.evaluation_cost_usd == pytest.approx(0.25)
+    assert cached.evaluation_cost_usd == pytest.approx(0.0)
+    mock_llm.judge.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_reference_free_cache_separates_question_and_context(monkeypatch):
+    from kb_arena.benchmark.evaluator import _eval_cache
+    from kb_arena.llm.client import LLMResponse
+    from kb_arena.settings import settings
+
+    _eval_cache.clear()
+    monkeypatch.setattr(settings, "benchmark_enable_ragas", True)
+    ground_truth = GroundTruth(answer="")
+    constraints = Constraints()
+    mock_llm = AsyncMock()
+    mock_llm.judge.return_value = LLMResponse(
+        text=(
+            '{"relevancy": 0.8, "faithfulness": 0.7, '
+            '"context_precision": 0.6, "context_recall": 0.5}'
+        ),
+        cost_usd=0.1,
+    )
+
+    first = await evaluate(
+        "Same answer",
+        ground_truth,
+        constraints,
+        llm=mock_llm,
+        question_text="First question",
+        context_chunks=["first context"],
+        reference_free=True,
+    )
+    second = await evaluate(
+        "Same answer",
+        ground_truth,
+        constraints,
+        llm=mock_llm,
+        question_text="Second question",
+        context_chunks=["second context"],
+        reference_free=True,
+    )
+
+    assert mock_llm.judge.await_count == 6
+    assert first.evaluation_cost_usd == pytest.approx(0.3)
+    assert second.evaluation_cost_usd == pytest.approx(0.3)
 
 
 @pytest.mark.asyncio

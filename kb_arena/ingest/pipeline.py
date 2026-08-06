@@ -8,6 +8,7 @@ one Document JSON object per line to datasets/{corpus}/processed/documents.jsonl
 from __future__ import annotations
 
 import logging
+import tempfile
 from pathlib import Path
 
 from rich.console import Console
@@ -66,20 +67,32 @@ def run_ingest(path: str, corpus: str = "custom", format: str = "auto") -> int:
     out_dir = Path(settings.datasets_path) / corpus / "processed"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "documents.jsonl"
+    staged_file = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=out_dir,
+        prefix=".documents.",
+        suffix=".tmp",
+        delete=False,
+    )
+    staged_path = Path(staged_file.name)
 
     total_docs = 0
     total_sections = 0
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("{task.completed}/{task.total} files"),
-        console=console,
-    ) as progress:
-        task = progress.add_task(f"Ingesting [bold]{corpus}[/bold]", total=len(files))
-
-        with out_path.open("w", encoding="utf-8") as fout:
+    published = False
+    try:
+        with (
+            staged_file as fout,
+            Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("{task.completed}/{task.total} files"),
+                console=console,
+            ) as progress,
+        ):
+            task = progress.add_task(f"Ingesting [bold]{corpus}[/bold]", total=len(files))
             for file in files:
                 fmt = format if format != "auto" else _detect_format(file, corpus)
                 parser_cls = PARSERS.get(fmt)
@@ -92,15 +105,25 @@ def run_ingest(path: str, corpus: str = "custom", format: str = "auto") -> int:
                 try:
                     parser = parser_cls()
                     docs: list[Document] = parser.parse(file, corpus)
-                    for doc in docs:
-                        fout.write(doc.model_dump_json())
-                        fout.write("\n")
-                        total_docs += 1
-                        total_sections += len(doc.sections)
                 except Exception as exc:  # noqa: BLE001
                     log.warning("Failed to parse %s: %s", file, exc)
+                    progress.advance(task)
+                    continue
+
+                for doc in docs:
+                    fout.write(doc.model_dump_json())
+                    fout.write("\n")
+                    total_docs += 1
+                    total_sections += len(doc.sections)
 
                 progress.advance(task)
+
+        if total_docs > 0:
+            staged_path.replace(out_path)
+            published = True
+    finally:
+        if not published:
+            staged_path.unlink(missing_ok=True)
 
     console.print(
         f"[green]Done.[/green] {total_docs} documents, {total_sections} sections "

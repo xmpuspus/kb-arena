@@ -107,6 +107,31 @@ def test_run_continues_after_graph_failure_without_checkpointing_it(tmp_path, mo
     assert state["benchmark"] == "done"
 
 
+def test_run_does_not_checkpoint_cost_capped_benchmark(tmp_path, monkeypatch):
+    from kb_arena.benchmark.runner import BenchmarkIncompleteError
+
+    base = _corpus(tmp_path)
+    (base / "processed" / "documents.jsonl").write_text(MINIMAL_DOCUMENT)
+
+    async def fake_vectors(corpus: str, strategy: str = "all") -> None:
+        return None
+
+    async def capped_benchmark(corpus: str, strategy: str) -> None:
+        raise BenchmarkIncompleteError("cost cap reached before completion")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("kb_arena.cli._preflight", lambda **kwargs: None)
+    monkeypatch.setattr("kb_arena.strategies.build_vector_indexes", fake_vectors)
+    monkeypatch.setattr("kb_arena.benchmark.runner.run_benchmark", capped_benchmark)
+
+    result = runner.invoke(app, ["run", "--corpus", "sample", "--skip-graph"])
+
+    assert result.exit_code == 1
+    state = json.loads((base / ".pipeline_state.json").read_text())
+    assert "benchmark" not in state
+    assert "Pipeline complete" not in result.stdout
+
+
 def test_run_rejects_unsupported_raw_files_without_checkpointing_ingest(tmp_path, monkeypatch):
     base = _corpus(tmp_path)
     (base / "raw" / ".DS_Store").write_bytes(b"metadata")

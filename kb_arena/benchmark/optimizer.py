@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import math
 import random
 import tempfile
 import time
@@ -163,6 +164,8 @@ def build_trials(
     """
     if method not in ("grid", "random"):
         raise ValueError(f"Unknown method {method!r}. Use 'grid' or 'random'.")
+    if max_trials < 0:
+        raise ValueError("max_trials must be nonnegative")
 
     dims = applicable_dims(strategy)
     top_k_axis = _axis(top_ks, baseline.top_k, "top_k" in dims)
@@ -170,33 +173,55 @@ def build_trials(
     emb_axis = _axis(embedding_providers, baseline.embedding_provider, "embedding_provider" in dims)
     rer_axis = _axis(reranker_backends, baseline.reranker_backend, "reranker_backend" in dims)
 
-    combos = [
-        TrialConfig(
+    axes = (top_k_axis, chunk_axis, emb_axis, rer_axis)
+    total_combinations = math.prod(len(axis) for axis in axes)
+    if max_trials == 1:
+        return [baseline]
+
+    def _config(values) -> TrialConfig:
+        tk, ck, ep, rb = values
+        return TrialConfig(
             strategy=strategy,
             top_k=tk,
             chunk_tokens=ck,
             embedding_provider=ep,
             reranker_backend=rb,
         )
-        for tk, ck, ep, rb in itertools.product(top_k_axis, chunk_axis, emb_axis, rer_axis)
-    ]
 
-    # Dedupe while preserving order, baseline first.
-    seen: set[TrialConfig] = set()
+    # Baseline stays first so every reported delta has a measured reference.
     ordered: list[TrialConfig] = [baseline]
-    seen.add(baseline)
-    for c in combos:
-        if c not in seen:
-            seen.add(c)
-            ordered.append(c)
+    if method == "random" and max_trials and max_trials < total_combinations:
+        baseline_coords = (
+            top_k_axis.index(baseline.top_k),
+            chunk_axis.index(baseline.chunk_tokens),
+            emb_axis.index(baseline.embedding_provider),
+            rer_axis.index(baseline.reranker_backend),
+        )
+        baseline_index = 0
+        for coordinate, axis in zip(baseline_coords, axes, strict=True):
+            baseline_index = baseline_index * len(axis) + coordinate
 
-    if method == "random" and max_trials and len(ordered) > max_trials:
-        rest = ordered[1:]
         rng = random.Random(seed)
-        rng.shuffle(rest)
-        ordered = [baseline, *rest[: max_trials - 1]]
-    elif max_trials and len(ordered) > max_trials:
-        ordered = ordered[:max_trials]
+        sampled = rng.sample(range(total_combinations - 1), max_trials - 1)
+        for compressed_index in sampled:
+            flat_index = (
+                compressed_index if compressed_index < baseline_index else compressed_index + 1
+            )
+            coordinates: list[int] = []
+            for axis in reversed(axes):
+                flat_index, coordinate = divmod(flat_index, len(axis))
+                coordinates.append(coordinate)
+            values = [axis[i] for axis, i in zip(axes, reversed(coordinates), strict=True)]
+            ordered.append(_config(values))
+        return ordered
+
+    for values in itertools.product(*axes):
+        candidate = _config(values)
+        if candidate == baseline:
+            continue
+        ordered.append(candidate)
+        if max_trials and len(ordered) >= max_trials:
+            break
 
     return ordered
 

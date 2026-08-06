@@ -74,6 +74,7 @@ class Score(BaseModel):
     ragas_context_precision: float = Field(ge=0.0, le=1.0, default=0.0)
     ragas_context_recall: float = Field(ge=0.0, le=1.0, default=0.0)
     ragas_answer_relevancy: float = Field(ge=0.0, le=1.0, default=0.0)
+    evaluation_cost_usd: float = Field(ge=0.0, default=0.0)
 
 
 class AnswerRecord(BaseModel):
@@ -88,6 +89,8 @@ class AnswerRecord(BaseModel):
     generation_latency_ms: float = 0.0
     tokens_used: int = 0
     cost_usd: float = 0.0
+    generation_cost_usd: float = 0.0
+    evaluation_cost_usd: float = 0.0
     sources: list[str] = Field(default_factory=list)
     is_error: bool = False
     is_empty: bool = False

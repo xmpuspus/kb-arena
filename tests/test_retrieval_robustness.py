@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -91,6 +92,38 @@ async def test_retrieve_only_preserves_legitimate_empty_result():
 
 
 @pytest.mark.asyncio
+async def test_retrieval_only_llm_mode_does_not_stub_concurrent_task(monkeypatch):
+    from kb_arena.benchmark.retriever_lab import _PatchLLMClient
+    from kb_arena.llm.client import LLMClient, LLMResponse
+
+    async def live_call(self, *args, **kwargs):
+        return LLMResponse(text="LIVE", input_tokens=2, output_tokens=1, cost_usd=0.01)
+
+    monkeypatch.setattr(LLMClient, "_call", live_call)
+    client = object.__new__(LLMClient)
+    patched = asyncio.Event()
+    release = asyncio.Event()
+
+    async def retrieval_task():
+        with _PatchLLMClient():
+            stubbed = await client.generate(query="q", context="", system_prompt="test")
+            patched.set()
+            await release.wait()
+            return stubbed
+
+    task = asyncio.create_task(retrieval_task())
+    await patched.wait()
+    live = await client.generate(query="q", context="", system_prompt="test")
+    release.set()
+    stubbed = await task
+
+    assert stubbed.text == ""
+    assert stubbed.total_tokens == 0
+    assert live.text == "LIVE"
+    assert live.total_tokens == 3
+
+
+@pytest.mark.asyncio
 async def test_retriever_lab_records_error_and_excludes_failed_query(monkeypatch, tmp_path):
     from kb_arena.benchmark import retriever_lab, runner
     from kb_arena.settings import settings
@@ -127,3 +160,47 @@ async def test_retriever_lab_records_error_and_excludes_failed_query(monkeypatch
     assert summary["execution_errors"] == 1
     assert "recall_at_k" not in report["questions"][0]
     assert report["questions"][0]["execution_error"]["type"] == "RuntimeError"
+
+
+@pytest.mark.asyncio
+async def test_retriever_lab_fails_and_records_retrieval_ceiling_error(monkeypatch, tmp_path):
+    from kb_arena import strategies
+    from kb_arena.benchmark import retriever_lab, runner
+    from kb_arena.settings import settings
+
+    class WorkingStrategy:
+        name = "working"
+
+        async def query(self, question, top_k):
+            return AnswerResult(
+                answer="",
+                retrieval=RetrievalTrace(query=question, retrieved=[], top_k=top_k),
+                strategy=self.name,
+            )
+
+    class BrokenCeilingStrategy:
+        name = "naive_vector"
+
+        async def query(self, question, top_k):
+            raise ConnectionError("deep index unavailable")
+
+    question = SimpleNamespace(
+        id="q1",
+        question="What failed?",
+        tier=1,
+        expected_chunks=[],
+        ground_truth=SimpleNamespace(source_refs=["doc"]),
+    )
+    monkeypatch.setattr(retriever_lab, "load_questions", lambda corpus, split="": [question])
+    monkeypatch.setattr(runner, "_load_strategies", lambda strategy_filter: [WorkingStrategy()])
+    monkeypatch.setattr(strategies, "get_strategy", lambda name: BrokenCeilingStrategy())
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+
+    code = await retriever_lab.run_retriever_lab(corpus="test", min_recall=0.0)
+
+    assert code == 1
+    report_path = next(tmp_path.glob("run_*/retriever_lab.json"))
+    report = json.loads(report_path.read_text())
+    ceiling = report["retrieval_ceiling"]["test"]
+    assert ceiling["status"] == "error"
+    assert ceiling["execution_error"]["type"] == "ConnectionError"

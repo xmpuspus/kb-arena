@@ -43,49 +43,23 @@ class RetrievalExecutionError(RuntimeError):
     """A strategy query failed before it could produce a retrieval trace."""
 
 
-async def _stub_generate(self, *args, **kwargs):
-    """Replacement LLMClient.generate that returns an empty, zero-cost response."""
-    from kb_arena.llm.client import LLMResponse
-
-    return LLMResponse(text="", input_tokens=0, output_tokens=0, cost_usd=0.0)
-
-
-async def _stub_extract(self, *args, **kwargs):
-    from kb_arena.llm.client import LLMResponse
-
-    return LLMResponse(text="", input_tokens=0, output_tokens=0, cost_usd=0.0)
-
-
-async def _stub_classify(self, *args, **kwargs):
-    return ""
-
-
 class _PatchLLMClient:
-    """Context manager that replaces LLMClient methods with no-op stubs.
+    """Enable zero-cost LLM responses only in the current async context.
 
     Strategies invoke query() which always runs LLM generation. retriever-lab
-    needs only the retrieval trace, so we patch the LLM globally to make
-    generation effectively free while retrieval still runs normally.
+    needs only the retrieval trace, so generation is disabled without changing
+    LLM behavior in concurrent chat or benchmark tasks.
     """
 
     def __enter__(self):
-        from kb_arena.llm import client as llm_module
+        from kb_arena.llm.client import _retrieval_only_mode
 
-        self._originals = {
-            "generate": llm_module.LLMClient.generate,
-            "extract": llm_module.LLMClient.extract,
-            "classify": llm_module.LLMClient.classify,
-        }
-        llm_module.LLMClient.generate = _stub_generate
-        llm_module.LLMClient.extract = _stub_extract
-        llm_module.LLMClient.classify = _stub_classify
+        self._mode = _retrieval_only_mode
+        self._token = self._mode.set(True)
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        from kb_arena.llm import client as llm_module
-
-        for name, original in self._originals.items():
-            setattr(llm_module.LLMClient, name, original)
+        self._mode.reset(self._token)
         return False
 
 
@@ -251,9 +225,15 @@ async def _retrieval_ceiling(questions, top_k: int, ceiling_k: int) -> dict:
 
     try:
         base = get_strategy("naive_vector")
-    except Exception as exc:  # noqa: BLE001 - ceiling is a best-effort diagnostic
-        log.warning("Retrieval ceiling skipped (naive_vector unavailable): %s", exc)
-        return {}
+    except Exception as exc:  # noqa: BLE001 - report initialization failures in the artifact
+        log.warning("Retrieval ceiling failed (naive_vector unavailable): %s", exc)
+        return {
+            "status": "error",
+            "top_k": top_k,
+            "ceiling_k": ceiling_k,
+            "questions": 0,
+            "execution_error": {"type": type(exc).__name__, "message": str(exc)},
+        }
 
     top_recalls: list[float] = []
     ceiling_recalls: list[float] = []
@@ -261,8 +241,15 @@ async def _retrieval_ceiling(questions, top_k: int, ceiling_k: int) -> dict:
         try:
             trace = await _retrieve_only(base, q.question, ceiling_k)
         except RetrievalExecutionError as exc:
-            log.warning("Retrieval ceiling skipped after query failure: %s", exc)
-            return {}
+            log.warning("Retrieval ceiling failed: %s", exc)
+            cause = exc.__cause__ or exc
+            return {
+                "status": "error",
+                "top_k": top_k,
+                "ceiling_k": ceiling_k,
+                "questions": len(top_recalls),
+                "execution_error": {"type": type(cause).__name__, "message": str(exc)},
+            }
         retrieved = trace.retrieved
         expected = set(q.expected_chunks or [])
         doc_ids = set(q.ground_truth.source_refs)
@@ -278,7 +265,10 @@ async def _retrieval_ceiling(questions, top_k: int, ceiling_k: int) -> dict:
         top_recalls.append(m_top.recall_at_k)
         ceiling_recalls.append(m_ceil.recall_at_k)
 
-    return _summarize_ceiling(top_recalls, ceiling_recalls, top_k, ceiling_k)
+    return {
+        "status": "complete",
+        **_summarize_ceiling(top_recalls, ceiling_recalls, top_k, ceiling_k),
+    }
 
 
 async def run_retriever_lab(
@@ -519,8 +509,14 @@ async def _run_corpora_loop(
         overall["corpora"][corp] = summary
 
         ceiling = await _retrieval_ceiling(questions, top_k, ceiling_k)
-        if ceiling.get("questions"):
-            overall["retrieval_ceiling"][corp] = ceiling
+        overall["retrieval_ceiling"][corp] = ceiling
+        if ceiling.get("status") == "error":
+            error = ceiling["execution_error"]
+            console.print(
+                f"[red]ERROR[/red] retrieval ceiling for {corp}: "
+                f"{error['type']}: {error['message']}"
+            )
+        elif ceiling.get("questions"):
             console.print(
                 f"[cyan]Retrieval ceiling[/cyan] {corp}: naive Recall@{ceiling['top_k']}="
                 f"{ceiling['recall_at_top_k']:.3f}, Recall@{ceiling['ceiling_k']}="
@@ -534,6 +530,9 @@ async def _run_corpora_loop(
             stats["execution_errors"]
             for by_strategy in overall["corpora"].values()
             for stats in by_strategy.values()
+        )
+        or any(
+            ceiling.get("status") == "error" for ceiling in overall["retrieval_ceiling"].values()
         )
         else 0
     )

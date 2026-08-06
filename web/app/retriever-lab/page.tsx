@@ -10,6 +10,7 @@ type StrategySummary = {
   mean_mrr: number;
   mean_ndcg_at_k: number;
   questions: number;
+  execution_errors?: number;
 };
 
 type RetrievedItem = {
@@ -21,11 +22,14 @@ type RetrievedItem = {
   is_hit: boolean;
 };
 
-type QuestionRow = {
+type QuestionBase = {
   corpus: string;
   strategy: string;
   question_id: string;
   question: string;
+};
+
+type QuestionResultRow = QuestionBase & {
   recall_at_k: number;
   precision_at_k: number;
   hit_at_k: number;
@@ -34,6 +38,12 @@ type QuestionRow = {
   fallback_doc_level: boolean;
   retrieved: RetrievedItem[];
 };
+
+type QuestionErrorRow = QuestionBase & {
+  execution_error: { type: string; message: string };
+};
+
+type QuestionRow = QuestionResultRow | QuestionErrorRow;
 
 type RunData = {
   run_id: string;
@@ -49,6 +59,9 @@ const fmtPct = (v: number) => `${(v * 100).toFixed(1)}%`;
 const fmt3 = (v: number) => v.toFixed(3);
 
 function MetricsCard({ strategy, m, topK }: { strategy: string; m: StrategySummary; topK: number }) {
+  const metric = (value: number, format: (v: number) => string) =>
+    m.questions > 0 ? format(value) : "n/a";
+
   return (
     <div
       className="border rounded-xl p-5"
@@ -60,6 +73,7 @@ function MetricsCard({ strategy, m, topK }: { strategy: string; m: StrategySumma
         </h3>
         <span className="text-xs" style={{ color: "var(--muted)" }}>
           n={m.questions}
+          {(m.execution_errors ?? 0) > 0 && ` | errors=${m.execution_errors}`}
         </span>
       </div>
       <div className="grid grid-cols-2 gap-3 text-sm">
@@ -68,7 +82,7 @@ function MetricsCard({ strategy, m, topK }: { strategy: string; m: StrategySumma
             Recall@{topK}
           </div>
           <div className="font-mono text-lg" style={{ color: "var(--foreground)" }}>
-            {fmtPct(m.mean_recall_at_k)}
+            {metric(m.mean_recall_at_k, fmtPct)}
           </div>
         </div>
         <div>
@@ -76,7 +90,7 @@ function MetricsCard({ strategy, m, topK }: { strategy: string; m: StrategySumma
             Precision@{topK}
           </div>
           <div className="font-mono text-lg" style={{ color: "var(--foreground)" }}>
-            {fmtPct(m.mean_precision_at_k)}
+            {metric(m.mean_precision_at_k, fmtPct)}
           </div>
         </div>
         <div>
@@ -84,7 +98,7 @@ function MetricsCard({ strategy, m, topK }: { strategy: string; m: StrategySumma
             Hit@{topK}
           </div>
           <div className="font-mono text-lg" style={{ color: "var(--foreground)" }}>
-            {fmtPct(m.mean_hit_at_k)}
+            {metric(m.mean_hit_at_k, fmtPct)}
           </div>
         </div>
         <div>
@@ -92,7 +106,7 @@ function MetricsCard({ strategy, m, topK }: { strategy: string; m: StrategySumma
             MRR
           </div>
           <div className="font-mono text-lg" style={{ color: "var(--foreground)" }}>
-            {fmt3(m.mean_mrr)}
+            {metric(m.mean_mrr, fmt3)}
           </div>
         </div>
         <div className="col-span-2">
@@ -100,7 +114,7 @@ function MetricsCard({ strategy, m, topK }: { strategy: string; m: StrategySumma
             NDCG@{topK}
           </div>
           <div className="font-mono text-lg" style={{ color: "var(--foreground)" }}>
-            {fmt3(m.mean_ndcg_at_k)}
+            {metric(m.mean_ndcg_at_k, fmt3)}
           </div>
         </div>
       </div>
@@ -348,22 +362,37 @@ export default function RetrieverLabPage() {
                     >
                       {STRATEGY_LABELS[row.strategy as Strategy] ?? row.strategy}
                     </h3>
-                    <span className="text-xs font-mono" style={{ color: "var(--muted)" }}>
-                      R@{data!.top_k}={fmtPct(row.recall_at_k)} | MRR={fmt3(row.mrr)} | NDCG=
-                      {fmt3(row.ndcg_at_k)}
-                      {row.fallback_doc_level && " | doc-level"}
-                    </span>
-                  </div>
-                  <div className="space-y-1.5">
-                    {row.retrieved.length === 0 && (
-                      <span className="text-xs" style={{ color: "var(--muted)" }}>
-                        No chunks retrieved.
+                    {"execution_error" in row ? (
+                      <span className="text-xs font-mono" style={{ color: "rgb(185, 28, 28)" }}>
+                        Retrieval failed
+                      </span>
+                    ) : (
+                      <span className="text-xs font-mono" style={{ color: "var(--muted)" }}>
+                        R@{data!.top_k}={fmtPct(row.recall_at_k)} | MRR={fmt3(row.mrr)} | NDCG=
+                        {fmt3(row.ndcg_at_k)}
+                        {row.fallback_doc_level && " | doc-level"}
                       </span>
                     )}
-                    {row.retrieved.map((it) => (
-                      <ChunkRow key={`${row.strategy}-${it.rank}-${it.chunk_id}`} item={it} />
-                    ))}
                   </div>
+                  {"execution_error" in row ? (
+                    <div
+                      className="break-words border px-3 py-2 text-xs"
+                      style={{ borderColor: "rgba(220, 38, 38, 0.4)", color: "rgb(185, 28, 28)" }}
+                    >
+                      {row.execution_error.type}: {row.execution_error.message}
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {row.retrieved.length === 0 && (
+                        <span className="text-xs" style={{ color: "var(--muted)" }}>
+                          No chunks retrieved.
+                        </span>
+                      )}
+                      {row.retrieved.map((it) => (
+                        <ChunkRow key={`${row.strategy}-${it.rank}-${it.chunk_id}`} item={it} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
