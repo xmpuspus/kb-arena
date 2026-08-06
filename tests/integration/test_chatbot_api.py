@@ -137,6 +137,50 @@ def test_benchmark_results_match_exact_payload_corpus(app_client, tmp_path, monk
     assert [row["strategy"] for row in response.json()["results"]] == ["exact"]
 
 
+def test_benchmark_results_skip_malformed_numeric_artifacts(app_client, tmp_path, monkeypatch):
+    from kb_arena.settings import settings
+
+    valid = {
+        "corpus": "alpha",
+        "strategy": "valid",
+        "records": [
+            {
+                "question_tier": 1,
+                "score": {"accuracy": 0.75},
+                "latency_ms": 12.0,
+                "cost_usd": 0.0,
+            }
+        ],
+    }
+    malformed = {
+        "corpus": "alpha",
+        "strategy": "malformed",
+        "records": [
+            {
+                "question_tier": 1,
+                "score": {"accuracy": True},
+                "latency_ms": True,
+                "cost_usd": False,
+            }
+        ],
+    }
+    (tmp_path / "valid.json").write_text(json.dumps(valid))
+    (tmp_path / "malformed.json").write_text(json.dumps(malformed))
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+
+    response = app_client.get("/api/benchmark/results?corpus=alpha")
+
+    assert response.status_code == 200
+    assert response.json()["results"] == [
+        {
+            "strategy": "valid",
+            "tiers": [75, 0, 0, 0, 0],
+            "latencyMs": 12,
+            "costUsd": 0.0,
+        }
+    ]
+
+
 def test_summarise_run_preserves_explicit_zero_cost():
     from kb_arena.chatbot.api import _summarise_run
 

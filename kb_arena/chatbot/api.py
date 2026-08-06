@@ -518,11 +518,13 @@ async def benchmark_results(corpus: str = "all") -> dict:
     for f in sorted(results_dir.glob("*.json")):
         try:
             data = json.loads(f.read_text())
-            if corpus != "all" and data.get("corpus") != corpus:
-                continue
-            all_results.append(data)
         except (json.JSONDecodeError, OSError):
             continue
+        if not isinstance(data, dict):
+            continue
+        if corpus != "all" and data.get("corpus") != corpus:
+            continue
+        all_results.append(data)
 
     if not all_results:
         return {"results": [], "source": "none"}
@@ -536,17 +538,43 @@ async def benchmark_results(corpus: str = "all") -> dict:
 
     for result in all_results:
         strategy = result.get("strategy", "")
-        for rec in result.get("records", []):
-            tier = rec.get("question_tier", 0)
-            if not tier:
-                try:
-                    tier = int(rec.get("question_id", "").split("-t")[1].split("-")[0])
-                except (IndexError, ValueError):
-                    tier = 0
-            score = rec.get("score", {})
-            strategy_tiers[strategy][tier].append(score.get("accuracy", 0))
-            strategy_latency[strategy].append(rec.get("latency_ms", 0))
-            strategy_cost[strategy].append(rec.get("cost_usd", 0))
+        records = result.get("records", [])
+        if not isinstance(strategy, str) or not strategy or not isinstance(records, list):
+            continue
+        parsed_records: list[tuple[int, float, float, float]] = []
+        try:
+            for index, rec in enumerate(records):
+                if not isinstance(rec, dict):
+                    raise ValueError(f"records[{index}] must be an object")
+                tier = rec.get("question_tier", 0)
+                if isinstance(tier, bool) or not isinstance(tier, int):
+                    raise ValueError(f"records[{index}].question_tier must be an integer")
+                if not tier:
+                    question_id = rec.get("question_id", "")
+                    if not isinstance(question_id, str):
+                        raise ValueError(f"records[{index}].question_id must be a string")
+                    try:
+                        tier = int(question_id.split("-t")[1].split("-")[0])
+                    except (IndexError, ValueError):
+                        tier = 0
+                score = rec.get("score", {})
+                if not isinstance(score, dict):
+                    raise ValueError(f"records[{index}].score must be an object")
+                parsed_records.append(
+                    (
+                        tier,
+                        _finite_number(score.get("accuracy", 0.0), f"records[{index}].accuracy"),
+                        _finite_number(rec.get("latency_ms", 0.0), f"records[{index}].latency_ms"),
+                        _finite_number(rec.get("cost_usd", 0.0), f"records[{index}].cost_usd"),
+                    )
+                )
+        except ValueError:
+            continue
+
+        for tier, accuracy, latency, cost in parsed_records:
+            strategy_tiers[strategy][tier].append(accuracy)
+            strategy_latency[strategy].append(latency)
+            strategy_cost[strategy].append(cost)
 
     rows = []
     for strat, tiers in strategy_tiers.items():
@@ -954,16 +982,18 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
     }
 
 
+def _finite_number(value: object, field: str) -> float:
+    """Return a finite real value without accepting Python's Boolean integers."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{field} must be a finite number")
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{field} must be a finite number")
+    return number
+
+
 def _summarise_run(data: dict) -> dict:
     """Pull the leaderboard-relevant fields out of a benchmark JSON, tolerantly."""
-
-    def finite_number(value: object, field: str) -> float:
-        if isinstance(value, bool) or not isinstance(value, int | float):
-            raise ValueError(f"{field} must be a finite number")
-        number = float(value)
-        if not math.isfinite(number):
-            raise ValueError(f"{field} must be a finite number")
-        return number
 
     records = data.get("records", [])
     if not isinstance(records, list) or not all(isinstance(record, dict) for record in records):
@@ -979,31 +1009,31 @@ def _summarise_run(data: dict) -> dict:
                 if not isinstance(score, dict):
                     raise ValueError(f"records[{index}].score must be an object")
                 accuracies.append(
-                    finite_number(score.get("accuracy", 0.0), f"records[{index}].score.accuracy")
+                    _finite_number(score.get("accuracy", 0.0), f"records[{index}].score.accuracy")
                 )
             overall = sum(accuracies) / len(accuracies)
         else:
             overall = 0.0
     else:
-        overall = finite_number(overall, "overall_accuracy")
+        overall = _finite_number(overall, "overall_accuracy")
 
     explicit_cost = data.get("total_cost_usd")
     if explicit_cost is not None:
-        cost = finite_number(explicit_cost, "total_cost_usd")
+        cost = _finite_number(explicit_cost, "total_cost_usd")
     else:
         cost = sum(
-            finite_number(record.get("cost_usd", 0.0), f"records[{index}].cost_usd")
+            _finite_number(record.get("cost_usd", 0.0), f"records[{index}].cost_usd")
             for index, record in enumerate(records)
         )
     latencies = [
-        finite_number(record.get("latency_ms", 0.0), f"records[{index}].latency_ms")
+        _finite_number(record.get("latency_ms", 0.0), f"records[{index}].latency_ms")
         for index, record in enumerate(records)
     ]
     mean_latency = sum(latencies) / len(latencies) if latencies else 0.0
     return {
         "overall_accuracy": overall,
-        "mean_recall_at_k": finite_number(data.get("mean_recall_at_k", 0.0), "mean_recall_at_k"),
-        "mean_ndcg_at_k": finite_number(data.get("mean_ndcg_at_k", 0.0), "mean_ndcg_at_k"),
+        "mean_recall_at_k": _finite_number(data.get("mean_recall_at_k", 0.0), "mean_recall_at_k"),
+        "mean_ndcg_at_k": _finite_number(data.get("mean_ndcg_at_k", 0.0), "mean_ndcg_at_k"),
         "total_cost_usd": cost,
         "mean_latency_ms": mean_latency,
     }
