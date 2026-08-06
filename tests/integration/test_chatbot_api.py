@@ -798,3 +798,43 @@ async def test_graph_build_stream_rejects_a_second_subscriber():
     finally:
         api._graph_build_queues.pop(build_id, None)
         api._graph_build_subscribers.discard(build_id)
+
+
+@pytest.mark.asyncio
+async def test_graph_build_stream_can_reconnect_after_client_disconnect():
+    import asyncio
+
+    from kb_arena.chatbot import api
+
+    build_id = "reconnect-stream"
+    queue: asyncio.Queue = asyncio.Queue()
+    release = asyncio.Event()
+    task = asyncio.create_task(release.wait())
+    api._graph_build_queues[build_id] = queue
+    api._graph_build_tasks[build_id] = task
+    try:
+        first = await api.graph_build_stream(build_id)
+        queue.put_nowait({"type": "started", "data": {"total_sections": 2}})
+        assert (await anext(first.body_iterator))["event"] == "started"
+        await first.body_iterator.aclose()
+
+        assert build_id in api._graph_build_queues
+        assert build_id not in api._graph_build_subscribers
+
+        second = await api.graph_build_stream(build_id)
+        queue.put_nowait(
+            {
+                "type": "complete",
+                "data": {"total_entities": 3, "total_relationships": 2},
+            }
+        )
+        queue.put_nowait(None)
+        assert (await anext(second.body_iterator))["event"] == "complete"
+        with pytest.raises(StopAsyncIteration):
+            await anext(second.body_iterator)
+    finally:
+        release.set()
+        await task
+        api._graph_build_tasks.pop(build_id, None)
+        api._graph_build_queues.pop(build_id, None)
+        api._graph_build_subscribers.discard(build_id)

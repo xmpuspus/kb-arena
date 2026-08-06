@@ -613,6 +613,7 @@ def run(
 
     has_documents = _has_documents()
     has_questions = _has_questions()
+    regenerate_questions = False
     state_changed = False
     if resume and not has_documents:
         for stage_name in ("ingest", "build_graph", "build_vectors", "benchmark"):
@@ -622,6 +623,19 @@ def run(
             state_changed = state.pop(stage_name, None) is not None or state_changed
     if "benchmark" not in state:
         state_changed = state.pop("benchmark_strategies", None) is not None or state_changed
+
+    if docs is not None and (state.get("ingest") != "done" or state.get("ingest_source") != docs):
+        regenerate_questions = state.get("generate_questions") == "done"
+        for stage_name in (
+            "ingest",
+            "ingest_source",
+            "build_graph",
+            "build_vectors",
+            "generate_questions",
+            "benchmark",
+            "benchmark_strategies",
+        ):
+            state_changed = state.pop(stage_name, None) is not None or state_changed
 
     # 1. ingest explicit input, or automatically use a populated raw directory.
     ingest_source = docs
@@ -646,7 +660,8 @@ def run(
         (
             not skip_graph and not (resume and state.get("build_graph") == "done"),
             not (resume and state.get("build_vectors") == "done"),
-            not has_questions and not (resume and state.get("generate_questions") == "done"),
+            (not has_questions or regenerate_questions)
+            and not (resume and state.get("generate_questions") == "done"),
         )
     )
     needs_embeddings = not (resume and state.get("build_vectors") == "done")
@@ -656,15 +671,25 @@ def run(
         _save_state()
 
     if ingest_source:
-        from kb_arena.ingest.pipeline import run_ingest
 
         def _ingest():
-            ingested = run_ingest(path=ingest_source, corpus=corpus, format="auto")
+            if ingest_source.startswith(("http://", "https://")):
+                from kb_arena.ingest.pipeline import run_ingest_special
+
+                ingested = run_ingest_special(source=ingest_source, corpus=corpus, format="web")
+            elif ingest_source.startswith("github:"):
+                from kb_arena.ingest.pipeline import run_ingest_special
+
+                ingested = run_ingest_special(source=ingest_source, corpus=corpus, format="github")
+            else:
+                from kb_arena.ingest.pipeline import run_ingest
+
+                ingested = run_ingest(path=ingest_source, corpus=corpus, format="auto")
             if ingested <= 0:
                 console.print("[red]Ingestion produced no documents; pipeline stopped.[/red]")
                 raise typer.Exit(1)
 
-        _stage("ingest", _ingest)
+        _stage("ingest", _ingest, checkpoint={"ingest_source": ingest_source})
 
     # 2. build-graph (skippable when Neo4j is unavailable)
     graph_available = bool(resume and state.get("build_graph") == "done" and not skip_graph)
@@ -702,7 +727,7 @@ def run(
     _stage("build_vectors", _vectors)
 
     # 4. generate-questions (only if no questions exist)
-    if not has_questions:
+    if not has_questions or regenerate_questions:
         from kb_arena.benchmark.question_gen import run_question_generation
 
         def _questions():

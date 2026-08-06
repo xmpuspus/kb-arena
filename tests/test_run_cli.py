@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from kb_arena.cli import app
@@ -69,6 +70,109 @@ def test_run_ingests_files_already_in_raw_directory(tmp_path, monkeypatch):
             "naive_vector,contextual_vector,qna_pairs,raptor,pageindex,bm25,rerank_vector,qiss",
         ),
     ]
+
+
+@pytest.mark.parametrize(
+    ("source", "source_format"),
+    [
+        ("https://example.com/docs", "web"),
+        ("github:example/docs", "github"),
+    ],
+)
+def test_run_dispatches_special_docs_to_special_ingest(
+    tmp_path, monkeypatch, source, source_format
+):
+    base = _corpus(tmp_path)
+    calls: list[tuple[str, str, str]] = []
+
+    def fake_special(source: str, corpus: str, format: str) -> int:
+        calls.append((source, corpus, format))
+        (base / "processed" / "documents.jsonl").write_text(MINIMAL_DOCUMENT)
+        return 1
+
+    async def fake_vectors(corpus: str, strategy: str = "all") -> None:
+        return None
+
+    async def fake_benchmark(corpus: str, strategy: str) -> None:
+        return None
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("kb_arena.cli._preflight", lambda **kwargs: None)
+    monkeypatch.setattr("kb_arena.ingest.pipeline.run_ingest_special", fake_special)
+    monkeypatch.setattr("kb_arena.strategies.build_vector_indexes", fake_vectors)
+    monkeypatch.setattr("kb_arena.benchmark.runner.run_benchmark", fake_benchmark)
+
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "--corpus",
+            "sample",
+            "--docs",
+            source,
+            "--skip-graph",
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert calls == [(source, "sample", source_format)]
+
+
+def test_run_new_explicit_docs_invalidate_downstream_checkpoints(tmp_path, monkeypatch):
+    base = _corpus(tmp_path)
+    (base / "processed" / "documents.jsonl").write_text(MINIMAL_DOCUMENT)
+    new_docs = tmp_path / "new.md"
+    new_docs.write_text("# New documentation\n")
+    (base / ".pipeline_state.json").write_text(
+        json.dumps(
+            {
+                "ingest": "done",
+                "ingest_source": "old.md",
+                "build_graph": "done",
+                "build_vectors": "done",
+                "generate_questions": "done",
+                "benchmark": "done",
+                "benchmark_strategies": "all",
+            }
+        )
+    )
+    calls: list[str] = []
+
+    def fake_ingest(path: str, corpus: str, format: str) -> int:
+        calls.append(f"ingest:{path}")
+        return 1
+
+    async def fake_vectors(corpus: str, strategy: str = "all") -> None:
+        calls.append("vectors")
+
+    async def fake_questions(corpus: str, count: int) -> None:
+        calls.append("questions")
+
+    async def fake_benchmark(corpus: str, strategy: str) -> None:
+        calls.append(f"benchmark:{strategy}")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("kb_arena.cli._preflight", lambda **kwargs: None)
+    monkeypatch.setattr("kb_arena.ingest.pipeline.run_ingest", fake_ingest)
+    monkeypatch.setattr("kb_arena.strategies.build_vector_indexes", fake_vectors)
+    monkeypatch.setattr("kb_arena.benchmark.question_gen.run_question_generation", fake_questions)
+    monkeypatch.setattr("kb_arena.benchmark.runner.run_benchmark", fake_benchmark)
+
+    result = runner.invoke(
+        app,
+        ["run", "--corpus", "sample", "--docs", str(new_docs), "--skip-graph"],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert calls == [
+        f"ingest:{new_docs}",
+        "vectors",
+        "questions",
+        "benchmark:naive_vector,contextual_vector,qna_pairs,raptor,pageindex,bm25,rerank_vector,qiss",
+    ]
+    state = json.loads((base / ".pipeline_state.json").read_text())
+    assert state["ingest_source"] == str(new_docs)
+    assert "build_graph" not in state
 
 
 def test_run_continues_after_graph_failure_without_checkpointing_it(tmp_path, monkeypatch):

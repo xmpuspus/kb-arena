@@ -741,6 +741,7 @@ async def graph_build_stream(build_id: str) -> EventSourceResponse:
     _graph_build_subscribers.add(build_id)
 
     async def event_generator() -> AsyncIterator[dict]:
+        reached_end = False
         try:
             while True:
                 try:
@@ -749,10 +750,13 @@ async def graph_build_stream(build_id: str) -> EventSourceResponse:
                     yield {"event": "heartbeat", "data": "{}"}
                     continue
                 if event is None:  # Sentinel that signals the build is complete.
+                    reached_end = True
                     break
                 yield {"event": event["type"], "data": json.dumps(event["data"])}
         finally:
-            _expire_graph_build(build_id)
+            _graph_build_subscribers.discard(build_id)
+            if reached_end:
+                _graph_build_queues.pop(build_id, None)
 
     return EventSourceResponse(event_generator())
 
