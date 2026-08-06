@@ -137,6 +137,72 @@ def test_benchmark_results_match_exact_payload_corpus(app_client, tmp_path, monk
     assert [row["strategy"] for row in response.json()["results"]] == ["exact"]
 
 
+def test_summarise_run_preserves_explicit_zero_cost():
+    from kb_arena.chatbot.api import _summarise_run
+
+    summary = _summarise_run(
+        {
+            "overall_accuracy": 0.0,
+            "mean_recall_at_k": 0.0,
+            "mean_ndcg_at_k": 0.0,
+            "total_cost_usd": 0.0,
+            "records": [{"cost_usd": 2.0, "latency_ms": 0.0}],
+        }
+    )
+
+    assert summary == {
+        "overall_accuracy": 0.0,
+        "mean_recall_at_k": 0.0,
+        "mean_ndcg_at_k": 0.0,
+        "total_cost_usd": 0.0,
+        "mean_latency_ms": 0.0,
+    }
+
+
+@pytest.mark.parametrize("value", [True, "0.5", float("nan"), float("inf")])
+def test_summarise_run_rejects_malformed_numbers(value):
+    from kb_arena.chatbot.api import _summarise_run
+
+    with pytest.raises(ValueError, match="finite number"):
+        _summarise_run({"overall_accuracy": value})
+
+
+def test_leaderboard_skips_malformed_artifacts(app_client, tmp_path, monkeypatch):
+    from kb_arena.settings import settings
+
+    (tmp_path / "array-root.json").write_text("[]")
+    (tmp_path / "invalid-identity.json").write_text(
+        json.dumps({"corpus": ["not", "hashable"], "strategy": "naive_vector"})
+    )
+    (tmp_path / "valid.json").write_text(
+        json.dumps(
+            {
+                "corpus": "aws-compute",
+                "strategy": "naive_vector",
+                "overall_accuracy": 0.75,
+                "total_cost_usd": 0.0,
+            }
+        )
+    )
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+
+    response = app_client.get("/api/leaderboard")
+
+    assert response.status_code == 200
+    assert response.json()["leaderboard"] == [
+        {
+            "corpus": "aws-compute",
+            "strategy": "naive_vector",
+            "runs": 1,
+            "mean_accuracy": 0.75,
+            "mean_recall_at_5": 0.0,
+            "mean_ndcg_at_5": 0.0,
+            "mean_cost_usd": 0.0,
+            "mean_latency_ms": 0.0,
+        }
+    ]
+
+
 def test_arena_match_passes_selected_corpus(app_client):
     arena = MagicMock()
     arena.create_match = AsyncMock(
@@ -470,6 +536,13 @@ def test_graph_data_uses_corpus_qualified_ids_for_aggregate_view(app_client):
     assert "MATCH (a:KBArenaEntity)-[r]->(b:KBArenaEntity)" in edge_query
     assert "a.entity_id AS source" in edge_query
     assert "b.entity_id AS target" in edge_query
+
+
+@pytest.mark.parametrize("limit", [-1, 0, 501])
+def test_graph_data_rejects_out_of_range_limits(app_client, limit):
+    response = app_client.get(f"/api/graph/data?limit={limit}")
+
+    assert response.status_code == 422
 
 
 def test_chat_response_has_strategy_used(app_client):

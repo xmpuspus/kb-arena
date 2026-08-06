@@ -12,6 +12,7 @@ import json
 import logging
 import math
 import re
+from collections import OrderedDict
 
 from kb_arena.llm.client import LLMClient
 from kb_arena.models.benchmark import Constraints, GroundTruth, Score
@@ -20,8 +21,29 @@ from kb_arena.settings import settings
 logger = logging.getLogger(__name__)
 
 # Memoization cache keyed by every input that can change an evaluation.
-_eval_cache: dict[str, Score] = {}
-_eval_inflight: dict[tuple[asyncio.AbstractEventLoop, str], asyncio.Task[Score]] = {}
+_EVAL_CACHE_MAX_ENTRIES = 1024
+
+
+class _ClientIdentity:
+    """Hash an evaluator client by object identity, even if the client is unhashable."""
+
+    __slots__ = ("client",)
+
+    def __init__(self, client: object | None):
+        self.client = client
+
+    def __hash__(self) -> int:
+        return id(self.client)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _ClientIdentity) and self.client is other.client
+
+
+_EvalCacheKey = tuple[_ClientIdentity, str]
+_eval_cache: OrderedDict[_EvalCacheKey, Score] = OrderedDict()
+_eval_inflight: dict[
+    tuple[asyncio.AbstractEventLoop, _ClientIdentity, str], asyncio.Task[Score]
+] = {}
 
 
 class EvaluationExecutionError(RuntimeError):
@@ -282,15 +304,18 @@ async def evaluate(
         ],
     }
     cache_key = _hash_text(json.dumps(cache_payload, sort_keys=True, separators=(",", ":")))
-    cached = _eval_cache.get(cache_key)
+    client_identity = _ClientIdentity(llm)
+    scoped_cache_key = (client_identity, cache_key)
+    cached = _eval_cache.get(scoped_cache_key)
     if cached is not None:
+        _eval_cache.move_to_end(scoped_cache_key)
         logger.debug("Eval cache hit for %s", cache_key)
         result = cached.model_copy()
         result.evaluation_cost_usd = 0.0
         return result
 
     loop = asyncio.get_running_loop()
-    inflight_key = (loop, cache_key)
+    inflight_key = (loop, client_identity, cache_key)
     task = _eval_inflight.get(inflight_key)
     owns_task = task is None
     if task is None:
@@ -317,7 +342,10 @@ async def evaluate(
                 score = completed.result()
             except Exception:
                 return
-            _eval_cache[cache_key] = score.model_copy()
+            _eval_cache[scoped_cache_key] = score.model_copy()
+            _eval_cache.move_to_end(scoped_cache_key)
+            while len(_eval_cache) > _EVAL_CACHE_MAX_ENTRIES:
+                _eval_cache.popitem(last=False)
 
         task.add_done_callback(_finish)
 

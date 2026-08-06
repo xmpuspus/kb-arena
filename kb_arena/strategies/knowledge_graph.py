@@ -8,9 +8,11 @@ Tracks graph_context for Sigma.js visualization.
 from __future__ import annotations
 
 import logging
+import math
 import re
 import time
 
+from kb_arena.exceptions import StrategyError
 from kb_arena.graph.schema import rel_type_values
 from kb_arena.llm.client import LLMResponse
 from kb_arena.models.document import Document
@@ -166,7 +168,13 @@ def _records_to_chunks(records: list[dict], strategy_name: str, top_k: int) -> l
             doc_id = str(r.get("source_id") or src_doc or fqn)
         content = " | ".join(f"{k}: {v}" for k, v in r.items() if v is not None)
         score_raw = r.get("score", 0.0)
-        score_val = float(score_raw) if isinstance(score_raw, int | float) else 0.0
+        if (
+            isinstance(score_raw, bool)
+            or not isinstance(score_raw, int | float)
+            or not math.isfinite(float(score_raw))
+        ):
+            raise StrategyError(f"Invalid graph retrieval score at rank {i + 1}")
+        score_val = float(score_raw)
         chunks.append(
             RetrievedChunk(
                 chunk_id=chunk_id,

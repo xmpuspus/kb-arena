@@ -9,7 +9,10 @@ expected_chunks.yaml matches.
 
 from __future__ import annotations
 
+import pytest
+
 from kb_arena.benchmark.ir_metrics import compute_all
+from kb_arena.exceptions import StrategyError
 from kb_arena.models.graph import Entity
 from kb_arena.strategies.knowledge_graph import _records_to_chunks
 
@@ -35,6 +38,14 @@ def test_records_without_source_fall_back_to_fqn():
     records = [{"name": "AWS Lambda", "fqn": "aws.lambda", "type": "Service"}]
     chunks = _records_to_chunks(records, "knowledge_graph", top_k=5)
     assert chunks[0].chunk_id == "graph:aws.lambda"
+
+
+@pytest.mark.parametrize("score", [True, "0.9", float("nan"), float("inf")])
+def test_records_reject_invalid_scores(score):
+    records = [{"name": "AWS Lambda", "fqn": "aws.lambda", "score": score}]
+
+    with pytest.raises(StrategyError, match="Invalid graph retrieval score"):
+        _records_to_chunks(records, "knowledge_graph", top_k=5)
 
 
 def test_graph_chunks_score_nonzero_recall_against_section_ground_truth():

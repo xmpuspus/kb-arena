@@ -10,12 +10,13 @@ import asyncio as _asyncio
 import importlib.resources as _pkg_resources
 import json
 import logging
+import math
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path as _Path
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -608,14 +609,16 @@ async def graph_stats(request: Request) -> dict:
 
 
 @app.get("/api/graph/data")
-async def graph_data(request: Request, corpus: str = "all", limit: int = 200) -> dict:
+async def graph_data(
+    request: Request,
+    corpus: str = "all",
+    limit: int = Query(default=200, ge=1, le=500),
+) -> dict:
     """Return graph nodes and edges from Neo4j for visualization."""
     if request.app.state.neo4j is None:
         return {"nodes": [], "edges": [], "connected": False}
 
     driver = request.app.state.neo4j
-    limit = min(limit, 500)
-
     # Fetch nodes
     node_query = (
         "MATCH (n:KBArenaEntity) "
@@ -888,14 +891,19 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
             data = json.loads(path.read_text())
         except (json.JSONDecodeError, OSError):
             continue
+        if not isinstance(data, dict):
+            continue
         c = data.get("corpus") or path.stem.split("_")[0]
         s = data.get("strategy") or path.stem.split("_", 1)[-1]
-        if not c or not s:
+        if not isinstance(c, str) or not c or not isinstance(s, str) or not s:
             continue
         seen_corpora.add(c)
         if corpus != "all" and c != corpus:
             continue
-        rows[(c, s)].append(_summarise_run(data))
+        try:
+            rows[(c, s)].append(_summarise_run(data))
+        except ValueError:
+            continue
 
     # New per-run subdirectories (results/run_<id>/<corpus>_<strategy>.json)
     for run_dir in sorted(base.glob("run_*")):
@@ -906,12 +914,19 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
                 data = json.loads(path.read_text())
             except (json.JSONDecodeError, OSError):
                 continue
+            if not isinstance(data, dict):
+                continue
             c = data.get("corpus") or path.stem.split("_")[0]
             s = data.get("strategy") or path.stem.split("_", 1)[-1]
+            if not isinstance(c, str) or not c or not isinstance(s, str) or not s:
+                continue
             seen_corpora.add(c)
             if corpus != "all" and c != corpus:
                 continue
-            rows[(c, s)].append(_summarise_run(data))
+            try:
+                rows[(c, s)].append(_summarise_run(data))
+            except ValueError:
+                continue
 
     leaderboard: list[dict] = []
     for (c, s), runs in sorted(rows.items()):
@@ -941,23 +956,56 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
 
 def _summarise_run(data: dict) -> dict:
     """Pull the leaderboard-relevant fields out of a benchmark JSON, tolerantly."""
+
+    def finite_number(value: object, field: str) -> float:
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise ValueError(f"{field} must be a finite number")
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError(f"{field} must be a finite number")
+        return number
+
+    records = data.get("records", [])
+    if not isinstance(records, list) or not all(isinstance(record, dict) for record in records):
+        raise ValueError("records must be a list of objects")
+
     overall = data.get("overall_accuracy")
     if overall is None:
         # Older shape: derive from records.
-        records = data.get("records", [])
         if records:
-            overall = sum(r.get("score", {}).get("accuracy", 0.0) for r in records) / len(records)
-    cost = data.get("total_cost_usd") or sum(
-        r.get("cost_usd", 0.0) for r in data.get("records", [])
-    )
-    latencies = [r.get("latency_ms", 0.0) for r in data.get("records", [])]
+            accuracies = []
+            for index, record in enumerate(records):
+                score = record.get("score", {})
+                if not isinstance(score, dict):
+                    raise ValueError(f"records[{index}].score must be an object")
+                accuracies.append(
+                    finite_number(score.get("accuracy", 0.0), f"records[{index}].score.accuracy")
+                )
+            overall = sum(accuracies) / len(accuracies)
+        else:
+            overall = 0.0
+    else:
+        overall = finite_number(overall, "overall_accuracy")
+
+    explicit_cost = data.get("total_cost_usd")
+    if explicit_cost is not None:
+        cost = finite_number(explicit_cost, "total_cost_usd")
+    else:
+        cost = sum(
+            finite_number(record.get("cost_usd", 0.0), f"records[{index}].cost_usd")
+            for index, record in enumerate(records)
+        )
+    latencies = [
+        finite_number(record.get("latency_ms", 0.0), f"records[{index}].latency_ms")
+        for index, record in enumerate(records)
+    ]
     mean_latency = sum(latencies) / len(latencies) if latencies else 0.0
     return {
-        "overall_accuracy": float(overall or 0.0),
-        "mean_recall_at_k": float(data.get("mean_recall_at_k") or 0.0),
-        "mean_ndcg_at_k": float(data.get("mean_ndcg_at_k") or 0.0),
-        "total_cost_usd": float(cost or 0.0),
-        "mean_latency_ms": float(mean_latency),
+        "overall_accuracy": overall,
+        "mean_recall_at_k": finite_number(data.get("mean_recall_at_k", 0.0), "mean_recall_at_k"),
+        "mean_ndcg_at_k": finite_number(data.get("mean_ndcg_at_k", 0.0), "mean_ndcg_at_k"),
+        "total_cost_usd": cost,
+        "mean_latency_ms": mean_latency,
     }
 
 

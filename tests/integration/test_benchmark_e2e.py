@@ -385,6 +385,89 @@ async def test_evaluate_deduplicates_concurrent_identical_judge_calls():
     assert sorted(score.evaluation_cost_usd for score in scores) == [0.0, 0.25]
 
 
+@pytest.mark.asyncio
+async def test_evaluate_does_not_share_cache_between_llm_instances():
+    import asyncio
+
+    from kb_arena.benchmark.evaluator import _eval_cache, _eval_inflight
+    from kb_arena.llm.client import LLMResponse
+
+    _eval_cache.clear()
+    _eval_inflight.clear()
+    constraints = Constraints(must_mention=["Lambda"])
+    ground_truth = GroundTruth(answer="Lambda runs code serverlessly.")
+    first_llm = AsyncMock()
+    first_llm.judge.return_value = LLMResponse(
+        text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}'
+    )
+    second_llm = AsyncMock()
+    second_llm.judge.return_value = LLMResponse(
+        text='{"accuracy": 0.4, "completeness": 0.5, "faithfulness": 0.6}'
+    )
+
+    first, second = await asyncio.gather(
+        evaluate("Lambda runs code.", ground_truth, constraints, llm=first_llm),
+        evaluate("Lambda runs code.", ground_truth, constraints, llm=second_llm),
+    )
+
+    assert first.accuracy == pytest.approx(0.9)
+    assert second.accuracy == pytest.approx(0.4)
+    first_llm.judge.assert_awaited_once()
+    second_llm.judge.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_evaluate_cache_supports_unhashable_llm_clients():
+    from kb_arena.benchmark.evaluator import _eval_cache, _eval_inflight
+    from kb_arena.llm.client import LLMResponse
+
+    class UnhashableLLM:
+        __hash__ = None
+
+        def __init__(self):
+            self.calls = 0
+
+        async def judge(self, **kwargs):
+            self.calls += 1
+            return LLMResponse(text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}')
+
+    _eval_cache.clear()
+    _eval_inflight.clear()
+    llm = UnhashableLLM()
+    constraints = Constraints(must_mention=["Lambda"])
+    ground_truth = GroundTruth(answer="Lambda runs code serverlessly.")
+
+    await evaluate("Lambda runs code.", ground_truth, constraints, llm=llm)
+    await evaluate("Lambda runs code.", ground_truth, constraints, llm=llm)
+
+    assert llm.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_evaluate_cache_evicts_least_recently_used_entries(monkeypatch):
+    import asyncio
+
+    import kb_arena.benchmark.evaluator as evaluator
+    from kb_arena.llm.client import LLMResponse
+
+    evaluator._eval_cache.clear()
+    evaluator._eval_inflight.clear()
+    monkeypatch.setattr(evaluator, "_EVAL_CACHE_MAX_ENTRIES", 2)
+    constraints = Constraints()
+    ground_truth = GroundTruth(answer="")
+    mock_llm = AsyncMock()
+    mock_llm.judge.return_value = LLMResponse(
+        text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}'
+    )
+
+    for answer in ("first", "second", "first", "third", "second"):
+        await evaluate(answer, ground_truth, constraints, llm=mock_llm)
+        await asyncio.sleep(0)
+
+    assert len(evaluator._eval_cache) == 2
+    assert mock_llm.judge.await_count == 4
+
+
 def test_evaluate_does_not_share_inflight_tasks_across_event_loops():
     import asyncio
     import threading
