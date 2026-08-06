@@ -101,10 +101,14 @@ def _validate_result(raw: dict, corpus: str, section_id: str) -> ExtractionResul
         if not valid_node_type(corpus, e.get("type", "")):
             logger.debug("Rejected entity type '%s' (not in schema)", e.get("type"))
             continue
+        fqn = e.get("fqn", "")
+        if not isinstance(fqn, str) or not fqn.strip():
+            raise ValueError("entity fqn must be a non-empty string")
+        fqn = fqn.strip()
         entity = Entity(
-            id=e.get("id", e.get("fqn", "")),
+            id=e.get("id") or fqn,
             name=e.get("name", ""),
-            fqn=e.get("fqn", ""),
+            fqn=fqn,
             type=e["type"],
             description=e.get("description", ""),
             properties=e.get("properties", {}),

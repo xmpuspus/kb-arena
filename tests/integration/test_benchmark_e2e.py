@@ -200,6 +200,28 @@ def test_questions_reject_invalid_split(questions_yaml_dir, monkeypatch):
         load_questions("aws-compute", split="training")
 
 
+@pytest.mark.parametrize(
+    "contents",
+    [
+        "aws-t1-001: not-a-list\n",
+        "aws-t1-001: ['', valid]\n",
+        "aws-t1-001: [unterminated\n",
+    ],
+)
+def test_questions_reject_malformed_expected_chunks(questions_yaml_dir, monkeypatch, contents):
+    from kb_arena.benchmark.questions import load_questions
+
+    questions_dir = questions_yaml_dir / "datasets" / "aws-compute" / "questions"
+    (questions_dir / "expected_chunks.yaml").write_text(contents)
+    monkeypatch.setattr(
+        "kb_arena.benchmark.questions.settings.datasets_path",
+        str(questions_yaml_dir / "datasets"),
+    )
+
+    with pytest.raises(ValueError, match="Expected|expected chunks"):
+        load_questions("aws-compute")
+
+
 def test_missing_corpus_raises(tmp_path, monkeypatch):
     from kb_arena.benchmark.questions import load_questions
 
@@ -361,6 +383,46 @@ async def test_evaluate_deduplicates_concurrent_identical_judge_calls():
     assert calls == 1
     assert scores[0].accuracy == scores[1].accuracy == pytest.approx(0.9)
     assert sorted(score.evaluation_cost_usd for score in scores) == [0.0, 0.25]
+
+
+def test_evaluate_does_not_share_inflight_tasks_across_event_loops():
+    import asyncio
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from kb_arena.benchmark.evaluator import _eval_cache, _eval_inflight
+    from kb_arena.llm.client import LLMResponse
+
+    _eval_cache.clear()
+    _eval_inflight.clear()
+    first_judge_started = threading.Event()
+    calls_lock = threading.Lock()
+    calls = 0
+
+    class CrossLoopLLM:
+        async def judge(self, **kwargs):
+            nonlocal calls
+            with calls_lock:
+                calls += 1
+            first_judge_started.set()
+            await asyncio.sleep(0.05)
+            return LLMResponse(text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}')
+
+    llm = CrossLoopLLM()
+    ground_truth = GroundTruth(answer="Lambda runs code serverlessly.")
+    constraints = Constraints(must_mention=["Lambda"])
+
+    def run_evaluation():
+        return asyncio.run(evaluate("Lambda runs code.", ground_truth, constraints, llm=llm))
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(run_evaluation)
+        assert first_judge_started.wait(timeout=1)
+        second = pool.submit(run_evaluation)
+        scores = [first.result(timeout=2), second.result(timeout=2)]
+
+    assert calls == 2
+    assert all(score.accuracy == pytest.approx(0.9) for score in scores)
 
 
 @pytest.mark.asyncio

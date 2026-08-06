@@ -5,13 +5,33 @@ from __future__ import annotations
 import asyncio
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from kb_arena.benchmark.retriever_lab import RetrievalExecutionError, _retrieve_only
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.strategies.base import AnswerResult
+
+
+@pytest.mark.parametrize("top_k", [0, -1, 1001, True, 1.5])
+def test_shared_top_k_validation_rejects_invalid_values(top_k):
+    from kb_arena.strategies.base import validate_top_k
+
+    with pytest.raises(ValueError, match="top_k"):
+        validate_top_k(top_k)
+
+
+@pytest.mark.asyncio
+async def test_naive_vector_rejects_invalid_top_k_before_backend_access():
+    from kb_arena.strategies.naive_vector import NaiveVectorStrategy
+
+    strategy = NaiveVectorStrategy(chroma_client=MagicMock())
+
+    with pytest.raises(ValueError, match="top_k"):
+        await strategy.query("question", top_k=-1)
+
+    strategy._client.get_or_create_collection.assert_not_called()
 
 
 def _candidates(n):

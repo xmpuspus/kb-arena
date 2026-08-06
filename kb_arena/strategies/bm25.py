@@ -16,7 +16,7 @@ from rank_bm25 import BM25Okapi
 from kb_arena.models.document import Document
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
-from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.strategies.base import AnswerResult, Strategy, validate_top_k
 
 log = logging.getLogger(__name__)
 BM25_INDEX_FORMAT_VERSION = 2
@@ -157,6 +157,7 @@ class BM25Strategy(Strategy):
         return True
 
     async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
+        validate_top_k(top_k)
         start = self._start_timer()
 
         selected_corpus = "" if corpus == "all" else corpus

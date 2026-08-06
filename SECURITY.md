@@ -91,6 +91,9 @@ validation and use an isolated environment for untrusted corpora.
 
 ## Known limits
 
+- The supported API topology is one Uvicorn worker. Graph-build status, live event subscribers,
+  Q&A generation collision control, and rate limiting are process-local. Multiple API workers or
+  replicas need an external job store, event transport, and distributed rate limiter.
 - The in-memory rate limiter resets when the process restarts and does not coordinate across workers.
 - A reverse proxy must connect from loopback and remove untrusted forwarding headers before you
   set `KB_ARENA_TRUSTED_PROXY_HEADER`.

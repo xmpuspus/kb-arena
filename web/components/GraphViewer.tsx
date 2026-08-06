@@ -133,7 +133,25 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
   // Use a full circle on first load and incremental positions on live updates.
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || nodes.length === 0) return;
+    if (!canvas) return;
+    if (nodes.length === 0) {
+      cancelAnimationFrame(animRef.current);
+      posRef.current.clear();
+      velRef.current.clear();
+      hoveredId.current = null;
+      dragging.current = null;
+      simState.current = { alpha: 0, stabilized: true };
+      setSelected(null);
+
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#f8fafc";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      dirty.current = false;
+      return;
+    }
     const W = canvas.offsetWidth;
     const H = canvas.offsetHeight;
     const cx = W / 2;

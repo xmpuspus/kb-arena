@@ -17,7 +17,7 @@ import numpy as np
 from kb_arena.models.document import Document
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
-from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.strategies.base import AnswerResult, Strategy, validate_top_k
 from kb_arena.strategies.chroma_index import (
     activate_generations,
     discard_staged_ids,
@@ -26,6 +26,7 @@ from kb_arena.strategies.chroma_index import (
     index_read_lock,
     index_where,
     new_generation,
+    parse_query_result,
     prune_collection,
     staged_where,
     upsert_staged_records,
@@ -262,6 +263,7 @@ class RaptorStrategy(Strategy):
 
     async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Search L0, L1, L2 simultaneously → fuse context → Sonnet."""
+        validate_top_k(top_k)
         start = self._start_timer()
 
         retrieval_start = time.perf_counter()
@@ -283,10 +285,7 @@ class RaptorStrategy(Strategy):
                 }
                 query_kwargs["where"] = index_where(COLLECTION_NAMES[level], corpus)
                 results = coll.query(**query_kwargs)
-                chunks = results["documents"][0] if results["documents"] else []
-                metas = results["metadatas"][0] if results["metadatas"] else []
-                ids = results["ids"][0] if results.get("ids") else []
-                distances = results["distances"][0] if results.get("distances") else []
+                ids, chunks, metas, distances = parse_query_result(results)
                 all_chunks.extend(chunks)
                 for i, ch_text in enumerate(chunks):
                     src = (metas[i].get("source_id") if i < len(metas) else "") or ""
@@ -304,7 +303,7 @@ class RaptorStrategy(Strategy):
                             chunk_id=f"L{level}:{raw_id}",
                             doc_id=src,
                             content=ch_text,
-                            score=1.0 - (distances[i] if i < len(distances) else 0.0),
+                            score=1.0 - distances[i],
                             rank=len(retrieved_chunks) + 1,
                             source_strategy=self.name,
                             metadata={

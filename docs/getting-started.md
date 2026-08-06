@@ -11,6 +11,10 @@ The command copies packaged AWS Compute result files into `./results` when neede
 port, starts the API, and opens the bundled dashboard. This path does not run a benchmark or call an
 LLM.
 
+KB Arena supports one API worker. The supplied `kb-arena serve`, demo, Docker, and Compose commands
+all use that topology. Graph-build events and other live tool jobs use process-local coordination;
+do not add Uvicorn workers or API replicas without an external job and event store.
+
 ## Create a corpus
 
 ```bash

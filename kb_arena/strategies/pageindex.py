@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from kb_arena.models.document import Document
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
-from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.strategies.base import AnswerResult, Strategy, validate_top_k
 
 logger = logging.getLogger(__name__)
 
@@ -366,6 +366,7 @@ class PageIndexStrategy(Strategy):
 
     async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Answer by LLM-driven tree traversal — no vectors, no embeddings."""
+        validate_top_k(top_k)
         start = self._start_timer()
         llm = self._get_llm()
 

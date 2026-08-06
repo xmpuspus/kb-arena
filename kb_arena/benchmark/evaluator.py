@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Memoization cache keyed by every input that can change an evaluation.
 _eval_cache: dict[str, Score] = {}
-_eval_inflight: dict[str, asyncio.Task[Score]] = {}
+_eval_inflight: dict[tuple[asyncio.AbstractEventLoop, str], asyncio.Task[Score]] = {}
 
 
 class EvaluationExecutionError(RuntimeError):
@@ -128,19 +128,19 @@ def _check_source_attribution(
     Uses substring matching — a returned source "json.html#json.JSONDecodeError"
     matches expected ref "json.html#json.JSONDecodeError".
     """
-    if not expected_refs:
+    normalized_refs = [ref.strip().lower() for ref in expected_refs if ref.strip()]
+    if not normalized_refs:
         return 1.0  # no expected refs = pass
-    if not returned_sources:
+    normalized_sources = [source.strip().lower() for source in returned_sources if source.strip()]
+    if not normalized_sources:
         return 0.0  # expected refs but nothing returned
 
     matched = 0
-    returned_lower = [s.lower() for s in returned_sources]
-    for ref in expected_refs:
-        ref_lower = ref.lower()
-        if any(ref_lower in src or src in ref_lower for src in returned_lower):
+    for ref in normalized_refs:
+        if any(ref in source or source in ref for source in normalized_sources):
             matched += 1
 
-    return matched / len(expected_refs)
+    return matched / len(normalized_refs)
 
 
 async def _evaluate_uncached(
@@ -289,7 +289,9 @@ async def evaluate(
         result.evaluation_cost_usd = 0.0
         return result
 
-    task = _eval_inflight.get(cache_key)
+    loop = asyncio.get_running_loop()
+    inflight_key = (loop, cache_key)
+    task = _eval_inflight.get(inflight_key)
     owns_task = task is None
     if task is None:
         task = asyncio.create_task(
@@ -304,11 +306,11 @@ async def evaluate(
                 reference_free=reference_free,
             )
         )
-        _eval_inflight[cache_key] = task
+        _eval_inflight[inflight_key] = task
 
         def _finish(completed: asyncio.Task[Score]) -> None:
-            if _eval_inflight.get(cache_key) is completed:
-                _eval_inflight.pop(cache_key, None)
+            if _eval_inflight.get(inflight_key) is completed:
+                _eval_inflight.pop(inflight_key, None)
             if completed.cancelled():
                 return
             try:

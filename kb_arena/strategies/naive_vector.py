@@ -14,12 +14,13 @@ import chromadb
 from kb_arena.models.document import Document
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
-from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.strategies.base import AnswerResult, Strategy, validate_top_k
 from kb_arena.strategies.chroma_index import (
     index_build_lock,
     index_read_lock,
     index_where,
     new_generation,
+    parse_query_result,
     publish_collection_build,
 )
 from kb_arena.strategies.embeddings import get_embedding_function
@@ -139,6 +140,7 @@ class NaiveVectorStrategy(Strategy):
 
     async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Top-k cosine similarity → concatenate chunks → Sonnet."""
+        validate_top_k(top_k)
         start = self._start_timer()
         collection = self._get_collection()
 
@@ -151,10 +153,7 @@ class NaiveVectorStrategy(Strategy):
         with index_read_lock():
             query_kwargs["where"] = index_where(COLLECTION_NAME, corpus)
             results = collection.query(**query_kwargs)
-        chunks = results["documents"][0] if results["documents"] else []
-        metas = results["metadatas"][0] if results["metadatas"] else []
-        ids = results["ids"][0] if results.get("ids") else []
-        distances = results["distances"][0] if results.get("distances") else []
+        ids, chunks, metas, distances = parse_query_result(results)
         retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
         retrieved_chunks = [
@@ -168,7 +167,7 @@ class NaiveVectorStrategy(Strategy):
                 ),
                 doc_id=(metas[i].get("source_id") if i < len(metas) else "") or "",
                 content=chunks[i] if i < len(chunks) else "",
-                score=1.0 - (distances[i] if i < len(distances) else 0.0),
+                score=1.0 - distances[i],
                 rank=i + 1,
                 source_strategy=self.name,
                 metadata=dict(metas[i]) if i < len(metas) else {},

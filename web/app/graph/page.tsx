@@ -188,7 +188,7 @@ export default function GraphPage() {
     fetchGraphData(corpus).then((data) => {
       if (!active) return;
       setConnected(data.connected);
-      if (data.connected && data.nodes.length > 0) {
+      if (data.connected) {
         setNodes(apiToGraphNodes(data.nodes));
         setEdges(apiToGraphEdges(data.edges));
       } else {
@@ -260,6 +260,15 @@ export default function GraphPage() {
           style={{ background: "var(--border)", color: "var(--muted)" }}
         >
           Showing sample data because Neo4j is not connected. Run <code className="mono">docker compose up -d neo4j</code> and <code className="mono">kb-arena build-graph --corpus {corpus}</code> to see your graph.
+        </div>
+      )}
+
+      {connected && !loading && nodes.length === 0 && (
+        <div
+          className="px-3 py-2 rounded-lg text-xs"
+          style={{ background: "var(--border)", color: "var(--muted)" }}
+        >
+          Connected to Neo4j, but this corpus has no graph data. Run <code className="mono">kb-arena build-graph --corpus {corpus}</code> to build it.
         </div>
       )}
 

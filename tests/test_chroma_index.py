@@ -16,10 +16,42 @@ from kb_arena.strategies.chroma_index import (
     index_build_lock,
     index_read_lock,
     index_where,
+    parse_query_result,
     prune_collection,
     publish_collection_build,
     upsert_staged_records,
 )
+
+
+def test_parse_query_result_accepts_an_explicit_empty_batch():
+    assert parse_query_result(
+        {"ids": [[]], "documents": [[]], "metadatas": [[]], "distances": [[]]}
+    ) == ([], [], [], [])
+
+
+@pytest.mark.parametrize(
+    "results",
+    [
+        {"ids": [["a"]], "documents": [["text"]], "metadatas": [[{}]]},
+        {
+            "ids": [["a", "b"]],
+            "documents": [["one", "two"]],
+            "metadatas": [[{}, {}]],
+            "distances": [[0.1]],
+        },
+        {
+            "ids": [["a"]],
+            "documents": [["text"]],
+            "metadatas": [[{}]],
+            "distances": [[float("nan")]],
+        },
+    ],
+)
+def test_parse_query_result_rejects_missing_or_invalid_distances(results):
+    from kb_arena.exceptions import StrategyError
+
+    with pytest.raises(StrategyError, match="Chroma query"):
+        parse_query_result(results)
 
 
 def test_index_where_requires_active_generation_and_selected_corpus():

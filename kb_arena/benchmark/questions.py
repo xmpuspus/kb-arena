@@ -13,6 +13,25 @@ EXPECTED_CHUNKS_FILE = "expected_chunks.yaml"
 QUESTION_SPLITS = frozenset({"development", "validation", "holdout", "unspecified"})
 
 
+def validate_expected_chunks(raw: object, path: Path) -> dict[str, list[str]]:
+    """Validate qrels without turning malformed labels into valid empty evidence."""
+    if not isinstance(raw, dict):
+        raise ValueError(f"Expected a question-to-chunks mapping in {path}")
+
+    validated: dict[str, list[str]] = {}
+    for question_id, chunk_ids in raw.items():
+        if not isinstance(question_id, str) or not question_id.strip():
+            raise ValueError(f"Expected a non-empty question ID in {path}")
+        if not isinstance(chunk_ids, list) or not all(
+            isinstance(chunk_id, str) and chunk_id.strip() for chunk_id in chunk_ids
+        ):
+            raise ValueError(
+                f"Expected a list of non-empty chunk IDs for {question_id!r} in {path}"
+            )
+        validated[question_id] = chunk_ids
+    return validated
+
+
 def load_questions(
     corpus: str,
     tier: int = 0,
@@ -39,11 +58,11 @@ def load_questions(
     expected_chunks_map: dict[str, list[str]] = {}
     expected_path = questions_dir / EXPECTED_CHUNKS_FILE
     if expected_path.exists():
-        loaded = yaml.safe_load(expected_path.read_text())
-        if isinstance(loaded, dict):
-            expected_chunks_map = {
-                str(k): list(v) if isinstance(v, list) else [] for k, v in loaded.items()
-            }
+        try:
+            loaded = yaml.safe_load(expected_path.read_text())
+        except yaml.YAMLError as exc:
+            raise ValueError(f"Invalid expected chunks YAML: {expected_path}") from exc
+        expected_chunks_map = validate_expected_chunks(loaded, expected_path)
 
     questions: list[Question] = []
 

@@ -45,7 +45,12 @@ import numpy as np
 
 from kb_arena.models.document import Document
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
-from kb_arena.strategies.base import MAX_RETRIEVAL_CANDIDATES, AnswerResult, Strategy
+from kb_arena.strategies.base import (
+    MAX_RETRIEVAL_CANDIDATES,
+    AnswerResult,
+    Strategy,
+    validate_top_k,
+)
 from kb_arena.strategies.embeddings import get_embedding_function
 from kb_arena.strategies.naive_vector import NaiveVectorStrategy
 
@@ -234,8 +239,7 @@ class QISSStrategy(Strategy):
         from kb_arena.settings import settings
 
         start = self._start_timer()
-        if not 1 <= top_k <= MAX_RETRIEVAL_CANDIDATES:
-            raise ValueError(f"top_k must be between 1 and {MAX_RETRIEVAL_CANDIDATES}")
+        validate_top_k(top_k)
         fanout = max(int(settings.qiss_fanout), 1)
         candidate_k = min(
             max(top_k * fanout, top_k + 5),

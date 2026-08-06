@@ -37,6 +37,14 @@ from kb_arena.models.retrieval import RetrievalTrace
 MAX_RETRIEVAL_CANDIDATES = 1000
 
 
+def validate_top_k(top_k: int) -> None:
+    """Reject retrieval counts that can invert slices or amplify backend work."""
+    if isinstance(top_k, bool) or not isinstance(top_k, int):
+        raise ValueError("top_k must be an integer")
+    if not 1 <= top_k <= MAX_RETRIEVAL_CANDIDATES:
+        raise ValueError(f"top_k must be between 1 and {MAX_RETRIEVAL_CANDIDATES}")
+
+
 class AnswerResult(BaseModel):
     """Unified answer result from any strategy."""
 

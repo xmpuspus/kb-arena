@@ -20,7 +20,12 @@ import time
 from kb_arena.models.document import Document
 from kb_arena.models.graph import GraphContext
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
-from kb_arena.strategies.base import MAX_RETRIEVAL_CANDIDATES, AnswerResult, Strategy
+from kb_arena.strategies.base import (
+    MAX_RETRIEVAL_CANDIDATES,
+    AnswerResult,
+    Strategy,
+    validate_top_k,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +137,7 @@ class HybridStrategy(Strategy):
 
     async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Route by intent. Procedural fuses passages via RRF, then generates one final answer."""
+        validate_top_k(top_k)
         start = self._start_timer()
         intent = await self._classify(question)
         llm = self._get_llm()

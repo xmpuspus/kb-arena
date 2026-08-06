@@ -211,6 +211,23 @@ async def test_extract_document_rejects_invalid_json_shapes(sample_document, pay
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("fqn", ["", "   "])
+async def test_extract_document_rejects_blank_entity_fqn(sample_document, fqn):
+    from kb_arena.graph.extractor import _build_system_prompt
+    from kb_arena.llm.client import LLMResponse
+
+    payload = {
+        "entities": [{"name": "Invalid", "fqn": fqn, "type": "Topic"}],
+        "relationships": [],
+    }
+    mock_llm = AsyncMock()
+    mock_llm.extract.return_value = LLMResponse(text=json.dumps(payload))
+
+    with pytest.raises(GraphError, match="Invalid extraction response"):
+        await extract_document(sample_document, mock_llm, _build_system_prompt(AWS_CORPUS))
+
+
+@pytest.mark.asyncio
 async def test_extract_document_cancels_siblings_after_failure():
     from kb_arena.graph.extractor import _build_system_prompt
     from kb_arena.llm.client import LLMResponse

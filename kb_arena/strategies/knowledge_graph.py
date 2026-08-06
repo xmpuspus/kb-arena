@@ -17,7 +17,7 @@ from kb_arena.models.document import Document
 from kb_arena.models.graph import GraphContext
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
-from kb_arena.strategies.base import AnswerResult, Strategy, meta_packet
+from kb_arena.strategies.base import AnswerResult, Strategy, meta_packet, validate_top_k
 
 logger = logging.getLogger(__name__)
 
@@ -340,6 +340,7 @@ class KnowledgeGraphStrategy(Strategy):
 
     async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Intent → Cypher template → execute → LLM answer."""
+        validate_top_k(top_k)
         start = self._start_timer()
 
         # Mock fallback: Neo4j not connected

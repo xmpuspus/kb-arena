@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 import tempfile
 from collections.abc import AsyncIterator, Iterable, Iterator, Mapping, Sequence
@@ -13,6 +14,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from kb_arena.exceptions import StrategyError
 from kb_arena.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -27,6 +29,42 @@ _INACTIVE_GENERATION = "__kb_arena_inactive__"
 
 class IndexStateError(RuntimeError):
     """The index activation manifest is invalid or cannot be updated safely."""
+
+
+def parse_query_result(
+    results: Mapping[str, Any],
+) -> tuple[list[str], list[str], list[Mapping[str, Any]], list[float]]:
+    """Return one aligned Chroma result row or reject an incomplete response."""
+    rows: dict[str, list[Any]] = {}
+    for field in ("ids", "documents", "metadatas", "distances"):
+        value = results.get(field)
+        if not isinstance(value, list) or len(value) != 1 or not isinstance(value[0], list):
+            raise StrategyError(f"Chroma query returned an invalid {field} row")
+        rows[field] = value[0]
+
+    lengths = {len(row) for row in rows.values()}
+    if len(lengths) != 1:
+        raise StrategyError("Chroma query returned misaligned result rows")
+    if not all(isinstance(value, str) for value in rows["ids"]):
+        raise StrategyError("Chroma query returned a non-string record ID")
+    if not all(isinstance(value, str) for value in rows["documents"]):
+        raise StrategyError("Chroma query returned a non-string document")
+    if not all(isinstance(value, Mapping) for value in rows["metadatas"]):
+        raise StrategyError("Chroma query returned invalid metadata")
+    if not all(
+        not isinstance(value, bool)
+        and isinstance(value, int | float)
+        and math.isfinite(float(value))
+        for value in rows["distances"]
+    ):
+        raise StrategyError("Chroma query returned an invalid distance")
+
+    return (
+        rows["ids"],
+        rows["documents"],
+        rows["metadatas"],
+        [float(value) for value in rows["distances"]],
+    )
 
 
 def new_generation() -> str:

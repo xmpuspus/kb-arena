@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import tempfile
+import threading
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -18,6 +19,21 @@ from kb_arena.settings import settings
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/tools", tags=["tools"])
+_active_qa_generations: set[str] = set()
+_qa_generation_guard = threading.Lock()
+
+
+def _claim_qa_generation(corpus: str) -> bool:
+    with _qa_generation_guard:
+        if corpus in _active_qa_generations:
+            return False
+        _active_qa_generations.add(corpus)
+        return True
+
+
+def _release_qa_generation(corpus: str) -> None:
+    with _qa_generation_guard:
+        _active_qa_generations.discard(corpus)
 
 
 def _validate_corpus_name(v: str) -> str:
@@ -29,6 +45,7 @@ def _validate_corpus_name(v: str) -> str:
 
 class GenerateRequest(BaseModel):
     corpus: str
+    max_sections: int = Field(default=50, ge=1, le=500)
 
     validate_corpus = field_validator("corpus")(_validate_corpus_name)
 
@@ -55,7 +72,7 @@ async def generate_qa(body: GenerateRequest, request: Request) -> EventSourceRes
     from kb_arena.llm.client import LLMClient
     from kb_arena.strategies import load_documents
 
-    async def event_generator() -> AsyncIterator[dict]:
+    async def generate_events() -> AsyncIterator[dict]:
         try:
             documents = load_documents(body.corpus, strict=True)
         except Exception as exc:
@@ -79,6 +96,7 @@ async def generate_qa(body: GenerateRequest, request: Request) -> EventSourceRes
                 if section.content.strip():
                     all_sections.append((section, doc.id))
 
+        all_sections = all_sections[: body.max_sections]
         total = len(all_sections)
         yield {"event": "started", "data": json.dumps({"total_sections": total})}
         if total == 0:
@@ -155,6 +173,21 @@ async def generate_qa(body: GenerateRequest, request: Request) -> EventSourceRes
                 }
             ),
         }
+
+    async def event_generator() -> AsyncIterator[dict]:
+        if not _claim_qa_generation(body.corpus):
+            yield {
+                "event": "error",
+                "data": json.dumps(
+                    {"message": "Q&A generation is already running for this corpus"}
+                ),
+            }
+            return
+        try:
+            async for event in generate_events():
+                yield event
+        finally:
+            _release_qa_generation(body.corpus)
 
     return EventSourceResponse(event_generator())
 
