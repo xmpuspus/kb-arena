@@ -35,10 +35,8 @@ log = logging.getLogger(__name__)
 
 # Which dimensions each strategy actually consumes. Sweeping a dimension a
 # strategy ignores just burns wall-clock on duplicate trials.
-CHUNKING_STRATEGIES = frozenset({"naive_vector", "contextual_vector", "raptor"})
-EMBEDDING_STRATEGIES = frozenset(
-    {"naive_vector", "contextual_vector", "qna_pairs", "raptor", "rerank_vector"}
-)
+CHUNKING_STRATEGIES = frozenset({"naive_vector", "contextual_vector"})
+EMBEDDING_STRATEGIES = frozenset({"naive_vector", "contextual_vector", "rerank_vector"})
 RERANKER_STRATEGIES = frozenset({"rerank_vector"})
 
 # A change in either of these requires rebuilding the strategy's index;
@@ -507,15 +505,15 @@ async def _score_trial(strategy, cfg, documents, questions, metric, baseline) ->
 
     with _ApplyOverrides(cfg, isolate_chroma=rebuild):
         inst = get_strategy(strategy)
-        if rebuild and hasattr(inst, "build_index"):
-            try:
-                await inst.build_index(documents)
-            except Exception as exc:  # noqa: BLE001 — a dead config scores 0, not crash
-                log.warning("optimize: build_index failed for %s %s: %s", strategy, cfg, exc)
-                return TrialResult(cfg=cfg, per_question_scores=[0.0] * len(questions))
-        scores: list[float] = []
-        latencies: list[float] = []
         with _PatchLLMClient():
+            if rebuild and hasattr(inst, "build_index"):
+                try:
+                    await inst.build_index(documents)
+                except Exception as exc:  # noqa: BLE001 — a dead config scores 0, not crash
+                    log.warning("optimize: build_index failed for %s %s: %s", strategy, cfg, exc)
+                    return TrialResult(cfg=cfg, per_question_scores=[0.0] * len(questions))
+            scores: list[float] = []
+            latencies: list[float] = []
             for q in questions:
                 trace = await _retrieve_only(inst, q.question, cfg.top_k)
                 m = compute_all(

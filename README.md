@@ -168,6 +168,9 @@ kb-arena optimize \
 After you choose the configuration, run the public comparison with
 `kb-arena benchmark --split holdout`.
 
+Optimization remains retrieval-only. QnA Pairs and RAPTOR reuse their prebuilt indexes and sweep
+top-k only; they do not regenerate pairs or summaries during a search.
+
 Read [the evaluation method](https://github.com/xmpuspus/kb-arena/blob/main/docs/methodology.md) before interpreting small score differences or
 synthetic question sets.
 

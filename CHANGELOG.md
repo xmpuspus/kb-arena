@@ -42,6 +42,10 @@ All notable changes to KB Arena.
   made zero-document ingestion fail instead of printing a next step.
 - Added session-only browser token support for protected requests, bounded rate-limit storage,
   automatic graph-build queue expiry, and stale-build isolation when the selected corpus changes.
+- Limited concurrent live graph builds, timed out hung extraction tasks, and bounded each event
+  queue so unattended builds cannot accumulate without limit.
+- Kept optimization retrieval-only by reusing prebuilt QnA Pairs and RAPTOR indexes instead of
+  regenerating their LLM-built artifacts during a sweep.
 - Added tested Python 3.13 support and bounded package metadata to Python 3.11 through 3.13.
 
 ## [0.9.3] - 2026-06-22 - Retrieval ceiling and cost efficiency

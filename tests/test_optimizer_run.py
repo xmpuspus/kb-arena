@@ -114,6 +114,16 @@ async def test_dry_run_plans_without_scoring(monkeypatch, tmp_path):
     assert by_strategy["naive_vector"]["n_trials"] == 12
     assert by_strategy["naive_vector"]["n_rebuilds"] == 9
 
+    llm_built_plan = opt.plan_optimize(
+        ["qna_pairs", "raptor"],
+        top_ks=[3, 5, 10],
+        chunk_sizes=[256, 512],
+        embedding_providers=["openai", "bge"],
+        reranker_backends=[],
+    )
+    assert all(item["dims"] == ["top_k"] for item in llm_built_plan)
+    assert all(item["n_rebuilds"] == 0 for item in llm_built_plan)
+
 
 @pytest.mark.asyncio
 async def test_run_optimize_dry_run_returns_zero_and_skips_scoring(patched, capsys):

@@ -34,7 +34,8 @@ def test_applicable_dims_per_strategy():
     assert applicable_dims("naive_vector") == {"top_k", "chunk_tokens", "embedding_provider"}
     assert "reranker_backend" in applicable_dims("rerank_vector")
     assert "reranker_backend" not in applicable_dims("naive_vector")
-    assert "chunk_tokens" not in applicable_dims("qna_pairs")  # QnA isn't token-chunked
+    assert applicable_dims("qna_pairs") == {"top_k"}
+    assert applicable_dims("raptor") == {"top_k"}
 
 
 def test_bm25_only_sweeps_top_k():
@@ -152,3 +153,31 @@ def test_build_trials_rejects_unknown_method():
             baseline=_base("bm25"),
             method="genetic",
         )
+
+
+@pytest.mark.asyncio
+async def test_score_trial_stubs_llm_during_index_rebuild(monkeypatch):
+    from kb_arena import strategies
+    from kb_arena.benchmark.optimizer import _score_trial
+    from kb_arena.llm.client import LLMClient
+
+    build_called = False
+
+    async def reject_live_generation(self, *args, **kwargs):
+        raise AssertionError("live LLM generation attempted")
+
+    class FakeStrategy:
+        async def build_index(self, documents):
+            nonlocal build_called
+            build_called = True
+            await LLMClient.generate(object())
+
+    monkeypatch.setattr(LLMClient, "generate", reject_live_generation)
+    monkeypatch.setattr(strategies, "get_strategy", lambda name: FakeStrategy())
+
+    base = _base("naive_vector")
+    cfg = base.model_copy(update={"chunk_tokens": 256})
+    result = await _score_trial("naive_vector", cfg, [], [], "ndcg", base)
+
+    assert build_called is True
+    assert result.per_question_scores == []

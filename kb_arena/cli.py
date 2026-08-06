@@ -1334,7 +1334,9 @@ def optimize(
     Sweeps chunk size, top-k, embedding provider and reranker backend per
     strategy, scores each configuration on a retrieval IR metric (retrieval-only,
     ~10x cheaper than `benchmark`), and reports the tuned optimum and its delta
-    versus the current defaults. `--dry-run` needs no API keys.
+    versus the current defaults. QnA Pairs and RAPTOR reuse their prebuilt indexes
+    and sweep top-k only, so optimization never regenerates LLM-built artifacts.
+    `--dry-run` needs no API keys.
     """
     import asyncio as _asyncio
 

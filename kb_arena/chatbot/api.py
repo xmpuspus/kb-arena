@@ -40,8 +40,11 @@ from kb_arena.settings import settings
 # Per-build UUID queues for streaming graph build events to SSE clients.
 # Keyed by build_id (not corpus) so concurrent builds for the same corpus don't collide.
 _graph_build_queues: dict[str, _asyncio.Queue] = {}
+_graph_build_tasks: dict[str, _asyncio.Task[None]] = {}
 _GRAPH_BUILD_QUEUE_MAX_EVENTS = 1000
 _GRAPH_BUILD_QUEUE_TTL_SECONDS = 300.0
+_GRAPH_BUILD_MAX_ACTIVE = 4
+_GRAPH_BUILD_TIMEOUT_SECONDS = 1800.0
 
 
 def _enqueue_graph_build_event(queue: _asyncio.Queue, event: dict | None) -> None:
@@ -664,6 +667,11 @@ async def trigger_graph_build(body: _GraphBuildRequest) -> dict:
             status_code=400,
             detail=f"Corpus '{corpus}' has no processed documents. Run 'kb-arena ingest' first.",
         )
+    if len(_graph_build_tasks) >= _GRAPH_BUILD_MAX_ACTIVE:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many graph builds are active. Limit: {_GRAPH_BUILD_MAX_ACTIVE}.",
+        )
 
     build_id = str(uuid4())
     queue: _asyncio.Queue = _asyncio.Queue(maxsize=_GRAPH_BUILD_QUEUE_MAX_EVENTS)
@@ -676,10 +684,25 @@ async def trigger_graph_build(body: _GraphBuildRequest) -> dict:
         from kb_arena.graph.extractor import run_extraction
 
         try:
-            await run_extraction(corpus=corpus, event_callback=_callback)
+            async with _asyncio.timeout(_GRAPH_BUILD_TIMEOUT_SECONDS):
+                await run_extraction(corpus=corpus, event_callback=_callback)
+        except TimeoutError:
+            _enqueue_graph_build_event(
+                queue,
+                {
+                    "type": "error",
+                    "data": {
+                        "message": (
+                            "Graph build timed out after "
+                            f"{_GRAPH_BUILD_TIMEOUT_SECONDS:g} seconds."
+                        )
+                    },
+                },
+            )
         except Exception as exc:
             _enqueue_graph_build_event(queue, {"type": "error", "data": {"message": str(exc)}})
         finally:
+            _graph_build_tasks.pop(build_id, None)
             _enqueue_graph_build_event(queue, None)  # Sentinel that signals stream end.
             _asyncio.get_running_loop().call_later(
                 _GRAPH_BUILD_QUEUE_TTL_SECONDS,
@@ -688,7 +711,8 @@ async def trigger_graph_build(body: _GraphBuildRequest) -> dict:
                 None,
             )
 
-    _asyncio.create_task(_run(), name=f"graph_build:{build_id}")
+    task = _asyncio.create_task(_run(), name=f"graph_build:{build_id}")
+    _graph_build_tasks[build_id] = task
     return {"status": "started", "build_id": build_id, "corpus": corpus}
 
 

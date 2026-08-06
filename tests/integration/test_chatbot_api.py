@@ -645,6 +645,80 @@ async def test_completed_graph_build_queue_expires_without_stream_client(tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_graph_build_rejects_requests_above_active_limit(tmp_path, monkeypatch):
+    import asyncio
+
+    from fastapi import HTTPException
+
+    from kb_arena.chatbot import api
+    from kb_arena.settings import settings
+
+    processed = tmp_path / "sample" / "processed"
+    processed.mkdir(parents=True)
+    (processed / "documents.jsonl").write_text("{}\n")
+    release_extraction = asyncio.Event()
+
+    async def fake_extraction(corpus: str, event_callback) -> None:
+        await release_extraction.wait()
+
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path))
+    monkeypatch.setattr("kb_arena.graph.extractor.run_extraction", fake_extraction)
+    monkeypatch.setattr(api, "_GRAPH_BUILD_MAX_ACTIVE", 2)
+
+    responses = [
+        await api.trigger_graph_build(api._GraphBuildRequest(corpus="sample")) for _ in range(2)
+    ]
+    tasks = [api._graph_build_tasks[response["build_id"]] for response in responses]
+    try:
+        with pytest.raises(HTTPException) as exc_info:
+            await api.trigger_graph_build(api._GraphBuildRequest(corpus="sample"))
+        assert exc_info.value.status_code == 429
+    finally:
+        release_extraction.set()
+        await asyncio.gather(*tasks)
+        for response in responses:
+            api._graph_build_queues.pop(response["build_id"], None)
+
+
+@pytest.mark.asyncio
+async def test_hung_graph_build_times_out_and_releases_active_slot(tmp_path, monkeypatch):
+    import asyncio
+
+    from kb_arena.chatbot import api
+    from kb_arena.settings import settings
+
+    processed = tmp_path / "sample" / "processed"
+    processed.mkdir(parents=True)
+    (processed / "documents.jsonl").write_text("{}\n")
+
+    async def fake_extraction(corpus: str, event_callback) -> None:
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path))
+    monkeypatch.setattr("kb_arena.graph.extractor.run_extraction", fake_extraction)
+    monkeypatch.setattr(api, "_GRAPH_BUILD_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(api, "_GRAPH_BUILD_QUEUE_TTL_SECONDS", 60.0)
+
+    response = await api.trigger_graph_build(api._GraphBuildRequest(corpus="sample"))
+    build_id = response["build_id"]
+    task = api._graph_build_tasks[build_id]
+    try:
+        await asyncio.wait_for(task, timeout=1)
+        assert build_id not in api._graph_build_tasks
+
+        queue = api._graph_build_queues[build_id]
+        retained = []
+        while not queue.empty():
+            retained.append(queue.get_nowait())
+
+        assert retained[-1] is None
+        assert retained[-2]["type"] == "error"
+        assert "timed out" in retained[-2]["data"]["message"]
+    finally:
+        api._graph_build_queues.pop(build_id, None)
+
+
+@pytest.mark.asyncio
 async def test_graph_build_queue_stays_bounded_without_stream_client(tmp_path, monkeypatch):
     import asyncio
 
