@@ -21,7 +21,9 @@ from kb_arena.strategies.base import AnswerResult, Strategy
 from kb_arena.strategies.chroma_index import (
     activate_generations,
     discard_staged_ids,
+    index_activation_lock,
     index_build_lock,
+    index_read_lock,
     index_where,
     new_generation,
     prune_collection,
@@ -235,22 +237,24 @@ class RaptorStrategy(Strategy):
                     if l2_ids:
                         logger.info("RAPTOR: built %d L2 summaries for %s", len(l2_ids), corpus)
 
-                activate_generations(
-                    {
-                        collection_name: {corpus: generation for corpus in corpora}
-                        for collection_name in COLLECTION_NAMES
-                    }
-                )
+                with index_activation_lock():
+                    activate_generations(
+                        {
+                            collection_name: {corpus: generation for corpus in corpora}
+                            for collection_name in COLLECTION_NAMES
+                        }
+                    )
+                    for collection, collection_name in zip(collections, COLLECTION_NAMES):
+                        try:
+                            prune_collection(collection, collection_name, corpora)
+                        except Exception as exc:
+                            logger.warning(
+                                "Could not prune inactive %s records: %s", collection_name, exc
+                            )
             except Exception:
                 for collection, staged_ids in zip(collections, staged_by_level):
                     discard_staged_ids(collection, staged_ids)
                 raise
-
-            for collection, collection_name in zip(collections, COLLECTION_NAMES):
-                try:
-                    prune_collection(collection, collection_name, corpora)
-                except Exception as exc:
-                    logger.warning("Could not prune inactive %s records: %s", collection_name, exc)
 
         logger.info("RAPTOR: built %d L0 chunks, %d L1 summaries", len(ids), total_l1)
 
@@ -263,46 +267,50 @@ class RaptorStrategy(Strategy):
         all_sources: set[str] = set()
         retrieved_chunks: list[RetrievedChunk] = []
 
-        for level in (0, 1, 2):
-            coll = self._get_collection(level)
-            count = coll.count()
-            if count == 0:
-                continue
-            n = min(top_k, count)
-            query_kwargs = {
-                "query_texts": [question],
-                "n_results": n,
-                "include": ["documents", "metadatas", "distances"],
-            }
-            query_kwargs["where"] = index_where(COLLECTION_NAMES[level], corpus)
-            results = coll.query(**query_kwargs)
-            chunks = results["documents"][0] if results["documents"] else []
-            metas = results["metadatas"][0] if results["metadatas"] else []
-            ids = results["ids"][0] if results.get("ids") else []
-            distances = results["distances"][0] if results.get("distances") else []
-            all_chunks.extend(chunks)
-            for i, ch_text in enumerate(chunks):
-                src = (metas[i].get("source_id") if i < len(metas) else "") or ""
-                if src:
-                    all_sources.add(src)
-                raw_id = (
-                    metas[i].get("chunk_id")
-                    if i < len(metas) and metas[i].get("chunk_id")
-                    else ids[i]
-                    if i < len(ids)
-                    else f"unknown-{i}"
-                )
-                retrieved_chunks.append(
-                    RetrievedChunk(
-                        chunk_id=f"L{level}:{raw_id}",
-                        doc_id=src,
-                        content=ch_text,
-                        score=1.0 - (distances[i] if i < len(distances) else 0.0),
-                        rank=len(retrieved_chunks) + 1,
-                        source_strategy=self.name,
-                        metadata={"level": level, **(dict(metas[i]) if i < len(metas) else {})},
+        with index_read_lock():
+            for level in (0, 1, 2):
+                coll = self._get_collection(level)
+                count = coll.count()
+                if count == 0:
+                    continue
+                n = min(top_k, count)
+                query_kwargs = {
+                    "query_texts": [question],
+                    "n_results": n,
+                    "include": ["documents", "metadatas", "distances"],
+                }
+                query_kwargs["where"] = index_where(COLLECTION_NAMES[level], corpus)
+                results = coll.query(**query_kwargs)
+                chunks = results["documents"][0] if results["documents"] else []
+                metas = results["metadatas"][0] if results["metadatas"] else []
+                ids = results["ids"][0] if results.get("ids") else []
+                distances = results["distances"][0] if results.get("distances") else []
+                all_chunks.extend(chunks)
+                for i, ch_text in enumerate(chunks):
+                    src = (metas[i].get("source_id") if i < len(metas) else "") or ""
+                    if src:
+                        all_sources.add(src)
+                    raw_id = (
+                        metas[i].get("chunk_id")
+                        if i < len(metas) and metas[i].get("chunk_id")
+                        else ids[i]
+                        if i < len(ids)
+                        else f"unknown-{i}"
                     )
-                )
+                    retrieved_chunks.append(
+                        RetrievedChunk(
+                            chunk_id=f"L{level}:{raw_id}",
+                            doc_id=src,
+                            content=ch_text,
+                            score=1.0 - (distances[i] if i < len(distances) else 0.0),
+                            rank=len(retrieved_chunks) + 1,
+                            source_strategy=self.name,
+                            metadata={
+                                "level": level,
+                                **(dict(metas[i]) if i < len(metas) else {}),
+                            },
+                        )
+                    )
         retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
         trace = RetrievalTrace(

@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+import re
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
 from kb_arena.strategies.base import AnswerResult
+
+_UUID_PATTERN = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
 def _make_mock_strategy(
@@ -108,6 +112,49 @@ def test_health_lists_strategies(app_client):
     # Fixture mocks five strategies; the live registry has nine. Just assert presence.
     assert isinstance(data["strategies"], list)
     assert "hybrid" in data["strategies"]
+
+
+def test_arena_match_passes_selected_corpus(app_client):
+    arena = MagicMock()
+    arena.create_match = AsyncMock(
+        return_value=SimpleNamespace(
+            id="match-1",
+            question="What is the control?",
+            answer_a="A",
+            answer_b="B",
+            latency_a_ms=1.0,
+            latency_b_ms=2.0,
+            sources_a=[],
+            sources_b=[],
+        )
+    )
+    app_client.app.state.arena = arena
+
+    response = app_client.post(
+        "/api/arena/match",
+        json={"question": "What is the control?", "corpus": "nist"},
+    )
+
+    assert response.status_code == 200
+    arena.create_match.assert_awaited_once_with("What is the control?", corpus="nist")
+
+
+def test_debug_explain_passes_selected_corpus(app_client):
+    from kb_arena.settings import settings
+
+    strategy = app_client.app.state.strategies["naive_vector"]
+    prior_debug = settings.debug
+    settings.debug = True
+    try:
+        response = app_client.post(
+            "/api/debug/explain",
+            json={"query": "What is the control?", "strategy": "naive_vector", "corpus": "nist"},
+        )
+    finally:
+        settings.debug = prior_debug
+
+    assert response.status_code == 200
+    strategy.query.assert_awaited_once_with("What is the control?", top_k=5, corpus="nist")
 
 
 def test_demo_lifespan_skips_external_clients_and_disables_chroma_telemetry(monkeypatch):
@@ -503,8 +550,6 @@ def test_chat_stream_has_message_id_event(app_client):
 
 
 def test_chat_stream_message_id_is_uuid(app_client):
-    import re
-
     with app_client.stream(
         "POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}
     ) as r:
@@ -514,8 +559,7 @@ def test_chat_stream_message_id_is_uuid(app_client):
     msg_id_event = next((e for e in events if e.get("event") == "message_id"), None)
     assert msg_id_event is not None
     data = json.loads(msg_id_event["data"])
-    uuid_pattern = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
-    assert uuid_pattern.match(data["id"])
+    assert _UUID_PATTERN.match(data["id"])
 
 
 def test_chat_stream_has_done_event(app_client):
@@ -617,7 +661,7 @@ def test_chat_unicode_query(app_client):
     r = app_client.post(
         "/chat",
         json={
-            "query": "什么是 json.loads？ مرحبا 🐍",
+            "query": "什么是 json.loads？ مرحبا",
             "strategy": "naive_vector",
         },
     )

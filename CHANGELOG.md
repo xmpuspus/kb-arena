@@ -57,9 +57,9 @@ All notable changes to KB Arena.
   treating their missing metrics as numeric results.
 - Made benchmark, judge, retrieval-ceiling, and empty-question-set failures explicit. Included
   evaluator spend in cost caps and kept partial capped runs out of successful checkpoints.
-- Scoped chat, benchmark, Retriever Lab, vector, hierarchy, lexical, and graph retrieval to the
-  selected corpus. Shared Chroma and Neo4j identifiers now include the corpus while retrieval
-  traces keep their original qrel-compatible chunk IDs.
+- Scoped chat, arena, debug, benchmark, Retriever Lab, vector, hierarchy, lexical, and graph
+  retrieval to the selected corpus. Shared Chroma and Neo4j identifiers now include the corpus
+  while retrieval traces keep their original qrel-compatible chunk IDs.
 - Rejected non-finite spend and quality controls, boolean judge scores, mock graph answers, and
   query-independent PageIndex results in retrieval-only runs. Benchmark records now persist the
   declared question tier and type instead of relying on an ID naming convention.
@@ -77,9 +77,12 @@ All notable changes to KB Arena.
 - Added tested Python 3.13 support and bounded package metadata to Python 3.11 through 3.13.
 - Isolated every index build path by corpus, including default all-corpus builds. Chroma rebuilds
   stage versioned generations, switch all rebuilt corpora through one atomic activation manifest,
-  and serialize publishers so failed or concurrent builds cannot become partially visible.
+  serialize publishers, and coordinate readers through activation so failed, concurrent, or
+  in-flight builds cannot become partially visible.
 - Restricted graph retrieval to parameterized allowlisted Cypher templates. Query text and model
   output can no longer become executable Cypher.
+- Packaged the Neo4j schema with the Python distribution and load it independently of the caller's
+  working directory. Missing schema resources now fail explicitly instead of silently skipping DDL.
 
 Indexes built before 0.10.0 must be rebuilt once so corpus metadata, generation state, and
 namespaced storage IDs are present in Chroma and Neo4j. Vector reads ignore inactive and legacy

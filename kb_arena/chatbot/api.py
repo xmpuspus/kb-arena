@@ -787,7 +787,7 @@ async def arena_create_match(body: ArenaMatchRequest, request: Request):
             {"error": {"code": "arena_unavailable", "message": "Arena not initialized"}}, 503
         )
     try:
-        match = await arena.create_match(body.question)
+        match = await arena.create_match(body.question, corpus=body.corpus)
         return {
             "match_id": match.id,
             "question": match.question,
@@ -1048,7 +1048,7 @@ async def debug_explain(body: ChatRequest, request: Request) -> dict:
 
     t0 = _time.perf_counter()
     try:
-        result = await strategy.query(body.query, top_k=5)
+        result = await strategy.query(body.query, top_k=5, corpus=body.corpus)
         latency_ms = (_time.perf_counter() - t0) * 1000
     except Exception as exc:
         return {

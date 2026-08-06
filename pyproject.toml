@@ -71,7 +71,6 @@ exclude = [
     "datasets/",
     "web/",
     "tests/",
-    "cypher/",
     ".github/",
     "tmp/",
     ".venv/",
@@ -92,7 +91,7 @@ include = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["kb_arena"]
-artifacts = ["kb_arena/data/*.json", "kb_arena/static/**"]
+artifacts = ["kb_arena/data/*.json", "kb_arena/cypher/*.cypher", "kb_arena/static/**"]
 
 [tool.ruff]
 target-version = "py311"

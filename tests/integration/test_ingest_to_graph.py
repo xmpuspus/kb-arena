@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from importlib.resources import as_file, files
 
 import pytest
 
@@ -21,9 +21,7 @@ from kb_arena.graph.schema import (
 )
 from kb_arena.models.graph import Entity, ExtractionResult, Relationship
 
-# ---------------------------------------------------------------------------
 # Schema enum validation
-# ---------------------------------------------------------------------------
 
 
 def test_node_types_match_enum():
@@ -86,9 +84,7 @@ def test_all_universal_rel_types_are_valid():
     assert set(rel_type_values("aws-compute")) == expected
 
 
-# ---------------------------------------------------------------------------
 # Mock LLM extraction → entity validation
-# ---------------------------------------------------------------------------
 
 
 def _make_entity(name: str, type_str: str, eid: str | None = None) -> Entity:
@@ -137,9 +133,7 @@ def test_extraction_result_schema():
     assert result.document_id == "aws-compute-lambda"
 
 
-# ---------------------------------------------------------------------------
 # Entity resolver
-# ---------------------------------------------------------------------------
 
 
 def test_resolver_merges_near_identical_entities():
@@ -221,9 +215,7 @@ def test_normalize_name_uppercases():
     assert normalize_name("lambda") == "LAMBDA"
 
 
-# ---------------------------------------------------------------------------
 # Mock Neo4j store — nodes before edges
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -311,9 +303,8 @@ async def test_schema_never_deletes_legacy_or_unrelated_entities(mock_neo4j_driv
     from kb_arena.graph.neo4j_store import Neo4jStore
 
     store = Neo4jStore(driver=mock_neo4j_driver)
-    schema_file = Path(__file__).parents[2] / "cypher" / "schema_default.cypher"
-
-    await store.load_schema(schema_file)
+    with as_file(files("kb_arena.cypher").joinpath("schema_default.cypher")) as schema_file:
+        await store.load_schema(schema_file)
 
     session = mock_neo4j_driver.session.return_value.__aenter__.return_value
     statements = [call.args[0] for call in session.run.call_args_list]

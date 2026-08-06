@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -13,8 +14,10 @@ from kb_arena.strategies.chroma_index import (
     IndexStateError,
     activate_generations,
     index_build_lock,
+    index_read_lock,
     index_where,
     prune_collection,
+    publish_collection_build,
     upsert_staged_records,
 )
 
@@ -140,3 +143,74 @@ async def test_build_lock_serializes_concurrent_publishers():
     await asyncio.gather(publisher(), publisher())
 
     assert maximum_active == 1
+
+
+def test_reader_keeps_selected_generation_until_query_finishes():
+    activate_generations({"naive_vector": {"alpha": "generation-old"}})
+    collection = MagicMock()
+    collection.get.return_value = {
+        "ids": ["generation-old::alpha::chunk", "generation-new::alpha::chunk"],
+        "metadatas": [
+            {
+                "corpus": "alpha",
+                "index_version": INDEX_FORMAT_VERSION,
+                "generation": "generation-old",
+            },
+            {
+                "corpus": "alpha",
+                "index_version": INDEX_FORMAT_VERSION,
+                "generation": "generation-new",
+            },
+        ],
+    }
+    reader_selected = threading.Event()
+    release_reader = threading.Event()
+    publisher_staged = threading.Event()
+    errors: list[BaseException] = []
+
+    def reader() -> None:
+        try:
+            with index_read_lock():
+                where = index_where("naive_vector", "alpha")
+                reader_selected.set()
+                assert release_reader.wait(timeout=2)
+                collection.query(where=where)
+        except BaseException as exc:  # pragma: no cover - surfaced in the parent thread
+            errors.append(exc)
+
+    def publisher() -> None:
+        try:
+            collection.upsert.side_effect = lambda **_kwargs: publisher_staged.set()
+            publish_collection_build(
+                collection,
+                "naive_vector",
+                ["alpha"],
+                "generation-new",
+                ["alpha::chunk"],
+                ["new text"],
+                [{"corpus": "alpha"}],
+            )
+        except BaseException as exc:  # pragma: no cover - surfaced in the parent thread
+            errors.append(exc)
+
+    reader_thread = threading.Thread(target=reader)
+    publisher_thread = threading.Thread(target=publisher)
+    reader_thread.start()
+    assert reader_selected.wait(timeout=2)
+    publisher_thread.start()
+    assert publisher_staged.wait(timeout=2)
+
+    assert index_where("naive_vector", "alpha")["$and"][2] == {"generation": "generation-old"}
+    assert publisher_thread.is_alive()
+
+    release_reader.set()
+    reader_thread.join(timeout=2)
+    publisher_thread.join(timeout=2)
+
+    assert not reader_thread.is_alive()
+    assert not publisher_thread.is_alive()
+    assert errors == []
+    collection.query.assert_called_once()
+    assert collection.query.call_args.kwargs["where"]["$and"][2] == {"generation": "generation-old"}
+    assert index_where("naive_vector", "alpha")["$and"][2] == {"generation": "generation-new"}
+    collection.delete.assert_called_once_with(ids=["generation-old::alpha::chunk"])

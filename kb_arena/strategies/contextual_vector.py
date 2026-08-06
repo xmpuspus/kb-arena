@@ -17,6 +17,7 @@ from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
 from kb_arena.strategies.chroma_index import (
     index_build_lock,
+    index_read_lock,
     index_where,
     new_generation,
     publish_collection_build,
@@ -140,9 +141,9 @@ class ContextualVectorStrategy(Strategy):
             "n_results": top_k,
             "include": ["documents", "metadatas", "distances"],
         }
-        query_kwargs["where"] = index_where(COLLECTION_NAME, corpus, where)
-
-        results = collection.query(**query_kwargs)
+        with index_read_lock():
+            query_kwargs["where"] = index_where(COLLECTION_NAME, corpus, where)
+            results = collection.query(**query_kwargs)
         chunks = results["documents"][0] if results["documents"] else []
         metas = results["metadatas"][0] if results["metadatas"] else []
         ids = results["ids"][0] if results.get("ids") else []

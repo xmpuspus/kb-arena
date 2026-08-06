@@ -19,6 +19,7 @@ from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
 from kb_arena.strategies.chroma_index import (
     index_build_lock,
+    index_read_lock,
     index_where,
     new_generation,
     publish_collection_build,
@@ -146,8 +147,9 @@ class QnAPairStrategy(Strategy):
             "n_results": top_k,
             "include": ["documents", "metadatas", "distances"],
         }
-        query_kwargs["where"] = index_where(COLLECTION_NAME, corpus)
-        results = collection.query(**query_kwargs)
+        with index_read_lock():
+            query_kwargs["where"] = index_where(COLLECTION_NAME, corpus)
+            results = collection.query(**query_kwargs)
         metas = results["metadatas"][0] if results["metadatas"] else []
         matched_questions = results["documents"][0] if results["documents"] else []
         ids = results["ids"][0] if results.get("ids") else []

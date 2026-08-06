@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import re
+from importlib.resources import as_file, files
 from pathlib import Path
 
 from rich.console import Console
@@ -220,6 +221,19 @@ async def extract_document(
     )
 
 
+async def _load_schema(store: Neo4jStore, corpus: str) -> None:
+    """Load corpus-specific DDL from the installed package, falling back to the default."""
+    package = files("kb_arena.cypher")
+    schema_resource = package.joinpath(f"schema_{corpus}.cypher")
+    if not schema_resource.is_file():
+        schema_resource = package.joinpath("schema_default.cypher")
+    if not schema_resource.is_file():
+        raise GraphError("The installed KB Arena package does not contain a graph schema")
+
+    with as_file(schema_resource) as schema_path:
+        await store.load_schema(schema_path)
+
+
 async def run_extraction(corpus: str = "custom", schema: str = "auto", event_callback=None) -> None:
     """Orchestrate: load processed JSONL → extract → resolve → load to Neo4j."""
     get_schema(corpus)
@@ -234,13 +248,7 @@ async def run_extraction(corpus: str = "custom", schema: str = "auto", event_cal
     system_prompt = _build_system_prompt(corpus)
     store = await Neo4jStore.connect()
 
-    # Load schema DDL — corpus-specific if available, otherwise default
-    cypher_dir = Path("cypher")
-    schema_file = cypher_dir / f"schema_{corpus}.cypher"
-    if not schema_file.exists():
-        schema_file = cypher_dir / "schema_default.cypher"
-    if schema_file.exists():
-        await store.load_schema(schema_file)
+    await _load_schema(store, corpus)
 
     node_enum, rel_enum = get_schema(corpus)
     all_entities: list[Entity] = []

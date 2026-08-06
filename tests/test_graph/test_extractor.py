@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from kb_arena.graph.extractor import _validate_result, extract_document
+from kb_arena.graph.extractor import _load_schema, _validate_result, extract_document
 from kb_arena.models.graph import ExtractionResult
 
 AWS_CORPUS = "aws-compute"
@@ -182,3 +182,20 @@ async def test_extract_document_handles_bad_json(sample_document):
     result = await extract_document(sample_document, mock_llm, _build_system_prompt(AWS_CORPUS))
     # Should not crash — returns empty result
     assert isinstance(result, ExtractionResult)
+
+
+@pytest.mark.asyncio
+async def test_load_schema_uses_packaged_resource_from_any_working_directory(tmp_path, monkeypatch):
+    loaded: list[str] = []
+    store = AsyncMock()
+
+    async def capture_schema(path):
+        loaded.append(path.read_text(encoding="utf-8"))
+
+    store.load_schema.side_effect = capture_schema
+    monkeypatch.chdir(tmp_path)
+
+    await _load_schema(store, "custom")
+
+    store.load_schema.assert_awaited_once()
+    assert "CREATE CONSTRAINT kb_arena_entity_id" in loaded[0]

@@ -7,8 +7,8 @@ import json
 import logging
 import os
 import tempfile
-from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterable, Iterator, Mapping, Sequence
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -21,6 +21,7 @@ INDEX_FORMAT_VERSION = 3
 STATE_FORMAT_VERSION = 1
 _STATE_FILENAME = ".kb_arena-index-state.json"
 _LOCK_FILENAME = ".kb_arena-build.lock"
+_ACTIVATION_LOCK_FILENAME = ".kb_arena-activation.lock"
 _INACTIVE_GENERATION = "__kb_arena_inactive__"
 
 
@@ -184,6 +185,54 @@ def _unlock(handle: Any) -> None:
     fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
+def _lock_blocking(handle: Any, *, shared: bool) -> None:
+    if os.name == "nt":  # pragma: no cover - exercised on Windows release validation
+        import msvcrt
+
+        handle.seek(0)
+        if not handle.read(1):
+            handle.write(b"0")
+            handle.flush()
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+        return
+
+    import fcntl
+
+    mode = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
+    fcntl.flock(handle.fileno(), mode)
+
+
+@contextmanager
+def _activation_lock(*, shared: bool) -> Iterator[None]:
+    directory = _index_directory()
+    directory.mkdir(parents=True, exist_ok=True)
+    handle = (directory / _ACTIVATION_LOCK_FILENAME).open("a+b")
+    acquired = False
+    try:
+        _lock_blocking(handle, shared=shared)
+        acquired = True
+        yield
+    finally:
+        if acquired:
+            _unlock(handle)
+        handle.close()
+
+
+@contextmanager
+def index_read_lock() -> Iterator[None]:
+    """Keep the selected generations alive until a complete query finishes."""
+    with _activation_lock(shared=True):
+        yield
+
+
+@contextmanager
+def index_activation_lock() -> Iterator[None]:
+    """Exclude readers while activating generations and pruning their predecessors."""
+    with _activation_lock(shared=False):
+        yield
+
+
 @asynccontextmanager
 async def index_build_lock(poll_interval: float = 0.05) -> AsyncIterator[None]:
     """Serialize all Chroma publishers without blocking the event loop."""
@@ -285,13 +334,13 @@ def publish_collection_build(
     corpus_list = list(dict.fromkeys(corpora))
     staged_ids = upsert_staged_records(collection, generation, stable_ids, documents, metadatas)
     try:
-        activate_generations({collection_name: {corpus: generation for corpus in corpus_list}})
+        with index_activation_lock():
+            activate_generations({collection_name: {corpus: generation for corpus in corpus_list}})
+            try:
+                prune_collection(collection, collection_name, corpus_list)
+            except Exception as exc:  # stale records remain hidden by the manifest
+                logger.warning("Could not prune inactive %s records: %s", collection_name, exc)
     except Exception:
         discard_staged_ids(collection, staged_ids)
         raise
-
-    try:
-        prune_collection(collection, collection_name, corpus_list)
-    except Exception as exc:  # activation is complete; stale records are not queryable
-        logger.warning("Could not prune inactive %s records: %s", collection_name, exc)
     return staged_ids
