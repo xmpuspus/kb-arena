@@ -219,13 +219,13 @@ class TestReadyEndpoint:
     def test_ready_route_exists(self):
         from kb_arena.chatbot.api import app
 
-        routes = [r.path for r in app.routes]
+        routes = {getattr(route, "path", None) for route in app.routes}
         assert "/ready" in routes
 
     def test_health_route_exists(self):
         from kb_arena.chatbot.api import app
 
-        routes = [r.path for r in app.routes]
+        routes = {getattr(route, "path", None) for route in app.routes}
         assert "/health" in routes
 
 
@@ -236,7 +236,7 @@ class TestDebugEndpoint:
     def test_debug_route_exists(self):
         from kb_arena.chatbot.api import app
 
-        routes = [r.path for r in app.routes]
+        routes = {getattr(route, "path", None) for route in app.routes}
         assert "/api/debug/explain" in routes
 
 

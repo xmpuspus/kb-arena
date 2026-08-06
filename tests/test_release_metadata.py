@@ -59,6 +59,10 @@ def test_supported_python_versions_match_dependencies_and_ci() -> None:
     assert project["requires-python"] == ">=3.11,<3.14"
     assert "Programming Language :: Python :: 3.13" in project["classifiers"]
     assert "tiktoken==0.13.0" in project["dependencies"]
+    assert "click==8.4.2" in project["dependencies"]
+    assert "typer==0.27.1" in project["dependencies"]
+    assert "fastapi==0.141.1" in project["dependencies"]
+    assert "starlette==1.4.1" in project["dependencies"]
     assert 'python-version: ["3.11", "3.12", "3.13"]' in workflow
 
 

@@ -46,6 +46,8 @@ All notable changes to KB Arena.
   queue so unattended builds cannot accumulate without limit.
 - Kept optimization retrieval-only by reusing prebuilt QnA Pairs and RAPTOR indexes instead of
   regenerating their LLM-built artifacts during a sweep.
+- Updated Typer, Click, FastAPI, and Starlette to compatible releases that address current
+  command-execution and HTTP request-processing advisories.
 - Added tested Python 3.13 support and bounded package metadata to Python 3.11 through 3.13.
 
 ## [0.9.3] - 2026-06-22 - Retrieval ceiling and cost efficiency
