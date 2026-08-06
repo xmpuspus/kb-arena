@@ -148,3 +148,31 @@ async def test_benchmark_fails_when_split_selects_no_questions(tmp_path, monkeyp
 
     with pytest.raises(runner.BenchmarkExecutionError, match="No questions selected"):
         await runner.run_benchmark("sample", split="holdout")
+
+
+@pytest.mark.asyncio
+async def test_bounded_scheduler_does_not_start_every_coroutine_at_once():
+    import asyncio
+
+    from kb_arena.benchmark.runner import _as_completed_bounded
+
+    started: list[int] = []
+    three_started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def work(index: int) -> int:
+        started.append(index)
+        if len(started) == 3:
+            three_started.set()
+        await release.wait()
+        return index
+
+    async def consume() -> list[int]:
+        return [result async for result in _as_completed_bounded((work(i) for i in range(20)), 3)]
+
+    task = asyncio.create_task(consume())
+    await asyncio.wait_for(three_started.wait(), timeout=1)
+    await asyncio.sleep(0)
+    assert len(started) == 3
+    release.set()
+    assert sorted(await task) == list(range(20))

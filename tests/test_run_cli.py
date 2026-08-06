@@ -107,6 +107,45 @@ def test_run_continues_after_graph_failure_without_checkpointing_it(tmp_path, mo
     assert state["benchmark"] == "done"
 
 
+def test_run_reruns_benchmark_when_graph_recovers(tmp_path, monkeypatch):
+    base = _corpus(tmp_path)
+    (base / "processed" / "documents.jsonl").write_text(MINIMAL_DOCUMENT)
+    graph_attempts = 0
+    benchmark_strategies: list[str] = []
+
+    async def recovering_graph(corpus: str) -> None:
+        nonlocal graph_attempts
+        graph_attempts += 1
+        if graph_attempts == 1:
+            raise OSError("Neo4j is unavailable")
+
+    async def fake_vectors(corpus: str, strategy: str = "all") -> None:
+        return None
+
+    async def fake_benchmark(corpus: str, strategy: str) -> None:
+        benchmark_strategies.append(strategy)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("kb_arena.cli._preflight", lambda **kwargs: None)
+    monkeypatch.setattr("kb_arena.graph.extractor.run_extraction", recovering_graph)
+    monkeypatch.setattr("kb_arena.strategies.build_vector_indexes", fake_vectors)
+    monkeypatch.setattr("kb_arena.benchmark.runner.run_benchmark", fake_benchmark)
+
+    first = runner.invoke(app, ["run", "--corpus", "sample"])
+    second = runner.invoke(app, ["run", "--corpus", "sample"])
+
+    assert first.exit_code == 0, first.stdout
+    assert second.exit_code == 0, second.stdout
+    assert benchmark_strategies == [
+        "naive_vector,contextual_vector,qna_pairs,raptor,pageindex,bm25,rerank_vector,qiss",
+        "all",
+    ]
+    state = json.loads((base / ".pipeline_state.json").read_text())
+    assert state["build_graph"] == "done"
+    assert state["benchmark"] == "done"
+    assert state["benchmark_strategies"] == "all"
+
+
 def test_run_does_not_checkpoint_cost_capped_benchmark(tmp_path, monkeypatch):
     from kb_arena.benchmark.runner import BenchmarkIncompleteError
 
@@ -245,6 +284,7 @@ def test_run_completed_resume_does_not_require_credentials(tmp_path, monkeypatch
         "build_vectors": "done",
         "generate_questions": "done",
         "benchmark": "done",
+        "benchmark_strategies": "all",
     }
     (base / ".pipeline_state.json").write_text(json.dumps(completed))
 
@@ -271,6 +311,7 @@ def test_run_uses_configured_datasets_path(tmp_path, monkeypatch):
         "build_vectors": "done",
         "generate_questions": "done",
         "benchmark": "done",
+        "benchmark_strategies": "all",
     }
     (base / ".pipeline_state.json").write_text(json.dumps(completed))
     monkeypatch.setattr(settings, "datasets_path", str(tmp_path / "datasets"))

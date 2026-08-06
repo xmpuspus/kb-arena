@@ -12,7 +12,6 @@ import json
 import logging
 import os
 import sys
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -65,17 +64,17 @@ class _PatchLLMClient:
 
 async def _retrieve_only(strategy: Strategy, question_text: str, top_k: int) -> RetrievalTrace:
     """Run query() under the LLM-stub patch and return the retrieval trace."""
-    start = time.perf_counter()
     try:
         result = await strategy.query(question_text, top_k=top_k)
     except Exception as exc:
         raise RetrievalExecutionError(
             f"strategy {strategy.name!r} failed to retrieve for {question_text!r}: {exc}"
         ) from exc
-    elapsed = (time.perf_counter() - start) * 1000
     if result.retrieval is not None:
         return result.retrieval
-    return RetrievalTrace(query=question_text, retrieved=[], latency_ms=elapsed, top_k=top_k)
+    raise RetrievalExecutionError(
+        f"strategy {strategy.name!r} returned no retrieval trace for {question_text!r}"
+    )
 
 
 def _build_table(
@@ -374,8 +373,14 @@ async def run_retriever_lab(
                 )
                 floor_violation = True
 
-    console.print(f"[green]Run {run_id} written to {results_dir}/[/green]")
-    return 1 if floor_violation else _exit_code
+    no_questions = not overall["corpora"]
+    if no_questions:
+        console.print(
+            f"[red]No questions were selected; incomplete run written to {results_dir}/[/red]"
+        )
+    else:
+        console.print(f"[green]Run {run_id} written to {results_dir}/[/green]")
+    return 1 if no_questions or floor_violation else _exit_code
 
 
 async def _run_corpora_loop(

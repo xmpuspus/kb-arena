@@ -330,6 +330,98 @@ async def test_evaluate_tracks_new_judge_spend_but_not_cache_hits():
 
 
 @pytest.mark.asyncio
+async def test_evaluate_deduplicates_concurrent_identical_judge_calls():
+    import asyncio
+
+    from kb_arena.benchmark.evaluator import _eval_cache
+    from kb_arena.llm.client import LLMResponse
+
+    _eval_cache.clear()
+    constraints = Constraints(must_mention=["Lambda"])
+    ground_truth = GroundTruth(answer="Lambda runs code serverlessly.")
+    calls = 0
+
+    async def judge(**kwargs):
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0.01)
+        return LLMResponse(
+            text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}',
+            cost_usd=0.25,
+        )
+
+    mock_llm = AsyncMock()
+    mock_llm.judge.side_effect = judge
+
+    scores = await asyncio.gather(
+        evaluate("Lambda runs code.", ground_truth, constraints, llm=mock_llm),
+        evaluate("Lambda runs code.", ground_truth, constraints, llm=mock_llm),
+    )
+
+    assert calls == 1
+    assert scores[0].accuracy == scores[1].accuracy == pytest.approx(0.9)
+    assert sorted(score.evaluation_cost_usd for score in scores) == [0.0, 0.25]
+
+
+@pytest.mark.asyncio
+async def test_evaluate_fails_when_ragas_is_unavailable(monkeypatch):
+    from kb_arena.benchmark.evaluator import EvaluationExecutionError, _eval_cache
+    from kb_arena.llm.client import LLMResponse
+    from kb_arena.settings import settings
+
+    _eval_cache.clear()
+    monkeypatch.setattr(settings, "benchmark_enable_ragas", True)
+    constraints = Constraints(must_mention=["Lambda"])
+    ground_truth = GroundTruth(answer="Lambda runs code serverlessly.")
+    mock_llm = AsyncMock()
+    mock_llm.judge.side_effect = [
+        LLMResponse(text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}'),
+        TimeoutError("RAGAS provider timeout"),
+    ]
+
+    with pytest.raises(EvaluationExecutionError, match="RAGAS provider timeout"):
+        await evaluate(
+            "Lambda runs code.",
+            ground_truth,
+            constraints,
+            llm=mock_llm,
+            question_text="What is Lambda?",
+            context_chunks=["Lambda is serverless."],
+        )
+
+    assert _eval_cache == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "judge_text",
+    [
+        '{"accuracy": 1.01, "completeness": 0.8, "faithfulness": 1.0}',
+        '{"accuracy": 0.9, "completeness": -0.01, "faithfulness": 1.0}',
+        '{"accuracy": 0.9, "completeness": 0.8, "faithfulness": NaN}',
+        '{"accuracy": Infinity, "completeness": 0.8, "faithfulness": 1.0}',
+    ],
+)
+async def test_evaluate_rejects_invalid_judge_scores(judge_text):
+    from kb_arena.benchmark.evaluator import EvaluationExecutionError, _eval_cache
+    from kb_arena.llm.client import LLMResponse
+
+    _eval_cache.clear()
+    mock_llm = AsyncMock()
+    mock_llm.judge.return_value = LLMResponse(text=judge_text)
+
+    with pytest.raises(EvaluationExecutionError, match="0 and 1"):
+        await evaluate(
+            "Lambda runs code.",
+            GroundTruth(answer="Lambda runs code serverlessly."),
+            Constraints(must_mention=["Lambda"]),
+            llm=mock_llm,
+        )
+
+    assert _eval_cache == {}
+
+
+@pytest.mark.asyncio
 async def test_reference_free_cache_separates_question_and_context(monkeypatch):
     from kb_arena.benchmark.evaluator import _eval_cache
     from kb_arena.llm.client import LLMResponse

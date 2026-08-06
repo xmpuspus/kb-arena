@@ -45,6 +45,12 @@ def test_sdist_excludes_local_and_generated_work() -> None:
     assert {"tmp/", ".venv/", "results/run_*/", "uv.lock"} <= excluded
 
 
+def test_generated_run_directories_are_ignored() -> None:
+    gitignore = (ROOT / ".gitignore").read_text()
+
+    assert "results/run_*/" in gitignore
+
+
 def test_frontend_ci_runs_lint_before_build() -> None:
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
     lint = workflow.index("- run: npm run lint")

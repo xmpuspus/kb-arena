@@ -9,7 +9,9 @@ from __future__ import annotations
 import asyncio
 import random
 import time
+from collections.abc import AsyncIterator, Awaitable, Iterable
 from pathlib import Path
+from typing import TypeVar
 
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
@@ -34,8 +36,7 @@ STRATEGY_NAMES = list(default_strategy_names())
 # Note: `sqr` is intentionally not in the default "all" set because it needs the
 # optional [quantum] extra (qiskit/qiskit-aer/scikit-learn). Run it explicitly
 # with `--strategies sqr`; get_strategy("sqr") raises a clear install hint when
-# the extra is missing, so _load_strategies skips it rather than emitting empty
-# traces that would trip the min-recall floor on a core install.
+# the extra is missing.
 
 RETRY_BASE_S = 1.0  # base for exponential backoff: 1s, 2s, 4s, ...
 
@@ -46,6 +47,41 @@ class BenchmarkExecutionError(RuntimeError):
 
 class BenchmarkIncompleteError(BenchmarkExecutionError):
     """A benchmark stopped at its budget boundary before all queries ran."""
+
+
+_T = TypeVar("_T")
+
+
+async def _as_completed_bounded(
+    awaitables: Iterable[Awaitable[_T]], limit: int
+) -> AsyncIterator[_T]:
+    """Yield results as they complete without scheduling the full input at once."""
+    if limit < 1:
+        raise ValueError("concurrency limit must be at least 1")
+
+    iterator = iter(awaitables)
+    pending: set[asyncio.Future[_T]] = set()
+    done: set[asyncio.Future[_T]] = set()
+
+    def _fill() -> None:
+        while len(pending) < limit:
+            try:
+                awaitable = next(iterator)
+            except StopIteration:
+                break
+            pending.add(asyncio.ensure_future(awaitable))
+
+    _fill()
+    try:
+        while pending:
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                yield task.result()
+            _fill()
+    finally:
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*pending, *done, return_exceptions=True)
 
 
 def _is_retryable(exc: BaseException) -> bool:
@@ -118,8 +154,7 @@ def _load_strategies(strategy_filter: str) -> list[Strategy]:
     """Resolve a strategy filter into instantiated strategies.
 
     Accepts "all", a single name, or a comma-separated list ("naive_vector,qiss").
-    Unavailable strategies (e.g. sqr without the [quantum] extra) raise during
-    get_strategy() and are skipped with a message rather than failing the run.
+    Every requested strategy must initialize so the run cannot silently omit evidence.
     """
     from kb_arena.strategies import get_strategy
 
@@ -129,6 +164,7 @@ def _load_strategies(strategy_filter: str) -> list[Strategy]:
         names = [n.strip() for n in strategy_filter.split(",") if n.strip()]
 
     active: list[Strategy] = []
+    failures: list[str] = []
     seen: set[str] = set()
     for name in names:
         if name in seen:
@@ -137,7 +173,11 @@ def _load_strategies(strategy_filter: str) -> list[Strategy]:
         try:
             active.append(get_strategy(name))
         except Exception as e:
-            console.print(f"[yellow]Skipping strategy {name}: {e}[/yellow]")
+            failures.append(f"{name}: {e}")
+    if failures:
+        raise BenchmarkExecutionError(
+            "Requested strategies could not initialize: " + "; ".join(failures)
+        )
     return active
 
 
@@ -467,7 +507,7 @@ async def run_benchmark(
                         timestamp=timestamp,
                         config_snapshot=config_snap,
                     )
-                    coros = [
+                    coros = (
                         _run_one(
                             strat,
                             q.id,
@@ -481,9 +521,10 @@ async def run_benchmark(
                             reference_free=reference_free,
                         )
                         for q in questions
-                    ]
-                    for coro in asyncio.as_completed(coros):
-                        rec = await coro
+                    )
+                    async for rec in _as_completed_bounded(
+                        coros, settings.benchmark_max_concurrent
+                    ):
                         bench.records.append(rec)
                         progress.advance(task_ids[strat.name])
                     bench = _aggregate(bench, questions_map)
@@ -562,9 +603,11 @@ async def run_benchmark(
                                 break
                     else:
                         records = []
-                        coros = [_run_question(question) for question in questions]
-                        for coro in asyncio.as_completed(coros):
-                            records.append(await coro)
+                        coros = (_run_question(question) for question in questions)
+                        async for record in _as_completed_bounded(
+                            coros, settings.benchmark_max_concurrent
+                        ):
+                            records.append(record)
 
                     for rec in records:
                         bench.records.append(rec)

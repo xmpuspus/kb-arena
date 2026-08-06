@@ -12,12 +12,10 @@ These run alongside (not replacing) the existing LLM judge accuracy metric.
 from __future__ import annotations
 
 import json
-import logging
+import math
 import re
 
 from kb_arena.llm.client import LLMClient, LLMResponse
-
-logger = logging.getLogger(__name__)
 
 _FAITHFULNESS_PROMPT = """You evaluate whether an answer is faithful to the given context.
 
@@ -75,12 +73,36 @@ Return JSON:
 1.0 = perfectly addresses the question. 0.5 = partially relevant. 0.0 = irrelevant."""
 
 
+class RAGASExecutionError(RuntimeError):
+    """A RAGAS metric could not produce a trustworthy score."""
+
+
 def _parse_json_response(text: str) -> dict:
     """Extract JSON from LLM response, tolerating markdown fences."""
     json_match = re.search(r"\{[^}]+\}", text, re.DOTALL)
-    if json_match:
-        return json.loads(json_match.group())
-    return {}
+    if not json_match:
+        raise RAGASExecutionError("metric judge returned no JSON score")
+    try:
+        parsed = json.loads(json_match.group())
+    except (TypeError, ValueError) as exc:
+        raise RAGASExecutionError(f"metric judge returned invalid JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise RAGASExecutionError("metric judge JSON must be an object")
+    return parsed
+
+
+def _score_value(parsed: dict, field: str) -> float:
+    if field not in parsed:
+        raise RAGASExecutionError(f"metric judge score missing field: {field}")
+    try:
+        score = float(parsed[field])
+    except (TypeError, ValueError) as exc:
+        raise RAGASExecutionError(f"metric judge field {field} is not numeric") from exc
+    if not math.isfinite(score) or not 0.0 <= score <= 1.0:
+        raise RAGASExecutionError(
+            f"metric judge field {field} must be a finite number between 0 and 1"
+        )
+    return score
 
 
 async def compute_faithfulness(
@@ -95,18 +117,13 @@ async def compute_faithfulness(
     context = "\n---\n".join(context_chunks[:10])  # limit context size
     user = f"Context:\n{context}\n\nAnswer:\n{answer}"
 
-    try:
-        resp: LLMResponse = await llm.judge(
-            answer=user,
-            reference="",
-            system_prompt=_FAITHFULNESS_PROMPT,
-            max_tokens=200,
-        )
-        parsed = _parse_json_response(resp.text)
-        return float(parsed.get("faithfulness", 0.0))
-    except Exception as exc:
-        logger.warning("Faithfulness eval failed: %s", exc)
-        return 0.0
+    resp: LLMResponse = await llm.judge(
+        answer=user,
+        reference="",
+        system_prompt=_FAITHFULNESS_PROMPT,
+        max_tokens=200,
+    )
+    return _score_value(_parse_json_response(resp.text), "faithfulness")
 
 
 async def compute_context_precision(
@@ -121,18 +138,13 @@ async def compute_context_precision(
     context = "\n---\n".join(f"Chunk {i + 1}: {c}" for i, c in enumerate(context_chunks[:10]))
     user = f"Question: {question}\n\nRetrieved context:\n{context}"
 
-    try:
-        resp = await llm.judge(
-            answer=user,
-            reference="",
-            system_prompt=_CONTEXT_PRECISION_PROMPT,
-            max_tokens=200,
-        )
-        parsed = _parse_json_response(resp.text)
-        return float(parsed.get("context_precision", 0.0))
-    except Exception as exc:
-        logger.warning("Context precision eval failed: %s", exc)
-        return 0.0
+    resp = await llm.judge(
+        answer=user,
+        reference="",
+        system_prompt=_CONTEXT_PRECISION_PROMPT,
+        max_tokens=200,
+    )
+    return _score_value(_parse_json_response(resp.text), "context_precision")
 
 
 async def compute_context_recall(
@@ -147,18 +159,13 @@ async def compute_context_recall(
     context = "\n---\n".join(context_chunks[:10])
     user = f"Reference answer:\n{reference_answer}\n\nRetrieved context:\n{context}"
 
-    try:
-        resp = await llm.judge(
-            answer=user,
-            reference="",
-            system_prompt=_CONTEXT_RECALL_PROMPT,
-            max_tokens=200,
-        )
-        parsed = _parse_json_response(resp.text)
-        return float(parsed.get("context_recall", 0.0))
-    except Exception as exc:
-        logger.warning("Context recall eval failed: %s", exc)
-        return 0.0
+    resp = await llm.judge(
+        answer=user,
+        reference="",
+        system_prompt=_CONTEXT_RECALL_PROMPT,
+        max_tokens=200,
+    )
+    return _score_value(_parse_json_response(resp.text), "context_recall")
 
 
 async def compute_answer_relevancy(
@@ -172,15 +179,10 @@ async def compute_answer_relevancy(
 
     user = f"Question: {question}\n\nAnswer:\n{answer}"
 
-    try:
-        resp = await llm.judge(
-            answer=user,
-            reference="",
-            system_prompt=_ANSWER_RELEVANCY_PROMPT,
-            max_tokens=200,
-        )
-        parsed = _parse_json_response(resp.text)
-        return float(parsed.get("relevancy", 0.0))
-    except Exception as exc:
-        logger.warning("Answer relevancy eval failed: %s", exc)
-        return 0.0
+    resp = await llm.judge(
+        answer=user,
+        reference="",
+        system_prompt=_ANSWER_RELEVANCY_PROMPT,
+        max_tokens=200,
+    )
+    return _score_value(_parse_json_response(resp.text), "relevancy")

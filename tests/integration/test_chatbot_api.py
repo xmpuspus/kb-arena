@@ -776,3 +776,25 @@ async def test_graph_build_queue_stays_bounded_without_stream_client(tmp_path, m
         assert retained[-2]["type"] == "complete"
     finally:
         api._graph_build_queues.pop(build_id, None)
+
+
+@pytest.mark.asyncio
+async def test_graph_build_stream_rejects_a_second_subscriber():
+    import asyncio
+
+    from kb_arena.chatbot import api
+
+    build_id = "single-subscriber"
+    queue: asyncio.Queue = asyncio.Queue()
+    api._graph_build_queues[build_id] = queue
+    try:
+        first = await api.graph_build_stream(build_id)
+        second = await api.graph_build_stream(build_id)
+        event = await anext(second.body_iterator)
+
+        assert event["event"] == "error"
+        assert "already has a subscriber" in event["data"]
+        await first.body_iterator.aclose()
+    finally:
+        api._graph_build_queues.pop(build_id, None)
+        api._graph_build_subscribers.discard(build_id)

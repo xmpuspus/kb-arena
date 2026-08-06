@@ -41,6 +41,7 @@ from kb_arena.settings import settings
 # Keyed by build_id (not corpus) so concurrent builds for the same corpus don't collide.
 _graph_build_queues: dict[str, _asyncio.Queue] = {}
 _graph_build_tasks: dict[str, _asyncio.Task[None]] = {}
+_graph_build_subscribers: set[str] = set()
 _GRAPH_BUILD_QUEUE_MAX_EVENTS = 1000
 _GRAPH_BUILD_QUEUE_TTL_SECONDS = 300.0
 _GRAPH_BUILD_MAX_ACTIVE = 4
@@ -55,6 +56,11 @@ def _enqueue_graph_build_event(queue: _asyncio.Queue, event: dict | None) -> Non
         except _asyncio.QueueEmpty:
             pass
     queue.put_nowait(event)
+
+
+def _expire_graph_build(build_id: str) -> None:
+    _graph_build_queues.pop(build_id, None)
+    _graph_build_subscribers.discard(build_id)
 
 
 class _GraphBuildRequest(BaseModel):
@@ -696,9 +702,8 @@ async def trigger_graph_build(body: _GraphBuildRequest) -> dict:
             _enqueue_graph_build_event(queue, None)  # Sentinel that signals stream end.
             _asyncio.get_running_loop().call_later(
                 _GRAPH_BUILD_QUEUE_TTL_SECONDS,
-                _graph_build_queues.pop,
+                _expire_graph_build,
                 build_id,
-                None,
             )
 
     task = _asyncio.create_task(_run(), name=f"graph_build:{build_id}")
@@ -722,17 +727,32 @@ async def graph_build_stream(build_id: str) -> EventSourceResponse:
 
         return EventSourceResponse(_empty())
 
+    if build_id in _graph_build_subscribers:
+
+        async def _duplicate() -> AsyncIterator[dict]:
+            yield {
+                "event": "error",
+                "retry": 99999999,
+                "data": json.dumps({"message": "Build stream already has a subscriber."}),
+            }
+
+        return EventSourceResponse(_duplicate())
+
+    _graph_build_subscribers.add(build_id)
+
     async def event_generator() -> AsyncIterator[dict]:
-        while True:
-            try:
-                event = await _asyncio.wait_for(queue.get(), timeout=30.0)
-            except TimeoutError:
-                yield {"event": "heartbeat", "data": "{}"}
-                continue
-            if event is None:  # Sentinel that signals the build is complete.
-                break
-            yield {"event": event["type"], "data": json.dumps(event["data"])}
-        _graph_build_queues.pop(build_id, None)
+        try:
+            while True:
+                try:
+                    event = await _asyncio.wait_for(queue.get(), timeout=30.0)
+                except TimeoutError:
+                    yield {"event": "heartbeat", "data": "{}"}
+                    continue
+                if event is None:  # Sentinel that signals the build is complete.
+                    break
+                yield {"event": event["type"], "data": json.dumps(event["data"])}
+        finally:
+            _expire_graph_build(build_id)
 
     return EventSourceResponse(event_generator())
 

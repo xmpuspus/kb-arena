@@ -585,14 +585,17 @@ def run(
     def _save_state() -> None:
         state_path.write_text(json.dumps(state, indent=2))
 
-    def _stage(name: str, action) -> None:
-        if resume and state.get(name) == "done":
+    def _stage(name: str, action, checkpoint: dict | None = None) -> None:
+        checkpoint = checkpoint or {}
+        checkpoint_matches = all(state.get(key) == value for key, value in checkpoint.items())
+        if resume and state.get(name) == "done" and checkpoint_matches:
             console.print(f"[dim][skip][/dim] {name} already complete")
             return
         console.print(Panel.fit(f"[bold]{name}[/bold]", style="cyan"))
         if action() is False:
             return
         state[name] = "done"
+        state.update(checkpoint)
         _save_state()
 
     from kb_arena.strategies import load_documents
@@ -617,6 +620,8 @@ def run(
     if resume and not has_questions:
         for stage_name in ("generate_questions", "benchmark"):
             state_changed = state.pop(stage_name, None) is not None or state_changed
+    if "benchmark" not in state:
+        state_changed = state.pop("benchmark_strategies", None) is not None or state_changed
 
     # 1. ingest explicit input, or automatically use a populated raw directory.
     ingest_source = docs
@@ -642,15 +647,9 @@ def run(
             not skip_graph and not (resume and state.get("build_graph") == "done"),
             not (resume and state.get("build_vectors") == "done"),
             not has_questions and not (resume and state.get("generate_questions") == "done"),
-            not (resume and state.get("benchmark") == "done"),
         )
     )
-    needs_embeddings = any(
-        (
-            not (resume and state.get("build_vectors") == "done"),
-            not (resume and state.get("benchmark") == "done"),
-        )
-    )
+    needs_embeddings = not (resume and state.get("build_vectors") == "done")
     if needs_llm or needs_embeddings:
         _preflight(needs_llm=needs_llm, needs_embeddings=needs_embeddings)
     if state_changed:
@@ -728,10 +727,22 @@ def run(
             name for name in default_strategy_names() if name not in {"knowledge_graph", "hybrid"}
         )
 
+    benchmark_checkpoint = {"benchmark_strategies": benchmark_strategies}
+    benchmark_complete = (
+        resume
+        and state.get("benchmark") == "done"
+        and state.get("benchmark_strategies") == benchmark_strategies
+    )
+    if not benchmark_complete and (not needs_llm or not needs_embeddings):
+        _preflight(
+            needs_llm=not needs_llm,
+            needs_embeddings=not needs_embeddings,
+        )
+
     def _bench():
         asyncio.run(run_benchmark(corpus=corpus, strategy=benchmark_strategies))
 
-    _stage("benchmark", _bench)
+    _stage("benchmark", _bench, checkpoint=benchmark_checkpoint)
 
     console.print()
     console.print(
@@ -1344,13 +1355,30 @@ def optimize(
     """
     import asyncio as _asyncio
 
-    from kb_arena.benchmark.optimizer import run_optimize
+    from kb_arena.benchmark.optimizer import run_optimize, validate_optimize_inputs
 
-    def _ints(s: str) -> list[int]:
-        return [int(x) for x in s.split(",") if x.strip()]
+    def _ints(s: str, option: str) -> list[int]:
+        try:
+            return [int(x) for x in s.split(",") if x.strip()]
+        except ValueError:
+            raise ValueError(f"Invalid integer list for {option}.") from None
 
     def _strs(s: str) -> list[str]:
         return [x.strip() for x in s.split(",") if x.strip()]
+
+    try:
+        parsed_top_ks = _ints(top_ks, "--top-ks")
+        parsed_chunk_sizes = _ints(chunk_sizes, "--chunk-sizes")
+        validate_optimize_inputs(
+            strategies,
+            top_ks=parsed_top_ks,
+            chunk_sizes=parsed_chunk_sizes,
+            method=method,
+            max_trials=max_trials,
+        )
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from None
 
     if not dry_run:
         _preflight(needs_embeddings=True)
@@ -1359,8 +1387,8 @@ def optimize(
         run_optimize(
             corpus,
             strategies,
-            top_ks=_ints(top_ks),
-            chunk_sizes=_ints(chunk_sizes),
+            top_ks=parsed_top_ks,
+            chunk_sizes=parsed_chunk_sizes,
             embedding_providers=_strs(embedding_providers),
             reranker_backends=_strs(reranker_backends),
             metric=metric,

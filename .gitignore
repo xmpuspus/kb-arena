@@ -64,6 +64,7 @@ datasets/*/qa-pairs/
 
 # Benchmark results (user-generated results are not committed)
 results/*.json
+results/run_*/
 !results/aws-compute_*.json
 !results/.gitkeep
 

@@ -88,6 +88,8 @@ def require_auth(
             },
         )
 
+    check_rate_limit(request)
+
     expected = settings.api_token
     if expected:
         provided = ""
@@ -95,5 +97,3 @@ def require_auth(
             provided = authorization[len("Bearer ") :].strip()
         if not provided or not hmac.compare_digest(provided, expected):
             raise HTTPException(status_code=401, detail="unauthorized")
-
-    check_rate_limit(request)

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
+from fastapi import HTTPException
 from starlette.requests import Request
 
 
@@ -65,3 +67,25 @@ def test_rate_limit_consumption_is_atomic_at_capacity():
     finally:
         with auth._rate_lock:
             auth._rate_store.clear()
+
+
+def test_invalid_bearers_are_rate_limited(monkeypatch):
+    from kb_arena.chatbot import auth
+    from kb_arena.settings import settings
+
+    auth._rate_store.clear()
+    monkeypatch.setattr(settings, "api_token", "correct-token")
+    monkeypatch.setattr(settings, "demo_mode", False)
+    request = _request("192.0.2.50")
+
+    try:
+        for _ in range(auth.RATE_LIMIT_RPM):
+            with pytest.raises(HTTPException) as exc_info:
+                auth.require_auth(request, authorization="Bearer wrong-token")
+            assert exc_info.value.status_code == 401
+
+        with pytest.raises(HTTPException) as exc_info:
+            auth.require_auth(request, authorization="Bearer wrong-token")
+        assert exc_info.value.status_code == 429
+    finally:
+        auth._rate_store.clear()

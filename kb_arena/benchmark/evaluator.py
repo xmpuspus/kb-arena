@@ -6,9 +6,11 @@ Includes evaluation memoization to avoid re-scoring identical answer+reference p
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
+import math
 import re
 
 from kb_arena.llm.client import LLMClient
@@ -19,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Memoization cache keyed by every input that can change an evaluation.
 _eval_cache: dict[str, Score] = {}
+_eval_inflight: dict[str, asyncio.Task[Score]] = {}
 
 
 class EvaluationExecutionError(RuntimeError):
@@ -140,7 +143,7 @@ def _check_source_attribution(
     return matched / len(expected_refs)
 
 
-async def evaluate(
+async def _evaluate_uncached(
     answer: str,
     ground_truth: GroundTruth,
     constraints: Constraints,
@@ -161,30 +164,6 @@ async def evaluate(
     reference_free=True skips passes that need ground_truth.answer and evaluates
     on faithfulness + answer relevancy only.
     """
-    cache_payload = {
-        "answer": answer,
-        "ground_truth": ground_truth.model_dump(mode="json"),
-        "constraints": constraints.model_dump(mode="json"),
-        "sources": sources or [],
-        "question_text": question_text,
-        "context_chunks": context_chunks or [],
-        "reference_free": reference_free,
-        "ragas_enabled": settings.benchmark_enable_ragas,
-        "llm_enabled": llm is not None,
-        "llm_provider": settings.llm_provider,
-        "judge_models": [
-            settings.judge_model,
-            settings.openai_judge_model,
-            settings.ollama_judge_model,
-        ],
-    }
-    cache_key = _hash_text(json.dumps(cache_payload, sort_keys=True, separators=(",", ":")))
-    if cache_key in _eval_cache:
-        logger.debug("Eval cache hit for %s", cache_key)
-        cached = _eval_cache[cache_key].model_copy()
-        cached.evaluation_cost_usd = 0.0
-        return cached
-
     if reference_free:
         # Reference-free mode: skip structural checks that need ground truth
         score = Score(accuracy=0.0, completeness=0.0, faithfulness=1.0, structural_pass=True)
@@ -204,7 +183,6 @@ async def evaluate(
         )
 
     if not score.structural_pass or llm is None:
-        _eval_cache[cache_key] = score
         return score
 
     tracked_llm = _CostTrackingLLM(llm)
@@ -225,9 +203,18 @@ async def evaluate(
             missing = required - parsed.keys()
             if missing:
                 raise ValueError(f"judge score missing fields: {sorted(missing)}")
-            score.accuracy = float(parsed["accuracy"])
-            score.completeness = float(parsed["completeness"])
-            score.faithfulness = float(parsed["faithfulness"])
+            judge_scores = {
+                field: float(parsed[field])
+                for field in ("accuracy", "completeness", "faithfulness")
+            }
+            if any(
+                not math.isfinite(value) or not 0.0 <= value <= 1.0
+                for value in judge_scores.values()
+            ):
+                raise ValueError("judge scores must be finite numbers between 0 and 1")
+            score.accuracy = judge_scores["accuracy"]
+            score.completeness = judge_scores["completeness"]
+            score.faithfulness = judge_scores["faithfulness"]
         except Exception as exc:
             raise EvaluationExecutionError(f"LLM judge failed: {exc}") from exc
 
@@ -255,8 +242,81 @@ async def evaluate(
                     ground_truth.answer, chunks, tracked_llm
                 )
         except Exception as exc:
-            logger.warning("RAGAS metrics failed: %s", exc)
+            raise EvaluationExecutionError(f"RAGAS metrics failed: {exc}") from exc
 
     score.evaluation_cost_usd = tracked_llm.cost_usd
-    _eval_cache[cache_key] = score.model_copy()
     return score
+
+
+async def evaluate(
+    answer: str,
+    ground_truth: GroundTruth,
+    constraints: Constraints,
+    sources: list[str] | None = None,
+    llm: LLMClient | None = None,
+    question_text: str = "",
+    context_chunks: list[str] | None = None,
+    reference_free: bool = False,
+) -> Score:
+    """Evaluate once per unique input and share concurrent judge work."""
+    cache_payload = {
+        "answer": answer,
+        "ground_truth": ground_truth.model_dump(mode="json"),
+        "constraints": constraints.model_dump(mode="json"),
+        "sources": sources or [],
+        "question_text": question_text,
+        "context_chunks": context_chunks or [],
+        "reference_free": reference_free,
+        "ragas_enabled": settings.benchmark_enable_ragas,
+        "llm_enabled": llm is not None,
+        "llm_provider": settings.llm_provider,
+        "judge_models": [
+            settings.judge_model,
+            settings.openai_judge_model,
+            settings.ollama_judge_model,
+        ],
+    }
+    cache_key = _hash_text(json.dumps(cache_payload, sort_keys=True, separators=(",", ":")))
+    cached = _eval_cache.get(cache_key)
+    if cached is not None:
+        logger.debug("Eval cache hit for %s", cache_key)
+        result = cached.model_copy()
+        result.evaluation_cost_usd = 0.0
+        return result
+
+    task = _eval_inflight.get(cache_key)
+    owns_task = task is None
+    if task is None:
+        task = asyncio.create_task(
+            _evaluate_uncached(
+                answer,
+                ground_truth,
+                constraints,
+                sources=sources,
+                llm=llm,
+                question_text=question_text,
+                context_chunks=context_chunks,
+                reference_free=reference_free,
+            )
+        )
+        _eval_inflight[cache_key] = task
+
+        def _finish(completed: asyncio.Task[Score]) -> None:
+            if _eval_inflight.get(cache_key) is completed:
+                _eval_inflight.pop(cache_key, None)
+            if completed.cancelled():
+                return
+            try:
+                score = completed.result()
+            except Exception:
+                return
+            _eval_cache[cache_key] = score.model_copy()
+
+        task.add_done_callback(_finish)
+
+    score = await asyncio.shield(task)
+    if owns_task:
+        return score
+    shared = score.model_copy()
+    shared.evaluation_cost_usd = 0.0
+    return shared

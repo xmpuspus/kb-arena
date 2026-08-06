@@ -92,6 +92,18 @@ async def test_retrieve_only_preserves_legitimate_empty_result():
 
 
 @pytest.mark.asyncio
+async def test_retrieve_only_rejects_missing_retrieval_trace():
+    class MissingTraceStrategy:
+        name = "missing"
+
+        async def query(self, question, top_k):
+            return AnswerResult(answer="answer", retrieval=None, strategy=self.name)
+
+    with pytest.raises(RetrievalExecutionError, match="no retrieval trace"):
+        await _retrieve_only(MissingTraceStrategy(), "Question", 5)
+
+
+@pytest.mark.asyncio
 async def test_retrieval_only_llm_mode_does_not_stub_concurrent_task(monkeypatch):
     from kb_arena.benchmark.retriever_lab import _PatchLLMClient
     from kb_arena.llm.client import LLMClient, LLMResponse
@@ -204,3 +216,24 @@ async def test_retriever_lab_fails_and_records_retrieval_ceiling_error(monkeypat
     ceiling = report["retrieval_ceiling"]["test"]
     assert ceiling["status"] == "error"
     assert ceiling["execution_error"]["type"] == "ConnectionError"
+
+
+@pytest.mark.asyncio
+async def test_retriever_lab_fails_when_no_questions_are_selected(monkeypatch, tmp_path):
+    from kb_arena.benchmark import retriever_lab, runner
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(retriever_lab, "load_questions", lambda corpus, split="": [])
+    monkeypatch.setattr(
+        runner,
+        "_load_strategies",
+        lambda strategy_filter: [SimpleNamespace(name="naive_vector")],
+    )
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+
+    code = await retriever_lab.run_retriever_lab(corpus="empty", split="holdout")
+
+    assert code == 1
+    report_path = next(tmp_path.glob("run_*/retriever_lab.json"))
+    report = json.loads(report_path.read_text())
+    assert report["corpora"] == {}

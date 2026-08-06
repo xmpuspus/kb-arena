@@ -570,6 +570,39 @@ def _resolve_strategies(strategies_filter: str) -> list[str]:
     return [s.strip() for s in strategies_filter.split(",") if s.strip()]
 
 
+def validate_optimize_inputs(
+    strategies_filter: str,
+    *,
+    top_ks: list[int],
+    chunk_sizes: list[int],
+    method: str,
+    max_trials: int,
+) -> list[str]:
+    """Validate an optimization plan before credentials or services are used."""
+    from kb_arena.strategies.catalog import STRATEGY_CATALOG
+
+    if method not in {"grid", "random"}:
+        raise ValueError("Unknown search method. Use 'grid' or 'random'.")
+    if max_trials < 0:
+        raise ValueError("--max-trials must be nonnegative.")
+    if any(top_k < 1 for top_k in top_ks):
+        raise ValueError("Top-k values must be positive.")
+    if any(size <= settings.chunk_overlap_tokens for size in chunk_sizes):
+        raise ValueError(
+            "Chunk sizes must be greater than the configured overlap "
+            f"({settings.chunk_overlap_tokens})."
+        )
+
+    strategies = _resolve_strategies(strategies_filter)
+    if not strategies:
+        raise ValueError("Choose at least one strategy.")
+    known = {spec.name for spec in STRATEGY_CATALOG}
+    unknown = sorted(set(strategies) - known)
+    if unknown:
+        raise ValueError(f"Unknown strategy: {', '.join(unknown)}.")
+    return strategies
+
+
 async def run_optimize(
     corpus: str,
     strategies_filter: str = "all",
@@ -595,17 +628,21 @@ async def run_optimize(
     chunk_sizes = chunk_sizes or []
     embedding_providers = embedding_providers or []
     reranker_backends = reranker_backends or []
-    if method not in {"grid", "random"}:
-        console.print("[red]Unknown search method. Use 'grid' or 'random'.[/red]")
-        return 1
-    if max_trials < 0:
-        console.print("[red]--max-trials must be nonnegative.[/red]")
+    try:
+        strategies = validate_optimize_inputs(
+            strategies_filter,
+            top_ks=top_ks,
+            chunk_sizes=chunk_sizes,
+            method=method,
+            max_trials=max_trials,
+        )
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
         return 1
     if metric not in _METRIC_FIELDS:
         console.print(f"[red]Unknown metric {metric!r}. Use one of {sorted(_METRIC_FIELDS)}[/red]")
         return 1
 
-    strategies = _resolve_strategies(strategies_filter)
     valid_splits = {"auto", "all", "development", "validation", "holdout", "unspecified"}
     if split not in valid_splits:
         console.print(f"[red]Unknown split {split!r}. Use one of {sorted(valid_splits)}[/red]")
