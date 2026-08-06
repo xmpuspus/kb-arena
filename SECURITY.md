@@ -89,8 +89,8 @@ validation and use an isolated environment for untrusted corpora.
 ## Known limits
 
 - The in-memory rate limiter resets when the process restarts and does not coordinate across workers.
-- A reverse proxy must remove untrusted forwarding headers before you set
-  `KB_ARENA_TRUSTED_PROXY_HEADER`.
+- A reverse proxy must connect from loopback and remove untrusted forwarding headers before you
+  set `KB_ARENA_TRUSTED_PROXY_HEADER`.
 - React escapes normal text output, but custom integrations must sanitize content before rendering
   it as HTML.
 - `/api/debug/explain` is available only when `KB_ARENA_DEBUG=true`; do not enable it on a public

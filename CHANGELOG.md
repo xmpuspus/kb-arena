@@ -67,7 +67,8 @@ All notable changes to KB Arena.
   clients, authenticated graph-build streams, and reconnected interrupted browser streams without
   launching duplicate builds.
 - Used the configured trusted-proxy client identity for open-mode authorization, so a loopback
-  reverse proxy cannot make an external LLM request appear local.
+  reverse proxy cannot make an external LLM request appear local. Forwarded client headers from
+  non-loopback peers are ignored.
 - Honored HTTP, HTTPS, and GitHub sources in one-shot runs regardless of scheme casing, and
   invalidated downstream checkpoints when an explicit source changes.
 - Published ingested corpora atomically, bounded optimizer search construction, and expanded

@@ -56,13 +56,21 @@ def _consume_rate_limit(client_id: str, *, now: float | None = None) -> bool:
         return True
 
 
+def _is_loopback_host(host: str) -> bool:
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return host.lower() == "localhost"
+
+
 def _client_key(request: Request) -> str:
-    """Resolve client identity for rate limiting. Honors trusted proxy header when configured."""
-    if settings.trusted_proxy_header:
+    """Resolve client identity, accepting forwarded values only from a loopback proxy."""
+    socket_host = request.client.host if request.client else "unknown"
+    if settings.trusted_proxy_header and _is_loopback_host(socket_host):
         forwarded = request.headers.get(settings.trusted_proxy_header)
         if forwarded:
             return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    return socket_host
 
 
 def check_rate_limit(request: Request) -> None:
@@ -100,9 +108,5 @@ def require_auth(
             raise HTTPException(status_code=401, detail="unauthorized")
     else:
         client_host = _client_key(request)
-        try:
-            is_loopback = ipaddress.ip_address(client_host).is_loopback
-        except ValueError:
-            is_loopback = client_host.lower() == "localhost"
-        if not is_loopback:
+        if not _is_loopback_host(client_host):
             raise HTTPException(status_code=401, detail="api_token_required_for_remote_access")
