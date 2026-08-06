@@ -8,7 +8,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
 } from "recharts";
 import { STRATEGY_LABELS, STRATEGY_COLORS, TIER_INFO, type Strategy } from "@/lib/api";
 
@@ -34,49 +33,53 @@ export default function TierChart({ rows }: Props) {
   });
 
   return (
-    <ResponsiveContainer width="100%" height={400}>
-      <BarChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-        <XAxis dataKey="tier" tick={{ fill: "var(--muted)", fontSize: 12 }} />
-        <YAxis
-          domain={[0, 100]}
-          tickFormatter={(v) => `${v}%`}
-          tick={{ fill: "var(--muted)", fontSize: 12 }}
-        />
-        <Tooltip
-          contentStyle={{
-            background: "var(--card)",
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            color: "var(--foreground)",
-          }}
-          formatter={(val, key) => [
-            `${val ?? 0}%`,
-            STRATEGY_LABELS[key as Strategy] ?? key,
-          ]}
-        />
-        <Legend
-          content={() => (
-            <div style={{ display: "flex", justifyContent: "center", gap: 16, color: "var(--muted)", fontSize: 12 }}>
-              {rows.map((row) => (
-                <span key={row.strategy} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: STRATEGY_COLORS[row.strategy] }} />
-                  {STRATEGY_LABELS[row.strategy] ?? row.strategy}
-                </span>
-              ))}
-            </div>
-          )}
-        />
-        {rows.map((row) => (
-          <Bar
-            key={row.strategy}
-            dataKey={row.strategy}
-            fill={STRATEGY_COLORS[row.strategy]}
-            radius={[2, 2, 0, 0]}
-            isAnimationActive={false}
+    <div className="space-y-3 overflow-hidden">
+      <ResponsiveContainer width="100%" height={400}>
+        <BarChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+          <XAxis dataKey="tier" tick={{ fill: "var(--muted)", fontSize: 12 }} />
+          <YAxis
+            domain={[0, 100]}
+            tickFormatter={(v) => `${v}%`}
+            tick={{ fill: "var(--muted)", fontSize: 12 }}
           />
+          <Tooltip
+            contentStyle={{
+              background: "var(--card)",
+              border: "1px solid var(--border)",
+              borderRadius: 6,
+              color: "var(--foreground)",
+            }}
+            formatter={(val, key) => [
+              `${val ?? 0}%`,
+              STRATEGY_LABELS[key as Strategy] ?? key,
+            ]}
+          />
+          {rows.map((row) => (
+            <Bar
+              key={row.strategy}
+              dataKey={row.strategy}
+              fill={STRATEGY_COLORS[row.strategy]}
+              radius={[2, 2, 0, 0]}
+              isAnimationActive={false}
+            />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+      <div
+        className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs sm:flex sm:flex-wrap sm:justify-center"
+        style={{ color: "var(--muted)" }}
+      >
+        {rows.map((row) => (
+          <span key={row.strategy} className="inline-flex min-w-0 items-center gap-1">
+            <span
+              className="size-2.5 shrink-0 rounded-sm"
+              style={{ background: STRATEGY_COLORS[row.strategy] }}
+            />
+            {STRATEGY_LABELS[row.strategy] ?? row.strategy}
+          </span>
         ))}
-      </BarChart>
-    </ResponsiveContainer>
+      </div>
+    </div>
   );
 }

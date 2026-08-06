@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+import typer
+
 # ---------------------------------------------------------------------------
 # Default values
 # ---------------------------------------------------------------------------
@@ -35,6 +38,13 @@ def test_settings_default_neo4j_user():
     assert s.neo4j_user == "neo4j"
 
 
+def test_settings_default_neo4j_database():
+    from kb_arena.settings import Settings
+
+    s = Settings()
+    assert s.neo4j_database == "neo4j"
+
+
 def test_settings_default_chroma_path():
     from kb_arena.settings import Settings
 
@@ -49,11 +59,23 @@ def test_settings_default_port():
     assert s.port == 8000
 
 
-def test_settings_default_host():
+def test_settings_default_host(monkeypatch):
     from kb_arena.settings import Settings
 
-    s = Settings()
-    assert s.host == "0.0.0.0"
+    monkeypatch.delenv("KB_ARENA_HOST", raising=False)
+    s = Settings(_env_file=None)
+    assert s.host == "127.0.0.1"
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf", "-1"])
+def test_settings_rejects_invalid_benchmark_cost_cap(monkeypatch, value):
+    from pydantic import ValidationError
+
+    monkeypatch.setenv("KB_ARENA_BENCHMARK_COST_CAP_USD", value)
+    from kb_arena.settings import Settings
+
+    with pytest.raises(ValidationError, match="cost cap"):
+        Settings(_env_file=None)
 
 
 def test_settings_default_debug_false():
@@ -150,6 +172,14 @@ def test_settings_neo4j_uri_via_env(monkeypatch):
     assert s.neo4j_uri == "bolt://remote:7687"
 
 
+def test_settings_neo4j_database_via_env(monkeypatch):
+    monkeypatch.setenv("KB_ARENA_NEO4J_DATABASE", "kb_arena")
+    from kb_arena.settings import Settings
+
+    s = Settings()
+    assert s.neo4j_database == "kb_arena"
+
+
 def test_settings_datasets_path_via_env(monkeypatch):
     monkeypatch.setenv("KB_ARENA_DATASETS_PATH", "/tmp/my-datasets")
     from kb_arena.settings import Settings
@@ -164,3 +194,39 @@ def test_settings_extra_fields_ignored(monkeypatch):
 
     s = Settings()
     assert s is not None
+
+
+def test_preflight_checks_openai_embeddings_when_generation_uses_ollama(monkeypatch):
+    from kb_arena.cli import _preflight
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(settings, "llm_provider", "ollama")
+    monkeypatch.setattr(settings, "embedding_provider", "openai")
+    monkeypatch.setattr(settings, "openai_api_key", "")
+
+    with pytest.raises(typer.Exit):
+        _preflight(needs_embeddings=True)
+
+
+def test_preflight_checks_openai_generation_with_local_embeddings(monkeypatch):
+    from kb_arena.cli import _preflight
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(settings, "llm_provider", "openai")
+    monkeypatch.setattr(settings, "embedding_provider", "bge")
+    monkeypatch.setattr(settings, "openai_api_key", "")
+
+    with pytest.raises(typer.Exit):
+        _preflight(needs_llm=True)
+
+
+def test_preflight_accepts_fully_local_ollama(monkeypatch):
+    from kb_arena.cli import _preflight
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(settings, "llm_provider", "ollama")
+    monkeypatch.setattr(settings, "embedding_provider", "ollama")
+    monkeypatch.setattr(settings, "openai_api_key", "")
+    monkeypatch.setattr(settings, "anthropic_api_key", "")
+
+    assert _preflight(needs_llm=True, needs_embeddings=True) is None

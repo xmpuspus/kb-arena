@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -225,6 +225,33 @@ async def test_qna_query_empty_collection(mock_chroma_client, mock_llm_client):
     assert "No relevant" in result.answer
 
 
+@pytest.mark.asyncio
+async def test_qna_build_preserves_active_index_when_generation_fails(
+    mock_chroma_client, sample_document
+):
+    strategy = QnAPairStrategy(chroma_client=mock_chroma_client)
+    strategy._generate_pairs = AsyncMock(side_effect=ConnectionError("provider offline"))
+
+    with pytest.raises(ConnectionError, match="provider offline"):
+        await strategy.build_index([sample_document])
+
+    collection = mock_chroma_client.get_or_create_collection.return_value
+    collection.upsert.assert_not_called()
+    collection.delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_qna_build_rejects_empty_section_generation(mock_chroma_client, sample_document):
+    strategy = QnAPairStrategy(chroma_client=mock_chroma_client)
+    strategy._generate_pairs = AsyncMock(return_value=[])
+
+    with pytest.raises(RuntimeError, match="returned no pairs"):
+        await strategy.build_index([sample_document])
+
+    collection = mock_chroma_client.get_or_create_collection.return_value
+    collection.upsert.assert_not_called()
+
+
 # --- KnowledgeGraphStrategy ---
 
 
@@ -246,6 +273,45 @@ async def test_knowledge_graph_mock_fallback():
     assert len(result.graph_context.nodes) >= 2
     assert "not connected" in result.answer.lower()
     assert result.strategy == "knowledge_graph"
+
+
+@pytest.mark.asyncio
+async def test_knowledge_graph_stream_emits_per_call_metadata():
+    strategy = KnowledgeGraphStrategy(neo4j_driver=None)
+
+    output = [item async for item in strategy.stream_answer("What is json.loads?")]
+
+    assert isinstance(output[-1], dict)
+    metadata = output[-1]["_kb_arena_meta"]
+    assert metadata["graph_context"] is not None
+    assert metadata["graph_context"]["nodes"]
+    assert metadata["latency_ms"] >= 0
+
+
+@pytest.mark.asyncio
+async def test_knowledge_graph_connected_stream_reports_usage():
+    from kb_arena.llm.client import LLMResponse
+
+    class FakeLLM:
+        async def stream(self, **kwargs):
+            assert kwargs["include_usage"] is True
+            yield "answer"
+            yield LLMResponse(text="", input_tokens=7, output_tokens=3, cost_usd=0.002)
+
+    strategy = KnowledgeGraphStrategy(neo4j_driver=object())
+    strategy._llm = FakeLLM()
+    strategy._classify_intent = AsyncMock(return_value="entity_lookup")
+    strategy._template_query = AsyncMock(
+        return_value=([{"fqn": "pkg.Name", "name": "Name", "type": "Class"}], "MATCH")
+    )
+
+    output = [item async for item in strategy.stream_answer("What is Name?")]
+
+    assert output[0] == "answer"
+    metadata = output[-1]["_kb_arena_meta"]
+    assert metadata["tokens_used"] == 10
+    assert metadata["cost_usd"] == pytest.approx(0.002)
+    assert metadata["sources"] == ["pkg.Name"]
 
 
 @pytest.mark.asyncio
@@ -420,6 +486,21 @@ async def test_raptor_query_empty_collection(mock_chroma_client, mock_llm_client
     assert "build-vectors" in result.answer or "No indexed" in result.answer
 
 
+@pytest.mark.asyncio
+async def test_raptor_query_surfaces_chroma_failure(mock_chroma_client, mock_llm_client):
+    collection = mock_chroma_client.get_or_create_collection.return_value
+    collection.count.return_value = 1
+    collection.query.side_effect = ConnectionError("chroma offline")
+
+    from kb_arena.strategies.raptor import RaptorStrategy
+
+    strategy = RaptorStrategy(chroma_client=mock_chroma_client)
+    strategy._llm = mock_llm_client
+
+    with pytest.raises(ConnectionError, match="chroma offline"):
+        await strategy.query("What is Lambda?")
+
+
 def test_cosine_kmeans_basic():
     """K-means returns one assignment per embedding."""
     import numpy as np
@@ -442,3 +523,52 @@ def test_cosine_kmeans_fewer_than_k():
     embeddings = np.random.rand(3, 8).astype(np.float32)
     assignments = _cosine_kmeans(embeddings, k=5)
     assert assignments == [0, 1, 2]
+
+
+@pytest.mark.asyncio
+async def test_naive_only_index_build_does_not_initialize_llm(
+    monkeypatch, mock_chroma_client, sample_documents
+):
+    from kb_arena.strategies import build_vector_indexes
+
+    llm = MagicMock(side_effect=AssertionError("naive_vector build must not initialize an LLM"))
+    build = AsyncMock()
+    monkeypatch.setattr("chromadb.PersistentClient", lambda **kwargs: mock_chroma_client)
+    load = MagicMock(return_value=sample_documents)
+    monkeypatch.setattr("kb_arena.strategies.load_documents", load)
+    monkeypatch.setattr("kb_arena.llm.client.LLMClient", llm)
+    monkeypatch.setattr("kb_arena.strategies.NaiveVectorStrategy.build_index", build)
+
+    await build_vector_indexes("sample", strategy="naive_vector")
+
+    llm.assert_not_called()
+    load.assert_called_once_with("sample", strict=True)
+    build.assert_awaited_once_with(sample_documents)
+
+
+@pytest.mark.asyncio
+async def test_index_build_rejects_corpus_without_processed_documents(
+    monkeypatch, mock_chroma_client
+):
+    from kb_arena.strategies import build_vector_indexes
+
+    monkeypatch.setattr("chromadb.PersistentClient", lambda **kwargs: mock_chroma_client)
+    monkeypatch.setattr("kb_arena.strategies.load_documents", lambda corpus, **kwargs: [])
+
+    with pytest.raises(ValueError, match="No processed documents"):
+        await build_vector_indexes("empty", strategy="naive_vector")
+
+
+def test_load_documents_rejects_malformed_jsonl(tmp_path, monkeypatch, sample_documents):
+    from kb_arena.settings import settings
+    from kb_arena.strategies import load_documents
+
+    processed = tmp_path / "sample" / "processed"
+    processed.mkdir(parents=True)
+    (processed / "documents.jsonl").write_text(
+        sample_documents[0].model_dump_json() + "\nnot valid json\n"
+    )
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path))
+
+    with pytest.raises(ValueError, match=r"documents\.jsonl:2"):
+        load_documents("sample", strict=True)

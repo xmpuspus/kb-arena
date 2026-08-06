@@ -25,10 +25,15 @@ export default function BenchmarkPage() {
   }, []);
 
   useEffect(() => {
+    let active = true;
     fetchBenchmarkResults(corpus).then((data) => {
+      if (!active) return;
       setRows(data);
       setSource(data === MOCK_BENCHMARK_DATA ? "mock" : "file");
     });
+    return () => {
+      active = false;
+    };
   }, [corpus]);
 
   return (
@@ -39,7 +44,7 @@ export default function BenchmarkPage() {
           Benchmark results
         </h1>
         <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
-          Accuracy by tier, latency, and cost across all 8 retrieval strategies.
+          Accuracy by tier, latency, and cost for the strategies recorded in each run.
         </p>
       </div>
 
@@ -78,7 +83,7 @@ export default function BenchmarkPage() {
 
         {source === "mock" && (
           <span className="text-xs px-2 py-1 rounded border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
-            Sample data — run <code className="mono">kb-arena benchmark</code> to generate real results
+            Checked sample run. Use <code className="mono">kb-arena benchmark</code> to evaluate your corpus.
           </span>
         )}
       </div>
@@ -114,7 +119,7 @@ export default function BenchmarkPage() {
         <h3 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>Methodology</h3>
         <div className="text-xs leading-relaxed space-y-1" style={{ color: "var(--muted)" }}>
           <p>
-            Each question is sent to all 10 strategies. Answers are evaluated through a 4-pass pipeline:
+            Each question is sent to the strategies recorded in the run. Answers are evaluated through a 4-pass pipeline:
             structural checks (must_mention / must_not_claim), entity coverage against source documentation,
             source attribution, and LLM-as-judge scoring for accuracy, completeness, and faithfulness.
           </p>

@@ -123,10 +123,11 @@ class ArenaEngine:
         if len(names) < 2:
             raise ValueError("Need at least 2 strategies for arena mode")
         a_name, b_name = random.sample(names, 2)
+        selected_corpus = corpus or "all"
 
         result_a, result_b = await asyncio.gather(
-            self.strategies[a_name].query(question),
-            self.strategies[b_name].query(question),
+            self.strategies[a_name].query(question, corpus=selected_corpus),
+            self.strategies[b_name].query(question, corpus=selected_corpus),
         )
 
         match = Match(

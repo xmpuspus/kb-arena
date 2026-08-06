@@ -94,6 +94,7 @@ async def test_cost_usd_propagated_through_answer_result():
         "ids": [["doc1-s1"]],
         "documents": [["chunk text"]],
         "metadatas": [[{"source_id": "doc1"}]],
+        "distances": [[0.1]],
     }
     mock_chroma.get_or_create_collection.return_value = collection
 
@@ -119,6 +120,7 @@ async def test_cost_usd_nonzero_when_llm_returns_cost():
         "ids": [["doc1-s1"]],
         "documents": [["chunk text"]],
         "metadatas": [[{"source_id": "doc1"}]],
+        "distances": [[0.1]],
     }
     mock_chroma.get_or_create_collection.return_value = collection
 

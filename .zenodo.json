@@ -1,6 +1,6 @@
 {
   "title": "KB Arena: a benchmark for retrieval architectures on your own documentation",
-  "description": "KB Arena benchmarks nine retrieval architectures (naive vector, contextual vector, QnA pairs, knowledge graph, hybrid via reciprocal rank fusion, RAPTOR, PageIndex, BM25, rerank-vector) head-to-head on user-provided documentation. It auto-generates benchmark questions across five difficulty tiers, computes a layered IR metric stack (Recall@k, Precision@k, Hit@k, MRR, NDCG@k, MAP, R-Precision, bpref) with bootstrap 95% confidence intervals, supports graded NDCG with exponential gain, includes a Rank-Biased Overlap implementation for strategy-vs-strategy comparison, and ships an automated hyperparameter search (kb-arena optimize) that reports Wilcoxon paired significance tests, win-rate, and a Pareto frontier over the (quality, latency) plane.",
+  "description": "KB Arena compares lexical, dense, graph, hybrid, hierarchical, and reranked retrieval on user-provided documentation. It runs the architectures on a shared corpus and question set, records retrieval and answer quality with latency and cost, and preserves the run artifacts needed to make a corpus-specific architecture decision.",
   "creators": [
     {
       "name": "Puspus, Xavier",

@@ -15,12 +15,13 @@ from __future__ import annotations
 
 import itertools
 import json
-import logging
+import math
 import random
 import tempfile
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from statistics import fmean
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -30,15 +31,12 @@ from kb_arena.benchmark.questions import load_questions
 from kb_arena.settings import settings
 from kb_arena.strategies import load_documents
 
-log = logging.getLogger(__name__)
-
 # Which dimensions each strategy actually consumes. Sweeping a dimension a
 # strategy ignores just burns wall-clock on duplicate trials.
-CHUNKING_STRATEGIES = frozenset({"naive_vector", "contextual_vector", "raptor"})
-EMBEDDING_STRATEGIES = frozenset(
-    {"naive_vector", "contextual_vector", "qna_pairs", "raptor", "rerank_vector"}
-)
+CHUNKING_STRATEGIES = frozenset({"naive_vector", "contextual_vector"})
+EMBEDDING_STRATEGIES = frozenset({"naive_vector", "contextual_vector", "rerank_vector"})
 RERANKER_STRATEGIES = frozenset({"rerank_vector"})
+MAX_UNBOUNDED_TRIALS = 10_000
 
 # A change in either of these requires rebuilding the strategy's index;
 # top_k and reranker_backend are query-time only (free to vary).
@@ -80,19 +78,15 @@ class TrialResult(BaseModel):
 
     @property
     def mean_score(self) -> float:
-        return (
-            sum(self.per_question_scores) / len(self.per_question_scores)
-            if self.per_question_scores
-            else 0.0
-        )
+        return fmean(self.per_question_scores) if self.per_question_scores else 0.0
 
     @property
     def mean_latency_ms(self) -> float:
-        return (
-            sum(self.per_question_latency_ms) / len(self.per_question_latency_ms)
-            if self.per_question_latency_ms
-            else 0.0
-        )
+        return fmean(self.per_question_latency_ms) if self.per_question_latency_ms else 0.0
+
+
+class OptimizationTrialError(RuntimeError):
+    """A trial failed before it could produce a complete score vector."""
 
 
 class OptimizeResult(BaseModel):
@@ -171,6 +165,8 @@ def build_trials(
     """
     if method not in ("grid", "random"):
         raise ValueError(f"Unknown method {method!r}. Use 'grid' or 'random'.")
+    if max_trials < 0:
+        raise ValueError("max_trials must be nonnegative")
 
     dims = applicable_dims(strategy)
     top_k_axis = _axis(top_ks, baseline.top_k, "top_k" in dims)
@@ -178,33 +174,62 @@ def build_trials(
     emb_axis = _axis(embedding_providers, baseline.embedding_provider, "embedding_provider" in dims)
     rer_axis = _axis(reranker_backends, baseline.reranker_backend, "reranker_backend" in dims)
 
-    combos = [
-        TrialConfig(
+    axes = (top_k_axis, chunk_axis, emb_axis, rer_axis)
+    total_combinations = math.prod(len(axis) for axis in axes)
+    if max_trials > MAX_UNBOUNDED_TRIALS:
+        raise ValueError(f"max_trials must be {MAX_UNBOUNDED_TRIALS:,} or fewer")
+    if max_trials == 0 and total_combinations > MAX_UNBOUNDED_TRIALS:
+        raise ValueError(
+            f"Search space has {total_combinations:,} trials; set --max-trials "
+            f"to {MAX_UNBOUNDED_TRIALS:,} or fewer."
+        )
+    if max_trials == 1:
+        return [baseline]
+
+    def _config(values) -> TrialConfig:
+        tk, ck, ep, rb = values
+        return TrialConfig(
             strategy=strategy,
             top_k=tk,
             chunk_tokens=ck,
             embedding_provider=ep,
             reranker_backend=rb,
         )
-        for tk, ck, ep, rb in itertools.product(top_k_axis, chunk_axis, emb_axis, rer_axis)
-    ]
 
-    # Dedupe while preserving order, baseline first.
-    seen: set[TrialConfig] = set()
+    # Baseline stays first so every reported delta has a measured reference.
     ordered: list[TrialConfig] = [baseline]
-    seen.add(baseline)
-    for c in combos:
-        if c not in seen:
-            seen.add(c)
-            ordered.append(c)
+    if method == "random" and max_trials and max_trials < total_combinations:
+        baseline_coords = (
+            top_k_axis.index(baseline.top_k),
+            chunk_axis.index(baseline.chunk_tokens),
+            emb_axis.index(baseline.embedding_provider),
+            rer_axis.index(baseline.reranker_backend),
+        )
+        baseline_index = 0
+        for coordinate, axis in zip(baseline_coords, axes, strict=True):
+            baseline_index = baseline_index * len(axis) + coordinate
 
-    if method == "random" and max_trials and len(ordered) > max_trials:
-        rest = ordered[1:]
         rng = random.Random(seed)
-        rng.shuffle(rest)
-        ordered = [baseline, *rest[: max_trials - 1]]
-    elif max_trials and len(ordered) > max_trials:
-        ordered = ordered[:max_trials]
+        sampled = rng.sample(range(total_combinations - 1), max_trials - 1)
+        for compressed_index in sampled:
+            flat_index = (
+                compressed_index if compressed_index < baseline_index else compressed_index + 1
+            )
+            coordinates: list[int] = []
+            for axis in reversed(axes):
+                flat_index, coordinate = divmod(flat_index, len(axis))
+                coordinates.append(coordinate)
+            values = [axis[i] for axis, i in zip(axes, reversed(coordinates), strict=True)]
+            ordered.append(_config(values))
+        return ordered
+
+    for values in itertools.product(*axes):
+        candidate = _config(values)
+        if candidate == baseline:
+            continue
+        ordered.append(candidate)
+        if max_trials and len(ordered) >= max_trials:
+            break
 
     return ordered
 
@@ -254,15 +279,16 @@ def select_best(
 def _bootstrap_ci(
     values: list[float], n_resamples: int = 1000, ci: float = 0.95
 ) -> tuple[float, float]:
-    """Percentile bootstrap CI on the mean — Sakai's standard for IR."""
+    """Percentile bootstrap CI on the mean, following Sakai's standard for IR."""
     if not values:
         return (0.0, 0.0)
+    if all(v == values[0] for v in values):
+        mean = fmean(values)
+        return (mean, mean)
     try:
         import numpy as np
         from scipy.stats import bootstrap as scipy_bootstrap
 
-        if all(v == values[0] for v in values):
-            return (values[0], values[0])
         res = scipy_bootstrap(
             (np.asarray(values),),
             statistic=np.mean,
@@ -272,8 +298,8 @@ def _bootstrap_ci(
             random_state=0,
         )
         return (float(res.confidence_interval.low), float(res.confidence_interval.high))
-    except Exception:  # noqa: BLE001 — graceful degradation if scipy missing
-        m = sum(values) / len(values)
+    except ImportError:  # optional scientific stack is unavailable
+        m = fmean(values)
         return (m, m)
 
 
@@ -282,7 +308,7 @@ def _wilcoxon(baseline: list[float], best: list[float]) -> float | None:
     if len(baseline) != len(best) or len(baseline) < 2:
         return None
     if all(b == a for a, b in zip(baseline, best, strict=True)):
-        return 1.0  # no paired difference — definitely not significant
+        return 1.0  # No paired difference means no significant difference.
     try:
         from scipy.stats import wilcoxon
 
@@ -306,7 +332,7 @@ def summarize_optimization(
 ) -> OptimizeResult:
     """Pick the best trial and attach the statistical layer (CI, p, win-rate, efficiency).
 
-    Delta is computed against the baseline trial — the trial whose config
+    Delta is computed against the baseline trial, whose config
     equals `baseline`, falling back to the first trial when none matches.
     """
     if not trials:
@@ -385,7 +411,7 @@ def pareto_optimal_strategies(results: list[OptimizeResult]) -> list[OptimizeRes
 
 
 def baseline_config(strategy: str) -> TrialConfig:
-    """The current-settings configuration — what the user gets today."""
+    """Return the configuration produced by the current settings."""
     return TrialConfig(
         strategy=strategy,
         top_k=5,
@@ -496,7 +522,9 @@ class _ApplyOverrides:
         return False
 
 
-async def _score_trial(strategy, cfg, documents, questions, metric, baseline) -> TrialResult:
+async def _score_trial(
+    strategy, cfg, documents, questions, metric, baseline, corpus: str = "all"
+) -> TrialResult:
     """Per-question scores + latencies for one (strategy, config) trial.
 
     Retrieval-only (LLM generation stubbed) so a full sweep stays ~10x cheaper
@@ -513,17 +541,24 @@ async def _score_trial(strategy, cfg, documents, questions, metric, baseline) ->
 
     with _ApplyOverrides(cfg, isolate_chroma=rebuild):
         inst = get_strategy(strategy)
-        if rebuild and hasattr(inst, "build_index"):
-            try:
-                await inst.build_index(documents)
-            except Exception as exc:  # noqa: BLE001 — a dead config scores 0, not crash
-                log.warning("optimize: build_index failed for %s %s: %s", strategy, cfg, exc)
-                return TrialResult(cfg=cfg, per_question_scores=[0.0] * len(questions))
-        scores: list[float] = []
-        latencies: list[float] = []
         with _PatchLLMClient():
+            if rebuild and hasattr(inst, "build_index"):
+                try:
+                    await inst.build_index(documents)
+                except Exception as exc:
+                    raise OptimizationTrialError(
+                        f"build failed for strategy {strategy!r}, config {cfg}: {exc}"
+                    ) from exc
+            scores: list[float] = []
+            latencies: list[float] = []
             for q in questions:
-                trace = await _retrieve_only(inst, q.question, cfg.top_k)
+                try:
+                    trace = await _retrieve_only(inst, q.question, cfg.top_k, corpus=corpus)
+                except Exception as exc:
+                    raise OptimizationTrialError(
+                        f"retrieval failed for strategy {strategy!r}, config {cfg}, "
+                        f"question {getattr(q, 'id', '<unknown>')!r}: {exc}"
+                    ) from exc
                 m = compute_all(
                     retrieved=trace.retrieved,
                     expected_ids=set(getattr(q, "expected_chunks", []) or []),
@@ -545,6 +580,39 @@ def _resolve_strategies(strategies_filter: str) -> list[str]:
     return [s.strip() for s in strategies_filter.split(",") if s.strip()]
 
 
+def validate_optimize_inputs(
+    strategies_filter: str,
+    *,
+    top_ks: list[int],
+    chunk_sizes: list[int],
+    method: str,
+    max_trials: int,
+) -> list[str]:
+    """Validate an optimization plan before credentials or services are used."""
+    from kb_arena.strategies.catalog import STRATEGY_CATALOG
+
+    if method not in {"grid", "random"}:
+        raise ValueError("Unknown search method. Use 'grid' or 'random'.")
+    if max_trials < 0:
+        raise ValueError("--max-trials must be nonnegative.")
+    if any(top_k < 1 for top_k in top_ks):
+        raise ValueError("Top-k values must be positive.")
+    if any(size <= settings.chunk_overlap_tokens for size in chunk_sizes):
+        raise ValueError(
+            "Chunk sizes must be greater than the configured overlap "
+            f"({settings.chunk_overlap_tokens})."
+        )
+
+    strategies = _resolve_strategies(strategies_filter)
+    if not strategies:
+        raise ValueError("Choose at least one strategy.")
+    known = {spec.name for spec in STRATEGY_CATALOG}
+    unknown = sorted(set(strategies) - known)
+    if unknown:
+        raise ValueError(f"Unknown strategy: {', '.join(unknown)}.")
+    return strategies
+
+
 async def run_optimize(
     corpus: str,
     strategies_filter: str = "all",
@@ -559,6 +627,7 @@ async def run_optimize(
     seed: int = 0,
     dry_run: bool = False,
     out_dir: str | None = None,
+    split: str = "auto",
 ) -> int:
     """Sweep, score, report. Returns 0 on success, 1 on hard failure."""
     from rich.console import Console
@@ -569,24 +638,42 @@ async def run_optimize(
     chunk_sizes = chunk_sizes or []
     embedding_providers = embedding_providers or []
     reranker_backends = reranker_backends or []
+    try:
+        strategies = validate_optimize_inputs(
+            strategies_filter,
+            top_ks=top_ks,
+            chunk_sizes=chunk_sizes,
+            method=method,
+            max_trials=max_trials,
+        )
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        return 1
     if metric not in _METRIC_FIELDS:
         console.print(f"[red]Unknown metric {metric!r}. Use one of {sorted(_METRIC_FIELDS)}[/red]")
         return 1
 
-    strategies = _resolve_strategies(strategies_filter)
+    valid_splits = {"auto", "all", "development", "validation", "holdout", "unspecified"}
+    if split not in valid_splits:
+        console.print(f"[red]Unknown split {split!r}. Use one of {sorted(valid_splits)}[/red]")
+        return 1
 
     if dry_run:
-        plan = plan_optimize(
-            strategies,
-            top_ks=top_ks,
-            chunk_sizes=chunk_sizes,
-            embedding_providers=embedding_providers,
-            reranker_backends=reranker_backends,
-            method=method,
-            max_trials=max_trials,
-            seed=seed,
-        )
-        t = Table(title=f"optimize plan — {corpus} (metric={metric}, method={method})")
+        try:
+            plan = plan_optimize(
+                strategies,
+                top_ks=top_ks,
+                chunk_sizes=chunk_sizes,
+                embedding_providers=embedding_providers,
+                reranker_backends=reranker_backends,
+                method=method,
+                max_trials=max_trials,
+                seed=seed,
+            )
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/red]")
+            return 1
+        t = Table(title=f"optimize plan: {corpus} (metric={metric}, method={method})")
         t.add_column("Strategy", style="bold")
         t.add_column("Trials", justify="right")
         t.add_column("Rebuilds", justify="right")
@@ -599,12 +686,21 @@ async def run_optimize(
         console.print(f"[dim]{total} trials total. Re-run without --dry-run to execute.[/dim]")
         return 0
 
-    documents = load_documents(corpus)
+    documents = load_documents(corpus, strict=True)
     try:
-        questions = load_questions(corpus)
+        all_questions = load_questions(corpus)
     except FileNotFoundError:
         console.print(f"[red]No questions for {corpus}. Run generate-questions first.[/red]")
         return 1
+    effective_split = split
+    if split == "auto":
+        labeled = {getattr(q, "split", "unspecified") for q in all_questions} - {"unspecified"}
+        effective_split = "development" if labeled else "all"
+    questions = (
+        all_questions
+        if effective_split == "all"
+        else [q for q in all_questions if getattr(q, "split", "unspecified") == effective_split]
+    )
     if not questions:
         console.print(f"[red]No questions for {corpus}.[/red]")
         return 1
@@ -612,21 +708,30 @@ async def run_optimize(
     run_id = uuid4().hex[:8]
     results: dict[str, OptimizeResult] = {}
     for s in strategies:
-        trials = _trials_for(
-            s,
-            top_ks=top_ks,
-            chunk_sizes=chunk_sizes,
-            embedding_providers=embedding_providers,
-            reranker_backends=reranker_backends,
-            method=method,
-            max_trials=max_trials,
-            seed=seed,
-        )
+        try:
+            trials = _trials_for(
+                s,
+                top_ks=top_ks,
+                chunk_sizes=chunk_sizes,
+                embedding_providers=embedding_providers,
+                reranker_backends=reranker_backends,
+                method=method,
+                max_trials=max_trials,
+                seed=seed,
+            )
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/red]")
+            return 1
         trial_results: list[TrialResult] = []
         base = baseline_config(s)
         for cfg in trials:
             start = time.perf_counter()
-            tr = await _score_trial(s, cfg, documents, questions, metric, base)
+            try:
+                tr = await _score_trial(s, cfg, documents, questions, metric, base, corpus=corpus)
+            except Exception as exc:
+                console.print(f"[red]Optimization aborted[/red] {exc}")
+                console.print("[red]No recommendation report was written.[/red]")
+                return 1
             trial_results.append(tr)
             console.print(
                 f"[dim]{s} {cfg.model_dump(exclude={'strategy'})} "
@@ -644,6 +749,7 @@ async def run_optimize(
         "corpus": corpus,
         "metric": metric,
         "method": method,
+        "question_split": effective_split,
         "strategies": {
             name: {
                 "best_config": r.best_config.model_dump(),
@@ -667,7 +773,7 @@ async def run_optimize(
     }
     (out / "optimize.json").write_text(json.dumps(report, indent=2))
 
-    table = Table(title=f"optimize — {corpus} (metric={metric})")
+    table = Table(title=f"optimize: {corpus} (metric={metric})")
     table.add_column("Strategy", style="bold")
     table.add_column(f"default {metric}", justify="right")
     table.add_column(f"best {metric} [95% CI]", justify="right")
@@ -681,10 +787,10 @@ async def run_optimize(
         bc = r.best_config.model_dump(exclude={"strategy"})
         bc = {k: v for k, v in bc.items() if v is not None}
         ci_lo, ci_hi = r.best_score_ci
-        p_str = f"{r.p_value:.3g}" if r.p_value is not None else "—"
+        p_str = f"{r.p_value:.3g}" if r.p_value is not None else "n/a"
         sig_color = "green" if r.significant else "dim"
         delta_fmt = f"[{sig_color}]{sign}{r.delta:.4f}[/{sig_color}]"
-        pareto_tag = " ★" if r.pareto_optimal else ""
+        pareto_tag = " [Pareto]" if r.pareto_optimal else ""
         table.add_row(
             name + pareto_tag,
             f"{r.baseline_score:.4f}",
@@ -697,7 +803,7 @@ async def run_optimize(
         )
     console.print(table)
     console.print(
-        "[dim]★ = Pareto-optimal on (score, score/ms). "
+        "[dim][Pareto] = Pareto-optimal on (score, score/ms). "
         "Significance: green delta = Wilcoxon p<0.05 + positive lift.[/dim]"
     )
     console.print(f"[green]Report: {out / 'optimize.json'}[/green]")

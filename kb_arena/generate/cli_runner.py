@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import tempfile
 from pathlib import Path
 
 from rich.console import Console
@@ -22,13 +23,15 @@ async def run_generate_qa(corpus: str, output: str | None = None) -> Path:
 
     Returns path to the output JSONL file.
     """
-    documents = load_documents(corpus)
+    documents = load_documents(corpus, strict=True)
     if not documents:
         console.print(f"[red]No documents found for corpus={corpus}[/red]")
         console.print("Run ingest first: [bold]kb-arena ingest <path> --corpus {corpus}[/bold]")
         raise SystemExit(1)
 
     total_sections = sum(1 for doc in documents for s in doc.sections if s.content.strip())
+    if total_sections == 0:
+        raise ValueError(f"No non-empty sections found for corpus={corpus}")
     console.print(
         f"[bold]Generating Q&A pairs[/bold] for {len(documents)} doc(s), "
         f"{total_sections} section(s)"
@@ -58,9 +61,25 @@ async def run_generate_qa(corpus: str, output: str | None = None) -> Path:
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(out_path, "w") as f:
-        for pair in pairs:
-            f.write(json.dumps(pair, ensure_ascii=False) + "\n")
+    staged_file = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=out_path.parent,
+        prefix=f".{out_path.name}.",
+        suffix=".tmp",
+        delete=False,
+    )
+    staged_path = Path(staged_file.name)
+    published = False
+    try:
+        with staged_file as handle:
+            for pair in pairs:
+                handle.write(json.dumps(pair, ensure_ascii=False) + "\n")
+        staged_path.replace(out_path)
+        published = True
+    finally:
+        if not published:
+            staged_path.unlink(missing_ok=True)
 
     console.print()
     console.print(f"[green]Generated {len(pairs)} Q&A pairs[/green] -> {out_path}")

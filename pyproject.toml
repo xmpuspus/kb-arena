@@ -4,11 +4,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kb-arena"
-version = "0.9.3"
-description = "Benchmark 11 retrieval architectures on your documentation — find which KB architecture fits your data"
+version = "0.10.0"
+description = "Compare retrieval architectures on your documentation and choose with reproducible evidence"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 authors = [{ name = "Xavier Puspus", email = "36430014+xmpuspus@users.noreply.github.com" }]
 keywords = ["rag", "knowledge-graph", "benchmark", "neo4j", "chromadb", "llm", "retrieval", "evaluation", "vector-search", "rag-evaluation", "document-retrieval"]
 classifiers = [
@@ -18,11 +18,12 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 
 dependencies = [
-    "typer==0.12.5",
-    "click==8.1.8",
+    "typer==0.27.1",
+    "click==8.4.2",
     "rich==13.9.4",
     "pydantic==2.10.4",
     "pydantic-settings==2.7.1",
@@ -33,24 +34,30 @@ dependencies = [
     "networkx==3.4.2",
     "beautifulsoup4==4.12.3",
     "pyyaml==6.0.2",
-    "fastapi==0.115.6",
+    "fastapi==0.141.1",
+    "starlette==1.4.1",
     "uvicorn[standard]==0.34.0",
     "sse-starlette==2.2.1",
     "openai==2.24.0",
-    "tiktoken==0.7.0",
+    "tiktoken==0.13.0",
     "httpx==0.28.1",
     "rank-bm25==0.2.2",
     "scipy>=1.11.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==8.3.4", "ruff==0.8.6", "pytest-asyncio==0.24.0"]
+# Starlette 1.4 TestClient imports httpx2 and only retains httpx as a deprecated fallback.
+dev = ["pytest==8.3.4", "ruff==0.8.6", "pytest-asyncio==0.24.0", "httpx2==2.9.1"]
 pdf = ["PyMuPDF==1.25.3"]
 docx = ["mammoth==1.8.0"]
 web = ["httpx==0.28.1"]
 all-formats = ["PyMuPDF==1.25.3", "mammoth==1.8.0", "httpx==0.28.1"]
+# The default BGE cross-encoder pulls in PyTorch and model tooling, so keep it
+# outside the core decision-lab install. Cohere and Voyage backends require
+# their provider SDKs when selected.
+rerank = ["sentence-transformers>=5.0,<6"]
 # Quantum strategies #10 (qiss is pure-NumPy and needs nothing here) and #11
-# (sqr — Qiskit Aer SWAP test + PCA reduction). Lazy-imported, so the core
+# (sqr, Qiskit Aer SWAP test + PCA reduction). Lazy-imported, so the core
 # install and CI stay light; install with `pip install 'kb-arena[quantum]'`.
 quantum = ["qiskit==2.4.2", "qiskit-aer==0.17.2", "scikit-learn==1.9.0"]
 
@@ -64,7 +71,18 @@ Repository = "https://github.com/xmpuspus/kb-arena"
 Issues = "https://github.com/xmpuspus/kb-arena/issues"
 
 [tool.hatch.build.targets.sdist]
-exclude = ["docs/", "datasets/", "web/", "tests/", "cypher/", ".github/", "**/.gitkeep"]
+exclude = [
+    "docs/",
+    "datasets/",
+    "web/",
+    "tests/",
+    ".github/",
+    "tmp/",
+    ".venv/",
+    "results/run_*/",
+    "uv.lock",
+    "**/.gitkeep",
+]
 include = [
     "kb_arena/",
     "kb_arena/data/aws-compute_*.json",
@@ -78,7 +96,7 @@ include = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["kb_arena"]
-artifacts = ["kb_arena/data/*.json", "kb_arena/static/**"]
+artifacts = ["kb_arena/data/*.json", "kb_arena/cypher/*.cypher", "kb_arena/static/**"]
 
 [tool.ruff]
 target-version = "py311"
@@ -89,5 +107,6 @@ select = ["E", "F", "I", "N", "W", "UP"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 markers = ["live: requires API keys and live services"]

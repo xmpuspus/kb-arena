@@ -405,6 +405,103 @@ def test_pipeline_each_line_valid_document(tmp_path):
         assert "corpus" in parsed
 
 
+def test_pipeline_preserves_existing_corpus_when_every_parse_fails(tmp_path, monkeypatch):
+    from kb_arena.ingest import pipeline
+    from kb_arena.settings import settings
+
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "broken.md").write_text("not parseable")
+    out_dir = tmp_path / "datasets" / "test-corpus" / "processed"
+    out_dir.mkdir(parents=True)
+    out_path = out_dir / "documents.jsonl"
+    original = '{"id":"existing"}\n'
+    out_path.write_text(original)
+
+    class BrokenParser:
+        def parse(self, path, corpus):
+            raise ValueError("bad source")
+
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path / "datasets"))
+    monkeypatch.setitem(pipeline.PARSERS, "markdown", BrokenParser)
+
+    with pytest.raises(SystemExit) as exc_info:
+        pipeline.run_ingest(str(raw_dir), corpus="test-corpus", format="markdown")
+
+    assert exc_info.value.code == 1
+    assert out_path.read_text() == original
+    assert list(out_dir.glob(".documents.*.tmp")) == []
+
+
+def test_pipeline_preserves_existing_corpus_when_one_parse_fails(tmp_path, monkeypatch):
+    from kb_arena.ingest import pipeline
+    from kb_arena.settings import settings
+
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "good.md").write_text("# Good\n\nComplete source.")
+    (raw_dir / "broken.md").write_text("# Broken")
+    out_dir = tmp_path / "datasets" / "test-corpus" / "processed"
+    out_dir.mkdir(parents=True)
+    out_path = out_dir / "documents.jsonl"
+    original = '{"id":"existing"}\n'
+    out_path.write_text(original)
+
+    class PartialParser:
+        def parse(self, path, corpus):
+            if path.name == "broken.md":
+                raise OSError("cannot read source")
+            return MarkdownParser().parse(path, corpus)
+
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path / "datasets"))
+    monkeypatch.setitem(pipeline.PARSERS, "markdown", PartialParser)
+
+    with pytest.raises(SystemExit) as exc_info:
+        pipeline.run_ingest(str(raw_dir), corpus="test-corpus", format="markdown")
+
+    assert exc_info.value.code == 1
+    assert out_path.read_text() == original
+    assert list(out_dir.glob(".documents.*.tmp")) == []
+
+
+def test_special_ingest_preserves_existing_corpus_when_serialization_fails(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from kb_arena.ingest import pipeline
+    from kb_arena.settings import settings
+
+    out_dir = tmp_path / "datasets" / "test-corpus" / "processed"
+    out_dir.mkdir(parents=True)
+    out_path = out_dir / "documents.jsonl"
+    original = '{"id":"existing"}\n'
+    out_path.write_text(original)
+
+    class BrokenDocument:
+        sections = []
+
+        def model_dump_json(self):
+            raise OSError("disk write failed")
+
+    class SpecialParser:
+        def __init__(self, **kwargs):
+            pass
+
+        def parse(self, path, corpus):
+            return [
+                SimpleNamespace(sections=[], model_dump_json=lambda: '{"id":"new"}'),
+                BrokenDocument(),
+            ]
+
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path / "datasets"))
+    monkeypatch.setitem(pipeline.PARSERS, "web", SpecialParser)
+
+    with pytest.raises(OSError, match="disk write failed"):
+        pipeline.run_ingest_special("https://example.com", corpus="test-corpus", format="web")
+
+    assert out_path.read_text() == original
+    assert list(out_dir.glob(".documents.*.tmp")) == []
+
+
 def test_pipeline_auto_detects_html(tmp_path):
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()

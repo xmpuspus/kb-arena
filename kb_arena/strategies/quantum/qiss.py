@@ -45,7 +45,12 @@ import numpy as np
 
 from kb_arena.models.document import Document
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
-from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.strategies.base import (
+    MAX_RETRIEVAL_CANDIDATES,
+    AnswerResult,
+    Strategy,
+    validate_top_k,
+)
 from kb_arena.strategies.embeddings import get_embedding_function
 from kb_arena.strategies.naive_vector import NaiveVectorStrategy
 
@@ -230,15 +235,23 @@ class QISSStrategy(Strategy):
             logger.warning("QISS decomposition failed (%s) — using single query", exc)
             return [question]
 
-    async def query(self, question: str, top_k: int = 5) -> AnswerResult:
+    async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         from kb_arena.settings import settings
 
         start = self._start_timer()
+        validate_top_k(top_k)
         fanout = max(int(settings.qiss_fanout), 1)
-        candidate_k = max(top_k * fanout, top_k + 5)
+        candidate_k = min(
+            max(top_k * fanout, top_k + 5),
+            MAX_RETRIEVAL_CANDIDATES,
+        )
 
         retrieve_t0 = time.perf_counter()
-        candidate = await self._base.query(question, top_k=candidate_k)
+        candidate = await self._base.query(
+            question,
+            top_k=candidate_k,
+            corpus=corpus,
+        )
         retrieve_ms = (time.perf_counter() - retrieve_t0) * 1000
 
         chunks: list[RetrievedChunk] = (

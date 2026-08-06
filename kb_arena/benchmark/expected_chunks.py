@@ -13,15 +13,36 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
+from pathlib import Path
 
 import yaml
 
-from kb_arena.benchmark.questions import load_questions
+from kb_arena.benchmark.questions import load_questions, validate_expected_chunks
 from kb_arena.llm.client import LLMClient
 from kb_arena.settings import settings
 from kb_arena.strategies.bm25 import BM25Strategy
 
 log = logging.getLogger(__name__)
+
+
+def _write_expected_chunks(path: Path, labels: dict[str, list[str]]) -> None:
+    """Atomically checkpoint labels so a later provider failure cannot erase progress."""
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            yaml.safe_dump(labels, handle, sort_keys=True, default_flow_style=False)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_name, path)
+    except Exception:
+        try:
+            os.unlink(temporary_name)
+        except FileNotFoundError:
+            pass
+        raise
+
 
 JUDGE_PROMPT = """You are labeling retrieval ground truth for a documentation QA benchmark.
 
@@ -89,6 +110,7 @@ async def label_one_question(
     question_text: str,
     bm25: BM25Strategy,
     llm: LLMClient,
+    corpus: str,
     n_candidates: int = 20,
     extra_retrievers: list | None = None,
 ) -> tuple[list[str], float]:
@@ -99,7 +121,7 @@ async def label_one_question(
     structurally limited to chunks BM25 would surface, which biases IR metrics
     in favour of keyword-overlap strategies.
     """
-    result = await bm25.query(question_text, top_k=n_candidates)
+    result = await bm25.query(question_text, top_k=n_candidates, corpus=corpus)
     candidates: list = (
         list(result.retrieval.retrieved) if result.retrieval and result.retrieval.retrieved else []
     )
@@ -108,10 +130,13 @@ async def label_one_question(
     if extra_retrievers:
         for retriever in extra_retrievers:
             try:
-                extra_result = await retriever.query(question_text, top_k=n_candidates)
-            except Exception as exc:  # noqa: BLE001 — best-effort extras
-                log.warning("Extra retriever %s failed: %s", retriever.name, exc)
-                continue
+                extra_result = await retriever.query(
+                    question_text, top_k=n_candidates, corpus=corpus
+                )
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Extra retriever {retriever.name} failed while building the label pool"
+                ) from exc
             if extra_result.retrieval and extra_result.retrieval.retrieved:
                 candidates.extend(extra_result.retrieval.retrieved)
             cost += float(getattr(extra_result, "cost_usd", 0.0) or 0.0)
@@ -181,7 +206,7 @@ async def label_corpus(corpus: str, force: bool = False, n_candidates: int = 20)
             try:
                 inst = cls(chroma_client=chroma)
                 # Probe — query a trivial string; failure means no index built.
-                await inst.query("kb_arena_index_probe", top_k=1)
+                await inst.query("kb_arena_index_probe", top_k=1, corpus=corpus)
                 extra_retrievers.append(inst)
             except Exception as exc:  # noqa: BLE001 — best-effort
                 log.info(
@@ -203,17 +228,17 @@ async def label_corpus(corpus: str, force: bool = False, n_candidates: int = 20)
         if not isinstance(settings.datasets_path, str)
         else settings.datasets_path
     )
-    from pathlib import Path
-
     out_dir = Path(settings.datasets_path) / corpus / "questions"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "expected_chunks.yaml"
 
     existing: dict[str, list[str]] = {}
     if out_path.exists():
-        loaded = yaml.safe_load(out_path.read_text()) or {}
-        if isinstance(loaded, dict):
-            existing = {str(k): list(v) if isinstance(v, list) else [] for k, v in loaded.items()}
+        try:
+            loaded = yaml.safe_load(out_path.read_text())
+        except yaml.YAMLError as exc:
+            raise ValueError(f"Invalid expected chunks YAML: {out_path}") from exc
+        existing = validate_expected_chunks(loaded, out_path)
 
     cost_cap = settings.benchmark_cost_cap_usd
     total_cost = 0.0
@@ -231,13 +256,20 @@ async def label_corpus(corpus: str, force: bool = False, n_candidates: int = 20)
             halted = True
             break
         ids, cost = await label_one_question(
-            q.question, bm25, llm, n_candidates, extra_retrievers=extra_retrievers
+            q.question,
+            bm25,
+            llm,
+            corpus,
+            n_candidates,
+            extra_retrievers=extra_retrievers,
         )
         total_cost += cost
         out_dict[q.id] = ids
         labeled += 1
+        _write_expected_chunks(out_path, out_dict)
 
-    out_path.write_text(yaml.dump(out_dict, sort_keys=True, default_flow_style=False))
+    if not out_path.exists():
+        _write_expected_chunks(out_path, out_dict)
     return {
         "labeled": labeled,
         "skipped": skipped,

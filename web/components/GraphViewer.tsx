@@ -130,10 +130,28 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
     );
   }, [nodes, search]);
 
-  // Initialize positions — full circle on first load, incremental on live updates
+  // Use a full circle on first load and incremental positions on live updates.
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || nodes.length === 0) return;
+    if (!canvas) return;
+    if (nodes.length === 0) {
+      cancelAnimationFrame(animRef.current);
+      posRef.current.clear();
+      velRef.current.clear();
+      hoveredId.current = null;
+      dragging.current = null;
+      simState.current = { alpha: 0, stabilized: true };
+      setSelected(null);
+
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#f8fafc";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      dirty.current = false;
+      return;
+    }
     const W = canvas.offsetWidth;
     const H = canvas.offsetHeight;
     const cx = W / 2;
@@ -173,7 +191,7 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
     dirty.current = true;
   }, [nodes]);
 
-  // Hit test: screen coords → node
+  // Hit test screen coordinates against each node.
   const hitTest = useCallback((sx: number, sy: number): GraphNode | null => {
     const { scale, tx, ty } = transform.current;
     const wx = (sx - tx) / scale;
@@ -589,7 +607,7 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
     return () => { running = false; cancelAnimationFrame(animRef.current); };
   }, [nodes, edges, search, selected, degreeMap, neighborMap, edgeGroups, nodeMap, visibleIds, hitTest]);
 
-  // --- Interaction handlers ---
+  // Interaction handlers
 
   function handleMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -774,8 +792,8 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
         </div>
       </div>
 
-      <div className="flex gap-3 flex-1 min-h-[500px]">
-        <div className="relative flex-1">
+      <div className="flex flex-col gap-3 flex-1 min-h-[440px] sm:min-h-[500px] sm:flex-row">
+        <div className="relative min-h-[320px] min-w-0 flex-1">
           <canvas
             ref={canvasRef}
             className="w-full h-full rounded-lg border cursor-grab active:cursor-grabbing"
@@ -818,7 +836,7 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
 
         {selected && (
           <div
-            className="w-64 rounded-lg border p-4 overflow-y-auto shrink-0"
+            className="w-full max-h-56 rounded-lg border p-4 overflow-y-auto shrink-0 sm:max-h-none sm:w-64"
             style={{ borderColor: "var(--border)", background: "var(--card)" }}
           >
             <div className="flex items-center gap-2 mb-3">

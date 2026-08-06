@@ -14,7 +14,15 @@ import chromadb
 from kb_arena.models.document import Document
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
-from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.strategies.base import AnswerResult, Strategy, validate_top_k
+from kb_arena.strategies.chroma_index import (
+    index_build_lock,
+    index_read_lock,
+    index_where,
+    new_generation,
+    parse_query_result,
+    publish_collection_build,
+)
 from kb_arena.strategies.embeddings import get_embedding_function
 from kb_arena.tokenizer import detokenize, tokenize
 
@@ -44,6 +52,8 @@ def _chunk_text(
         chunk_tokens = settings.chunk_tokens
     if overlap_tokens is None:
         overlap_tokens = settings.chunk_overlap_tokens
+    if chunk_tokens < 1 or overlap_tokens < 0 or overlap_tokens >= chunk_tokens:
+        raise ValueError("chunk overlap must satisfy 0 <= overlap_tokens < chunk_tokens")
     tokens = tokenize(text)
     if not tokens:
         return []
@@ -103,43 +113,61 @@ class NaiveVectorStrategy(Strategy):
                 chunks = _chunk_text(section.content)
                 for i, chunk in enumerate(chunks):
                     chunk_id = f"{doc.id}::{section.id}::{i}"
-                    ids.append(chunk_id)
+                    ids.append(f"{doc.corpus}::{chunk_id}")
                     texts.append(chunk)
-                    metadatas.append({"source_id": doc.id})
+                    metadatas.append(
+                        {
+                            "source_id": doc.id,
+                            "corpus": doc.corpus,
+                            "chunk_id": chunk_id,
+                        }
+                    )
 
-        if ids:
-            # ChromaDB upsert in batches of 500 to avoid payload limits
-            batch = 500
-            for start in range(0, len(ids), batch):
-                collection.upsert(
-                    ids=ids[start : start + batch],
-                    documents=texts[start : start + batch],
-                    metadatas=metadatas[start : start + batch],
-                )
+        corpora = list(dict.fromkeys(doc.corpus for doc in documents))
+        if not corpora:
+            return
+        generation = new_generation()
+        async with index_build_lock():
+            publish_collection_build(
+                collection,
+                COLLECTION_NAME,
+                corpora,
+                generation,
+                ids,
+                texts,
+                metadatas,
+            )
 
-    async def query(self, question: str, top_k: int = 5) -> AnswerResult:
+    async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Top-k cosine similarity → concatenate chunks → Sonnet."""
+        validate_top_k(top_k)
         start = self._start_timer()
         collection = self._get_collection()
 
         retrieval_start = time.perf_counter()
-        results = collection.query(
-            query_texts=[question],
-            n_results=top_k,
-            include=["documents", "metadatas", "distances"],
-        )
-        chunks = results["documents"][0] if results["documents"] else []
-        metas = results["metadatas"][0] if results["metadatas"] else []
-        ids = results["ids"][0] if results.get("ids") else []
-        distances = results["distances"][0] if results.get("distances") else []
+        query_kwargs = {
+            "query_texts": [question],
+            "n_results": top_k,
+            "include": ["documents", "metadatas", "distances"],
+        }
+        with index_read_lock():
+            query_kwargs["where"] = index_where(COLLECTION_NAME, corpus)
+            results = collection.query(**query_kwargs)
+        ids, chunks, metas, distances = parse_query_result(results)
         retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
         retrieved_chunks = [
             RetrievedChunk(
-                chunk_id=ids[i] if i < len(ids) else f"unknown-{i}",
+                chunk_id=(
+                    metas[i].get("chunk_id")
+                    if i < len(metas) and metas[i].get("chunk_id")
+                    else ids[i]
+                    if i < len(ids)
+                    else f"unknown-{i}"
+                ),
                 doc_id=(metas[i].get("source_id") if i < len(metas) else "") or "",
                 content=chunks[i] if i < len(chunks) else "",
-                score=1.0 - (distances[i] if i < len(distances) else 0.0),
+                score=1.0 - distances[i],
                 rank=i + 1,
                 source_strategy=self.name,
                 metadata=dict(metas[i]) if i < len(metas) else {},

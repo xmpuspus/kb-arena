@@ -1,0 +1,37 @@
+name: Feature request
+description: Propose a user problem or evaluation need
+title: "[Request]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Describe the decision or workflow that is difficult today.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence of need
+      description: Give an example corpus, query type, or failed workflow without private data.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Successful outcome
+      description: State the result a user should be able to check.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Current workaround or alternative
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I can help test or document this change.
+        - label: I can provide a public example or fixture.

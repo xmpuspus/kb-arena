@@ -79,13 +79,21 @@ def test_pick_template_returns_none_for_unknown():
 # ── Cypher validation ──────────────────────────────────────────────────────────
 
 
-def test_validate_cypher_accepts_match():
-    assert _validate_cypher("MATCH (n) RETURN n") is True
+def test_validate_cypher_accepts_allowlisted_template():
+    assert _validate_cypher(cypher_templates.SINGLE_ENTITY_LOOKUP) is True
 
 
-def test_validate_cypher_accepts_call():
-    cypher = "CALL db.index.fulltext.queryNodes('x', 'q') YIELD node RETURN node"
-    assert _validate_cypher(cypher) is True
+def test_validate_cypher_accepts_allowlisted_fulltext():
+    assert _validate_cypher(cypher_templates.FULLTEXT_ENTITY_SEARCH) is True
+
+
+def test_validate_cypher_rejects_unowned_match():
+    assert _validate_cypher("MATCH (n) RETURN n") is False
+
+
+def test_validate_cypher_rejects_mixed_owned_and_unowned_matches():
+    cypher = "MATCH (owned:KBArenaEntity) MATCH (secret:OtherAppSecret) RETURN secret.value AS name"
+    assert _validate_cypher(cypher) is False
 
 
 def test_validate_cypher_rejects_plain_text():
@@ -120,41 +128,39 @@ def test_validate_cypher_rejects_drop():
 
 
 @pytest.mark.asyncio
-async def test_generator_uses_llm_when_valid():
+async def test_generator_uses_template_when_required_params_are_present():
     mock_llm = AsyncMock()
-    from kb_arena.llm.client import LLMResponse
-
-    mock_llm.extract.return_value = LLMResponse(text="MATCH (n {fqn: $fqn}) RETURN n")
 
     gen = CypherGenerator(mock_llm, "aws-compute")
     cypher, params = await gen.generate("find Lambda", {"fqn": "lambda"})
 
-    assert "MATCH" in cypher
+    assert cypher == cypher_templates.SINGLE_ENTITY_LOOKUP
     assert params == {"fqn": "lambda"}
+    mock_llm.extract.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_generator_falls_back_on_invalid_llm_output():
+async def test_generator_uses_fulltext_when_template_params_are_missing():
     mock_llm = AsyncMock()
-    from kb_arena.llm.client import LLMResponse
-
-    mock_llm.extract.return_value = LLMResponse(text="This is not Cypher at all.")
 
     gen = CypherGenerator(mock_llm, "aws-compute")
-    # "depend" keyword → DEPENDENCY_CHAIN template
-    cypher, _ = await gen.generate("what does Lambda depend on?")
+    cypher, params = await gen.generate("what does Lambda depend on?")
 
-    assert "$start" in cypher  # DEPENDENCY_CHAIN template
+    assert cypher == cypher_templates.FULLTEXT_ENTITY_SEARCH
+    assert params["query"] == "what does Lambda depend on?"
+    mock_llm.extract.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_generator_falls_back_on_llm_exception():
+async def test_generator_never_executes_llm_supplied_cypher():
     mock_llm = AsyncMock()
-    mock_llm.extract.side_effect = RuntimeError("API down")
+    mock_llm.extract.return_value.text = (
+        "MATCH (owned:KBArenaEntity) MATCH (secret:OtherAppSecret) RETURN secret.value AS name"
+    )
 
     gen = CypherGenerator(mock_llm, "aws-compute")
     cypher, params = await gen.generate("some unknown query with no keywords xyz123")
 
-    # Last resort: fulltext search
-    assert "$query" in cypher
+    assert cypher == cypher_templates.FULLTEXT_ENTITY_SEARCH
     assert "query" in params
+    mock_llm.extract.assert_not_awaited()

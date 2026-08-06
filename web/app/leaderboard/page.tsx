@@ -27,8 +27,9 @@ export default function LeaderboardPage() {
   const [filter, setFilter] = useState<string>("all");
 
   useEffect(() => {
+    const controller = new AbortController();
     const url = `${apiBase}/api/leaderboard?corpus=${encodeURIComponent(filter)}`;
-    fetch(url)
+    fetch(url, { signal: controller.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -37,7 +38,10 @@ export default function LeaderboardPage() {
         setData(d);
         setError(null);
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => {
+        if (e instanceof Error && e.name !== "AbortError") setError(String(e));
+      });
+    return () => controller.abort();
   }, [filter]);
 
   const corpora = useMemo(() => ["all", ...(data?.corpora ?? [])], [data?.corpora]);
@@ -79,7 +83,7 @@ export default function LeaderboardPage() {
         </div>
       )}
 
-      {!data && !error && <p>Loading…</p>}
+      {!data && !error && <p>Loading...</p>}
 
       {data && data.leaderboard.length === 0 && (
         <p className="text-sm text-gray-600">
@@ -108,21 +112,21 @@ export default function LeaderboardPage() {
                   <td className="px-3 py-2 font-mono">{row.corpus}</td>
                   <td className="px-3 py-2 font-mono">{row.strategy}</td>
                   <td className="px-3 py-2 text-right">
-                    {row.mean_accuracy != null ? (row.mean_accuracy * 100).toFixed(1) + "%" : "—"}
+                    {row.mean_accuracy != null ? (row.mean_accuracy * 100).toFixed(1) + "%" : "n/a"}
                   </td>
                   <td className="px-3 py-2 text-right">
                     {row.mean_recall_at_5 != null
                       ? (row.mean_recall_at_5 * 100).toFixed(1) + "%"
-                      : "—"}
+                      : "n/a"}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    {row.mean_ndcg_at_5 != null ? row.mean_ndcg_at_5.toFixed(3) : "—"}
+                    {row.mean_ndcg_at_5 != null ? row.mean_ndcg_at_5.toFixed(3) : "n/a"}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    {row.mean_cost_usd != null ? "$" + row.mean_cost_usd.toFixed(2) : "—"}
+                    {row.mean_cost_usd != null ? "$" + row.mean_cost_usd.toFixed(2) : "n/a"}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    {row.mean_latency_ms != null ? row.mean_latency_ms.toFixed(0) : "—"}
+                    {row.mean_latency_ms != null ? row.mean_latency_ms.toFixed(0) : "n/a"}
                   </td>
                   <td className="px-3 py-2 text-right">{row.runs}</td>
                 </tr>

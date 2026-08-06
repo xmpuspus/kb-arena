@@ -1,6 +1,6 @@
-"""Retriever Lab — retrieval-only benchmark with classical IR metrics.
+"""Retriever Lab retrieval-only benchmark with classical IR metrics.
 
-No LLM generation calls — strategies emit retrieval traces, IR metrics computed
+Strategies emit retrieval traces without LLM generation. IR metrics are computed
 against ground truth, results streamed to a Rich table. Roughly an order of
 magnitude cheaper than `kb-arena benchmark` since the generator step is skipped.
 """
@@ -10,9 +10,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 import sys
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -39,64 +39,55 @@ console = Console()
 log = logging.getLogger(__name__)
 
 
-async def _stub_generate(self, *args, **kwargs):
-    """Replacement LLMClient.generate that returns an empty, zero-cost response."""
-    from kb_arena.llm.client import LLMResponse
-
-    return LLMResponse(text="", input_tokens=0, output_tokens=0, cost_usd=0.0)
-
-
-async def _stub_extract(self, *args, **kwargs):
-    from kb_arena.llm.client import LLMResponse
-
-    return LLMResponse(text="", input_tokens=0, output_tokens=0, cost_usd=0.0)
-
-
-async def _stub_classify(self, *args, **kwargs):
-    return ""
+class RetrievalExecutionError(RuntimeError):
+    """A strategy query failed before it could produce a retrieval trace."""
 
 
 class _PatchLLMClient:
-    """Context manager that replaces LLMClient methods with no-op stubs.
+    """Enable zero-cost LLM responses only in the current async context.
 
     Strategies invoke query() which always runs LLM generation. retriever-lab
-    needs only the retrieval trace, so we patch the LLM globally to make
-    generation effectively free while retrieval still runs normally.
+    needs only the retrieval trace, so generation is disabled without changing
+    LLM behavior in concurrent chat or benchmark tasks.
     """
 
     def __enter__(self):
-        from kb_arena.llm import client as llm_module
+        from kb_arena.llm.client import _retrieval_only_mode
 
-        self._originals = {
-            "generate": llm_module.LLMClient.generate,
-            "extract": llm_module.LLMClient.extract,
-            "classify": llm_module.LLMClient.classify,
-        }
-        llm_module.LLMClient.generate = _stub_generate
-        llm_module.LLMClient.extract = _stub_extract
-        llm_module.LLMClient.classify = _stub_classify
+        self._mode = _retrieval_only_mode
+        self._token = self._mode.set(True)
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        from kb_arena.llm import client as llm_module
-
-        for name, original in self._originals.items():
-            setattr(llm_module.LLMClient, name, original)
+        self._mode.reset(self._token)
         return False
 
 
-async def _retrieve_only(strategy: Strategy, question_text: str, top_k: int) -> RetrievalTrace:
+async def _retrieve_only(
+    strategy: Strategy,
+    question_text: str,
+    top_k: int,
+    corpus: str = "all",
+) -> RetrievalTrace:
     """Run query() under the LLM-stub patch and return the retrieval trace."""
-    start = time.perf_counter()
+    if strategy.name == "pageindex":
+        raise RetrievalExecutionError(
+            "strategy 'pageindex' is not supported in zero-LLM Retriever Lab runs"
+        )
     try:
-        result = await strategy.query(question_text, top_k=top_k)
+        if corpus == "all":
+            result = await strategy.query(question_text, top_k=top_k)
+        else:
+            result = await strategy.query(question_text, top_k=top_k, corpus=corpus)
     except Exception as exc:
-        log.warning("Strategy %s failed on question: %s", strategy.name, exc)
-        return RetrievalTrace(query=question_text, retrieved=[], latency_ms=0.0, top_k=top_k)
-    elapsed = (time.perf_counter() - start) * 1000
+        raise RetrievalExecutionError(
+            f"strategy {strategy.name!r} failed to retrieve for {question_text!r}: {exc}"
+        ) from exc
     if result.retrieval is not None:
         return result.retrieval
-    return RetrievalTrace(query=question_text, retrieved=[], latency_ms=elapsed, top_k=top_k)
+    raise RetrievalExecutionError(
+        f"strategy {strategy.name!r} returned no retrieval trace for {question_text!r}"
+    )
 
 
 def _build_table(
@@ -124,7 +115,7 @@ def _build_table(
                 str(n),
             )
         else:
-            t.add_row(s.name, "—", "—", "—", "—", "—", "0")
+            t.add_row(s.name, "n/a", "n/a", "n/a", "n/a", "n/a", "0")
     return t
 
 
@@ -156,28 +147,23 @@ def _aggregate_means(records: list[RetrievalMetrics]) -> dict[str, float | int]:
 
 
 def _bootstrap_ci(values: list[float]) -> tuple[float, float]:
-    """Percentile bootstrap 95% CI on the mean; degenerate-band when scipy
-    missing or all values identical so the summary never crashes."""
+    """Percentile bootstrap 95% CI on the mean."""
     if not values:
         return (0.0, 0.0)
     if all(v == values[0] for v in values):
         return (values[0], values[0])
-    try:
-        import numpy as np
-        from scipy.stats import bootstrap
+    import numpy as np
+    from scipy.stats import bootstrap
 
-        res = bootstrap(
-            (np.asarray(values),),
-            statistic=np.mean,
-            n_resamples=1000,
-            confidence_level=0.95,
-            method="percentile",
-            random_state=0,
-        )
-        return (float(res.confidence_interval.low), float(res.confidence_interval.high))
-    except Exception:  # noqa: BLE001
-        m = sum(values) / len(values)
-        return (m, m)
+    res = bootstrap(
+        (np.asarray(values),),
+        statistic=np.mean,
+        n_resamples=1000,
+        confidence_level=0.95,
+        method="percentile",
+        random_state=0,
+    )
+    return (float(res.confidence_interval.low), float(res.confidence_interval.high))
 
 
 def _summarize_with_tiers(
@@ -185,13 +171,13 @@ def _summarize_with_tiers(
 ) -> dict:
     """Aggregate means + per-tier breakdown + 95% bootstrap CIs on key metrics.
 
-    Per-tier breakdown answers "does the win hold on hard queries?" — a
+    Per-tier breakdown answers whether the win holds on hard queries, a
     strategy can dominate on tier-1 lookups and lose badly on tier-5
     architecture queries while the overall mean masks it.
     """
     out = _aggregate_means([m for _, m in rows])
 
-    # 95% CIs on the headline metrics — Sakai's standard.
+    # Use Sakai's standard 95% CIs on the headline metrics.
     out["ci_ndcg_at_k"] = _bootstrap_ci([m.ndcg_at_k for _, m in rows])
     out["ci_recall_at_k"] = _bootstrap_ci([m.recall_at_k for _, m in rows])
     out["ci_average_precision"] = _bootstrap_ci([m.average_precision for _, m in rows])
@@ -216,11 +202,11 @@ def _summarize_ceiling(
 ) -> dict:
     """Aggregate the base retriever's recall at the shallow vs deep cutoff.
 
-    `ranking_headroom` = Recall@ceiling_k − Recall@top_k is the share of relevant
+    `ranking_headroom` = Recall@ceiling_k - Recall@top_k is the share of relevant
     chunks the retriever already surfaces but ranks below top_k. A large headroom
     means the bottleneck is RANKING, not retrieval; a small Recall@ceiling_k means
     the chunks are genuinely missing from the pool. The interpretation is left to
-    the reader — this only reports the measured numbers.
+    the reader. This function only reports the measured numbers.
     """
     n = len(top_recalls) or 1
     rt = sum(top_recalls) / n
@@ -235,7 +221,12 @@ def _summarize_ceiling(
     }
 
 
-async def _retrieval_ceiling(questions, top_k: int, ceiling_k: int) -> dict:
+async def _retrieval_ceiling(
+    questions,
+    top_k: int,
+    ceiling_k: int,
+    corpus: str = "all",
+) -> dict:
     """Base-retriever (naive_vector) recall at top_k vs ceiling_k over `questions`.
 
     naive_vector is the pool every vector reranker shares, so its recall ceiling
@@ -246,14 +237,31 @@ async def _retrieval_ceiling(questions, top_k: int, ceiling_k: int) -> dict:
 
     try:
         base = get_strategy("naive_vector")
-    except Exception as exc:  # noqa: BLE001 — ceiling is a best-effort diagnostic
-        log.warning("Retrieval ceiling skipped (naive_vector unavailable): %s", exc)
-        return {}
+    except Exception as exc:  # noqa: BLE001 - report initialization failures in the artifact
+        log.warning("Retrieval ceiling failed (naive_vector unavailable): %s", exc)
+        return {
+            "status": "error",
+            "top_k": top_k,
+            "ceiling_k": ceiling_k,
+            "questions": 0,
+            "execution_error": {"type": type(exc).__name__, "message": str(exc)},
+        }
 
     top_recalls: list[float] = []
     ceiling_recalls: list[float] = []
     for q in questions:
-        trace = await _retrieve_only(base, q.question, ceiling_k)
+        try:
+            trace = await _retrieve_only(base, q.question, ceiling_k, corpus=corpus)
+        except RetrievalExecutionError as exc:
+            log.warning("Retrieval ceiling failed: %s", exc)
+            cause = exc.__cause__ or exc
+            return {
+                "status": "error",
+                "top_k": top_k,
+                "ceiling_k": ceiling_k,
+                "questions": len(top_recalls),
+                "execution_error": {"type": type(cause).__name__, "message": str(exc)},
+            }
         retrieved = trace.retrieved
         expected = set(q.expected_chunks or [])
         doc_ids = set(q.ground_truth.source_refs)
@@ -269,23 +277,10 @@ async def _retrieval_ceiling(questions, top_k: int, ceiling_k: int) -> dict:
         top_recalls.append(m_top.recall_at_k)
         ceiling_recalls.append(m_ceil.recall_at_k)
 
-    return _summarize_ceiling(top_recalls, ceiling_recalls, top_k, ceiling_k)
-
-
-def _empty_trace_failures(by_strategy: dict, threshold: float = 0.5) -> list[str]:
-    """Strategy names whose empty-retrieval count is >= `threshold` of questions.
-
-    An empty trace means the strategy raised and `_retrieve_only` swallowed it,
-    not that it retrieved irrelevant chunks. A strategy empty on most questions is
-    crashing, not merely scoring low — caught separately from the recall floor.
-    """
-    failures: list[str] = []
-    for sname, m in by_strategy.items():
-        n_q = m.get("questions", 0)
-        n_empty = m.get("empty_retrieval", 0)
-        if n_q and n_empty >= threshold * n_q:
-            failures.append(sname)
-    return failures
+    return {
+        "status": "complete",
+        **_summarize_ceiling(top_recalls, ceiling_recalls, top_k, ceiling_k),
+    }
 
 
 async def run_retriever_lab(
@@ -294,9 +289,15 @@ async def run_retriever_lab(
     top_k: int = 5,
     min_recall: float = 0.30,
     ceiling_k: int | None = None,
+    *,
+    split: str = "",
 ) -> int:
     """Run retrieval-only benchmark. Returns 0 on success, 1 if min_recall floor breached."""
     from kb_arena.benchmark.runner import _load_strategies
+
+    if not math.isfinite(min_recall) or not 0.0 <= min_recall <= 1.0:
+        console.print("[red]min_recall must be a finite number between 0 and 1.[/red]")
+        return 1
 
     run_id = uuid4().hex[:8]
     timestamp = datetime.now(UTC).isoformat()
@@ -304,6 +305,8 @@ async def run_retriever_lab(
 
     corpora = discover_corpora() if corpus == "all" else [corpus]
     strategies = _load_strategies(strategies_filter)
+    if strategies_filter == "all":
+        strategies = [strategy for strategy in strategies if strategy.name != "pageindex"]
     if not strategies:
         console.print("[red]No strategies available. Run build-vectors first.[/red]")
         return 1
@@ -316,6 +319,7 @@ async def run_retriever_lab(
         "timestamp": timestamp,
         "top_k": top_k,
         "ceiling_k": ceiling_k,
+        "question_split": split or "all",
         "corpora": {},
         "retrieval_ceiling": {},
     }
@@ -325,6 +329,7 @@ async def run_retriever_lab(
 
     _llm_patch = _PatchLLMClient()
     _llm_patch.__enter__()
+    run_error: Exception | None = None
     try:
         _exit_code = await _run_corpora_loop(
             corpora,
@@ -334,7 +339,18 @@ async def run_retriever_lab(
             overall,
             per_question_rows,
             ceiling_k,
+            split,
         )
+        overall["status"] = "complete"
+    except Exception as exc:
+        run_error = exc
+        _exit_code = 1
+        overall["status"] = "incomplete"
+        overall["execution_error"] = {
+            "type": type(exc).__name__,
+            "message": str(exc),
+        }
+        console.print(f"[red]Retriever Lab failed: {type(exc).__name__}: {exc}[/red]")
     finally:
         _llm_patch.__exit__(None, None, None)
 
@@ -343,19 +359,28 @@ async def run_retriever_lab(
         json.dumps({**overall, "questions": per_question_rows}, indent=2, ensure_ascii=False)
     )
 
-    md_lines = [f"# Retriever Lab — run {run_id}", "", f"Top-k: {top_k}", ""]
+    md_lines = [f"# Retriever Lab: run {run_id}", "", f"Top-k: {top_k}", ""]
     for corp_name, by_strategy in overall["corpora"].items():
         md_lines += [
             f"## {corp_name}",
             "",
-            f"| Strategy | Recall@{top_k} | P@{top_k} | Hit@{top_k} | MRR | NDCG@{top_k} | n |",
-            "|---|---|---|---|---|---|---|",
+            (
+                f"| Strategy | Recall@{top_k} | P@{top_k} | Hit@{top_k} "
+                f"| MRR | NDCG@{top_k} | n | Errors |"
+            ),
+            "|---|---|---|---|---|---|---|---|",
         ]
         for sname, m in by_strategy.items():
+            if m["questions"]:
+                metric_cells = (
+                    f"{m['mean_recall_at_k']:.3f} | {m['mean_precision_at_k']:.3f} "
+                    f"| {m['mean_hit_at_k']:.3f} | {m['mean_mrr']:.3f} "
+                    f"| {m['mean_ndcg_at_k']:.3f}"
+                )
+            else:
+                metric_cells = "n/a | n/a | n/a | n/a | n/a"
             md_lines.append(
-                f"| {sname} | {m['mean_recall_at_k']:.3f} | {m['mean_precision_at_k']:.3f} "
-                f"| {m['mean_hit_at_k']:.3f} | {m['mean_mrr']:.3f} | {m['mean_ndcg_at_k']:.3f} "
-                f"| {m['questions']} |"
+                f"| {sname} | {metric_cells} | {m['questions']} | {m['execution_errors']} |"
             )
         md_lines.append("")
     md_path = results_dir / "retriever_lab.md"
@@ -363,18 +388,12 @@ async def run_retriever_lab(
 
     floor_violation = False
     for corp_name, by_strategy in overall["corpora"].items():
-        # Dead-strategy guard runs first: empty retrieval on most questions is a
-        # crash signature (the strategy raised and _retrieve_only swallowed it
-        # into an empty trace), NOT a genuine low-recall result. Flag it
-        # distinctly so a silently-broken strategy can't masquerade as "0 recall"
-        # — exactly how the rerank_vector c.source bug hid.
-        crashed = set(_empty_trace_failures(by_strategy))
         for sname, m in by_strategy.items():
-            if sname in crashed:
+            if m["execution_errors"]:
                 console.print(
-                    f"[red]FAIL[/red] {corp_name}/{sname} returned EMPTY retrieval for "
-                    f"{m['empty_retrieval']}/{m['questions']} questions — likely a crash, "
-                    f"not a result"
+                    f"[red]FAIL[/red] {corp_name}/{sname} had "
+                    f"{m['execution_errors']} retrieval execution error(s); "
+                    "failed queries were excluded from metrics"
                 )
                 floor_violation = True
             elif m["mean_recall_at_k"] < min_recall:
@@ -384,8 +403,16 @@ async def run_retriever_lab(
                 )
                 floor_violation = True
 
-    console.print(f"[green]Run {run_id} written to {results_dir}/[/green]")
-    return 1 if floor_violation else _exit_code
+    no_questions = not overall["corpora"]
+    if run_error is not None:
+        console.print(f"[red]Incomplete run written to {results_dir}/[/red]")
+    elif no_questions:
+        console.print(
+            f"[red]No questions were selected; incomplete run written to {results_dir}/[/red]"
+        )
+    else:
+        console.print(f"[green]Run {run_id} written to {results_dir}/[/green]")
+    return 1 if run_error is not None or no_questions or floor_violation else _exit_code
 
 
 async def _run_corpora_loop(
@@ -396,10 +423,11 @@ async def _run_corpora_loop(
     overall,
     per_question_rows,
     ceiling_k,
+    split,
 ):
     for corp in corpora:
         try:
-            questions = load_questions(corp)
+            questions = load_questions(corp, split=split)
         except FileNotFoundError:
             console.print(f"[yellow]No questions for {corp}; skipping[/yellow]")
             continue
@@ -410,9 +438,10 @@ async def _run_corpora_loop(
         per_strategy_tier_rows: dict[str, list[tuple[int, RetrievalMetrics]]] = {
             s.name: [] for s in strategies
         }
-        # Crash signature: count questions where a strategy surfaced zero chunks.
+        # Empty retrievals are valid observations; execution errors are tracked separately.
         per_strategy_empty: dict[str, int] = {s.name: 0 for s in strategies}
-        title = f"Retriever Lab — {corp} (top-{top_k})"
+        per_strategy_errors: dict[str, int] = {s.name: 0 for s in strategies}
+        title = f"Retriever Lab: {corp} (top-{top_k})"
 
         # Live updates are TTY-only; in non-TTY contexts (CI, pipes, captured
         # subprocesses) Rich.Live silently buffers everything until exit, which
@@ -433,7 +462,26 @@ async def _run_corpora_loop(
         try:
             for s in strategies:
                 for q in questions:
-                    trace = await _retrieve_only(s, q.question, top_k)
+                    try:
+                        trace = await _retrieve_only(s, q.question, top_k, corpus=corp)
+                    except RetrievalExecutionError as exc:
+                        per_strategy_errors[s.name] += 1
+                        per_question_rows.append(
+                            {
+                                "corpus": corp,
+                                "strategy": s.name,
+                                "question_id": q.id,
+                                "question": q.question,
+                                "execution_error": {
+                                    "type": type(exc.__cause__).__name__
+                                    if exc.__cause__
+                                    else type(exc).__name__,
+                                    "message": str(exc),
+                                },
+                            }
+                        )
+                        console.print(f"[red]ERROR[/red] {corp}/{s.name}/{q.id}: {exc}")
+                        continue
                     metrics = compute_all(
                         retrieved=trace.retrieved,
                         expected_ids=set(q.expected_chunks or []),
@@ -493,12 +541,19 @@ async def _run_corpora_loop(
         for s in strategies:
             stats = _summarize_with_tiers(per_strategy_tier_rows[s.name])
             stats["empty_retrieval"] = per_strategy_empty[s.name]
+            stats["execution_errors"] = per_strategy_errors[s.name]
             summary[s.name] = stats
         overall["corpora"][corp] = summary
 
-        ceiling = await _retrieval_ceiling(questions, top_k, ceiling_k)
-        if ceiling.get("questions"):
-            overall["retrieval_ceiling"][corp] = ceiling
+        ceiling = await _retrieval_ceiling(questions, top_k, ceiling_k, corpus=corp)
+        overall["retrieval_ceiling"][corp] = ceiling
+        if ceiling.get("status") == "error":
+            error = ceiling["execution_error"]
+            console.print(
+                f"[red]ERROR[/red] retrieval ceiling for {corp}: "
+                f"{error['type']}: {error['message']}"
+            )
+        elif ceiling.get("questions"):
             console.print(
                 f"[cyan]Retrieval ceiling[/cyan] {corp}: naive Recall@{ceiling['top_k']}="
                 f"{ceiling['recall_at_top_k']:.3f}, Recall@{ceiling['ceiling_k']}="
@@ -506,7 +561,18 @@ async def _run_corpora_loop(
                 f"{ceiling['ranking_headroom']:.3f}"
             )
 
-    return 0
+    return (
+        1
+        if any(
+            stats["execution_errors"]
+            for by_strategy in overall["corpora"].values()
+            for stats in by_strategy.values()
+        )
+        or any(
+            ceiling.get("status") == "error" for ceiling in overall["retrieval_ceiling"].values()
+        )
+        else 0
+    )
 
 
 async def run_retriever_lab_async(*args, **kwargs) -> int:

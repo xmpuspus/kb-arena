@@ -1,4 +1,4 @@
-"""Benchmark runner — orchestrates strategy x question evaluation.
+"""Orchestrate strategy by question benchmark evaluation.
 
 Enhanced with per-query timeouts, retry logic, latency percentiles,
 and reliability tracking.
@@ -7,9 +7,12 @@ and reliability tracking.
 from __future__ import annotations
 
 import asyncio
+import math
 import random
 import time
+from collections.abc import AsyncIterator, Awaitable, Iterable
 from pathlib import Path
+from typing import TypeVar
 
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
@@ -26,28 +29,59 @@ from kb_arena.models.benchmark import (
 )
 from kb_arena.settings import settings
 from kb_arena.strategies.base import Strategy
+from kb_arena.strategies.catalog import default_strategy_names
 
 console = Console()
 
-STRATEGY_NAMES = [
-    "naive_vector",
-    "contextual_vector",
-    "qna_pairs",
-    "knowledge_graph",
-    "hybrid",
-    "raptor",
-    "pageindex",
-    "bm25",
-    "rerank_vector",
-    "qiss",
-]
-# Note: `sqr` is intentionally NOT in the default "all" set — it needs the
-# optional [quantum] extra (qiskit/qiskit-aer/scikit-learn). Run it explicitly
-# with `--strategies sqr`; get_strategy("sqr") raises a clear install hint when
-# the extra is missing, so _load_strategies skips it rather than emitting empty
-# traces that would trip the min-recall floor on a core install.
+STRATEGY_NAMES = list(default_strategy_names())
+# Optional rerank_vector and sqr strategies are intentionally outside the
+# default "all" set. Explicit requests receive a clear install hint when their
+# extra is missing.
 
 RETRY_BASE_S = 1.0  # base for exponential backoff: 1s, 2s, 4s, ...
+
+
+class BenchmarkExecutionError(RuntimeError):
+    """A benchmark could not produce a complete, trustworthy result."""
+
+
+class BenchmarkIncompleteError(BenchmarkExecutionError):
+    """A benchmark stopped at its budget boundary before all queries ran."""
+
+
+_T = TypeVar("_T")
+
+
+async def _as_completed_bounded(
+    awaitables: Iterable[Awaitable[_T]], limit: int
+) -> AsyncIterator[_T]:
+    """Yield results as they complete without scheduling the full input at once."""
+    if limit < 1:
+        raise ValueError("concurrency limit must be at least 1")
+
+    iterator = iter(awaitables)
+    pending: set[asyncio.Future[_T]] = set()
+    done: set[asyncio.Future[_T]] = set()
+
+    def _fill() -> None:
+        while len(pending) < limit:
+            try:
+                awaitable = next(iterator)
+            except StopIteration:
+                break
+            pending.add(asyncio.ensure_future(awaitable))
+
+    _fill()
+    try:
+        while pending:
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                yield task.result()
+            _fill()
+    finally:
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*pending, *done, return_exceptions=True)
 
 
 def _is_retryable(exc: BaseException) -> bool:
@@ -61,7 +95,7 @@ def _is_retryable(exc: BaseException) -> bool:
     if isinstance(exc, TimeoutError | asyncio.TimeoutError):
         return True
 
-    # Anthropic / OpenAI / generic SDK exception class names — match by name to
+    # Match Anthropic, OpenAI, and generic SDK exception class names to
     # avoid hard-importing every SDK at runtime.
     transient = {
         "RateLimitError",
@@ -92,7 +126,7 @@ def _is_retryable(exc: BaseException) -> bool:
         return True
     if any(code in msg for code in ("401", "403", "404", "400")):
         return False
-    return False  # unknown — better to fail fast than retry forever
+    return False  # Fail fast on unknown errors instead of retrying forever.
 
 
 def _classify_error(exc_or_message) -> str:
@@ -120,8 +154,7 @@ def _load_strategies(strategy_filter: str) -> list[Strategy]:
     """Resolve a strategy filter into instantiated strategies.
 
     Accepts "all", a single name, or a comma-separated list ("naive_vector,qiss").
-    Unavailable strategies (e.g. sqr without the [quantum] extra) raise during
-    get_strategy() and are skipped with a message rather than failing the run.
+    Every requested strategy must initialize so the run cannot silently omit evidence.
     """
     from kb_arena.strategies import get_strategy
 
@@ -131,6 +164,7 @@ def _load_strategies(strategy_filter: str) -> list[Strategy]:
         names = [n.strip() for n in strategy_filter.split(",") if n.strip()]
 
     active: list[Strategy] = []
+    failures: list[str] = []
     seen: set[str] = set()
     for name in names:
         if name in seen:
@@ -139,7 +173,11 @@ def _load_strategies(strategy_filter: str) -> list[Strategy]:
         try:
             active.append(get_strategy(name))
         except Exception as e:
-            console.print(f"[yellow]Skipping strategy {name}: {e}[/yellow]")
+            failures.append(f"{name}: {e}")
+    if failures:
+        raise BenchmarkExecutionError(
+            "Requested strategies could not initialize: " + "; ".join(failures)
+        )
     return active
 
 
@@ -153,10 +191,13 @@ async def _run_one(
     llm: LLMClient,
     semaphore: asyncio.Semaphore,
     top_k: int = 5,
+    reference_free: bool = False,
+    corpus: str = "all",
 ) -> AnswerRecord:
     async with semaphore:
         attempt = 0
         last_error = ""
+        last_exception: BaseException | None = None
         max_retries = settings.benchmark_max_retries
         query_timeout = settings.benchmark_query_timeout_s
 
@@ -164,10 +205,19 @@ async def _run_one(
             attempt += 1
             t0 = time.perf_counter()
             try:
+                query_call = (
+                    strategy.query(question_text, top_k=top_k)
+                    if corpus == "all"
+                    else strategy.query(question_text, top_k=top_k, corpus=corpus)
+                )
                 result = await asyncio.wait_for(
-                    strategy.query(question_text, top_k=top_k),
+                    query_call,
                     timeout=query_timeout,
                 )
+                if result.mock:
+                    raise BenchmarkExecutionError(
+                        f"{strategy.name}/{question_id} returned a mock result"
+                    )
                 latency_ms = (time.perf_counter() - t0) * 1000
                 answer = result.answer
                 sources = result.sources
@@ -186,6 +236,12 @@ async def _run_one(
                     sources=sources,
                     llm=llm,
                     question_text=question_text,
+                    context_chunks=(
+                        [chunk.content for chunk in result.retrieval.retrieved if chunk.content]
+                        if result.retrieval
+                        else []
+                    ),
+                    reference_free=reference_free,
                 )
 
                 ir_metrics = None
@@ -206,7 +262,9 @@ async def _run_one(
                     retrieval_latency_ms=retrieval_latency_ms,
                     generation_latency_ms=generation_latency_ms,
                     tokens_used=tokens,
-                    cost_usd=cost,
+                    cost_usd=cost + score.evaluation_cost_usd,
+                    generation_cost_usd=cost,
+                    evaluation_cost_usd=score.evaluation_cost_usd,
                     sources=sources,
                     is_error=is_error,
                     is_empty=is_empty,
@@ -218,6 +276,7 @@ async def _run_one(
             except TimeoutError as e:
                 latency_ms = (time.perf_counter() - t0) * 1000
                 last_error = f"Timeout after {query_timeout}s"
+                last_exception = e
                 if attempt <= max_retries:
                     delay = RETRY_BASE_S * (2 ** (attempt - 1)) + random.uniform(0, 0.5)
                     await asyncio.sleep(delay)
@@ -227,6 +286,7 @@ async def _run_one(
             except Exception as e:
                 latency_ms = (time.perf_counter() - t0) * 1000
                 last_error = str(e)
+                last_exception = e
                 # Don't retry permanent errors (bad API key, missing model, etc.)
                 # Burning 7 minutes per benchmark run on a typo is worse than failing fast.
                 if attempt <= max_retries and _is_retryable(e):
@@ -236,28 +296,14 @@ async def _run_one(
                 else:
                     break
 
-        # All retries exhausted
-        from kb_arena.models.benchmark import Score
-
-        error_score = Score(accuracy=0.0, completeness=0.0, faithfulness=0.0)
-
-        return AnswerRecord(
-            question_id=question_id,
-            strategy=strategy.name,
-            answer=f"[ERROR] {last_error}",
-            score=error_score,
-            latency_ms=latency_ms,
-            is_error=True,
-            is_empty=True,
-            error_message=last_error,
-            attempt_count=attempt,
-            response_length=0,
-        )
+        raise BenchmarkExecutionError(
+            f"{strategy.name}/{question_id} failed after {attempt} attempt(s): {last_error}"
+        ) from last_exception
 
 
 def _aggregate(
     bench: BenchmarkResult,
-    questions_map: dict[str, str],
+    questions_map: dict[str, str | tuple[str, int]],
 ) -> BenchmarkResult:
     if not bench.records:
         return bench
@@ -280,11 +326,20 @@ def _aggregate(
     response_lengths: list[int] = []
 
     for rec in bench.records:
-        try:
-            tier = int(rec.question_id.split("-t")[1].split("-")[0])
-        except (IndexError, ValueError):
-            tier = 0
-        qtype = questions_map.get(rec.question_id, "unknown")
+        question_meta = questions_map.get(rec.question_id)
+        if isinstance(question_meta, tuple):
+            qtype, tier = question_meta
+        else:
+            qtype = question_meta or rec.question_type
+            if rec.question_tier > 0:
+                tier = rec.question_tier
+            else:
+                try:
+                    tier = int(rec.question_id.split("-t")[1].split("-")[0])
+                except (IndexError, ValueError):
+                    tier = 0
+        rec.question_tier = tier
+        rec.question_type = qtype
 
         accuracy_by_tier.setdefault(tier, []).append(rec.score.accuracy)
         completeness_by_tier.setdefault(tier, []).append(rec.score.completeness)
@@ -365,6 +420,7 @@ async def run_benchmark(
     corpus: str = "all",
     strategy: str = "all",
     tier: int = 0,
+    split: str = "",
     parallel: bool = True,
     reference_free: bool = False,
     top_k: int = 5,
@@ -380,12 +436,22 @@ async def run_benchmark(
 
     run_id = uuid4().hex[:8]
     timestamp = datetime.now(UTC).isoformat()
+    cost_cap = settings.benchmark_cost_cap_usd
+    if not math.isfinite(cost_cap) or cost_cap < 0:
+        raise BenchmarkExecutionError("Benchmark cost cap must be finite and non-negative")
     config_snap = {
         "llm_provider": settings.llm_provider,
         "generate_model": settings.generate_model,
         "max_concurrent": settings.benchmark_max_concurrent,
         "query_timeout_s": settings.benchmark_query_timeout_s,
         "top_k": top_k,
+        "question_split": split or "all",
+        "reference_free": reference_free,
+        "ragas_enabled": settings.benchmark_enable_ragas,
+        "cost_cap_usd": cost_cap,
+        "execution_mode": (
+            "cost_capped_serial" if cost_cap > 0 else "parallel" if parallel else "serial"
+        ),
     }
 
     llm = LLMClient()
@@ -397,27 +463,38 @@ async def run_benchmark(
     strategies = _load_strategies(strategy)
 
     if not strategies:
-        console.print("[red]No strategies available. Run build_vectors / build_graph first.[/red]")
-        return
+        raise BenchmarkExecutionError(
+            "No strategies available. Run build_vectors / build_graph first."
+        )
 
-    cost_cap = settings.benchmark_cost_cap_usd
     cumulative_total_cost = 0.0
+    selected_questions = False
 
     console.print(f"[dim]Run ID: {run_id}[/dim]")
     if cost_cap > 0:
         console.print(f"[dim]Cost cap: ${cost_cap:.2f}[/dim]")
+        if parallel:
+            console.print(
+                "[dim]Capped runs launch one query at a time so queued work stops at the cap.[/dim]"
+            )
 
     for corp in corpora:
         try:
-            questions = load_questions(corp, tier=tier)
+            questions = load_questions(corp, tier=tier, split=split)
         except FileNotFoundError:
+            if corpus != "all":
+                raise BenchmarkExecutionError(f"No questions for corpus: {corp}") from None
             console.print(f"[yellow]No questions for corpus: {corp}[/yellow]")
             continue
 
         if not questions:
+            if corpus != "all":
+                selected = f" for split {split!r}" if split else ""
+                raise BenchmarkExecutionError(f"No questions selected for corpus {corp}{selected}")
             continue
+        selected_questions = True
 
-        questions_map = {q.id: q.type for q in questions}
+        questions_map = {q.id: (q.type, q.tier) for q in questions}
 
         def _write_result(bench: BenchmarkResult) -> None:
             # Latest (backward compat)
@@ -429,7 +506,7 @@ async def run_benchmark(
             run_path = run_dir / f"{bench.corpus}_{bench.strategy}.json"
             run_path.write_text(bench.model_dump_json(indent=2))
 
-        if parallel and len(strategies) > 1:
+        if parallel and len(strategies) > 1 and cost_cap <= 0:
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
@@ -451,7 +528,7 @@ async def run_benchmark(
                         timestamp=timestamp,
                         config_snapshot=config_snap,
                     )
-                    coros = [
+                    coros = (
                         _run_one(
                             strat,
                             q.id,
@@ -462,11 +539,14 @@ async def run_benchmark(
                             llm,
                             semaphore,
                             top_k=top_k,
+                            reference_free=reference_free,
+                            corpus=corp,
                         )
                         for q in questions
-                    ]
-                    for coro in asyncio.as_completed(coros):
-                        rec = await coro
+                    )
+                    async for rec in _as_completed_bounded(
+                        coros, settings.benchmark_max_concurrent
+                    ):
                         bench.records.append(rec)
                         progress.advance(task_ids[strat.name])
                     bench = _aggregate(bench, questions_map)
@@ -497,7 +577,9 @@ async def run_benchmark(
                     f"[red]Cost cap exceeded: ${cumulative_total_cost:.4f} >= "
                     f"${cost_cap:.2f}. Halting benchmark.[/red]"
                 )
-                return
+                raise BenchmarkIncompleteError(
+                    f"Cost cap reached at ${cumulative_total_cost:.4f} before the run completed"
+                )
         else:
             # Sequential path
             with Progress(
@@ -521,8 +603,8 @@ async def run_benchmark(
                         config_snapshot=config_snap,
                     )
 
-                    coros = [
-                        _run_one(
+                    async def _run_question(q):
+                        return await _run_one(
                             strat,
                             q.id,
                             q.question,
@@ -532,12 +614,25 @@ async def run_benchmark(
                             llm,
                             semaphore,
                             top_k=top_k,
+                            reference_free=reference_free,
+                            corpus=corp,
                         )
-                        for q in questions
-                    ]
 
-                    for coro in asyncio.as_completed(coros):
-                        rec = await coro
+                    if cost_cap > 0:
+                        records = []
+                        for question in questions:
+                            records.append(await _run_question(question))
+                            if cumulative_total_cost + sum(r.cost_usd for r in records) >= cost_cap:
+                                break
+                    else:
+                        records = []
+                        coros = (_run_question(question) for question in questions)
+                        async for record in _as_completed_bounded(
+                            coros, settings.benchmark_max_concurrent
+                        ):
+                            records.append(record)
+
+                    for rec in records:
                         bench.records.append(rec)
                         cumulative_cost += rec.cost_usd
                         cumulative_total_cost += rec.cost_usd
@@ -549,12 +644,16 @@ async def run_benchmark(
 
                         if cost_cap > 0 and cumulative_total_cost >= cost_cap:
                             console.print(
-                                f"\n[red]Cost cap exceeded: ${cumulative_total_cost:.4f} >= "
+                                f"\n[red]Cost cap reached: ${cumulative_total_cost:.4f} >= "
                                 f"${cost_cap:.2f}. Halting benchmark.[/red]"
                             )
+                            bench.stopped_by_cost_cap = True
                             bench = _aggregate(bench, questions_map)
                             _write_result(bench)
-                            return
+                            raise BenchmarkIncompleteError(
+                                f"Cost cap reached at ${cumulative_total_cost:.4f} "
+                                "before the run completed"
+                            )
 
                     bench = _aggregate(bench, questions_map)
                     _write_result(bench)
@@ -575,3 +674,6 @@ async def run_benchmark(
             f"[green]Done {corp}:[/green] {len(strategies)} strategies, "
             f"${cumulative_cost:.4f} total"
         )
+
+    if not selected_questions:
+        raise BenchmarkExecutionError("No benchmark questions were selected")

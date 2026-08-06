@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/auth";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -39,6 +40,51 @@ interface LeaderboardEntry {
   matches: number;
 }
 
+function errorMessage(data: unknown, fallback: string): string {
+  if (!data || typeof data !== "object") return fallback;
+  const payload = data as Record<string, unknown>;
+  if (typeof payload.detail === "string") return payload.detail;
+  if (payload.detail && typeof payload.detail === "object") {
+    const message = (payload.detail as Record<string, unknown>).message;
+    if (typeof message === "string") return message;
+  }
+  if (payload.error && typeof payload.error === "object") {
+    const message = (payload.error as Record<string, unknown>).message;
+    if (typeof message === "string") return message;
+  }
+  return fallback;
+}
+
+function isMatchResult(data: unknown): data is MatchResult {
+  if (!data || typeof data !== "object") return false;
+  const match = data as Record<string, unknown>;
+  return (
+    typeof match.match_id === "string" &&
+    typeof match.question === "string" &&
+    typeof match.answer_a === "string" &&
+    typeof match.answer_b === "string" &&
+    typeof match.latency_a_ms === "number" &&
+    Number.isFinite(match.latency_a_ms) &&
+    typeof match.latency_b_ms === "number" &&
+    Number.isFinite(match.latency_b_ms) &&
+    Array.isArray(match.sources_a) &&
+    Array.isArray(match.sources_b)
+  );
+}
+
+function isVoteResult(data: unknown): data is VoteResult {
+  if (!data || typeof data !== "object") return false;
+  const vote = data as Record<string, unknown>;
+  return (
+    typeof vote.strategy_a === "string" &&
+    typeof vote.strategy_b === "string" &&
+    typeof vote.winner === "string" &&
+    vote.elo !== null &&
+    typeof vote.elo === "object" &&
+    typeof vote.total_votes === "number"
+  );
+}
+
 export default function ArenaPage() {
   const [question, setQuestion] = useState("");
   const [match, setMatch] = useState<MatchResult | null>(null);
@@ -47,6 +93,7 @@ export default function ArenaPage() {
   const [loading, setLoading] = useState(false);
   const [voting, setVoting] = useState(false);
   const [totalVotes, setTotalVotes] = useState(0);
+  const [error, setError] = useState("");
 
   async function fetchLeaderboard() {
     try {
@@ -64,20 +111,19 @@ export default function ArenaPage() {
     setLoading(true);
     setMatch(null);
     setVoteResult(null);
+    setError("");
     try {
-      const res = await fetch(`${API}/api/arena/match`, {
+      const res = await apiFetch(`${API}/api/arena/match`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: question.trim() }),
       });
-      const data = await res.json();
-      if (data.error) {
-        alert(data.error.message || "Failed to create match");
-        return;
-      }
+      const data: unknown = await res.json();
+      if (!res.ok) throw new Error(errorMessage(data, "Failed to create match"));
+      if (!isMatchResult(data)) throw new Error("Server returned an invalid match response");
       setMatch(data);
-    } catch {
-      alert("Failed to create match. Is the server running?");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create match");
     } finally {
       setLoading(false);
     }
@@ -86,21 +132,20 @@ export default function ArenaPage() {
   async function vote(winner: "a" | "b" | "tie") {
     if (!match) return;
     setVoting(true);
+    setError("");
     try {
-      const res = await fetch(`${API}/api/arena/vote`, {
+      const res = await apiFetch(`${API}/api/arena/vote`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ match_id: match.match_id, winner }),
       });
-      const data = await res.json();
-      if (data.error) {
-        alert(data.error.message || "Vote failed");
-        return;
-      }
+      const data: unknown = await res.json();
+      if (!res.ok) throw new Error(errorMessage(data, "Vote failed"));
+      if (!isVoteResult(data)) throw new Error("Server returned an invalid vote response");
       setVoteResult(data);
       fetchLeaderboard();
-    } catch {
-      alert("Vote failed");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Vote failed");
     } finally {
       setVoting(false);
     }
@@ -166,6 +211,15 @@ export default function ArenaPage() {
             </button>
           ))}
         </div>
+        {error && (
+          <p
+            role="alert"
+            className="px-3 py-2 rounded-lg text-sm"
+            style={{ background: "#fef2f2", color: "#dc2626" }}
+          >
+            {error}
+          </p>
+        )}
       </div>
 
       {/* Match Results */}
@@ -280,6 +334,7 @@ export default function ArenaPage() {
                   setMatch(null);
                   setVoteResult(null);
                   setQuestion("");
+                  setError("");
                 }}
                 className="px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-80"
                 style={{ background: "var(--accent)", color: "#fff" }}

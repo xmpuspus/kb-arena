@@ -99,20 +99,35 @@ export default function GraphPage() {
   const [loading, setLoading] = useState(false);
   const [buildStatus, setBuildStatus] = useState<"idle" | "building" | "done" | "error">("idle");
   const [buildProgress, setBuildProgress] = useState("");
-  const abortRef = useRef<AbortController>(new AbortController());
+  const abortRef = useRef<AbortController | null>(null);
+  const buildEpochRef = useRef(0);
 
   useEffect(() => { fetchCorpora().then(setCorpora); }, []);
 
+  useEffect(() => () => {
+    buildEpochRef.current += 1;
+    abortRef.current?.abort();
+  }, []);
+
   async function handleLiveBuild() {
-    abortRef.current = new AbortController();
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const buildEpoch = buildEpochRef.current + 1;
+    buildEpochRef.current = buildEpoch;
+    const buildCorpus = corpus;
+    const isCurrentBuild = () =>
+      buildEpochRef.current === buildEpoch && !controller.signal.aborted;
     setBuildStatus("building");
     setBuildProgress("Starting...");
     // Clear existing graph so nodes animate in fresh
     setNodes([]);
     setEdges([]);
     try {
-      await triggerGraphBuild(corpus);
-      for await (const event of streamGraphBuild(corpus, abortRef.current.signal)) {
+      const build = await triggerGraphBuild(buildCorpus);
+      if (!isCurrentBuild()) return;
+      for await (const event of streamGraphBuild(build.build_id, controller.signal)) {
+        if (!isCurrentBuild()) break;
         if (event.type === "started") {
           setBuildProgress(`Extracting ${event.total_sections} sections...`);
         } else if (event.type === "entity") {
@@ -128,7 +143,18 @@ export default function GraphPage() {
         } else if (event.type === "section_done") {
           setBuildProgress(`Processing documents...`);
         } else if (event.type === "complete") {
-          setConnected(true);
+          const data = await fetchGraphData(buildCorpus);
+          if (!isCurrentBuild()) break;
+          setConnected(data.connected);
+          if (!data.connected) {
+            setNodes(SAMPLE_NODES);
+            setEdges(SAMPLE_EDGES);
+            setBuildStatus("error");
+            setBuildProgress("Graph build completed, but the saved graph could not be loaded.");
+            continue;
+          }
+          setNodes(apiToGraphNodes(data.nodes));
+          setEdges(apiToGraphEdges(data.edges));
           setBuildStatus("done");
           setBuildProgress(`Complete: ${event.total_entities} entities, ${event.total_relationships} relationships`);
         } else if (event.type === "error") {
@@ -137,20 +163,32 @@ export default function GraphPage() {
         }
       }
     } catch (err: unknown) {
-      if (err instanceof Error && err.name !== "AbortError") {
+      if (isCurrentBuild() && err instanceof Error && err.name !== "AbortError") {
         setBuildStatus("error");
         setBuildProgress(err.message);
       }
     } finally {
-      if (buildStatus === "building") setBuildStatus("idle");
+      if (isCurrentBuild()) {
+        setBuildStatus((status) => (status === "building" ? "idle" : status));
+      }
     }
   }
 
+  function handleCorpusChange(nextCorpus: string) {
+    buildEpochRef.current += 1;
+    abortRef.current?.abort();
+    setBuildStatus("idle");
+    setBuildProgress("");
+    setCorpus(nextCorpus);
+  }
+
   useEffect(() => {
+    let active = true;
     setLoading(true);
     fetchGraphData(corpus).then((data) => {
+      if (!active) return;
       setConnected(data.connected);
-      if (data.connected && data.nodes.length > 0) {
+      if (data.connected) {
         setNodes(apiToGraphNodes(data.nodes));
         setEdges(apiToGraphEdges(data.edges));
       } else {
@@ -159,6 +197,9 @@ export default function GraphPage() {
       }
       setLoading(false);
     });
+    return () => {
+      active = false;
+    };
   }, [corpus]);
 
   const maxDegree = Math.max(
@@ -176,8 +217,8 @@ export default function GraphPage() {
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--foreground)" }}>
             Knowledge graph
           </h1>
@@ -185,10 +226,11 @@ export default function GraphPage() {
             Explore the entity dependency graph extracted from your documentation. Hover to highlight neighbors, drag to pan, scroll to zoom, double-click to focus.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:shrink-0">
           <select
             value={corpus}
-            onChange={(e) => setCorpus(e.target.value)}
+            onChange={(e) => handleCorpusChange(e.target.value)}
+            disabled={buildStatus === "building"}
             className="px-3 py-1.5 rounded-lg border text-sm"
             style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
           >
@@ -217,7 +259,16 @@ export default function GraphPage() {
           className="px-3 py-2 rounded-lg text-xs"
           style={{ background: "var(--border)", color: "var(--muted)" }}
         >
-          Showing sample data — Neo4j not connected. Run <code className="mono">docker compose up -d neo4j</code> and <code className="mono">kb-arena build-graph --corpus {corpus}</code> to see your real graph.
+          Showing sample data because Neo4j is not connected. Run <code className="mono">docker compose up -d neo4j</code> and <code className="mono">kb-arena build-graph --corpus {corpus}</code> to see your graph.
+        </div>
+      )}
+
+      {connected && !loading && nodes.length === 0 && (
+        <div
+          className="px-3 py-2 rounded-lg text-xs"
+          style={{ background: "var(--border)", color: "var(--muted)" }}
+        >
+          Connected to Neo4j, but this corpus has no graph data. Run <code className="mono">kb-arena build-graph --corpus {corpus}</code> to build it.
         </div>
       )}
 
@@ -276,7 +327,7 @@ export default function GraphPage() {
         <h3 className="text-sm font-semibold mb-2" style={{ color: "var(--foreground)" }}>About the graph</h3>
         <p className="text-xs leading-relaxed" style={{ color: "var(--muted)" }}>
           The knowledge graph is built by the LLM entity extractor during <code className="mono">kb-arena build-graph</code>.
-          Entities and relationships are extracted using a universal schema — Topics, Components, Processes, Configs,
+          Entities and relationships use a shared schema: Topics, Components, Processes, Configs,
           and Constraints, connected by DEPENDS_ON, CONTAINS, CONNECTS_TO, TRIGGERS, CONFIGURES, ALTERNATIVE_TO,
           and EXTENDS relationships. The graph is stored in Neo4j and queried with Cypher templates matched to question intent.
         </p>

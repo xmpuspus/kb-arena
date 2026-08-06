@@ -1,8 +1,9 @@
-"""Benchmark models — question definitions, evaluation results, scoring."""
+"""Benchmark question, evaluation result, and scoring models."""
 
 from __future__ import annotations
 
 import statistics
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -34,6 +35,7 @@ class Question(BaseModel):
     ground_truth: GroundTruth
     constraints: Constraints = Field(default_factory=Constraints)
     expected_chunks: list[str] = Field(default_factory=list)
+    split: Literal["development", "validation", "holdout", "unspecified"] = "unspecified"
 
 
 class RetrievalMetrics(BaseModel):
@@ -45,7 +47,7 @@ class RetrievalMetrics(BaseModel):
     hit_at_k: int = Field(ge=0, le=1, default=0)
     mrr: float = Field(ge=0.0, le=1.0, default=0.0)
     ndcg_at_k: float = Field(ge=0.0, le=1.0, default=0.0)
-    # v0.8.0 additions — universal IR baselines + partial-pool robustness.
+    # v0.8.0 added universal IR baselines and partial-pool robustness.
     average_precision: float = Field(ge=0.0, le=1.0, default=0.0)
     r_precision: float = Field(ge=0.0, le=1.0, default=0.0)
     bpref: float = Field(ge=0.0, le=1.0, default=0.0)
@@ -72,12 +74,15 @@ class Score(BaseModel):
     ragas_context_precision: float = Field(ge=0.0, le=1.0, default=0.0)
     ragas_context_recall: float = Field(ge=0.0, le=1.0, default=0.0)
     ragas_answer_relevancy: float = Field(ge=0.0, le=1.0, default=0.0)
+    evaluation_cost_usd: float = Field(ge=0.0, default=0.0)
 
 
 class AnswerRecord(BaseModel):
     """Record of a single strategy answering a single question."""
 
     question_id: str
+    question_tier: int = 0
+    question_type: str = "unknown"
     strategy: str
     answer: str
     score: Score
@@ -86,6 +91,8 @@ class AnswerRecord(BaseModel):
     generation_latency_ms: float = 0.0
     tokens_used: int = 0
     cost_usd: float = 0.0
+    generation_cost_usd: float = 0.0
+    evaluation_cost_usd: float = 0.0
     sources: list[str] = Field(default_factory=list)
     is_error: bool = False
     is_empty: bool = False
@@ -139,7 +146,7 @@ class ReliabilityStats(BaseModel):
 
 
 class BenchmarkResult(BaseModel):
-    """Full benchmark results for a corpus × strategy."""
+    """Full benchmark results for a corpus and strategy."""
 
     corpus: str
     strategy: str
@@ -148,6 +155,7 @@ class BenchmarkResult(BaseModel):
     config_snapshot: dict = Field(default_factory=dict)
     total_questions: int = 0
     records: list[AnswerRecord] = Field(default_factory=list)
+    stopped_by_cost_cap: bool = False
 
     # Accuracy dimensions
     accuracy_by_tier: dict[int, float] = Field(default_factory=dict)
@@ -167,7 +175,7 @@ class BenchmarkResult(BaseModel):
     total_cost_usd: float = 0.0
     cost_per_correct: float = 0.0
 
-    # Retrieval Quality (IR metrics) — populated when records have retrieval_metrics
+    # Retrieval quality metrics are populated when records have retrieval_metrics.
     ir_top_k: int = 5
     mean_recall_at_k: float = 0.0
     mean_precision_at_k: float = 0.0

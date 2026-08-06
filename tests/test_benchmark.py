@@ -194,6 +194,11 @@ class TestEvaluator:
         score = _check_source_attribution([], ["json.html#json.JSONDecodeError"])
         assert score == 0.0
 
+    def test_source_attribution_ignores_blank_sources(self):
+        from kb_arena.benchmark.evaluator import _check_source_attribution
+
+        assert _check_source_attribution(["", "   "], ["expected-doc"]) == pytest.approx(0.0)
+
     def test_source_attribution_no_expected(self):
         from kb_arena.benchmark.evaluator import _check_source_attribution
 

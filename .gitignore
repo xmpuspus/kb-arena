@@ -52,16 +52,19 @@ datasets/*/raw/*.rst
 datasets/*/raw/*.json
 datasets/*/raw/*.txt
 !datasets/*/raw/.gitkeep
+!datasets/nist-800-171-r3/raw/nist-sp-800-171r3.html
 
 # Processed data (generated, not committed)
 datasets/*/processed/*.jsonl
 !datasets/*/processed/.gitkeep
+!datasets/nist-800-171-r3/processed/documents.jsonl
 
 # Generated Q&A pairs
 datasets/*/qa-pairs/
 
 # Benchmark results (user-generated results are not committed)
 results/*.json
+results/run_*/
 !results/aws-compute_*.json
 !results/.gitkeep
 

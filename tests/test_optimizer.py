@@ -34,7 +34,8 @@ def test_applicable_dims_per_strategy():
     assert applicable_dims("naive_vector") == {"top_k", "chunk_tokens", "embedding_provider"}
     assert "reranker_backend" in applicable_dims("rerank_vector")
     assert "reranker_backend" not in applicable_dims("naive_vector")
-    assert "chunk_tokens" not in applicable_dims("qna_pairs")  # QnA isn't token-chunked
+    assert applicable_dims("qna_pairs") == {"top_k"}
+    assert applicable_dims("raptor") == {"top_k"}
 
 
 def test_bm25_only_sweeps_top_k():
@@ -63,6 +64,21 @@ def test_grid_expansion_is_cartesian_over_applicable_dims():
         baseline=_base("naive_vector"),
     )
     assert len(trials) == 2 * 2 * 2  # top_k x chunk x embedding
+
+
+def test_unbounded_search_rejects_oversized_cartesian_product(monkeypatch):
+    from kb_arena.benchmark import optimizer
+
+    monkeypatch.setattr(optimizer, "MAX_UNBOUNDED_TRIALS", 3)
+    with pytest.raises(ValueError, match="Search space has"):
+        build_trials(
+            "naive_vector",
+            top_ks=[1, 2, 3, 4],
+            chunk_sizes=[],
+            embedding_providers=[],
+            reranker_backends=[],
+            baseline=_base("naive_vector"),
+        )
 
 
 def test_baseline_is_always_first_trial():
@@ -94,6 +110,28 @@ def test_random_method_is_seed_deterministic_and_capped():
     assert a != c
     assert len(a) == 5
     assert a[0] == _base("naive_vector")  # baseline still first
+
+
+@pytest.mark.parametrize("method", ["grid", "random"])
+def test_max_trials_bounds_search_space_construction(method, monkeypatch):
+    def product_must_not_run(*args, **kwargs):
+        raise AssertionError("cartesian product was consumed past max_trials")
+
+    monkeypatch.setattr("kb_arena.benchmark.optimizer.itertools.product", product_must_not_run)
+    values = list(range(1_000))
+
+    trials = build_trials(
+        "naive_vector",
+        top_ks=values,
+        chunk_sizes=values,
+        embedding_providers=[f"provider-{i}" for i in values],
+        reranker_backends=[],
+        baseline=_base("naive_vector"),
+        method=method,
+        max_trials=1,
+    )
+
+    assert trials == [_base("naive_vector")]
 
 
 def test_select_best_picks_max_and_reports_delta():
@@ -152,3 +190,77 @@ def test_build_trials_rejects_unknown_method():
             baseline=_base("bm25"),
             method="genetic",
         )
+
+
+@pytest.mark.asyncio
+async def test_score_trial_stubs_llm_during_index_rebuild(monkeypatch):
+    from kb_arena import strategies
+    from kb_arena.benchmark.optimizer import _score_trial
+    from kb_arena.llm.client import LLMClient
+
+    build_called = False
+
+    async def reject_live_generation(self, *args, **kwargs):
+        raise AssertionError("live LLM generation attempted")
+
+    class FakeStrategy:
+        async def build_index(self, documents):
+            nonlocal build_called
+            build_called = True
+            client = object.__new__(LLMClient)
+            await client.generate(query="q", context="", system_prompt="test")
+
+    monkeypatch.setattr(LLMClient, "_call", reject_live_generation)
+    monkeypatch.setattr(strategies, "get_strategy", lambda name: FakeStrategy())
+
+    base = _base("naive_vector")
+    cfg = base.model_copy(update={"chunk_tokens": 256})
+    result = await _score_trial("naive_vector", cfg, [], [], "ndcg", base)
+
+    assert build_called is True
+    assert result.per_question_scores == []
+
+
+@pytest.mark.asyncio
+async def test_score_trial_raises_when_index_rebuild_fails(monkeypatch):
+    from kb_arena import strategies
+    from kb_arena.benchmark.optimizer import OptimizationTrialError, _score_trial
+
+    class BrokenStrategy:
+        async def build_index(self, documents):
+            raise ConnectionError("vector store offline")
+
+    monkeypatch.setattr(strategies, "get_strategy", lambda name: BrokenStrategy())
+    base = _base("naive_vector")
+    cfg = base.model_copy(update={"chunk_tokens": 256})
+
+    with pytest.raises(OptimizationTrialError, match="vector store offline"):
+        await _score_trial("naive_vector", cfg, [], [object()], "ndcg", base)
+
+
+@pytest.mark.asyncio
+async def test_score_trial_passes_selected_corpus_to_retrieval(monkeypatch):
+    from types import SimpleNamespace
+
+    from kb_arena import strategies
+    from kb_arena.benchmark import retriever_lab
+    from kb_arena.benchmark.optimizer import _score_trial
+    from kb_arena.models.retrieval import RetrievalTrace
+
+    class FakeStrategy:
+        name = "naive_vector"
+
+    seen_corpora = []
+
+    async def fake_retrieve(strategy, question, top_k, corpus="all"):
+        seen_corpora.append(corpus)
+        return RetrievalTrace(query=question, retrieved=[], top_k=top_k)
+
+    monkeypatch.setattr(strategies, "get_strategy", lambda name: FakeStrategy())
+    monkeypatch.setattr(retriever_lab, "_retrieve_only", fake_retrieve)
+    question = SimpleNamespace(id="q1", question="question", expected_chunks=[], ground_truth=None)
+    base = _base("naive_vector")
+
+    await _score_trial("naive_vector", base, [], [question], "ndcg", base, corpus="alpha")
+
+    assert seen_corpora == ["alpha"]

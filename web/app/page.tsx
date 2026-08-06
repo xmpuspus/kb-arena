@@ -2,48 +2,60 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { STRATEGIES, STRATEGY_LABELS, STRATEGY_COLORS, CORPORA, fetchCorpora, type CorpusInfo, type Strategy } from "@/lib/api";
+import {
+  CORPORA,
+  DEFAULT_STRATEGY_CATALOG,
+  STRATEGY_COLORS,
+  STRATEGY_DESCRIPTIONS,
+  fetchCorpora,
+  fetchStrategyCatalog,
+  type CorpusInfo,
+  type Strategy,
+  type StrategyCatalogRecord,
+} from "@/lib/api";
 
 const TIER_LABELS = [
-  "Tier 1 — Factoid",
-  "Tier 2 — Procedural",
-  "Tier 3 — Comparative",
-  "Tier 4 — Relational",
-  "Tier 5 — Multi-hop",
+  "Tier 1: Factoid",
+  "Tier 2: Procedural",
+  "Tier 3: Comparative",
+  "Tier 4: Relational",
+  "Tier 5: Multi-hop",
 ];
 
-function StrategyCard({ label, desc, color }: { label: string; desc: string; color: string }) {
+function StrategyCard({ record }: { record: StrategyCatalogRecord }) {
+  const name = record.name as Strategy;
   return (
     <div
       className="rounded-lg border p-4 flex flex-col gap-2"
       style={{ borderColor: "var(--border)", background: "var(--card)", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}
     >
       <div className="flex items-center gap-2">
-        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
-        <h3 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{label}</h3>
+        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: STRATEGY_COLORS[name] }} />
+        <h3 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>{record.label}</h3>
       </div>
-      <p className="text-xs leading-relaxed" style={{ color: "var(--muted)" }}>{desc}</p>
+      <p className="text-xs leading-relaxed" style={{ color: "var(--muted)" }}>{STRATEGY_DESCRIPTIONS[name]}</p>
+      <p className="text-xs" style={{ color: record.status === "loaded" ? "var(--success)" : "var(--muted)" }}>
+        {record.status === "loaded"
+          ? "Loaded"
+          : record.status === "unknown"
+            ? "Runtime status unavailable"
+            : record.optional_extra
+              ? `Optional: ${record.optional_extra}`
+              : "Unavailable"}
+        {record.experimental ? " | Experimental" : ""}
+      </p>
     </div>
   );
 }
 
-const STRATEGY_DESCS: Record<Strategy, string> = {
-  naive_vector: "Embed doc pages as chunks, retrieve by cosine similarity. Baseline approach — fast, simple, no cross-topic awareness.",
-  contextual_vector: "Embed chunks with parent topic context prepended. Better at disambiguating domain-specific terms across large documentation sets.",
-  qna_pairs: "Pre-generate Q&A pairs from docs using an LLM, then embed and retrieve the pairs. High precision on common domain questions.",
-  knowledge_graph: "Extract entities, components, and dependencies into Neo4j. Query with Cypher templates matched to question intent. Best on multi-topic architectures.",
-  hybrid: "Route by intent: factoid → vector, cross-topic → graph, complex → both with Reciprocal Rank Fusion. Adapts per question.",
-  raptor: "Build a recursive tree of LLM cluster summaries over the corpus. Query all levels simultaneously — leaf chunks + broad topic synthesis for Tier 4/5 questions.",
-  pageindex: "Vectorless, reasoning-based retrieval. Builds a hierarchical tree index from document structure, then uses LLM reasoning to traverse the tree — no embeddings, no chunking.",
-  bm25: "Classic keyword matching with BM25Okapi scoring. The lexical baseline — no embeddings, no LLM retrieval. Shows whether neural retrieval adds value for your docs.",
-  rerank_vector: "Naive Vector retrieves a wide candidate pool, then a cross-encoder reranker (BGE, Cohere, or Voyage) rescores and keeps the best top-k. The 2026 production accuracy lever.",
-  qiss: "Quantum-inspired reranker, pure NumPy. Rescores Naive Vector candidates by quantum state fidelity (cosine squared) over the same embeddings, with an optional multi-query superposition mode.",
-};
-
 export default function Home() {
   const [corpora, setCorpora] = useState<CorpusInfo[]>(CORPORA);
+  const [catalog, setCatalog] = useState<StrategyCatalogRecord[]>(DEFAULT_STRATEGY_CATALOG);
 
-  useEffect(() => { fetchCorpora().then(setCorpora); }, []);
+  useEffect(() => {
+    fetchCorpora().then(setCorpora);
+    fetchStrategyCatalog().then(setCatalog);
+  }, []);
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-12 space-y-16">
@@ -53,7 +65,7 @@ export default function Home() {
           KB Arena
         </h1>
         <p className="text-lg leading-relaxed max-w-3xl" style={{ color: "var(--muted)" }}>
-          Which retrieval architecture works best for your documentation? 10 strategies, tiered difficulty questions — empirical evidence so you don&apos;t have to guess.
+          Compare retrieval architectures on the same documentation and questions, then choose from recorded quality, latency, cost, and limits.
         </p>
         <div className="flex gap-3 pt-2">
           <Link
@@ -87,7 +99,7 @@ export default function Home() {
         <h2 className="text-xl font-semibold" style={{ color: "var(--foreground)" }}>How it works</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {[
-            { step: "1", title: "Same question", desc: "Each question — from simple lookups to multi-topic dependency chains — is sent to all 10 strategies simultaneously." },
+            { step: "1", title: "Same question", desc: "Send each question, from direct lookups to multi-topic chains, to the selected strategies." },
             { step: "2", title: "4-pass evaluation", desc: "Structural checks, entity coverage, source attribution against your docs, then LLM-as-judge scoring." },
             { step: "3", title: "Ranked report", desc: "Accuracy by tier, latency percentiles, reliability rates, and cross-strategy composite ranking across your documentation." },
           ].map((item) => (
@@ -111,15 +123,10 @@ export default function Home() {
 
       {/* Strategies */}
       <section className="space-y-4">
-        <h2 className="text-xl font-semibold" style={{ color: "var(--foreground)" }}>The 10 strategies</h2>
+        <h2 className="text-xl font-semibold" style={{ color: "var(--foreground)" }}>Strategy catalog</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {STRATEGIES.map((s) => (
-            <StrategyCard
-              key={s}
-              label={STRATEGY_LABELS[s]}
-              desc={STRATEGY_DESCS[s]}
-              color={STRATEGY_COLORS[s]}
-            />
+          {catalog.map((record) => (
+            <StrategyCard key={record.name} record={record} />
           ))}
         </div>
       </section>
@@ -136,7 +143,7 @@ export default function Home() {
             >
               <h3 className="text-sm font-semibold mb-2" style={{ color: "var(--foreground)" }}>{c.label}</h3>
               <p className="text-xs" style={{ color: "var(--muted)" }}>
-                {c.questionCount != null ? `${c.questionCount} questions` : "—"}
+                {c.questionCount != null ? `${c.questionCount} questions` : "Not labeled"}
               </p>
             </div>
           ))}
@@ -160,7 +167,7 @@ export default function Home() {
         <div className="flex flex-wrap gap-2">
           {[
             "Python 3.11+", "Pydantic v2", "FastAPI", "Neo4j 5", "ChromaDB",
-            "Anthropic Claude", "OpenAI Embeddings", "Next.js 14", "Tailwind CSS", "Recharts",
+            "Anthropic Claude", "OpenAI Embeddings", "Next.js 16", "Tailwind CSS", "Recharts",
           ].map((tech) => (
             <span
               key={tech}

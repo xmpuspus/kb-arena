@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from kb_arena.models.document import Document
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
-from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.strategies.base import AnswerResult, Strategy, validate_top_k
 
 logger = logging.getLogger(__name__)
 
@@ -330,44 +330,51 @@ class PageIndexStrategy(Strategy):
         if not documents:
             return
 
-        corpus = documents[0].corpus
         llm = self._get_llm()
-        doc_trees: list[TreeNode] = []
-        total_calls = 0
-
+        documents_by_corpus: dict[str, list[Document]] = {}
         for doc in documents:
-            root = _build_doc_tree(doc)
-            calls = await _generate_summaries(root, llm)
-            total_calls += calls
-            doc_trees.append(root)
+            documents_by_corpus.setdefault(doc.corpus, []).append(doc)
 
-        tree = CorpusTree(
-            corpus=corpus,
-            built_at=datetime.now(UTC).isoformat(),
-            documents=doc_trees,
-        )
+        for corpus, corpus_documents in documents_by_corpus.items():
+            doc_trees: list[TreeNode] = []
+            total_calls = 0
+            for doc in corpus_documents:
+                root = _build_doc_tree(doc)
+                calls = await _generate_summaries(root, llm)
+                total_calls += calls
+                doc_trees.append(root)
 
-        path = _tree_path(corpus)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(tree.model_dump_json(indent=2))
-        self._trees[corpus] = tree
+            tree = CorpusTree(
+                corpus=corpus,
+                built_at=datetime.now(UTC).isoformat(),
+                documents=doc_trees,
+            )
 
-        total_sections = sum(d.leaf_count() for d in doc_trees)
-        logger.info(
-            "PageIndex: built tree for %s — %d docs, %d leaf sections, %d LLM calls",
-            corpus,
-            len(doc_trees),
-            total_sections,
-            total_calls,
-        )
+            path = _tree_path(corpus)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(tree.model_dump_json(indent=2))
+            self._trees[corpus] = tree
 
-    async def query(self, question: str, top_k: int = 5) -> AnswerResult:
+            total_sections = sum(d.leaf_count() for d in doc_trees)
+            logger.info(
+                "PageIndex: built tree for %s - %d docs, %d leaf sections, %d LLM calls",
+                corpus,
+                len(doc_trees),
+                total_sections,
+                total_calls,
+            )
+
+    async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Answer by LLM-driven tree traversal — no vectors, no embeddings."""
+        validate_top_k(top_k)
         start = self._start_timer()
         llm = self._get_llm()
 
-        # Load all available trees
-        trees = self._load_all_trees()
+        if corpus == "all":
+            trees = self._load_all_trees()
+        else:
+            tree = self._load_tree(corpus)
+            trees = [tree] if tree else []
         if not trees:
             latency_ms = self._record_metrics(start)
             return AnswerResult(

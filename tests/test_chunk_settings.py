@@ -7,8 +7,11 @@ resolves None args from settings, and an explicit arg still wins.
 
 from __future__ import annotations
 
-from kb_arena.settings import settings
+import pytest
+
+from kb_arena.settings import Settings, settings
 from kb_arena.strategies.naive_vector import _chunk_text
+from kb_arena.strategies.raptor import _chunk_text as _raptor_chunk_text
 
 
 def test_chunk_text_uses_settings_when_args_omitted(monkeypatch):
@@ -35,3 +38,18 @@ def test_settings_expose_chunk_defaults():
     fresh = type(settings)()
     assert fresh.chunk_tokens == 512
     assert fresh.chunk_overlap_tokens == 50
+
+
+@pytest.mark.parametrize("chunker", [_chunk_text, _raptor_chunk_text])
+@pytest.mark.parametrize(
+    ("chunk_tokens", "overlap_tokens"),
+    [(0, 0), (2, -1), (2, 2), (2, 3)],
+)
+def test_chunkers_reject_nonprogressing_windows(chunker, chunk_tokens, overlap_tokens):
+    with pytest.raises(ValueError, match="chunk overlap"):
+        chunker("one two three four", chunk_tokens=chunk_tokens, overlap_tokens=overlap_tokens)
+
+
+def test_settings_reject_nonprogressing_chunk_window():
+    with pytest.raises(ValueError, match="chunk overlap"):
+        Settings(chunk_tokens=2, chunk_overlap_tokens=2)

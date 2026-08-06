@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import re
+from importlib.resources import as_file, files
 from pathlib import Path
 
 from rich.console import Console
@@ -100,10 +101,14 @@ def _validate_result(raw: dict, corpus: str, section_id: str) -> ExtractionResul
         if not valid_node_type(corpus, e.get("type", "")):
             logger.debug("Rejected entity type '%s' (not in schema)", e.get("type"))
             continue
+        fqn = e.get("fqn", "")
+        if not isinstance(fqn, str) or not fqn.strip():
+            raise ValueError("entity fqn must be a non-empty string")
+        fqn = fqn.strip()
         entity = Entity(
-            id=e.get("id", e.get("fqn", "")),
+            id=e.get("id") or fqn,
             name=e.get("name", ""),
-            fqn=e.get("fqn", ""),
+            fqn=fqn,
             type=e["type"],
             description=e.get("description", ""),
             properties=e.get("properties", {}),
@@ -141,16 +146,24 @@ async def _extract_section(
     text = _section_text(section)
     try:
         resp = await llm.extract(text=text, system_prompt=system_prompt)
-        # Strip markdown fences if present (LLM often wraps JSON in ```json ... ```)
-        cleaned = re.sub(r"```(?:json)?\s*", "", resp.text).strip().rstrip("`").strip()
-        raw = json.loads(cleaned)
-    except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
-        logger.warning("Extraction failed for section %s: %s", section.id, exc)
-        return ExtractionResult(section_id=section.id)
     except Exception as exc:
         raise GraphError(f"Unexpected extraction error for section {section.id}") from exc
 
-    return _validate_result(raw, corpus, section.id)
+    try:
+        # Strip markdown fences if present (LLM often wraps JSON in ```json ... ```)
+        cleaned = re.sub(r"```(?:json)?\s*", "", resp.text).strip().rstrip("`").strip()
+        raw = json.loads(cleaned)
+        if not isinstance(raw, dict):
+            raise TypeError("extraction response must be a JSON object")
+        entities = raw.get("entities", [])
+        relationships = raw.get("relationships", [])
+        if not isinstance(entities, list) or not isinstance(relationships, list):
+            raise TypeError("entities and relationships must be arrays")
+        if not all(isinstance(item, dict) for item in [*entities, *relationships]):
+            raise TypeError("entities and relationships must contain objects")
+        return _validate_result(raw, corpus, section.id)
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError, AttributeError) as exc:
+        raise GraphError(f"Invalid extraction response for section {section.id}") from exc
 
 
 _EXTRACTION_SEMAPHORE = asyncio.Semaphore(5)
@@ -170,7 +183,19 @@ async def extract_document(
         async with _EXTRACTION_SEMAPHORE:
             return await _extract_section(section, doc.corpus, llm, system_prompt)
 
-    results = await asyncio.gather(*[_bounded(s) for s in doc.sections])
+    results: list[ExtractionResult] = []
+    for start in range(0, len(doc.sections), 5):
+        tasks = [
+            asyncio.create_task(_bounded(section)) for section in doc.sections[start : start + 5]
+        ]
+        try:
+            results.extend(await asyncio.gather(*tasks))
+        except BaseException:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
 
     for result in results:
         all_entities.extend(result.entities)
@@ -217,6 +242,44 @@ async def extract_document(
     )
 
 
+async def _load_schema(store: Neo4jStore, corpus: str) -> None:
+    """Load corpus-specific DDL from the installed package, falling back to the default."""
+    legacy_constraints = await store.legacy_constraint_names()
+    if legacy_constraints:
+        names = ", ".join(legacy_constraints)
+        raise GraphError(
+            "Legacy graph constraints require an explicit migration before rebuilding "
+            f"({names}). Use a dedicated Neo4j database, then run: "
+            "kb-arena migrate-graph-schema --database <name> "
+            "--confirm-dedicated-database"
+        )
+
+    package = files("kb_arena.cypher")
+    schema_resource = package.joinpath(f"schema_{corpus}.cypher")
+    if not schema_resource.is_file():
+        schema_resource = package.joinpath("schema_default.cypher")
+    if not schema_resource.is_file():
+        raise GraphError("The installed KB Arena package does not contain a graph schema")
+
+    with as_file(schema_resource) as schema_path:
+        await store.load_schema(schema_path)
+
+
+async def migrate_legacy_graph_schema(database: str) -> list[str]:
+    """Install the 0.10 schema and explicitly remove known legacy constraints."""
+    store = await Neo4jStore.connect(database=database)
+    try:
+        package = files("kb_arena.cypher")
+        schema_resource = package.joinpath("schema_default.cypher")
+        if not schema_resource.is_file():
+            raise GraphError("The installed KB Arena package does not contain a graph schema")
+        with as_file(schema_resource) as schema_path:
+            await store.load_schema(schema_path)
+        return await store.drop_legacy_constraints()
+    finally:
+        await store.close()
+
+
 async def run_extraction(corpus: str = "custom", schema: str = "auto", event_callback=None) -> None:
     """Orchestrate: load processed JSONL → extract → resolve → load to Neo4j."""
     get_schema(corpus)
@@ -229,15 +292,6 @@ async def run_extraction(corpus: str = "custom", schema: str = "auto", event_cal
 
     llm = LLMClient()
     system_prompt = _build_system_prompt(corpus)
-    store = await Neo4jStore.connect()
-
-    # Load schema DDL — corpus-specific if available, otherwise default
-    cypher_dir = Path("cypher")
-    schema_file = cypher_dir / f"schema_{corpus}.cypher"
-    if not schema_file.exists():
-        schema_file = cypher_dir / "schema_default.cypher"
-    if schema_file.exists():
-        await store.load_schema(schema_file)
 
     node_enum, rel_enum = get_schema(corpus)
     all_entities: list[Entity] = []
@@ -262,32 +316,47 @@ async def run_extraction(corpus: str = "custom", schema: str = "auto", event_cal
             }
         )
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("{task.completed}/{task.total} sections"),
-        TimeElapsedColumn(),
-        console=_console,
-    ) as progress:
-        extract_task = progress.add_task(f"Extracting [bold]{corpus}[/bold]", total=total_sections)
+    store = await Neo4jStore.connect()
+    try:
+        await _load_schema(store, corpus)
+    except BaseException:
+        await store.close()
+        raise
 
-        for doc in docs_to_process:
-            result = await extract_document(doc, llm, system_prompt, event_callback=event_callback)
-            all_entities.extend(result.entities)
-            all_relationships.extend(result.relationships)
-            progress.advance(extract_task, advance=len(doc.sections))
-            if event_callback:
-                await event_callback(
-                    {
-                        "type": "section_done",
-                        "data": {
-                            "doc_id": doc.id,
-                            "entities_count": len(result.entities),
-                            "rels_count": len(result.relationships),
-                        },
-                    }
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("{task.completed}/{task.total} sections"),
+            TimeElapsedColumn(),
+            console=_console,
+        ) as progress:
+            extract_task = progress.add_task(
+                f"Extracting [bold]{corpus}[/bold]", total=total_sections
+            )
+
+            for doc in docs_to_process:
+                result = await extract_document(
+                    doc, llm, system_prompt, event_callback=event_callback
                 )
+                all_entities.extend(result.entities)
+                all_relationships.extend(result.relationships)
+                progress.advance(extract_task, advance=len(doc.sections))
+                if event_callback:
+                    await event_callback(
+                        {
+                            "type": "section_done",
+                            "data": {
+                                "doc_id": doc.id,
+                                "entities_count": len(result.entities),
+                                "rels_count": len(result.relationships),
+                            },
+                        }
+                    )
+    except BaseException:
+        await store.close()
+        raise
 
     # Cross-section edge validation: keep only edges whose endpoints exist in the
     # global entity set. Entities are extracted per-section but documentation
@@ -315,39 +384,49 @@ async def run_extraction(corpus: str = "custom", schema: str = "auto", event_cal
 
     nodes_by_type: dict[str, list[dict]] = defaultdict(list)
     for e in all_entities:
-        nodes_by_type[e.type].append(e.model_dump(exclude={"embedding"}))
+        record = e.model_dump(exclude={"embedding"})
+        record["corpus"] = corpus
+        record["entity_id"] = f"{corpus}::{e.fqn}"
+        nodes_by_type[e.type].append(record)
 
     edges_by_type: dict[str, list[dict]] = defaultdict(list)
     for r in all_relationships:
-        edges_by_type[r.type].append(r.model_dump())
+        record = r.model_dump()
+        record["corpus"] = corpus
+        record["source_entity_id"] = f"{corpus}::{r.source_fqn}"
+        record["target_entity_id"] = f"{corpus}::{r.target_fqn}"
+        edges_by_type[r.type].append(record)
 
     total_loads = len(nodes_by_type) + len(edges_by_type)
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("{task.completed}/{task.total} batches"),
-        console=_console,
-    ) as progress:
-        load_task = progress.add_task("Loading to Neo4j", total=total_loads)
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("{task.completed}/{task.total} batches"),
+            console=_console,
+        ) as progress:
+            load_task = progress.add_task("Loading to Neo4j", total=total_loads)
 
-        for node_type_val, records in nodes_by_type.items():
-            try:
-                label = node_enum(node_type_val)
-                created = await store.load_nodes(records, label)
-                logger.info("Loaded %d %s nodes", created, node_type_val)
-            except ValueError:
-                logger.warning("Skipping unknown node type '%s'", node_type_val)
-            progress.advance(load_task)
+            for node_type_val, records in nodes_by_type.items():
+                try:
+                    label = node_enum(node_type_val)
+                    created = await store.load_nodes(records, label)
+                    logger.info("Loaded %d %s nodes", created, node_type_val)
+                except ValueError:
+                    logger.warning("Skipping unknown node type '%s'", node_type_val)
+                progress.advance(load_task)
 
-        for rel_type_val, records in edges_by_type.items():
-            try:
-                rel = rel_enum(rel_type_val)
-                created = await store.load_edges(records, rel)
-                logger.info("Loaded %d %s edges", created, rel_type_val)
-            except ValueError:
-                logger.warning("Skipping unknown rel type '%s'", rel_type_val)
-            progress.advance(load_task)
+            for rel_type_val, records in edges_by_type.items():
+                try:
+                    rel = rel_enum(rel_type_val)
+                    created = await store.load_edges(records, rel)
+                    logger.info("Loaded %d %s edges", created, rel_type_val)
+                except ValueError:
+                    logger.warning("Skipping unknown rel type '%s'", rel_type_val)
+                progress.advance(load_task)
+    finally:
+        await store.close()
 
     if event_callback:
         await event_callback(
@@ -360,7 +439,6 @@ async def run_extraction(corpus: str = "custom", schema: str = "auto", event_cal
             }
         )
 
-    await store.close()
     _console.print(
         f"[green]Done.[/green] {len(all_entities)} entities, "
         f"{len(all_relationships)} relationships extracted for [bold]{corpus}[/bold]"

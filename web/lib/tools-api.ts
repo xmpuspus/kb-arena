@@ -1,6 +1,7 @@
 import { API_URL } from "./api";
+import { apiFetch } from "./auth";
 
-// ── Types ──
+// Types
 
 export interface QaPair {
   question: string;
@@ -46,7 +47,7 @@ export interface FixRecommendation {
   current_accuracy: number;
 }
 
-// ── Event types ──
+// Event types
 
 export type GenerateEvent =
   | { type: "started"; total_sections: number }
@@ -69,7 +70,7 @@ export type FixEvent =
   | { type: "complete" }
   | { type: "error"; message: string };
 
-// ── SSE helper (same pattern as streamChat in api.ts) ──
+// SSE helper using the streamChat pattern from api.ts
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function* parseSSE<T>(response: Response, eventMap: Record<string, (data: any) => T | null>): AsyncGenerator<T> {
@@ -113,10 +114,10 @@ async function* parseSSE<T>(response: Response, eventMap: Record<string, (data: 
   }
 }
 
-// ── Generate Q&A ──
+// Generate Q&A
 
 export async function* streamGenerate(corpus: string, signal?: AbortSignal): AsyncGenerator<GenerateEvent> {
-  const response = await fetch(`${API_URL}/api/tools/generate`, {
+  const response = await apiFetch(`${API_URL}/api/tools/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ corpus }),
@@ -142,10 +143,10 @@ export async function* streamGenerate(corpus: string, signal?: AbortSignal): Asy
   });
 }
 
-// ── Audit ──
+// Audit
 
 export async function* streamAudit(corpus: string, maxSections: number, signal?: AbortSignal): AsyncGenerator<AuditEvent> {
-  const response = await fetch(`${API_URL}/api/tools/audit`, {
+  const response = await apiFetch(`${API_URL}/api/tools/audit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ corpus, max_sections: maxSections }),
@@ -169,10 +170,10 @@ export async function* streamAudit(corpus: string, maxSections: number, signal?:
   });
 }
 
-// ── Fix ──
+// Fix
 
 export async function* streamFix(corpus: string, maxSections: number, maxFixes: number, signal?: AbortSignal): AsyncGenerator<FixEvent> {
-  const response = await fetch(`${API_URL}/api/tools/fix`, {
+  const response = await apiFetch(`${API_URL}/api/tools/fix`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ corpus, max_sections: maxSections, max_fixes: maxFixes }),
@@ -199,7 +200,7 @@ export async function* streamFix(corpus: string, maxSections: number, maxFixes: 
   });
 }
 
-// ── REST ──
+// REST
 
 export async function fetchQaPairs(corpus: string): Promise<{ pairs: QaPair[]; total: number }> {
   try {

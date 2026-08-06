@@ -116,3 +116,20 @@ def test_load_strategies_splits_comma():
 def test_load_strategies_dedupes():
     loaded = [s.name for s in _load_strategies("qiss,qiss")]
     assert loaded == ["qiss"]
+
+
+def test_load_strategies_fails_when_any_requested_strategy_cannot_initialize(monkeypatch):
+    from kb_arena import strategies
+    from kb_arena.benchmark.runner import BenchmarkExecutionError
+
+    original = strategies.get_strategy
+
+    def fail_one(name):
+        if name == "naive_vector":
+            raise OSError("vector index unavailable")
+        return original(name)
+
+    monkeypatch.setattr(strategies, "get_strategy", fail_one)
+
+    with pytest.raises(BenchmarkExecutionError, match="naive_vector.*vector index unavailable"):
+        _load_strategies("all")

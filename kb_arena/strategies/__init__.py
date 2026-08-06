@@ -1,4 +1,4 @@
-"""Retrieval strategies — 9 approaches to answering questions from documentation."""
+"""Built-in retrieval strategies and index helpers."""
 
 from __future__ import annotations
 
@@ -11,6 +11,11 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from kb_arena.models.document import Document
 from kb_arena.settings import settings
 from kb_arena.strategies.bm25 import BM25Strategy
+from kb_arena.strategies.catalog import (
+    STRATEGY_CATALOG,
+    missing_optional_modules,
+    optional_install_command,
+)
 from kb_arena.strategies.contextual_vector import ContextualVectorStrategy
 from kb_arena.strategies.hybrid import HybridStrategy
 from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
@@ -42,13 +47,13 @@ STRATEGY_REGISTRY: dict[str, type] = {
 # Optional-dependency strategies: name -> (modules required, extra name).
 # get_strategy raises a clear install hint when any module is missing, so the
 # benchmark/retriever-lab loaders skip them instead of emitting empty traces.
-_OPTIONAL_DEP_STRATEGIES: dict[str, tuple[tuple[str, ...], str]] = {
-    "sqr": (("qiskit", "qiskit_aer", "sklearn"), "quantum"),
+_OPTIONAL_DEP_STRATEGIES = {
+    spec.name: spec for spec in STRATEGY_CATALOG if spec.optional_extra is not None
 }
 
 
-def load_documents(corpus: str) -> list[Document]:
-    """Load processed JSONL documents for a corpus."""
+def load_documents(corpus: str, *, strict: bool = False) -> list[Document]:
+    """Load processed JSONL documents, optionally rejecting the first malformed row."""
     base = Path(settings.datasets_path)
     if corpus == "all":
         paths = list(base.glob("*/processed/*.jsonl"))
@@ -58,12 +63,16 @@ def load_documents(corpus: str) -> list[Document]:
     documents: list[Document] = []
     for path in paths:
         with open(path) as f:
-            for line in f:
+            for line_number, line in enumerate(f, start=1):
                 line = line.strip()
                 if line:
                     try:
                         documents.append(Document.model_validate_json(line))
                     except Exception as exc:
+                        if strict:
+                            raise ValueError(
+                                f"Malformed processed document at {path}:{line_number}"
+                            ) from exc
                         logger.warning("Skipping malformed JSONL line in %s: %s", path, exc)
 
     logger.info("Loaded %d documents for corpus=%s", len(documents), corpus)
@@ -80,37 +89,69 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
 
     from kb_arena.llm.client import LLMClient
 
-    chroma = chromadb.PersistentClient(path=settings.chroma_path)
-    documents = load_documents(corpus)
+    documents = load_documents(corpus, strict=True)
 
     if not documents:
-        logger.warning("No documents found for corpus=%s — skipping index build", corpus)
-        return
+        raise ValueError(f"No processed documents found for corpus={corpus}")
 
-    llm = LLMClient()
-    raptor = RaptorStrategy(chroma_client=chroma)
-    raptor._llm = llm
-    pageindex = PageIndexStrategy()
-    pageindex._llm = llm
-
-    # Strategies that need explicit build_index(). qiss/sqr build through the
-    # naive_vector collection they wrap, so building them is idempotent with it.
-    buildable = {
-        "naive_vector": NaiveVectorStrategy(chroma_client=chroma),
-        "contextual_vector": ContextualVectorStrategy(chroma_client=chroma),
-        "qna_pairs": QnAPairStrategy(chroma_client=chroma),
-        "raptor": raptor,
-        "pageindex": pageindex,
-        "bm25": BM25Strategy(),
-        "qiss": QISSStrategy(chroma_client=chroma),
-        "sqr": SQRStrategy(chroma_client=chroma),
-    }
-
-    targets = (
-        buildable
-        if strategy == "all"
-        else {name: inst for name, inst in buildable.items() if name == strategy}
+    buildable_names = (
+        "naive_vector",
+        "contextual_vector",
+        "qna_pairs",
+        "raptor",
+        "pageindex",
+        "bm25",
+        "qiss",
+        "sqr",
     )
+    if strategy != "all" and strategy not in buildable_names:
+        raise ValueError(f"Unknown build strategy: {strategy}")
+    target_names = buildable_names if strategy == "all" else (strategy,)
+
+    chroma_strategies = {
+        "naive_vector",
+        "contextual_vector",
+        "qna_pairs",
+        "raptor",
+        "qiss",
+        "sqr",
+    }
+    chroma = (
+        chromadb.PersistentClient(path=settings.chroma_path)
+        if set(target_names) & chroma_strategies
+        else None
+    )
+    llm_build_strategies = {"contextual_vector", "qna_pairs", "raptor", "pageindex"}
+    llm = LLMClient() if set(target_names) & llm_build_strategies else None
+
+    def _contextual():
+        instance = ContextualVectorStrategy(chroma_client=chroma)
+        instance._llm = llm
+        return instance
+
+    def _raptor():
+        instance = RaptorStrategy(chroma_client=chroma)
+        instance._llm = llm
+        return instance
+
+    def _pageindex():
+        instance = PageIndexStrategy()
+        instance._llm = llm
+        return instance
+
+    # qiss/sqr build through the naive_vector collection they wrap, so building
+    # them is idempotent with the dense index.
+    factories = {
+        "naive_vector": lambda: NaiveVectorStrategy(chroma_client=chroma),
+        "contextual_vector": _contextual,
+        "qna_pairs": lambda: QnAPairStrategy(chroma_client=chroma, llm_client=llm),
+        "raptor": _raptor,
+        "pageindex": _pageindex,
+        "bm25": BM25Strategy,
+        "qiss": lambda: QISSStrategy(chroma_client=chroma),
+        "sqr": lambda: SQRStrategy(chroma_client=chroma),
+    }
+    targets = {name: factories[name]() for name in target_names}
 
     with Progress(
         SpinnerColumn(),
@@ -172,18 +213,16 @@ def get_strategy(name: str):
     if cls is None:
         raise ValueError(f"Unknown strategy: {name}. Available: {list(STRATEGY_REGISTRY)}")
 
-    # Optional-dependency strategies (e.g. sqr) — fail with a clear install hint
+    # Give optional-dependency strategies such as sqr a clear install hint.
     # when the extra is absent, so loaders skip them rather than running empty.
     if name in _OPTIONAL_DEP_STRATEGIES:
-        import importlib.util
-
-        required, extra = _OPTIONAL_DEP_STRATEGIES[name]
-        missing = [m for m in required if importlib.util.find_spec(m) is None]
+        spec = _OPTIONAL_DEP_STRATEGIES[name]
+        missing = missing_optional_modules(spec)
         if missing:
             raise ImportError(
-                f"Strategy '{name}' needs the optional [{extra}] extra "
+                f"Strategy '{name}' is missing an optional dependency "
                 f"({', '.join(missing)} not installed). "
-                f"Install with: pip install 'kb-arena[{extra}]'"
+                f"Install with: {optional_install_command(spec)}"
             )
 
     # No-dependency strategies
@@ -213,7 +252,7 @@ def get_strategy(name: str):
             )
             return cls(neo4j_driver=driver)
         except Exception as e:
-            logger.warning("Neo4j not available for %s: %s — using mock fallback", name, e)
+            logger.warning("Neo4j not available for %s: %s; using mock fallback", name, e)
             return cls()
 
     # Hybrid needs both, plus the IntentRouter for the advertised three-stage classification.
@@ -238,6 +277,7 @@ def get_strategy(name: str):
 
 __all__ = [
     "STRATEGY_REGISTRY",
+    "STRATEGY_CATALOG",
     "get_strategy",
     "NaiveVectorStrategy",
     "ContextualVectorStrategy",

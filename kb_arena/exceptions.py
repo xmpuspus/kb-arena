@@ -17,6 +17,10 @@ class StrategyError(KBArenaError):
     """Error during strategy query or index building."""
 
 
+class RerankerError(StrategyError):
+    """A reranker backend failed before it could produce valid scores."""
+
+
 class EvaluationError(KBArenaError):
     """Error during benchmark evaluation."""
 

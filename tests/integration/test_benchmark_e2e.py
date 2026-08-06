@@ -166,6 +166,62 @@ def test_questions_type_filter(questions_yaml_dir, monkeypatch):
     assert len(qs) == 2
 
 
+def test_questions_retain_and_filter_split(tmp_path, monkeypatch):
+    from kb_arena.benchmark.questions import load_questions
+
+    questions_dir = tmp_path / "datasets" / "sample" / "questions"
+    questions_dir.mkdir(parents=True)
+    entries = [
+        {**SAMPLE_QUESTIONS_YAML[0], "id": "dev", "split": "development"},
+        {**SAMPLE_QUESTIONS_YAML[1], "id": "hold", "split": "holdout"},
+    ]
+    (questions_dir / "questions.yaml").write_text(yaml.safe_dump(entries))
+    monkeypatch.setattr(
+        "kb_arena.benchmark.questions.settings.datasets_path", str(tmp_path / "datasets")
+    )
+
+    all_questions = load_questions("sample")
+    explicit_all_questions = load_questions("sample", split="all")
+    holdout = load_questions("sample", split="holdout")
+
+    assert [q.split for q in all_questions] == ["development", "holdout"]
+    assert explicit_all_questions == all_questions
+    assert [q.id for q in holdout] == ["hold"]
+
+
+def test_questions_reject_invalid_split(questions_yaml_dir, monkeypatch):
+    from kb_arena.benchmark.questions import load_questions
+
+    monkeypatch.setattr(
+        "kb_arena.benchmark.questions.settings.datasets_path", str(questions_yaml_dir / "datasets")
+    )
+
+    with pytest.raises(ValueError, match="split"):
+        load_questions("aws-compute", split="training")
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        "aws-t1-001: not-a-list\n",
+        "aws-t1-001: ['', valid]\n",
+        "aws-t1-001: [unterminated\n",
+    ],
+)
+def test_questions_reject_malformed_expected_chunks(questions_yaml_dir, monkeypatch, contents):
+    from kb_arena.benchmark.questions import load_questions
+
+    questions_dir = questions_yaml_dir / "datasets" / "aws-compute" / "questions"
+    (questions_dir / "expected_chunks.yaml").write_text(contents)
+    monkeypatch.setattr(
+        "kb_arena.benchmark.questions.settings.datasets_path",
+        str(questions_yaml_dir / "datasets"),
+    )
+
+    with pytest.raises(ValueError, match="Expected|expected chunks"):
+        load_questions("aws-compute")
+
+
 def test_missing_corpus_raises(tmp_path, monkeypatch):
     from kb_arena.benchmark.questions import load_questions
 
@@ -260,17 +316,389 @@ async def test_evaluate_calls_llm_on_structural_pass():
 
 
 @pytest.mark.asyncio
-async def test_evaluate_graceful_on_llm_failure():
+async def test_evaluate_fails_when_llm_judge_is_unavailable():
+    from kb_arena.benchmark.evaluator import EvaluationExecutionError, _eval_cache
+
+    _eval_cache.clear()
     constraints = Constraints(must_mention=["Lambda"], must_not_claim=[])
     ground_truth = GroundTruth(answer="Lambda runs code serverlessly.")
     mock_llm = AsyncMock()
     mock_llm.judge.side_effect = RuntimeError("API timeout")
 
-    score = await evaluate("Lambda runs code on demand.", ground_truth, constraints, llm=mock_llm)
+    with pytest.raises(EvaluationExecutionError, match="API timeout"):
+        await evaluate("Lambda runs code on demand.", ground_truth, constraints, llm=mock_llm)
 
-    # Structural score should stand
-    assert score.structural_pass is True
-    assert score.accuracy >= 0.0
+
+@pytest.mark.asyncio
+async def test_evaluate_tracks_new_judge_spend_but_not_cache_hits():
+    from kb_arena.benchmark.evaluator import _eval_cache
+    from kb_arena.llm.client import LLMResponse
+
+    _eval_cache.clear()
+    constraints = Constraints(must_mention=["Lambda"])
+    ground_truth = GroundTruth(answer="Lambda runs code serverlessly.")
+    mock_llm = AsyncMock()
+    mock_llm.judge.return_value = LLMResponse(
+        text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}',
+        cost_usd=0.25,
+    )
+
+    first = await evaluate("Lambda runs code.", ground_truth, constraints, llm=mock_llm)
+    cached = await evaluate("Lambda runs code.", ground_truth, constraints, llm=mock_llm)
+
+    assert first.evaluation_cost_usd == pytest.approx(0.25)
+    assert cached.evaluation_cost_usd == pytest.approx(0.0)
+    mock_llm.judge.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_evaluate_deduplicates_concurrent_identical_judge_calls():
+    import asyncio
+
+    from kb_arena.benchmark.evaluator import _eval_cache
+    from kb_arena.llm.client import LLMResponse
+
+    _eval_cache.clear()
+    constraints = Constraints(must_mention=["Lambda"])
+    ground_truth = GroundTruth(answer="Lambda runs code serverlessly.")
+    calls = 0
+
+    async def judge(**kwargs):
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0.01)
+        return LLMResponse(
+            text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}',
+            cost_usd=0.25,
+        )
+
+    mock_llm = AsyncMock()
+    mock_llm.judge.side_effect = judge
+
+    scores = await asyncio.gather(
+        evaluate("Lambda runs code.", ground_truth, constraints, llm=mock_llm),
+        evaluate("Lambda runs code.", ground_truth, constraints, llm=mock_llm),
+    )
+
+    assert calls == 1
+    assert scores[0].accuracy == scores[1].accuracy == pytest.approx(0.9)
+    assert sorted(score.evaluation_cost_usd for score in scores) == [0.0, 0.25]
+
+
+@pytest.mark.asyncio
+async def test_evaluate_does_not_share_cache_between_llm_instances():
+    import asyncio
+
+    from kb_arena.benchmark.evaluator import _eval_cache, _eval_inflight
+    from kb_arena.llm.client import LLMResponse
+
+    _eval_cache.clear()
+    _eval_inflight.clear()
+    constraints = Constraints(must_mention=["Lambda"])
+    ground_truth = GroundTruth(answer="Lambda runs code serverlessly.")
+    first_llm = AsyncMock()
+    first_llm.judge.return_value = LLMResponse(
+        text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}'
+    )
+    second_llm = AsyncMock()
+    second_llm.judge.return_value = LLMResponse(
+        text='{"accuracy": 0.4, "completeness": 0.5, "faithfulness": 0.6}'
+    )
+
+    first, second = await asyncio.gather(
+        evaluate("Lambda runs code.", ground_truth, constraints, llm=first_llm),
+        evaluate("Lambda runs code.", ground_truth, constraints, llm=second_llm),
+    )
+
+    assert first.accuracy == pytest.approx(0.9)
+    assert second.accuracy == pytest.approx(0.4)
+    first_llm.judge.assert_awaited_once()
+    second_llm.judge.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_evaluate_charges_the_judge_cost_to_a_surviving_caller():
+    """Cancelling the first caller must not make the shared judge spend disappear."""
+    import asyncio
+
+    from kb_arena.benchmark.evaluator import _eval_cache, _eval_inflight
+    from kb_arena.llm.client import LLMResponse
+
+    _eval_cache.clear()
+    _eval_inflight.clear()
+    constraints = Constraints(must_mention=["Lambda"])
+    ground_truth = GroundTruth(answer="Lambda runs code serverlessly.")
+    release = asyncio.Event()
+
+    class BlockingJudge:
+        __hash__ = None
+
+        async def judge(self, **kwargs):
+            await release.wait()
+            return LLMResponse(
+                text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}',
+                cost_usd=0.25,
+            )
+
+    llm = BlockingJudge()
+    first = asyncio.ensure_future(evaluate("Lambda runs code.", ground_truth, constraints, llm=llm))
+    while not _eval_inflight:
+        await asyncio.sleep(0)
+    second = asyncio.ensure_future(
+        evaluate("Lambda runs code.", ground_truth, constraints, llm=llm)
+    )
+    await asyncio.sleep(0)
+
+    first.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await first
+
+    release.set()
+    survivor = await second
+
+    # The judge really spent this, so exactly one surviving caller must report it.
+    assert survivor.evaluation_cost_usd == pytest.approx(0.25)
+
+
+@pytest.mark.asyncio
+async def test_evaluate_reports_its_own_cost_for_a_single_caller():
+    """Guard the opposite failure: the claim must not double-count the ordinary path."""
+    from kb_arena.benchmark.evaluator import _eval_cache, _eval_inflight
+    from kb_arena.llm.client import LLMResponse
+
+    _eval_cache.clear()
+    _eval_inflight.clear()
+
+    class Judge:
+        __hash__ = None
+
+        async def judge(self, **kwargs):
+            return LLMResponse(
+                text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}',
+                cost_usd=0.25,
+            )
+
+    score = await evaluate(
+        "Lambda runs code.",
+        GroundTruth(answer="Lambda runs code serverlessly."),
+        Constraints(must_mention=["Lambda"]),
+        llm=Judge(),
+    )
+
+    assert score.evaluation_cost_usd == pytest.approx(0.25)
+
+
+@pytest.mark.asyncio
+async def test_evaluate_cache_supports_unhashable_llm_clients():
+    from kb_arena.benchmark.evaluator import _eval_cache, _eval_inflight
+    from kb_arena.llm.client import LLMResponse
+
+    class UnhashableLLM:
+        __hash__ = None
+
+        def __init__(self):
+            self.calls = 0
+
+        async def judge(self, **kwargs):
+            self.calls += 1
+            return LLMResponse(text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}')
+
+    _eval_cache.clear()
+    _eval_inflight.clear()
+    llm = UnhashableLLM()
+    constraints = Constraints(must_mention=["Lambda"])
+    ground_truth = GroundTruth(answer="Lambda runs code serverlessly.")
+
+    await evaluate("Lambda runs code.", ground_truth, constraints, llm=llm)
+    await evaluate("Lambda runs code.", ground_truth, constraints, llm=llm)
+
+    assert llm.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_evaluate_cache_evicts_least_recently_used_entries(monkeypatch):
+    import asyncio
+
+    import kb_arena.benchmark.evaluator as evaluator
+    from kb_arena.llm.client import LLMResponse
+
+    evaluator._eval_cache.clear()
+    evaluator._eval_inflight.clear()
+    monkeypatch.setattr(evaluator, "_EVAL_CACHE_MAX_ENTRIES", 2)
+    constraints = Constraints()
+    ground_truth = GroundTruth(answer="")
+    mock_llm = AsyncMock()
+    mock_llm.judge.return_value = LLMResponse(
+        text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}'
+    )
+
+    for answer in ("first", "second", "first", "third", "second"):
+        await evaluate(answer, ground_truth, constraints, llm=mock_llm)
+        await asyncio.sleep(0)
+
+    assert len(evaluator._eval_cache) == 2
+    assert mock_llm.judge.await_count == 4
+
+
+def test_evaluate_does_not_share_inflight_tasks_across_event_loops():
+    import asyncio
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from kb_arena.benchmark.evaluator import _eval_cache, _eval_inflight
+    from kb_arena.llm.client import LLMResponse
+
+    _eval_cache.clear()
+    _eval_inflight.clear()
+    first_judge_started = threading.Event()
+    calls_lock = threading.Lock()
+    calls = 0
+
+    class CrossLoopLLM:
+        async def judge(self, **kwargs):
+            nonlocal calls
+            with calls_lock:
+                calls += 1
+            first_judge_started.set()
+            await asyncio.sleep(0.05)
+            return LLMResponse(text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}')
+
+    llm = CrossLoopLLM()
+    ground_truth = GroundTruth(answer="Lambda runs code serverlessly.")
+    constraints = Constraints(must_mention=["Lambda"])
+
+    def run_evaluation():
+        return asyncio.run(evaluate("Lambda runs code.", ground_truth, constraints, llm=llm))
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(run_evaluation)
+        assert first_judge_started.wait(timeout=1)
+        second = pool.submit(run_evaluation)
+        scores = [first.result(timeout=2), second.result(timeout=2)]
+
+    assert calls == 2
+    assert all(score.accuracy == pytest.approx(0.9) for score in scores)
+
+
+@pytest.mark.asyncio
+async def test_evaluate_fails_when_ragas_is_unavailable(monkeypatch):
+    from kb_arena.benchmark.evaluator import EvaluationExecutionError, _eval_cache
+    from kb_arena.llm.client import LLMResponse
+    from kb_arena.settings import settings
+
+    _eval_cache.clear()
+    monkeypatch.setattr(settings, "benchmark_enable_ragas", True)
+    constraints = Constraints(must_mention=["Lambda"])
+    ground_truth = GroundTruth(answer="Lambda runs code serverlessly.")
+    mock_llm = AsyncMock()
+    mock_llm.judge.side_effect = [
+        LLMResponse(text='{"accuracy": 0.9, "completeness": 0.8, "faithfulness": 1.0}'),
+        TimeoutError("RAGAS provider timeout"),
+    ]
+
+    with pytest.raises(EvaluationExecutionError, match="RAGAS provider timeout"):
+        await evaluate(
+            "Lambda runs code.",
+            ground_truth,
+            constraints,
+            llm=mock_llm,
+            question_text="What is Lambda?",
+            context_chunks=["Lambda is serverless."],
+        )
+
+    assert _eval_cache == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "judge_text",
+    [
+        '{"accuracy": 1.01, "completeness": 0.8, "faithfulness": 1.0}',
+        '{"accuracy": 0.9, "completeness": -0.01, "faithfulness": 1.0}',
+        '{"accuracy": 0.9, "completeness": 0.8, "faithfulness": NaN}',
+        '{"accuracy": Infinity, "completeness": 0.8, "faithfulness": 1.0}',
+    ],
+)
+async def test_evaluate_rejects_invalid_judge_scores(judge_text):
+    from kb_arena.benchmark.evaluator import EvaluationExecutionError, _eval_cache
+    from kb_arena.llm.client import LLMResponse
+
+    _eval_cache.clear()
+    mock_llm = AsyncMock()
+    mock_llm.judge.return_value = LLMResponse(text=judge_text)
+
+    with pytest.raises(EvaluationExecutionError, match="0 and 1"):
+        await evaluate(
+            "Lambda runs code.",
+            GroundTruth(answer="Lambda runs code serverlessly."),
+            Constraints(must_mention=["Lambda"]),
+            llm=mock_llm,
+        )
+
+    assert _eval_cache == {}
+
+
+@pytest.mark.asyncio
+async def test_evaluate_rejects_boolean_judge_scores():
+    from kb_arena.benchmark.evaluator import EvaluationExecutionError, _eval_cache
+    from kb_arena.llm.client import LLMResponse
+
+    _eval_cache.clear()
+    mock_llm = AsyncMock()
+    mock_llm.judge.return_value = LLMResponse(
+        text='{"accuracy": true, "completeness": 0.8, "faithfulness": 1.0}'
+    )
+
+    with pytest.raises(EvaluationExecutionError, match="JSON numbers"):
+        await evaluate(
+            "Lambda runs code.",
+            GroundTruth(answer="Lambda runs code serverlessly."),
+            Constraints(must_mention=["Lambda"]),
+            llm=mock_llm,
+        )
+
+
+@pytest.mark.asyncio
+async def test_reference_free_cache_separates_question_and_context(monkeypatch):
+    from kb_arena.benchmark.evaluator import _eval_cache
+    from kb_arena.llm.client import LLMResponse
+    from kb_arena.settings import settings
+
+    _eval_cache.clear()
+    monkeypatch.setattr(settings, "benchmark_enable_ragas", True)
+    ground_truth = GroundTruth(answer="")
+    constraints = Constraints()
+    mock_llm = AsyncMock()
+    mock_llm.judge.return_value = LLMResponse(
+        text=(
+            '{"relevancy": 0.8, "faithfulness": 0.7, '
+            '"context_precision": 0.6, "context_recall": 0.5}'
+        ),
+        cost_usd=0.1,
+    )
+
+    first = await evaluate(
+        "Same answer",
+        ground_truth,
+        constraints,
+        llm=mock_llm,
+        question_text="First question",
+        context_chunks=["first context"],
+        reference_free=True,
+    )
+    second = await evaluate(
+        "Same answer",
+        ground_truth,
+        constraints,
+        llm=mock_llm,
+        question_text="Second question",
+        context_chunks=["second context"],
+        reference_free=True,
+    )
+
+    assert mock_llm.judge.await_count == 6
+    assert first.evaluation_cost_usd == pytest.approx(0.3)
+    assert second.evaluation_cost_usd == pytest.approx(0.3)
 
 
 @pytest.mark.asyncio
@@ -355,15 +783,27 @@ def test_aggregate_cost_per_correct():
     assert result.cost_per_correct == pytest.approx(0.02)
 
 
-def test_aggregate_question_id_without_tier():
-    """Question IDs that don't match pattern should go to tier 0."""
+def test_aggregate_uses_declared_tier_for_id_without_tier():
     from kb_arena.benchmark.runner import _aggregate
 
     bench = BenchmarkResult(corpus="aws-compute", strategy="naive_vector")
     bench.records = [_make_record("no-tier-in-id", 0.9)]
 
+    result = _aggregate(bench, {"no-tier-in-id": ("direct", 3)})
+    assert result.accuracy_by_tier == {3: pytest.approx(0.9)}
+    assert result.records[0].question_tier == 3
+    assert result.records[0].question_type == "direct"
+
+
+def test_aggregate_reliability_faithfulness_is_not_double_counted():
+    from kb_arena.benchmark.runner import _aggregate
+
+    bench = BenchmarkResult(corpus="test", strategy="naive_vector")
+    bench.records = [_make_record("test-t1-001", 0.8)]
+
     result = _aggregate(bench, {})
-    assert 0 in result.accuracy_by_tier
+
+    assert result.reliability.avg_faithfulness == pytest.approx(1.0)
 
 
 # ---------------------------------------------------------------------------

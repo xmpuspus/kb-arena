@@ -1,21 +1,37 @@
-"""Regression + robustness tests for the swallowed-empty-trace bug class.
-
-retriever-lab's `_retrieve_only` catches any strategy exception and returns an
-empty trace (so one broken strategy doesn't abort the whole run). That swallow
-hid a real bug: `rerank_vector` accessed `c.source` (no such field), crashed on
-every query, and scored a silent 0 in retriever-lab. These tests lock in the fix
-and the new dead-strategy guard that flags the crash signature.
-"""
+"""Regression tests for retrieval failures that previously became zero scores."""
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+import asyncio
+import json
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from kb_arena.benchmark.retriever_lab import _empty_trace_failures
+from kb_arena.benchmark.retriever_lab import RetrievalExecutionError, _retrieve_only
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.strategies.base import AnswerResult
+
+
+@pytest.mark.parametrize("top_k", [0, -1, 1001, True, 1.5])
+def test_shared_top_k_validation_rejects_invalid_values(top_k):
+    from kb_arena.strategies.base import validate_top_k
+
+    with pytest.raises(ValueError, match="top_k"):
+        validate_top_k(top_k)
+
+
+@pytest.mark.asyncio
+async def test_naive_vector_rejects_invalid_top_k_before_backend_access():
+    from kb_arena.strategies.naive_vector import NaiveVectorStrategy
+
+    strategy = NaiveVectorStrategy(chroma_client=MagicMock())
+
+    with pytest.raises(ValueError, match="top_k"):
+        await strategy.query("question", top_k=-1)
+
+    strategy._client.get_or_create_collection.assert_not_called()
 
 
 def _candidates(n):
@@ -61,26 +77,318 @@ async def test_rerank_vector_returns_nonempty_trace(mock_chroma_client, mock_llm
     assert result.sources == ["doc"]  # exercises the c.doc_id source-building path
 
 
-# --- Dead-strategy guard: empty trace on most questions != low recall ---
+@pytest.mark.asyncio
+async def test_rerank_vector_backend_failure_is_not_reported_as_success(
+    mock_chroma_client, mock_llm_client
+):
+    from kb_arena.strategies.rerank_vector import RerankVectorStrategy
+
+    strategy = RerankVectorStrategy(chroma_client=mock_chroma_client, llm_client=mock_llm_client)
+    strategy._base.query = AsyncMock(
+        return_value=AnswerResult(
+            answer="base answer",
+            retrieval=RetrievalTrace(query="Q", retrieved=_candidates(3), latency_ms=1.0, top_k=12),
+            strategy="naive_vector",
+        )
+    )
+
+    class _BrokenReranker:
+        def score(self, query, passages):
+            raise RuntimeError("reranker offline")
+
+    strategy._reranker = _BrokenReranker()
+
+    from kb_arena.exceptions import RerankerError
+
+    with pytest.raises(RerankerError, match="reranker offline") as caught:
+        await strategy.query("Q", top_k=2)
+
+    assert isinstance(caught.value.__cause__, RuntimeError)
+    mock_llm_client.generate.assert_not_awaited()
 
 
-def test_empty_trace_failures_flags_crash_signature():
-    by_strategy = {
-        "good": {"questions": 10, "empty_retrieval": 0, "mean_recall_at_k": 0.40},
-        "crashed": {"questions": 10, "empty_retrieval": 10, "mean_recall_at_k": 0.0},
-        "half_empty": {"questions": 10, "empty_retrieval": 5, "mean_recall_at_k": 0.0},
-        "low_recall": {"questions": 10, "empty_retrieval": 0, "mean_recall_at_k": 0.05},
+@pytest.mark.asyncio
+async def test_rerank_vector_rejects_non_finite_scores(mock_chroma_client, mock_llm_client):
+    """A NaN score sorts unpredictably, so it must fail rather than reorder the answer."""
+    from kb_arena.strategies.rerank_vector import RerankVectorStrategy
+
+    strategy = RerankVectorStrategy(chroma_client=mock_chroma_client, llm_client=mock_llm_client)
+    strategy._base.query = AsyncMock(
+        return_value=AnswerResult(
+            answer="base answer",
+            retrieval=RetrievalTrace(query="Q", retrieved=_candidates(2), latency_ms=1.0, top_k=12),
+            strategy="naive_vector",
+        )
+    )
+
+    class _NaNReranker:
+        def score(self, query, passages):
+            return [float("nan"), 0.9]
+
+    strategy._reranker = _NaNReranker()
+
+    from kb_arena.exceptions import RerankerError
+
+    with pytest.raises(RerankerError, match="finite"):
+        await strategy.query("Q", top_k=2)
+
+    mock_llm_client.generate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_rerank_vector_caps_candidate_count(mock_chroma_client, mock_llm_client):
+    from kb_arena.strategies.base import MAX_RETRIEVAL_CANDIDATES
+    from kb_arena.strategies.rerank_vector import RerankVectorStrategy
+
+    strategy = RerankVectorStrategy(chroma_client=mock_chroma_client, llm_client=mock_llm_client)
+    strategy._base.query = AsyncMock(
+        return_value=AnswerResult(
+            answer="",
+            retrieval=RetrievalTrace(query="Q", retrieved=[], top_k=MAX_RETRIEVAL_CANDIDATES),
+            strategy="naive_vector",
+        )
+    )
+
+    await strategy.query("Q", top_k=400)
+
+    assert strategy._base.query.await_args.kwargs["top_k"] == MAX_RETRIEVAL_CANDIDATES
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("top_k", [0, 1001])
+async def test_rerank_vector_rejects_invalid_top_k(mock_chroma_client, mock_llm_client, top_k):
+    from kb_arena.strategies.rerank_vector import RerankVectorStrategy
+
+    strategy = RerankVectorStrategy(chroma_client=mock_chroma_client, llm_client=mock_llm_client)
+    strategy._base.query = AsyncMock()
+
+    with pytest.raises(ValueError, match="top_k must be between"):
+        await strategy.query("Q", top_k=top_k)
+
+    strategy._base.query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retriever_lab_writes_incomplete_artifact_on_infrastructure_failure(
+    monkeypatch, tmp_path
+):
+    from kb_arena.benchmark import retriever_lab, runner
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(
+        runner,
+        "_load_strategies",
+        lambda strategy_filter: [SimpleNamespace(name="naive_vector")],
+    )
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+
+    async def fail_run(*args, **kwargs):
+        args[4]["corpora"]["partial"] = {}
+        raise OSError("bootstrap worker failed")
+
+    monkeypatch.setattr(retriever_lab, "_run_corpora_loop", fail_run)
+
+    code = await retriever_lab.run_retriever_lab(corpus="test", min_recall=0.0)
+
+    assert code == 1
+    report_path = next(tmp_path.glob("run_*/retriever_lab.json"))
+    report = json.loads(report_path.read_text())
+    assert report["status"] == "incomplete"
+    assert report["execution_error"] == {
+        "type": "OSError",
+        "message": "bootstrap worker failed",
     }
-    failed = set(_empty_trace_failures(by_strategy))
-    assert failed == {"crashed", "half_empty"}
-    assert "low_recall" not in failed  # genuinely-retrieving-but-irrelevant is not a crash
 
 
-def test_empty_trace_failures_ignores_zero_questions():
-    assert _empty_trace_failures({"x": {"questions": 0, "empty_retrieval": 0}}) == []
+# --- Retrieval failures are errors, not valid zero-score observations ---
 
 
-def test_empty_trace_failures_threshold():
-    by = {"s": {"questions": 10, "empty_retrieval": 4}}
-    assert _empty_trace_failures(by, threshold=0.5) == []  # 4/10 < 50%
-    assert _empty_trace_failures(by, threshold=0.4) == ["s"]  # 4/10 >= 40%
+@pytest.mark.asyncio
+async def test_retrieve_only_raises_execution_error_with_original_cause():
+    class BrokenStrategy:
+        name = "broken"
+
+        async def query(self, question, top_k):
+            raise ConnectionError("index offline")
+
+    with pytest.raises(RetrievalExecutionError, match="index offline") as caught:
+        await _retrieve_only(BrokenStrategy(), "Where is it?", 5)
+
+    assert isinstance(caught.value.__cause__, ConnectionError)
+
+
+@pytest.mark.asyncio
+async def test_retrieve_only_preserves_legitimate_empty_result():
+    class EmptyStrategy:
+        name = "empty"
+
+        async def query(self, question, top_k):
+            return AnswerResult(
+                answer="",
+                retrieval=RetrievalTrace(query=question, retrieved=[], top_k=top_k),
+                strategy=self.name,
+            )
+
+    trace = await _retrieve_only(EmptyStrategy(), "No match", 5)
+
+    assert trace.retrieved == []
+
+
+@pytest.mark.asyncio
+async def test_retrieve_only_rejects_missing_retrieval_trace():
+    class MissingTraceStrategy:
+        name = "missing"
+
+        async def query(self, question, top_k):
+            return AnswerResult(answer="answer", retrieval=None, strategy=self.name)
+
+    with pytest.raises(RetrievalExecutionError, match="no retrieval trace"):
+        await _retrieve_only(MissingTraceStrategy(), "Question", 5)
+
+
+@pytest.mark.asyncio
+async def test_retrieve_only_rejects_pageindex_zero_llm_evidence():
+    class PageIndexStrategy:
+        name = "pageindex"
+
+        async def query(self, question, top_k):
+            raise AssertionError("query-independent traversal must not run")
+
+    with pytest.raises(RetrievalExecutionError, match="not supported"):
+        await _retrieve_only(PageIndexStrategy(), "Question", 5)
+
+
+@pytest.mark.asyncio
+async def test_retrieval_only_llm_mode_does_not_stub_concurrent_task(monkeypatch):
+    from kb_arena.benchmark.retriever_lab import _PatchLLMClient
+    from kb_arena.llm.client import LLMClient, LLMResponse
+
+    async def live_call(self, *args, **kwargs):
+        return LLMResponse(text="LIVE", input_tokens=2, output_tokens=1, cost_usd=0.01)
+
+    monkeypatch.setattr(LLMClient, "_call", live_call)
+    client = object.__new__(LLMClient)
+    patched = asyncio.Event()
+    release = asyncio.Event()
+
+    async def retrieval_task():
+        with _PatchLLMClient():
+            stubbed = await client.generate(query="q", context="", system_prompt="test")
+            patched.set()
+            await release.wait()
+            return stubbed
+
+    task = asyncio.create_task(retrieval_task())
+    await patched.wait()
+    live = await client.generate(query="q", context="", system_prompt="test")
+    release.set()
+    stubbed = await task
+
+    assert stubbed.text == ""
+    assert stubbed.total_tokens == 0
+    assert live.text == "LIVE"
+    assert live.total_tokens == 3
+
+
+@pytest.mark.asyncio
+async def test_retriever_lab_records_error_and_excludes_failed_query(monkeypatch, tmp_path):
+    from kb_arena.benchmark import retriever_lab, runner
+    from kb_arena.settings import settings
+
+    class BrokenStrategy:
+        name = "broken"
+
+        async def query(self, question, top_k, corpus="all"):
+            raise RuntimeError("backend unavailable")
+
+    question = SimpleNamespace(
+        id="q1",
+        question="What failed?",
+        tier=1,
+        expected_chunks=[],
+        ground_truth=SimpleNamespace(source_refs=["doc"]),
+    )
+    monkeypatch.setattr(retriever_lab, "load_questions", lambda corpus, split="": [question])
+    monkeypatch.setattr(runner, "_load_strategies", lambda strategy_filter: [BrokenStrategy()])
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+
+    async def no_ceiling(*args, **kwargs):
+        return {}
+
+    monkeypatch.setattr(retriever_lab, "_retrieval_ceiling", no_ceiling)
+
+    code = await retriever_lab.run_retriever_lab(corpus="test", min_recall=0.0)
+
+    assert code == 1
+    report_path = next(tmp_path.glob("run_*/retriever_lab.json"))
+    report = json.loads(report_path.read_text())
+    summary = report["corpora"]["test"]["broken"]
+    assert summary["questions"] == 0
+    assert summary["execution_errors"] == 1
+    assert "recall_at_k" not in report["questions"][0]
+    assert report["questions"][0]["execution_error"]["type"] == "RuntimeError"
+
+
+@pytest.mark.asyncio
+async def test_retriever_lab_fails_and_records_retrieval_ceiling_error(monkeypatch, tmp_path):
+    from kb_arena import strategies
+    from kb_arena.benchmark import retriever_lab, runner
+    from kb_arena.settings import settings
+
+    class WorkingStrategy:
+        name = "working"
+
+        async def query(self, question, top_k, corpus="all"):
+            return AnswerResult(
+                answer="",
+                retrieval=RetrievalTrace(query=question, retrieved=[], top_k=top_k),
+                strategy=self.name,
+            )
+
+    class BrokenCeilingStrategy:
+        name = "naive_vector"
+
+        async def query(self, question, top_k, corpus="all"):
+            raise ConnectionError("deep index unavailable")
+
+    question = SimpleNamespace(
+        id="q1",
+        question="What failed?",
+        tier=1,
+        expected_chunks=[],
+        ground_truth=SimpleNamespace(source_refs=["doc"]),
+    )
+    monkeypatch.setattr(retriever_lab, "load_questions", lambda corpus, split="": [question])
+    monkeypatch.setattr(runner, "_load_strategies", lambda strategy_filter: [WorkingStrategy()])
+    monkeypatch.setattr(strategies, "get_strategy", lambda name: BrokenCeilingStrategy())
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+
+    code = await retriever_lab.run_retriever_lab(corpus="test", min_recall=0.0)
+
+    assert code == 1
+    report_path = next(tmp_path.glob("run_*/retriever_lab.json"))
+    report = json.loads(report_path.read_text())
+    ceiling = report["retrieval_ceiling"]["test"]
+    assert ceiling["status"] == "error"
+    assert ceiling["execution_error"]["type"] == "ConnectionError"
+
+
+@pytest.mark.asyncio
+async def test_retriever_lab_fails_when_no_questions_are_selected(monkeypatch, tmp_path):
+    from kb_arena.benchmark import retriever_lab, runner
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(retriever_lab, "load_questions", lambda corpus, split="": [])
+    monkeypatch.setattr(
+        runner,
+        "_load_strategies",
+        lambda strategy_filter: [SimpleNamespace(name="naive_vector")],
+    )
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+
+    code = await retriever_lab.run_retriever_lab(corpus="empty", split="holdout")
+
+    assert code == 1
+    report_path = next(tmp_path.glob("run_*/retriever_lab.json"))
+    report = json.loads(report_path.read_text())
+    assert report["corpora"] == {}

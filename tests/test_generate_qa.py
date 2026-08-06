@@ -97,6 +97,14 @@ async def test_generate_pairs_attaches_heading_path(mock_section, mock_llm):
     assert all(p["section_ref"] == "Networking > VPC Configuration" for p in pairs)
 
 
+@pytest.mark.asyncio
+async def test_generate_pairs_rejects_invalid_model_output(mock_section, mock_llm):
+    mock_llm.extract.return_value.text = "not json"
+
+    with pytest.raises(ValueError, match="no valid pairs"):
+        await generate_pairs_for_section(mock_section, "doc-1", mock_llm)
+
+
 # --- generate_pairs_for_documents ---
 
 
@@ -142,11 +150,11 @@ async def test_generate_pairs_skips_empty_sections(mock_documents, mock_llm):
 
 
 @pytest.mark.asyncio
-async def test_generate_pairs_handles_llm_error(mock_documents):
+async def test_generate_pairs_surfaces_llm_error(mock_documents):
     llm = MagicMock()
     llm.extract = AsyncMock(side_effect=Exception("API error"))
-    pairs = await generate_pairs_for_documents(mock_documents, llm)
-    assert pairs == []  # all sections failed gracefully
+    with pytest.raises(Exception, match="API error"):
+        await generate_pairs_for_documents(mock_documents, llm)
 
 
 @pytest.mark.asyncio

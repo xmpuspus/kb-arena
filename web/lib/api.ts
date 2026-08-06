@@ -1,8 +1,8 @@
+import { apiFetch } from "./auth";
+
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
-// Mirrors the backend default strategy set (STRATEGY_NAMES). `sqr` is omitted on
-// purpose: it needs the optional [quantum] extra and would error in the arena on
-// a core install, so it stays opt-in (run it via the CLI with that extra).
+// Known built-in names. Runtime availability comes from GET /strategies.
 export const STRATEGIES = [
   "naive_vector",
   "contextual_vector",
@@ -14,6 +14,7 @@ export const STRATEGIES = [
   "bm25",
   "rerank_vector",
   "qiss",
+  "sqr",
 ] as const;
 
 export type Strategy = (typeof STRATEGIES)[number];
@@ -29,6 +30,7 @@ export const STRATEGY_LABELS: Record<Strategy, string> = {
   bm25: "BM25",
   rerank_vector: "Rerank Vector",
   qiss: "QISS (quantum)",
+  sqr: "SQR (optional quantum)",
 };
 
 export const STRATEGY_COLORS: Record<Strategy, string> = {
@@ -42,6 +44,7 @@ export const STRATEGY_COLORS: Record<Strategy, string> = {
   bm25: "#0ea5e9",
   rerank_vector: "#14b8a6",
   qiss: "#6366f1",
+  sqr: "#a855f7",
 };
 
 export const TIER_INFO: Record<number, { label: string; description: string }> = {
@@ -63,37 +66,65 @@ export const TIER_INFO: Record<number, { label: string; description: string }> =
   4: {
     label: "Integration",
     description:
-      "Cross-topic dependencies requiring 3\u20134 connected components. Example: 'What permissions does service A need for B and C?'",
+      "Cross-topic dependencies requiring 3-4 connected components. Example: 'What permissions does service A need for B and C?'",
   },
   5: {
     label: "Architecture",
     description:
-      "Full system design spanning 3\u20135+ topics. Example: 'How does a request flow from ingress through processing to storage?'",
+      "Full system design spanning 3-5+ topics. Example: 'How does a request flow from ingress through processing to storage?'",
   },
 };
 
 export const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
   naive_vector:
-    "Chunks documents, embeds with text-embedding-3-large, retrieves top-k by cosine similarity. Fast and simple, but no cross-topic understanding.",
+    "Chunks documents, embeds each chunk, and retrieves top-k by cosine similarity as a dense baseline.",
   contextual_vector:
-    "Same as Naive Vector, but prepends parent topic context to each chunk before embedding. Better at disambiguating domain-specific terms.",
+    "Prepends parent topic context to each chunk before embedding so you can measure whether document context changes retrieval.",
   qna_pairs:
-    "LLM pre-generates question-answer pairs from each doc page at index time. Direct question-to-answer matching, but misses novel cross-topic questions.",
+    "Generates question-answer pairs at index time and retrieves against those pairs instead of only source chunks.",
   knowledge_graph:
-    "Extracts entities and relationships into Neo4j. Queries via Cypher templates. Excels at multi-hop dependency chains.",
+    "Extracts entities and relationships into Neo4j, then queries the graph through intent-matched Cypher templates.",
   hybrid:
-    "Routes by intent \u2014 vector path for lookups, graph path for integration queries, both paths fused via RRF for how-to questions.",
+    "Routes by intent between vector and graph paths, then uses reciprocal rank fusion when both paths contribute.",
   raptor:
-    "Builds a recursive tree of LLM cluster summaries (L0 chunks \u2192 L1 summaries \u2192 L2). Queries all levels simultaneously for superior Tier 4/5 multi-hop performance.",
+    "Builds a recursive tree of chunk clusters and summaries, then queries leaf and summary levels together.",
   pageindex:
-    "Vectorless, reasoning-based retrieval. Builds a hierarchical tree index from document structure, then uses LLM reasoning to traverse the tree \u2014 no embeddings, no chunking. Excels on well-structured docs.",
+    "Builds a hierarchical tree from document structure and uses model-guided traversal without an embedding index.",
   bm25:
-    "BM25 keyword matching \u2014 the pre-neural lexical baseline. No embeddings, no graph. Shows whether dense retrieval actually helps on your specific documentation.",
+    "Uses BM25 keyword matching as a keyless lexical baseline with no embeddings or graph service.",
   rerank_vector:
-    "Naive Vector retrieves a wide candidate pool, then a cross-encoder reranker (BGE, Cohere, or Voyage) rescores and keeps the top-k. The 2026 production accuracy lever.",
+    "Naive Vector retrieves a wide candidate pool, then a cross-encoder reranker (BGE, Cohere, or Voyage) rescores and keeps the top-k for a measured latency-quality tradeoff.",
   qiss:
-    "Quantum-inspired reranker (pure NumPy). Rescores Naive Vector candidates by state fidelity Tr(rho_q . rho_d) = cos squared over the same embeddings, with an optional multi-query superposition mode whose interference terms classical rank fusion cannot produce.",
+    "Rescores dense candidates with a pure-NumPy state-fidelity calculation and offers an experimental multi-query mode.",
+  sqr:
+    "Experimental Qiskit Aer SWAP-test reranker. It is excluded from the default benchmark and needs the optional quantum dependency group.",
 };
+
+export interface StrategyCatalogRecord {
+  name: Strategy;
+  label: string;
+  architecture: string;
+  default_benchmark: boolean;
+  api_supported: boolean;
+  experimental: boolean;
+  optional_extra: string | null;
+  required_modules: string[];
+  status: "loaded" | "unavailable" | "unknown";
+  unavailable_reason: string | null;
+}
+
+export const DEFAULT_STRATEGY_CATALOG: StrategyCatalogRecord[] = STRATEGIES.map((name) => ({
+  name,
+  label: STRATEGY_LABELS[name],
+  architecture: name === "bm25" ? "lexical" : "retrieval",
+  default_benchmark: name !== "sqr",
+  api_supported: true,
+  experimental: name === "qiss" || name === "sqr",
+  optional_extra: name === "sqr" ? "quantum" : null,
+  required_modules: name === "sqr" ? ["qiskit", "qiskit_aer", "sklearn"] : [],
+  status: "unknown",
+  unavailable_reason: "Runtime status unavailable.",
+}));
 
 export interface CorpusInfo {
   value: string;
@@ -109,8 +140,19 @@ export const DEFAULT_CORPORA: CorpusInfo[] = [
   { value: "aws-compute", label: "AWS Compute" },
 ];
 
-// Kept for backward compatibility — components that don't fetch dynamically
+// Kept for backward compatibility with components that do not fetch dynamically.
 export const CORPORA = DEFAULT_CORPORA;
+
+export async function fetchStrategyCatalog(): Promise<StrategyCatalogRecord[]> {
+  try {
+    const res = await fetch(`${API_URL}/strategies`);
+    if (!res.ok) return DEFAULT_STRATEGY_CATALOG;
+    const data = await res.json();
+    return data.catalog?.length ? data.catalog : DEFAULT_STRATEGY_CATALOG;
+  } catch {
+    return DEFAULT_STRATEGY_CATALOG;
+  }
+}
 
 export async function fetchCorpora(): Promise<CorpusInfo[]> {
   try {
@@ -148,8 +190,10 @@ export type GraphBuildEvent =
   | { type: "error"; message: string }
   | { type: "heartbeat" };
 
-export async function triggerGraphBuild(corpus: string): Promise<{ status: string }> {
-  const res = await fetch(`${API_URL}/api/graph/build`, {
+export async function triggerGraphBuild(
+  corpus: string
+): Promise<{ status: string; build_id: string; corpus: string }> {
+  const res = await apiFetch(`${API_URL}/api/graph/build`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ corpus }),
@@ -159,60 +203,88 @@ export async function triggerGraphBuild(corpus: string): Promise<{ status: strin
 }
 
 export async function* streamGraphBuild(
-  corpus: string,
+  buildId: string,
   signal?: AbortSignal
 ): AsyncGenerator<GraphBuildEvent> {
-  const response = await fetch(`${API_URL}/api/graph/build/stream/${corpus}`, { signal });
-  if (!response.ok) {
-    yield { type: "error", message: `HTTP ${response.status}` };
-    return;
-  }
+  const maxReconnects = 3;
 
-  const reader = response.body?.getReader();
-  if (!reader) {
-    yield { type: "error", message: "No response body" };
-    return;
-  }
+  for (let attempt = 0; attempt <= maxReconnects; attempt += 1) {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let eventType = "";
-  let dataLine = "";
+    try {
+      const response = await apiFetch(`${API_URL}/api/graph/build/stream/${buildId}`, { signal });
+      if (!response.ok) {
+        yield { type: "error", message: `HTTP ${response.status}` };
+        return;
+      }
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const rawLine of lines) {
-      const line = rawLine.replace(/\r$/, "");
-      if (line.startsWith("event:")) {
-        eventType = line.slice(6).trim();
-      } else if (line.startsWith("data:")) {
-        dataLine = line.slice(5).trim();
-      } else if (line === "" && eventType && dataLine) {
-        try {
-          const parsed = JSON.parse(dataLine);
-          if (eventType === "entity")
-            yield { type: "entity", id: parsed.id, name: parsed.name, nodeType: parsed.type };
-          else if (eventType === "relationship")
-            yield { type: "relationship", source: parsed.source, target: parsed.target, relType: parsed.type };
-          else if (eventType === "started")
-            yield { type: "started", corpus: parsed.corpus, total_sections: parsed.total_sections };
-          else if (eventType === "section_done")
-            yield { type: "section_done", doc_id: parsed.doc_id, entities_count: parsed.entities_count, rels_count: parsed.rels_count };
-          else if (eventType === "complete")
-            yield { type: "complete", total_entities: parsed.total_entities, total_relationships: parsed.total_relationships };
-          else if (eventType === "error")
-            yield { type: "error", message: parsed.message };
-          else if (eventType === "heartbeat")
-            yield { type: "heartbeat" };
-        } catch { /* skip malformed SSE */ }
-        eventType = "";
-        dataLine = "";
+      const reader = response.body?.getReader();
+      if (!reader) {
+        yield { type: "error", message: "No response body" };
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let eventType = "";
+      let dataLine = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const rawLine of lines) {
+          const line = rawLine.replace(/\r$/, "");
+          if (line.startsWith("event:")) {
+            eventType = line.slice(6).trim();
+          } else if (line.startsWith("data:")) {
+            dataLine = line.slice(5).trim();
+          } else if (line === "" && eventType && dataLine) {
+            let event: GraphBuildEvent | undefined;
+            try {
+              const parsed = JSON.parse(dataLine);
+              if (eventType === "entity")
+                event = { type: "entity", id: parsed.id, name: parsed.name, nodeType: parsed.type };
+              else if (eventType === "relationship")
+                event = { type: "relationship", source: parsed.source, target: parsed.target, relType: parsed.type };
+              else if (eventType === "started")
+                event = { type: "started", corpus: parsed.corpus, total_sections: parsed.total_sections };
+              else if (eventType === "section_done")
+                event = { type: "section_done", doc_id: parsed.doc_id, entities_count: parsed.entities_count, rels_count: parsed.rels_count };
+              else if (eventType === "complete")
+                event = { type: "complete", total_entities: parsed.total_entities, total_relationships: parsed.total_relationships };
+              else if (eventType === "error")
+                event = { type: "error", message: parsed.message };
+              else if (eventType === "heartbeat")
+                event = { type: "heartbeat" };
+            } catch { /* skip malformed SSE */ }
+            eventType = "";
+            dataLine = "";
+            if (event) {
+              yield event;
+              if (event.type === "complete" || event.type === "error") return;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) {
+        throw error;
+      }
+      if (attempt === maxReconnects) {
+        yield { type: "error", message: "Graph build stream disconnected after 4 attempts." };
+        return;
       }
     }
+
+    if (attempt === maxReconnects) {
+      yield { type: "error", message: "Graph build stream disconnected after 4 attempts." };
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
   }
 }
 
@@ -262,7 +334,7 @@ export async function* streamChat(
   | { type: "meta"; latencyMs: number; tokensUsed: number; costUsd: number }
   | { type: "error"; message: string }
 > {
-  const response = await fetch(`${API_URL}/chat/stream`, {
+  const response = await apiFetch(`${API_URL}/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, strategy, corpus, history }),
@@ -321,7 +393,7 @@ export async function* streamChat(
             yield { type: "error", message: parsed.message ?? "Unknown error" };
           }
         } catch {
-          // malformed SSE line — skip
+          // Ignore malformed SSE lines.
         }
         eventType = "";
         dataLine = "";

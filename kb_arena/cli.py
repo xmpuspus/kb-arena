@@ -1,4 +1,4 @@
-"""KB Arena CLI — multi-stage pipeline (cloudwright Typer + Rich pattern).
+"""KB Arena CLI for a multi-stage retrieval comparison pipeline.
 
 Each command is independently runnable and re-runnable.
 """
@@ -13,7 +13,7 @@ from rich.logging import RichHandler
 
 app = typer.Typer(
     name="kb-arena",
-    help="Benchmark retrieval strategies (vector, graph, hybrid) on your documentation.",
+    help="Compare retrieval architectures on your documentation with reproducible evidence.",
     no_args_is_help=True,
 )
 console = Console()
@@ -30,7 +30,7 @@ def _print_version(value: bool) -> None:
 @app.callback()
 def _setup(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
-    version: bool = typer.Option(  # noqa: ARG001 — handled by callback
+    version: bool = typer.Option(  # noqa: ARG001 - handled by callback
         False,
         "--version",
         "-V",
@@ -77,42 +77,66 @@ def _cli_error(code: str, message: str, fmt: str = "rich") -> None:
     raise typer.Exit(1)
 
 
+def _validate_unit_interval(value: float, option: str) -> None:
+    import math
+
+    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+        _cli_error(
+            "BAD_THRESHOLD",
+            f"{option} must be a finite number between 0 and 1.",
+        )
+
+
 def _preflight(
-    needs_anthropic: bool = False,
-    needs_openai: bool = False,
+    needs_llm: bool = False,
+    needs_embeddings: bool = False,
     needs_neo4j: bool = False,
 ) -> None:
     """Verify that the credentials this command actually needs are configured.
 
-    Honors `KB_ARENA_LLM_PROVIDER`: when set to `ollama`, neither Anthropic nor
-    OpenAI keys are required. When set to `openai`, an Anthropic key is not
-    required either.
+    Generation and embedding providers are independent. Local Ollama and BGE
+    providers need no API key.
     """
     from kb_arena.settings import settings
 
-    provider = settings.llm_provider
-
-    # Provider-specific overrides — Ollama needs nothing, OpenAI needs only OpenAI.
-    if provider == "ollama":
-        needs_anthropic = False
-        # Embeddings — when on Ollama, we expect an Ollama embedding model;
-        # the OpenAI key requirement only applies to OpenAI/Anthropic providers.
-        needs_openai = False
-    elif provider == "openai":
-        needs_anthropic = False
-
     errors: list[str] = []
-    if needs_anthropic and not settings.anthropic_api_key:
-        errors.append(
-            "Anthropic API key required. Set KB_ARENA_ANTHROPIC_API_KEY, "
-            "or use KB_ARENA_LLM_PROVIDER=ollama for free local inference."
-        )
-    if needs_openai and not settings.openai_api_key:
-        errors.append(
-            "OpenAI API key required (for embeddings). "
-            "Set KB_ARENA_OPENAI_API_KEY, or switch the embedding provider via "
-            "KB_ARENA_EMBEDDING_PROVIDER (bge, ollama, voyage, cohere)."
-        )
+    if needs_llm:
+        llm_provider = settings.llm_provider.lower()
+        if llm_provider == "anthropic" and not (settings.llm_api_key or settings.anthropic_api_key):
+            errors.append(
+                "Anthropic API key required for generation. Set "
+                "KB_ARENA_ANTHROPIC_API_KEY, or use KB_ARENA_LLM_PROVIDER=ollama."
+            )
+        elif llm_provider == "openai" and not (settings.llm_api_key or settings.openai_api_key):
+            errors.append(
+                "OpenAI API key required for generation. Set KB_ARENA_OPENAI_API_KEY, "
+                "or use KB_ARENA_LLM_PROVIDER=ollama."
+            )
+        elif llm_provider not in {"anthropic", "openai", "ollama"}:
+            errors.append(
+                f"Unknown KB_ARENA_LLM_PROVIDER={llm_provider!r}. "
+                "Valid: anthropic, ollama, openai."
+            )
+
+    if needs_embeddings:
+        embedding_provider = settings.embedding_provider.lower()
+        embedding_keys = {
+            "openai": settings.openai_api_key,
+            "voyage": settings.voyage_api_key,
+            "cohere": settings.cohere_api_key,
+            "gemini": settings.gemini_api_key,
+        }
+        if embedding_provider in embedding_keys and not embedding_keys[embedding_provider]:
+            env_name = f"KB_ARENA_{embedding_provider.upper()}_API_KEY"
+            errors.append(
+                f"{embedding_provider.title()} API key required for embeddings. "
+                f"Set {env_name}, or use KB_ARENA_EMBEDDING_PROVIDER=bge or ollama."
+            )
+        elif embedding_provider not in {*embedding_keys, "bge", "ollama"}:
+            errors.append(
+                f"Unknown KB_ARENA_EMBEDDING_PROVIDER={embedding_provider!r}. "
+                "Valid: bge, cohere, gemini, ollama, openai, voyage."
+            )
     if errors:
         for e in errors:
             console.print(f"[red]{e}[/red]")
@@ -141,6 +165,7 @@ def ingest(
     from pathlib import Path
 
     from kb_arena.ingest.pipeline import _EXT_MAP
+    from kb_arena.settings import settings
 
     detected_format = format
     if format == "auto":
@@ -171,7 +196,7 @@ def ingest(
         for ext, count in sorted(ext_counts.items()):
             parser = _EXT_MAP.get(ext, "unknown")
             console.print(f"    {ext}: {count} ({parser} parser)")
-        out_path = Path("datasets") / corpus / "processed" / "documents.jsonl"
+        out_path = Path(settings.datasets_path) / corpus / "processed" / "documents.jsonl"
         console.print(f"  Output: {out_path}")
         console.print("\n  Remove --dry-run to execute.")
         return
@@ -179,11 +204,15 @@ def ingest(
     if detected_format in ("web", "github"):
         from kb_arena.ingest.pipeline import run_ingest_special
 
-        run_ingest_special(source=path, corpus=corpus, format=detected_format)
+        ingested = run_ingest_special(source=path, corpus=corpus, format=detected_format)
     else:
         from kb_arena.ingest.pipeline import run_ingest
 
-        run_ingest(path=path, corpus=corpus, format=format)
+        ingested = run_ingest(path=path, corpus=corpus, format=format)
+
+    if ingested <= 0:
+        console.print("[red]Ingestion produced no documents.[/red]")
+        raise typer.Exit(1)
 
     _next_step("ingest", corpus)
 
@@ -199,13 +228,48 @@ def build_graph(
     """
     import asyncio
 
-    _preflight(needs_anthropic=True)
+    _preflight(needs_llm=True)
 
     from kb_arena.graph.extractor import run_extraction
 
     asyncio.run(run_extraction(corpus=corpus, schema=schema))
 
     _next_step("build_graph", corpus)
+
+
+@app.command()
+def migrate_graph_schema(
+    database: str = typer.Option(
+        ...,
+        "--database",
+        help="Exact Neo4j database to migrate; also set KB_ARENA_NEO4J_DATABASE to this value.",
+    ),
+    confirm_dedicated_database: bool = typer.Option(
+        False,
+        "--confirm-dedicated-database",
+        help="Confirm that the target Neo4j database is dedicated to KB Arena.",
+    ),
+):
+    """Replace pre-0.10 graph constraints after explicit operator confirmation."""
+    import asyncio
+
+    if not database.strip():
+        console.print("[red]Migration not run. --database must not be empty.[/red]")
+        raise typer.Exit(1)
+    if not confirm_dedicated_database:
+        console.print(
+            "[red]Migration not run. Use a Neo4j database dedicated to KB Arena, "
+            "then pass --confirm-dedicated-database.[/red]"
+        )
+        raise typer.Exit(1)
+
+    from kb_arena.graph.extractor import migrate_legacy_graph_schema
+
+    dropped = asyncio.run(migrate_legacy_graph_schema(database.strip()))
+    if dropped:
+        console.print(f"[green]Migrated graph schema.[/green] Dropped: {', '.join(dropped)}")
+    else:
+        console.print("[green]Graph schema is current.[/green] No legacy constraints found.")
 
 
 @app.command()
@@ -221,7 +285,20 @@ def build_vectors(
     """
     import asyncio
 
-    _preflight(needs_openai=True)
+    llm_build_strategies = {"all", "contextual_vector", "qna_pairs", "raptor", "pageindex"}
+    embedding_build_strategies = {
+        "all",
+        "naive_vector",
+        "contextual_vector",
+        "qna_pairs",
+        "raptor",
+        "qiss",
+        "sqr",
+    }
+    _preflight(
+        needs_llm=strategy in llm_build_strategies,
+        needs_embeddings=strategy in embedding_build_strategies,
+    )
 
     from kb_arena.strategies import build_vector_indexes
 
@@ -239,6 +316,9 @@ def benchmark(
         "qna_pairs, knowledge_graph, hybrid, raptor, pageindex",
     ),
     tier: int = typer.Option(0, help="Tier filter (0 = all tiers)"),
+    split: str = typer.Option(
+        "", "--split", help="Question split: development, validation, holdout, or all"
+    ),
     parallel: bool = typer.Option(
         True, "--parallel/--no-parallel", help="Run strategies in parallel"
     ),
@@ -267,7 +347,7 @@ def benchmark(
     """
     import asyncio
 
-    _preflight(needs_anthropic=True, needs_openai=True)
+    _validate_unit_interval(fail_below, "--fail-below")
 
     if strategy_module:
         from kb_arena.strategies import register_plugin_strategy
@@ -286,7 +366,7 @@ def benchmark(
         total_queries = 0
         for corp in corpora:
             try:
-                questions = load_questions(corp, tier=tier)
+                questions = load_questions(corp, tier=tier, split=split)
             except FileNotFoundError:
                 console.print(f"  [yellow]{corp}: no questions found[/yellow]")
                 continue
@@ -319,23 +399,30 @@ def benchmark(
         console.print("\n  Remove --dry-run to execute.")
         return
 
-    if ragas:
+    _preflight(needs_llm=True, needs_embeddings=True)
+
+    if ragas or reference_free:
         from kb_arena.settings import settings as _settings
 
         _settings.benchmark_enable_ragas = True
 
-    from kb_arena.benchmark.runner import run_benchmark
+    from kb_arena.benchmark.runner import BenchmarkExecutionError, run_benchmark
 
-    asyncio.run(
-        run_benchmark(
-            corpus=corpus,
-            strategy=strategy,
-            tier=tier,
-            parallel=parallel,
-            reference_free=reference_free,
-            top_k=top_k,
+    try:
+        asyncio.run(
+            run_benchmark(
+                corpus=corpus,
+                strategy=strategy,
+                tier=tier,
+                split=split,
+                parallel=parallel,
+                reference_free=reference_free,
+                top_k=top_k,
+            )
         )
-    )
+    except BenchmarkExecutionError as exc:
+        console.print(f"[red]Benchmark failed: {exc}[/red]")
+        raise typer.Exit(1) from None
 
     if fail_below > 0:
         from kb_arena.benchmark.reporter import _load_results
@@ -418,7 +505,7 @@ def report(
 
 @app.command()
 def serve(
-    host: str = typer.Option("0.0.0.0", help="Host to bind to"),
+    host: str = typer.Option("127.0.0.1", help="Host to bind to"),
     port: int = typer.Option(8000, help="Port to listen on"),
     reload: bool = typer.Option(False, help="Enable auto-reload for development"),
 ):
@@ -447,6 +534,8 @@ def init_corpus(
     import re
     from pathlib import Path
 
+    from kb_arena.settings import settings
+
     if not re.match(r"^[a-zA-Z0-9_-]+$", name):
         console.print(
             f"[red]Invalid corpus name '{name}'. "
@@ -454,7 +543,7 @@ def init_corpus(
         )
         raise typer.Exit(1)
 
-    base = Path("datasets") / name
+    base = Path(settings.datasets_path) / name
     if base.exists():
         console.print(f"[yellow]Corpus directory already exists: {base}[/yellow]")
         return
@@ -496,7 +585,7 @@ def run(
         None,
         "--docs",
         help="Optional path/URL/github: spec to ingest before building. "
-        "If omitted, ingest is skipped (assumes docs already in datasets/{corpus}/raw/).",
+        "If omitted, files in datasets/{corpus}/raw/ are ingested automatically.",
     ),
     skip_graph: bool = typer.Option(
         False, "--skip-graph", help="Skip build-graph (useful when Neo4j is unavailable)"
@@ -519,11 +608,13 @@ def run(
 
     from rich.panel import Panel
 
+    from kb_arena.settings import settings
+
     if not re.match(r"^[a-zA-Z0-9_-]+$", corpus):
         console.print(f"[red]Invalid corpus name '{corpus}'.[/red]")
         raise typer.Exit(1)
 
-    base = Path("datasets") / corpus
+    base = Path(settings.datasets_path) / corpus
     if not base.exists():
         console.print(
             f"[red]Corpus directory not found: {base}\n" f"Run: kb-arena init-corpus {corpus}[/red]"
@@ -541,49 +632,138 @@ def run(
     def _save_state() -> None:
         state_path.write_text(json.dumps(state, indent=2))
 
-    def _stage(name: str, action) -> None:
-        if resume and state.get(name) == "done":
+    def _stage(name: str, action, checkpoint: dict | None = None) -> None:
+        checkpoint = checkpoint or {}
+        checkpoint_matches = all(state.get(key) == value for key, value in checkpoint.items())
+        if resume and state.get(name) == "done" and checkpoint_matches:
             console.print(f"[dim][skip][/dim] {name} already complete")
             return
         console.print(Panel.fit(f"[bold]{name}[/bold]", style="cyan"))
-        action()
+        if action() is False:
+            return
         state[name] = "done"
+        state.update(checkpoint)
         _save_state()
 
-    # 1. ingest (optional)
-    if docs:
-        from kb_arena.ingest.pipeline import run_ingest
+    from kb_arena.strategies import load_documents
 
-        def _ingest():
-            run_ingest(path=docs, corpus=corpus, format="auto")
+    def _has_documents() -> bool:
+        return bool(load_documents(corpus))
 
-        _stage("ingest", _ingest)
-    else:
-        # If processed/ is empty AND no --docs given, we cannot proceed.
-        processed = base / "processed"
-        if not processed.exists() or not any(processed.glob("*.jsonl")):
+    def _has_questions() -> bool:
+        from kb_arena.benchmark.questions import load_questions
+
+        try:
+            return bool(load_questions(corpus))
+        except FileNotFoundError:
+            return False
+
+    has_documents = _has_documents()
+    has_questions = _has_questions()
+    regenerate_questions = False
+    state_changed = False
+    if resume and not has_documents:
+        for stage_name in ("ingest", "build_graph", "build_vectors", "benchmark"):
+            state_changed = state.pop(stage_name, None) is not None or state_changed
+    if resume and not has_questions:
+        for stage_name in ("generate_questions", "benchmark"):
+            state_changed = state.pop(stage_name, None) is not None or state_changed
+    if "benchmark" not in state:
+        state_changed = state.pop("benchmark_strategies", None) is not None or state_changed
+
+    if docs is not None and (state.get("ingest") != "done" or state.get("ingest_source") != docs):
+        regenerate_questions = state.get("generate_questions") == "done"
+        for stage_name in (
+            "ingest",
+            "ingest_source",
+            "build_graph",
+            "build_vectors",
+            "generate_questions",
+            "benchmark",
+            "benchmark_strategies",
+        ):
+            state_changed = state.pop(stage_name, None) is not None or state_changed
+
+    # 1. ingest explicit input, or automatically use a populated raw directory.
+    ingest_source = docs
+    if not ingest_source:
+        raw = base / "raw"
+        from kb_arena.ingest.pipeline import SUPPORTED_EXTENSIONS
+
+        has_raw = raw.exists() and any(
+            path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS
+            for path in raw.rglob("*")
+        )
+        if not has_documents and has_raw:
+            ingest_source = str(raw)
+        elif not has_documents:
             console.print(
-                "[red]No processed documents found and no --docs path given.[/red]\n"
-                f"Drop files into {base / 'raw'}/ then re-run with --docs {base / 'raw'}, "
-                "or run kb-arena ingest separately."
+                "[red]No documents found to process.[/red]\n"
+                f"Drop files into {raw}/, pass --docs PATH, or run kb-arena ingest separately."
             )
             raise typer.Exit(1)
 
+    needs_llm = any(
+        (
+            not skip_graph and not (resume and state.get("build_graph") == "done"),
+            not (resume and state.get("build_vectors") == "done"),
+            (not has_questions or regenerate_questions)
+            and not (resume and state.get("generate_questions") == "done"),
+        )
+    )
+    needs_embeddings = not (resume and state.get("build_vectors") == "done")
+    if needs_llm or needs_embeddings:
+        _preflight(needs_llm=needs_llm, needs_embeddings=needs_embeddings)
+    if state_changed:
+        _save_state()
+
+    if ingest_source:
+
+        def _ingest():
+            from urllib.parse import urlsplit
+
+            source_scheme = urlsplit(ingest_source).scheme.lower()
+            if source_scheme in {"http", "https"}:
+                from kb_arena.ingest.pipeline import run_ingest_special
+
+                ingested = run_ingest_special(source=ingest_source, corpus=corpus, format="web")
+            elif source_scheme == "github":
+                from kb_arena.ingest.pipeline import run_ingest_special
+
+                ingested = run_ingest_special(source=ingest_source, corpus=corpus, format="github")
+            else:
+                from kb_arena.ingest.pipeline import run_ingest
+
+                ingested = run_ingest(path=ingest_source, corpus=corpus, format="auto")
+            if ingested <= 0:
+                console.print("[red]Ingestion produced no documents; pipeline stopped.[/red]")
+                raise typer.Exit(1)
+
+        _stage("ingest", _ingest, checkpoint={"ingest_source": ingest_source})
+
     # 2. build-graph (skippable when Neo4j is unavailable)
+    graph_available = bool(resume and state.get("build_graph") == "done" and not skip_graph)
     if not skip_graph:
+        from neo4j.exceptions import ServiceUnavailable
+
+        from kb_arena.exceptions import GraphError
         from kb_arena.graph.extractor import run_extraction
 
-        def _graph():
+        def _graph() -> bool | None:
+            nonlocal graph_available
             try:
                 asyncio.run(run_extraction(corpus=corpus))
-            except Exception as exc:  # noqa: BLE001 — surface as warning, continue
+            except (GraphError, OSError, ConnectionError, ServiceUnavailable) as exc:
+                graph_available = False
                 console.print(
                     f"[yellow]build-graph failed: {exc}\n"
                     "Continuing with vector strategies. "
                     "Re-run with Neo4j running to enable knowledge_graph + hybrid.[/yellow]"
                 )
                 # Graceful degradation: don't mark stage done so future --resume retries.
-                raise typer.Exit(0)  # leave state unset so we can retry
+                return False
+            graph_available = True
+            return None
 
         _stage("build_graph", _graph)
     else:
@@ -598,12 +778,16 @@ def run(
     _stage("build_vectors", _vectors)
 
     # 4. generate-questions (only if no questions exist)
-    has_questions = (base / "questions").exists() and any((base / "questions").glob("*.yaml"))
-    if not has_questions:
+    if not has_questions or regenerate_questions:
         from kb_arena.benchmark.question_gen import run_question_generation
 
         def _questions():
             asyncio.run(run_question_generation(corpus=corpus, count=questions))
+            if not _has_questions():
+                console.print(
+                    "[red]Question generation produced no questions; pipeline stopped.[/red]"
+                )
+                raise typer.Exit(1)
 
         _stage("generate_questions", _questions)
     else:
@@ -611,11 +795,30 @@ def run(
 
     # 5. benchmark
     from kb_arena.benchmark.runner import run_benchmark
+    from kb_arena.strategies.catalog import default_strategy_names
+
+    benchmark_strategies = "all"
+    if not graph_available:
+        benchmark_strategies = ",".join(
+            name for name in default_strategy_names() if name not in {"knowledge_graph", "hybrid"}
+        )
+
+    benchmark_checkpoint = {"benchmark_strategies": benchmark_strategies}
+    benchmark_complete = (
+        resume
+        and state.get("benchmark") == "done"
+        and state.get("benchmark_strategies") == benchmark_strategies
+    )
+    if not benchmark_complete and (not needs_llm or not needs_embeddings):
+        _preflight(
+            needs_llm=not needs_llm,
+            needs_embeddings=not needs_embeddings,
+        )
 
     def _bench():
-        asyncio.run(run_benchmark(corpus=corpus, strategy="all"))
+        asyncio.run(run_benchmark(corpus=corpus, strategy=benchmark_strategies))
 
-    _stage("benchmark", _bench)
+    _stage("benchmark", _bench, checkpoint=benchmark_checkpoint)
 
     console.print()
     console.print(
@@ -639,7 +842,7 @@ def generate_questions(
     """
     import asyncio
 
-    _preflight(needs_anthropic=True)
+    _preflight(needs_llm=True)
 
     from kb_arena.benchmark.question_gen import run_question_generation
 
@@ -655,11 +858,14 @@ def demo(
 ):
     """Launch the demo with pre-computed aws-compute benchmark results.
 
-    No API keys, no Docker, no setup needed — just explore real results.
+    No API keys, Docker service, or setup is needed to explore the checked results.
     """
+    import os
     import webbrowser
     from pathlib import Path
     from threading import Timer
+
+    from kb_arena.settings import settings
 
     results_dir = Path("results")
     result_files = list(results_dir.glob("aws-compute_*.json")) if results_dir.exists() else []
@@ -733,7 +939,18 @@ def demo(
 
     import uvicorn
 
-    uvicorn.run("kb_arena.chatbot.api:app", host=host, port=actual_port)
+    previous_demo_environment = os.environ.get("KB_ARENA_DEMO_MODE")
+    previous_demo_setting = settings.demo_mode
+    os.environ["KB_ARENA_DEMO_MODE"] = "true"
+    settings.demo_mode = True
+    try:
+        uvicorn.run("kb_arena.chatbot.api:app", host=host, port=actual_port)
+    finally:
+        settings.demo_mode = previous_demo_setting
+        if previous_demo_environment is None:
+            os.environ.pop("KB_ARENA_DEMO_MODE", None)
+        else:
+            os.environ["KB_ARENA_DEMO_MODE"] = previous_demo_environment
 
 
 @app.command()
@@ -748,7 +965,7 @@ def generate_qa(
     """
     import asyncio
 
-    _preflight(needs_anthropic=True)
+    _preflight(needs_llm=True)
 
     from kb_arena.generate.cli_runner import run_generate_qa
 
@@ -768,7 +985,7 @@ def audit(
     """
     import asyncio
 
-    _preflight(needs_anthropic=True)
+    _preflight(needs_llm=True)
 
     from kb_arena.audit.analyzer import run_audit
     from kb_arena.audit.display import display_audit_report
@@ -790,7 +1007,7 @@ def fix(
     """
     import asyncio
 
-    _preflight(needs_anthropic=True)
+    _preflight(needs_llm=True)
 
     from kb_arena.audit.analyzer import run_audit
     from kb_arena.audit.display import display_fix_report
@@ -812,7 +1029,7 @@ def fix(
 def health(
     format: str = typer.Option("rich", help="Output format: rich, json"),
 ):
-    """Pipeline status — per-corpus progress, service connectivity, API keys."""
+    """Report pipeline progress, service connectivity, and API key status by corpus."""
     import asyncio
     from pathlib import Path
 
@@ -822,6 +1039,7 @@ def health(
     has_openai = bool(settings.openai_api_key)
 
     async def check_neo4j():
+        driver = None
         try:
             import neo4j
 
@@ -829,11 +1047,15 @@ def health(
                 settings.neo4j_uri,
                 auth=(settings.neo4j_user, settings.neo4j_password),
             )
-            await driver.verify_connectivity()
-            await driver.close()
+            async with driver.session(database=settings.neo4j_database) as session:
+                result = await session.run("RETURN 1")
+                await result.consume()
             return True
         except Exception:
             return False
+        finally:
+            if driver is not None:
+                await driver.close()
 
     neo4j_ok = asyncio.run(check_neo4j())
 
@@ -998,6 +1220,7 @@ def eval(
             parsed_thresholds[metric.strip()] = float(val.strip())
         except ValueError:
             _cli_error("BAD_THRESHOLD", f"Invalid threshold value: {val}")
+        _validate_unit_interval(parsed_thresholds[metric.strip()], "--threshold")
 
     results = _load_results(corpus if corpus != "all" else None)
     if not results:
@@ -1055,6 +1278,9 @@ def retriever_lab(
     corpus: str = typer.Option("all", help="Corpus to evaluate"),
     top_k: int = typer.Option(5, "--top-k", help="Top-k chunks per query"),
     strategies: str = typer.Option("all", help="Strategy filter (or 'all')"),
+    split: str = typer.Option(
+        "", "--split", help="Question split: development, validation, holdout, or all"
+    ),
     min_recall: float = typer.Option(
         0.30,
         "--min-recall",
@@ -1072,9 +1298,10 @@ def retriever_lab(
 
     from kb_arena.benchmark.retriever_lab import run_retriever_lab
 
-    _preflight(needs_openai=True)
+    _validate_unit_interval(min_recall, "--min-recall")
+    _preflight(needs_embeddings=True)
     exit_code = _asyncio.run(
-        run_retriever_lab(corpus, strategies, top_k, min_recall, ceiling_k or None)
+        run_retriever_lab(corpus, strategies, top_k, min_recall, ceiling_k or None, split=split)
     )
     if exit_code:
         raise typer.Exit(exit_code)
@@ -1107,11 +1334,11 @@ def quantum_diagnostics(
     from kb_arena.settings import settings
     from kb_arena.strategies.quantum.diagnostics import run_quantum_diagnostics
 
-    _preflight(needs_openai=True)
+    _preflight(needs_embeddings=True)
     console = _Console()
     diag = _asyncio.run(run_quantum_diagnostics(corpus, sample_questions=sample_questions))
 
-    pca_t = _Table(title=f"PCA variance retained — {corpus} ({diag.n_embedding_samples} samples)")
+    pca_t = _Table(title=f"PCA variance retained: {corpus} ({diag.n_embedding_samples} samples)")
     pca_t.add_column("n_qubits", justify="right")
     pca_t.add_column("encoded dim", justify="right")
     pca_t.add_column("variance explained", justify="right")
@@ -1156,7 +1383,7 @@ def label_chunks(
 
     from kb_arena.benchmark.expected_chunks import label_corpus
 
-    _preflight(needs_anthropic=True, needs_openai=True)
+    _preflight(needs_llm=True, needs_embeddings=True)
     result = _asyncio.run(label_corpus(corpus, force=force, n_candidates=n_candidates))
     note = " (halted by cost cap)" if result.get("halted_by_cost_cap") else ""
     console.print(
@@ -1170,6 +1397,14 @@ def label_chunks(
 def optimize(
     corpus: str = typer.Option(..., help="Corpus to optimize against"),
     strategies: str = typer.Option("all", help="Strategy filter: 'all' or comma-separated names"),
+    split: str = typer.Option(
+        "auto",
+        "--split",
+        help=(
+            "Question split: auto (development when labeled), development, validation, "
+            "holdout, or all"
+        ),
+    ),
     top_ks: str = typer.Option("3,5,10", "--top-ks", help="Comma-separated top-k values to sweep"),
     chunk_sizes: str = typer.Option(
         "", "--chunk-sizes", help="Comma-separated chunk-token sizes (chunking strategies only)"
@@ -1197,27 +1432,46 @@ def optimize(
     Sweeps chunk size, top-k, embedding provider and reranker backend per
     strategy, scores each configuration on a retrieval IR metric (retrieval-only,
     ~10x cheaper than `benchmark`), and reports the tuned optimum and its delta
-    versus the current defaults. `--dry-run` needs no API keys.
+    versus the current defaults. QnA Pairs and RAPTOR reuse their prebuilt indexes
+    and sweep top-k only, so optimization never regenerates LLM-built artifacts.
+    `--dry-run` needs no API keys.
     """
     import asyncio as _asyncio
 
-    from kb_arena.benchmark.optimizer import run_optimize
+    from kb_arena.benchmark.optimizer import run_optimize, validate_optimize_inputs
 
-    def _ints(s: str) -> list[int]:
-        return [int(x) for x in s.split(",") if x.strip()]
+    def _ints(s: str, option: str) -> list[int]:
+        try:
+            return [int(x) for x in s.split(",") if x.strip()]
+        except ValueError:
+            raise ValueError(f"Invalid integer list for {option}.") from None
 
     def _strs(s: str) -> list[str]:
         return [x.strip() for x in s.split(",") if x.strip()]
 
+    try:
+        parsed_top_ks = _ints(top_ks, "--top-ks")
+        parsed_chunk_sizes = _ints(chunk_sizes, "--chunk-sizes")
+        validate_optimize_inputs(
+            strategies,
+            top_ks=parsed_top_ks,
+            chunk_sizes=parsed_chunk_sizes,
+            method=method,
+            max_trials=max_trials,
+        )
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from None
+
     if not dry_run:
-        _preflight(needs_openai=True)
+        _preflight(needs_embeddings=True)
 
     exit_code = _asyncio.run(
         run_optimize(
             corpus,
             strategies,
-            top_ks=_ints(top_ks),
-            chunk_sizes=_ints(chunk_sizes),
+            top_ks=parsed_top_ks,
+            chunk_sizes=parsed_chunk_sizes,
             embedding_providers=_strs(embedding_providers),
             reranker_backends=_strs(reranker_backends),
             metric=metric,
@@ -1225,6 +1479,7 @@ def optimize(
             max_trials=max_trials,
             seed=seed,
             dry_run=dry_run,
+            split=split,
         )
     )
     if exit_code:

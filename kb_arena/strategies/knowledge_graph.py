@@ -1,6 +1,6 @@
 """Strategy 4: Knowledge Graph (Neo4j).
 
-Intent → select Cypher template or generate Cypher → execute → assemble context → Sonnet.
+Intent → select an allowlisted Cypher template → execute → assemble context → Sonnet.
 Falls back to mock data with warning when Neo4j is unavailable (Pattern 15).
 Tracks graph_context for Sigma.js visualization.
 """
@@ -8,43 +8,31 @@ Tracks graph_context for Sigma.js visualization.
 from __future__ import annotations
 
 import logging
+import math
 import re
 import time
 
-from kb_arena.graph.schema import node_type_values, rel_type_values
+from kb_arena.exceptions import StrategyError
+from kb_arena.graph.schema import rel_type_values
+from kb_arena.llm.client import LLMResponse
 from kb_arena.models.document import Document
 from kb_arena.models.graph import GraphContext
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
-from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.settings import settings
+from kb_arena.strategies.base import AnswerResult, Strategy, meta_packet, validate_top_k
 
 logger = logging.getLogger(__name__)
-
-# Reject LLM-generated Cypher that contains write operations.
-# Note: this is layer 1; layer 2 is the read-only session below in _run_cypher
-# which the Neo4j driver enforces at the protocol level. APOC procedures with
-# write semantics need an explicit deny because some run inside read-marked sessions.
-_WRITE_CYPHER_RE = re.compile(
-    r"""\b(
-        CREATE | MERGE | SET | DELETE | REMOVE | DROP | DETACH
-      | LOAD\s+CSV
-      | CALL\s+apoc\.(?:
-            schema | create | merge | refactor | delete | remove | set | drop
-          | iterate | periodic\.iterate
-          | cypher\.runWrite | cypher\.doIt
-          | export | load | trigger
-        )
-      | CALL\s+dbms\.security\.
-    )\b""",
-    re.IGNORECASE | re.VERBOSE,
-)
 
 # --- Cypher templates (Pattern 6 from PLAN.md) ---
 
 MULTI_HOP_QUERY = """
-MATCH path = (start)-[*1..{depth}]-(connected)
-WHERE start.fqn = $target AND ALL(r IN relationships(path) WHERE type(r) IN $allowed_rel_types)
+MATCH path = (start:KBArenaEntity)-[*1..{depth}]-(connected:KBArenaEntity)
+WHERE start.fqn = $target
+  AND ALL(n IN nodes(path) WHERE n:KBArenaEntity)
+  AND ($corpus = 'all' OR ALL(n IN nodes(path) WHERE n.corpus = $corpus))
+  AND ALL(r IN relationships(path) WHERE type(r) IN $allowed_rel_types)
 RETURN connected.name AS name, connected.fqn AS fqn,
-       labels(connected)[0] AS type,
+       head([label IN labels(connected) WHERE label <> 'KBArenaEntity']) AS type,
        connected.source_doc_id AS source_doc_id,
        connected.source_section_id AS source_section_id,
        length(path) AS hops,
@@ -54,10 +42,12 @@ LIMIT 50
 """
 
 COMPARISON_QUERY = """
-MATCH (a)-[r1]-(shared)-[r2]-(b)
+MATCH (a:KBArenaEntity)-[r1]-(shared:KBArenaEntity)-[r2]-(b:KBArenaEntity)
 WHERE a.fqn = $entity_a AND b.fqn = $entity_b
+  AND ($corpus = 'all' OR ALL(n IN [a, shared, b] WHERE n.corpus = $corpus))
 RETURN shared.name AS shared_entity, shared.name AS name,
-       shared.fqn AS fqn, labels(shared)[0] AS shared_type,
+       shared.fqn AS fqn,
+       head([label IN labels(shared) WHERE label <> 'KBArenaEntity']) AS shared_type,
        shared.source_doc_id AS source_doc_id,
        shared.source_section_id AS source_section_id,
        type(r1) AS rel_to_a, type(r2) AS rel_to_b
@@ -65,10 +55,14 @@ LIMIT 50
 """
 
 DEPENDENCY_CHAIN = """
-MATCH path = (source)-[:DEPENDS_ON|CONNECTS_TO|TRIGGERS|EXTENDS|CONFIGURES*1..4]->(dep)
+MATCH path = (source:KBArenaEntity)
+  -[:DEPENDS_ON|CONNECTS_TO|TRIGGERS|EXTENDS|CONFIGURES*1..4]->(dep:KBArenaEntity)
 WHERE source.fqn = $start
+  AND ALL(n IN nodes(path) WHERE n:KBArenaEntity)
+  AND ($corpus = 'all' OR ALL(n IN nodes(path) WHERE n.corpus = $corpus))
 WITH path, dep, length(path) AS depth
-RETURN dep.name AS name, dep.fqn AS fqn, labels(dep)[0] AS type,
+RETURN dep.name AS name, dep.fqn AS fqn,
+       head([label IN labels(dep) WHERE label <> 'KBArenaEntity']) AS type,
        dep.source_doc_id AS source_doc_id,
        dep.source_section_id AS source_section_id, depth,
        [n IN nodes(path) | n.name] AS chain
@@ -78,8 +72,10 @@ LIMIT 100
 
 FULLTEXT_SEARCH = """
 CALL db.index.fulltext.queryNodes('entity_search', $query) YIELD node, score
+WHERE node:KBArenaEntity AND ($corpus = 'all' OR node.corpus = $corpus)
 RETURN node.name AS name, node.fqn AS fqn,
-       labels(node)[0] AS type, node.description AS description,
+       head([label IN labels(node) WHERE label <> 'KBArenaEntity']) AS type,
+       node.description AS description,
        node.source_doc_id AS source_doc_id,
        node.source_section_id AS source_section_id, score
 ORDER BY score DESC
@@ -87,10 +83,13 @@ LIMIT 20
 """
 
 ENTITY_LOOKUP = """
-MATCH (n)
-WHERE n.fqn = $fqn OR toLower(n.name) = toLower($name)
-OPTIONAL MATCH (n)-[r]-(neighbor)
-RETURN n.name AS name, n.fqn AS fqn, labels(n)[0] AS type,
+MATCH (n:KBArenaEntity)
+WHERE (n.fqn = $fqn OR toLower(n.name) = toLower($name))
+  AND ($corpus = 'all' OR n.corpus = $corpus)
+OPTIONAL MATCH (n)-[r]-(neighbor:KBArenaEntity)
+WHERE $corpus = 'all' OR neighbor.corpus = $corpus
+RETURN n.name AS name, n.fqn AS fqn,
+       head([label IN labels(n) WHERE label <> 'KBArenaEntity']) AS type,
        n.description AS description,
        n.source_doc_id AS source_doc_id,
        n.source_section_id AS source_section_id,
@@ -103,36 +102,6 @@ SYSTEM_PROMPT = """You are a documentation assistant with access to a knowledge 
 The context contains entities, relationships, and paths extracted from the graph.
 Answer the question accurately using the graph context provided.
 Be specific about relationships and dependencies. If the graph context is incomplete, say so."""
-
-CYPHER_GEN_PROMPT_TEMPLATE = """\
-You are a Neo4j Cypher expert. The graph contains documentation entities.
-
-Node types: {node_types}
-Relationship types: {rel_types}
-
-Write a Cypher query to answer: {{question}}
-
-Rules:
-- Return only the Cypher query, no explanation
-- Use LIMIT 50 to cap results
-- Always return: name, fqn, type, source_doc_id, source_section_id, and any
-  relevant relationship fields (alias node properties exactly as
-  `source_doc_id` and `source_section_id`)
-- Use $params for parameters (available: $query string)
-"""
-
-
-def _extract_cypher(raw: str) -> str:
-    """Pull Cypher from LLM output that may include prose or markdown."""
-    raw = raw.strip()
-    # Strip markdown fences
-    match = re.search(r"```(?:cypher)?\s*([\s\S]+?)```", raw, re.IGNORECASE)
-    if match:
-        return match.group(1).strip()
-    # Assume the whole response is Cypher if it starts with MATCH/CALL/WITH
-    if re.match(r"^\s*(MATCH|CALL|WITH|RETURN|OPTIONAL)", raw, re.IGNORECASE):
-        return raw
-    return raw
 
 
 def _mock_graph_context() -> GraphContext:
@@ -199,7 +168,13 @@ def _records_to_chunks(records: list[dict], strategy_name: str, top_k: int) -> l
             doc_id = str(r.get("source_id") or src_doc or fqn)
         content = " | ".join(f"{k}: {v}" for k, v in r.items() if v is not None)
         score_raw = r.get("score", 0.0)
-        score_val = float(score_raw) if isinstance(score_raw, int | float) else 0.0
+        if (
+            isinstance(score_raw, bool)
+            or not isinstance(score_raw, int | float)
+            or not math.isfinite(float(score_raw))
+        ):
+            raise StrategyError(f"Invalid graph retrieval score at rank {i + 1}")
+        score_val = float(score_raw)
         chunks.append(
             RetrievedChunk(
                 chunk_id=chunk_id,
@@ -291,7 +266,10 @@ class KnowledgeGraphStrategy(Strategy):
             session_kwargs = {"default_access_mode": _neo4j.READ_ACCESS}
         except ImportError:  # pragma: no cover — neo4j is a hard dep
             session_kwargs = {}
-        async with self._driver.session(**session_kwargs) as session:
+        async with self._driver.session(
+            database=settings.neo4j_database,
+            **session_kwargs,
+        ) as session:
             result = await session.run(cypher, parameters=params)
             records = await result.data()
             await result.consume()
@@ -323,7 +301,12 @@ class KnowledgeGraphStrategy(Strategy):
         entities.extend(re.findall(r"\b([A-Z][a-zA-Z0-9]+)\b", question))
         return list(dict.fromkeys(entities))[:3]  # deduplicate, limit
 
-    async def _template_query(self, question: str, intent: str) -> tuple[list[dict], str]:
+    async def _template_query(
+        self,
+        question: str,
+        intent: str,
+        corpus: str,
+    ) -> tuple[list[dict], str]:
         """Run the appropriate Cypher template and return (records, cypher_used)."""
         entities = self._extract_entities(question)
         primary = entities[0] if entities else ""
@@ -333,51 +316,39 @@ class KnowledgeGraphStrategy(Strategy):
 
         if intent == "comparison" and primary and secondary:
             cypher = COMPARISON_QUERY
-            params = {"entity_a": primary, "entity_b": secondary}
+            params = {"entity_a": primary, "entity_b": secondary, "corpus": corpus}
         elif intent == "dependency" and primary:
             cypher = DEPENDENCY_CHAIN
-            params = {"start": primary}
+            params = {"start": primary, "corpus": corpus}
         elif intent == "entity_lookup" and primary:
             cypher = ENTITY_LOOKUP
-            params = {"fqn": primary, "name": primary}
+            params = {"fqn": primary, "name": primary, "corpus": corpus}
         elif intent == "multi_hop" and primary:
             cypher = MULTI_HOP_QUERY.format(depth=3)
-            params = {"target": primary, "allowed_rel_types": allowed_rels}
+            params = {
+                "target": primary,
+                "allowed_rel_types": allowed_rels,
+                "corpus": corpus,
+            }
         else:
             # Fulltext search as catch-all
             cypher = FULLTEXT_SEARCH
-            params = {"query": question}
+            params = {"query": question, "corpus": corpus}
 
         records = await self._run_cypher(cypher, params)
         return records, cypher
 
     async def _generate_cypher(self, question: str) -> tuple[list[dict], str, float]:
-        """Text-to-Cypher fallback for novel queries. Returns (records, cypher, cost_usd)."""
-        llm = self._get_llm()
-        cypher_gen_prompt = CYPHER_GEN_PROMPT_TEMPLATE.format(
-            node_types=", ".join(node_type_values("")),
-            rel_types=", ".join(rel_type_values("")),
+        """Use the owned-node full-text template for queries without template evidence."""
+        records = await self._run_cypher(
+            FULLTEXT_SEARCH,
+            {"query": question, "corpus": "all"},
         )
-        prompt = cypher_gen_prompt.format(question=question)
-        resp = await llm.extract(text=prompt, system_prompt="Output only Cypher. No prose.")
-        cypher_cost = resp.cost_usd
-        cypher = _extract_cypher(resp.text)
+        return records, FULLTEXT_SEARCH, 0.0
 
-        if _WRITE_CYPHER_RE.search(cypher):
-            logger.warning("Blocked LLM-generated write Cypher: %.200s", cypher)
-            records = await self._run_cypher(FULLTEXT_SEARCH, {"query": question})
-            return records, FULLTEXT_SEARCH, cypher_cost
-
-        try:
-            records = await self._run_cypher(cypher, {"query": question})
-            return records, cypher, cypher_cost
-        except Exception:
-            # Cypher generation can produce invalid queries — fall through to fulltext
-            records = await self._run_cypher(FULLTEXT_SEARCH, {"query": question})
-            return records, FULLTEXT_SEARCH, cypher_cost
-
-    async def query(self, question: str, top_k: int = 5) -> AnswerResult:
+    async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Intent → Cypher template → execute → LLM answer."""
+        validate_top_k(top_k)
         start = self._start_timer()
 
         # Mock fallback: Neo4j not connected
@@ -396,11 +367,11 @@ class KnowledgeGraphStrategy(Strategy):
 
         retrieval_start = time.perf_counter()
         intent = await self._classify_intent(question)
-        records, cypher_used = await self._template_query(question, intent)
+        records, cypher_used = await self._template_query(question, intent, corpus)
         cypher_cost = 0.0
 
         # If template returns nothing, try Text-to-Cypher
-        if not records:
+        if not records and corpus == "all":
             records, cypher_used, cypher_cost = await self._generate_cypher(question)
         retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
@@ -443,33 +414,68 @@ class KnowledgeGraphStrategy(Strategy):
             cost_usd=total_cost,
         )
 
-    async def stream_answer(self, question: str, history: list[dict] | None = None):
+    async def stream_answer(
+        self,
+        question: str,
+        history: list[dict] | None = None,
+        corpus: str = "all",
+    ):
         """Stream the final answer after synchronous graph retrieval."""
         start = self._start_timer()
 
         if self._driver is None:
-            yield "[Graph database not connected. Showing mock data.]"
-            self._record_metrics(start, graph_context=_mock_graph_context())
+            answer = "[Graph database not connected. Showing mock data.]"
+            graph_ctx = _mock_graph_context()
+            yield answer
+            latency_ms = self._record_metrics(start, graph_context=graph_ctx)
+            yield meta_packet(
+                AnswerResult(
+                    answer=answer,
+                    graph_context=graph_ctx,
+                    strategy=self.name,
+                    latency_ms=latency_ms,
+                    mock=True,
+                )
+            )
             return
 
         intent = await self._classify_intent(question)
-        records, cypher_used = await self._template_query(question, intent)
-        if not records:
+        records, cypher_used = await self._template_query(question, intent, corpus)
+        if not records and corpus == "all":
             records, cypher_used, _ = await self._generate_cypher(question)
 
         context = _results_to_context(records)
         graph_ctx = _records_to_graph_context(records, cypher_used)
         sources = [r.get("fqn", "") for r in records if r.get("fqn")]
 
-        self.last_sources = sources
-        self.last_graph_context = graph_ctx
-
         llm = self._get_llm()
-        async for token in llm.stream(
+        usage = LLMResponse(text="")
+        async for item in llm.stream(
             query=question,
             context=context,
             system_prompt=SYSTEM_PROMPT,
+            include_usage=True,
         ):
-            yield token
+            if isinstance(item, LLMResponse):
+                usage = item
+            else:
+                yield item
 
-        self._record_metrics(start, sources=sources, graph_context=graph_ctx)
+        latency_ms = self._record_metrics(
+            start,
+            tokens=usage.total_tokens,
+            cost=usage.cost_usd,
+            sources=sources,
+            graph_context=graph_ctx,
+        )
+        yield meta_packet(
+            AnswerResult(
+                answer="",
+                sources=sources,
+                graph_context=graph_ctx,
+                strategy=self.name,
+                latency_ms=latency_ms,
+                tokens_used=usage.total_tokens,
+                cost_usd=usage.cost_usd,
+            )
+        )

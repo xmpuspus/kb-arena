@@ -1,0 +1,189 @@
+- id: "nist-boundary-001"
+  tier: 2
+  type: boundary
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests precise handling of a recategorized control."
+  source_anchors: ["sec-sec_03.07.01"]
+  question: "Does 03.07.01 state a current requirement for personnel security activities?"
+  ground_truth:
+    answer: "No. The official text for 03.07.01 states only that it is recategorized as NCO."
+    source_refs: ["nist-03.07.01"]
+    required_entities: ["03.07.01", "NCO"]
+  constraints:
+    must_mention: ["Recategorized as NCO"]
+    must_not_claim: ["03.07.01 requires a named personnel screening activity"]
+    max_tokens: 55
+
+- id: "nist-boundary-002"
+  tier: 2
+  type: boundary
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests precise handling of an incorporated control."
+  source_anchors: ["sec-sec_03.07.02"]
+  question: "Does 03.07.02 provide its own standalone requirement text?"
+  ground_truth:
+    answer: "No. The official text states that 03.07.02 is incorporated into 03.07.04 and 03.07.06."
+    source_refs: ["nist-03.07.02"]
+    required_entities: ["03.07.02", "03.07.04", "03.07.06"]
+  constraints:
+    must_mention: ["incorporated"]
+    must_not_claim: ["03.07.02 contains an independent requirement"]
+    max_tokens: 55
+
+- id: "nist-boundary-003"
+  tier: 2
+  type: boundary
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests an incorporated physical-protection control."
+  source_anchors: ["sec-sec_03.10.03"]
+  question: "Does 03.10.03 define a separate physical-protection requirement?"
+  ground_truth:
+    answer: "No. The official text states that 03.10.03 is incorporated into 03.10.07."
+    source_refs: ["nist-03.10.03"]
+    required_entities: ["03.10.03", "03.10.07"]
+  constraints:
+    must_mention: ["incorporated into 03.10.07"]
+    must_not_claim: ["03.10.03 has separate requirement language"]
+    max_tokens: 50
+
+- id: "nist-boundary-004"
+  tier: 2
+  type: boundary
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests a second recategorized control without inventing control content."
+  source_anchors: ["sec-sec_03.13.02"]
+  question: "Does 03.13.02 specify a technical transmission-protection action?"
+  ground_truth:
+    answer: "No. The official text for 03.13.02 states only that it is recategorized as NCO."
+    source_refs: ["nist-03.13.02"]
+    required_entities: ["03.13.02", "NCO"]
+  constraints:
+    must_mention: ["Recategorized as NCO"]
+    must_not_claim: ["03.13.02 requires a named encryption mechanism"]
+    max_tokens: 55
+
+- id: "nist-boundary-005"
+  tier: 2
+  type: boundary
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests the organization-defined boundary of session-disconnect triggers."
+  source_anchors: ["sec-sec_03.01.11"]
+  question: "Does 03.01.11 prescribe one fixed number of minutes before every user session disconnects?"
+  ground_truth:
+    answer: "No. 03.01.11 requires automatic termination after organization-defined conditions or trigger events requiring session disconnect; it does not give one fixed time value."
+    source_refs: ["nist-03.01.11"]
+    required_entities: ["automatic termination", "organization-defined conditions", "trigger events"]
+  constraints:
+    must_mention: ["organization-defined"]
+    must_not_claim: ["NIST requires a universal fixed timeout"]
+    max_tokens: 65
+
+- id: "nist-boundary-006"
+  tier: 2
+  type: boundary
+  hops: 1
+  split: development
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests that vulnerability response timing is assigned rather than fixed by the control."
+  source_anchors: ["sec-sec_03.11.02"]
+  question: "Does 03.11.02 set one universal number of days to remediate every vulnerability?"
+  ground_truth:
+    answer: "No. 03.11.02 requires remediation within organization-defined response times, not one universal number of days."
+    source_refs: ["nist-03.11.02"]
+    required_entities: ["remediate", "organization-defined response times"]
+  constraints:
+    must_mention: ["organization-defined response times"]
+    must_not_claim: ["NIST requires remediation within a fixed number of days"]
+    max_tokens: 60
+
+- id: "nist-boundary-007"
+  tier: 3
+  type: boundary
+  hops: 2
+  split: validation
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests the difference between privileged-account scope and MFA scope."
+  source_anchors: ["sec-sec_03.01.06", "sec-sec_03.05.03"]
+  question: "Can 03.05.03 be read as requiring multi-factor authentication only for privileged accounts because 03.01.06 addresses privileged accounts?"
+  ground_truth:
+    answer: "No. 03.01.06 restricts privileged accounts and directs their users to non-privileged accounts for non-security functions or information. Separately, 03.05.03 requires multi-factor authentication for access to both privileged and non-privileged accounts."
+    source_refs: ["nist-03.01.06", "nist-03.05.03"]
+    required_entities: ["privileged accounts", "non-privileged accounts", "multi-factor authentication"]
+  constraints:
+    must_mention: ["both privileged and non-privileged"]
+    must_not_claim: ["MFA applies only to privileged accounts"]
+    max_tokens: 100
+
+- id: "nist-boundary-008"
+  tier: 2
+  type: boundary
+  hops: 1
+  split: validation
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests the full stated scope of media sanitization."
+  source_anchors: ["sec-sec_03.08.03"]
+  question: "Is media sanitization under 03.08.03 limited to disposal of CUI media?"
+  ground_truth:
+    answer: "No. 03.08.03 requires sanitization before disposal, release out of organizational control, or release for reuse."
+    source_refs: ["nist-03.08.03"]
+    required_entities: ["sanitize", "disposal", "release for reuse"]
+  constraints:
+    must_mention: ["release for reuse"]
+    must_not_claim: ["sanitization applies only to disposal"]
+    max_tokens: 60
+
+- id: "nist-boundary-009"
+  tier: 2
+  type: boundary
+  hops: 1
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests that transmission protection also includes stored CUI."
+  source_anchors: ["sec-sec_03.13.08"]
+  question: "Does 03.13.08 limit cryptographic protection of CUI to data in transmission?"
+  ground_truth:
+    answer: "No. 03.13.08 requires cryptographic mechanisms to prevent unauthorized disclosure of CUI during transmission and while in storage."
+    source_refs: ["nist-03.13.08"]
+    required_entities: ["cryptographic mechanisms", "transmission", "storage"]
+  constraints:
+    must_mention: ["while in storage"]
+    must_not_claim: ["cryptography applies only to data in transit"]
+    max_tokens: 60
+
+- id: "nist-boundary-010"
+  tier: 3
+  type: boundary
+  hops: 2
+  split: holdout
+  review_status: machine-assisted-draft
+  reviewed_by: "Codex draft pass"
+  rationale: "Tests that public components are separated and external connections use managed interfaces."
+  source_anchors: ["sec-sec_03.13.01"]
+  question: "Does 03.13.01 permit a publicly accessible system component to sit on the same internal network without a managed boundary?"
+  ground_truth:
+    answer: "No. 03.13.01 requires subnetworks for publicly accessible components that are physically or logically separated from internal networks. It also requires external connections through managed interfaces with boundary protection devices arranged under an organizational security architecture."
+    source_refs: ["nist-03.13.01"]
+    required_entities: ["publicly accessible system components", "separated", "managed interfaces"]
+  constraints:
+    must_mention: ["separated from internal networks", "boundary protection devices"]
+    must_not_claim: ["public components may share the internal network without a boundary"]
+    max_tokens: 105

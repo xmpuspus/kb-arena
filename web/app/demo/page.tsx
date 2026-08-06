@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import ChatPanel, { type DemoResult } from "@/components/ChatPanel";
-import { STRATEGIES, STRATEGY_LABELS, CORPORA, fetchCorpora, type Strategy, type Message } from "@/lib/api";
+import { STRATEGY_LABELS, CORPORA, fetchCorpora, type Strategy, type Message } from "@/lib/api";
 
 const DEMO_QUESTION = "How do I set up a Lambda function behind API Gateway with VPC access to an RDS database?";
 
@@ -15,7 +15,7 @@ const DEMO_RESULTS: Partial<Record<Strategy, DemoResult>> = {
     costUsd: 0.0012,
   },
   contextual_vector: {
-    answer: "Setting up Lambda behind API Gateway with VPC access to RDS involves configuring several AWS services together.\n\nFirst, deploy your RDS instance in private subnets within a VPC. Then configure your Lambda function with VPC settings — attach it to the same VPC's private subnets and assign a security group. The Lambda security group must allow outbound traffic to the RDS security group on port 3306 (MySQL) or 5432 (PostgreSQL).\n\nFor API Gateway, create a REST API with a Lambda proxy integration. The API Gateway invokes Lambda via the AWS service network, so it doesn't need VPC access itself.\n\nKey consideration: Lambda functions in a VPC need a NAT Gateway to access the internet (e.g., for calling other AWS APIs). Use VPC endpoints for services like S3 and DynamoDB to avoid NAT costs.",
+    answer: "Setting up Lambda behind API Gateway with VPC access to RDS involves configuring several AWS services together.\n\nFirst, deploy your RDS instance in private subnets within a VPC. Then configure your Lambda function with VPC settings; attach it to the same VPC's private subnets and assign a security group. The Lambda security group must allow outbound traffic to the RDS security group on port 3306 (MySQL) or 5432 (PostgreSQL).\n\nFor API Gateway, create a REST API with a Lambda proxy integration. The API Gateway invokes Lambda via the AWS service network, so it doesn't need VPC access itself.\n\nKey consideration: Lambda functions in a VPC need a NAT Gateway to access the internet (e.g., for calling other AWS APIs). Use VPC endpoints for services like S3 and DynamoDB to avoid NAT costs.",
     sources: ["lambda/latest/dg/configuration-vpc.html", "AmazonRDS/latest/UserGuide/USER_VPC.html", "apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html"],
     latencyMs: 510,
     tokensUsed: 167,
@@ -29,7 +29,7 @@ const DEMO_RESULTS: Partial<Record<Strategy, DemoResult>> = {
     costUsd: 0.0031,
   },
   hybrid: {
-    answer: "This is a relational question requiring graph traversal (6 interconnected AWS resources). Routing to knowledge graph path.\n\nThe dependency chain for API Gateway → Lambda → RDS:\n\n1. API Gateway REST API with Lambda proxy integration handles HTTP routing and invokes Lambda\n2. Lambda Execution Role (IAM) grants lambda.amazonaws.com AssumeRole + AWSLambdaVPCAccessExecutionRole managed policy\n3. Lambda VPC Configuration attaches the function to private subnets via Elastic Network Interfaces (ENIs)\n4. Security Group chain: Lambda SG allows outbound to RDS SG on port 5432/3306; RDS SG allows inbound from Lambda SG\n5. RDS Subnet Group spans 2+ AZs in the same VPC private subnets\n6. Optional: NAT Gateway or VPC Endpoints if Lambda needs internet or AWS API access\n\nCommon pitfall: forgetting AWSLambdaVPCAccessExecutionRole on the execution role — Lambda silently fails to create ENIs and times out. Another: placing Lambda in public subnets thinking it will have internet access — it won't without a NAT Gateway.\n\nCost implications: NAT Gateway adds ~$32/month base + $0.045/GB processed. For high-throughput APIs, consider VPC endpoints ($0.01/hr each) for frequently accessed AWS services like S3, DynamoDB, and Secrets Manager.",
+    answer: "This is a relational question requiring graph traversal (6 interconnected AWS resources). Routing to knowledge graph path.\n\nThe dependency chain for API Gateway → Lambda → RDS:\n\n1. API Gateway REST API with Lambda proxy integration handles HTTP routing and invokes Lambda\n2. Lambda Execution Role (IAM) grants lambda.amazonaws.com AssumeRole + AWSLambdaVPCAccessExecutionRole managed policy\n3. Lambda VPC Configuration attaches the function to private subnets via Elastic Network Interfaces (ENIs)\n4. Security Group chain: Lambda SG allows outbound to RDS SG on port 5432/3306; RDS SG allows inbound from Lambda SG\n5. RDS Subnet Group spans 2+ AZs in the same VPC private subnets\n6. Optional: NAT Gateway or VPC Endpoints if Lambda needs internet or AWS API access\n\nCommon pitfall: forgetting AWSLambdaVPCAccessExecutionRole on the execution role; Lambda silently fails to create ENIs and times out. Another: placing Lambda in public subnets thinking it will have internet access; it won't without a NAT Gateway.\n\nCost implications: NAT Gateway adds ~$32/month base + $0.045/GB processed. For high-throughput APIs, consider VPC endpoints ($0.01/hr each) for frequently accessed AWS services like S3, DynamoDB, and Secrets Manager.",
     sources: ["lambda/latest/dg/configuration-vpc.html", "AmazonRDS/latest/UserGuide/USER_VPC.html", "apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html", "lambda/latest/dg/lambda-intro-execution-role.html", "vpc/latest/userguide/vpc-nat-gateway.html"],
     latencyMs: 1050,
     tokensUsed: 248,
@@ -43,14 +43,14 @@ const DEMO_RESULTS: Partial<Record<Strategy, DemoResult>> = {
     costUsd: 0.0024,
   },
   raptor: {
-    answer: "Setting up Lambda behind API Gateway with VPC access to RDS requires coordinating several AWS services across networking, compute, and database layers.\n\nAt the networking level, your VPC needs private subnets (for Lambda ENIs and RDS instances) across at least 2 AZs, security groups allowing Lambda-to-RDS traffic on the database port, and optionally a NAT Gateway if Lambda needs internet access for external API calls.\n\nFor the compute layer, the Lambda function must be configured with VPC settings (SubnetIds and SecurityGroupIds) and an execution role that includes AWSLambdaVPCAccessExecutionRole for ENI management. Be aware that VPC-attached Lambda functions experience 1-10s cold starts due to ENI attachment.\n\nThe API Gateway REST API connects to Lambda via proxy integration, routing HTTP requests to your function. API Gateway itself doesn't need VPC access — it invokes Lambda through the AWS service network.\n\nKey trade-off: VPC attachment adds cold start latency but is required for RDS access. Use Provisioned Concurrency for latency-sensitive APIs.",
+    answer: "Setting up Lambda behind API Gateway with VPC access to RDS requires coordinating several AWS services across networking, compute, and database layers.\n\nAt the networking level, your VPC needs private subnets (for Lambda ENIs and RDS instances) across at least 2 AZs, security groups allowing Lambda-to-RDS traffic on the database port, and optionally a NAT Gateway if Lambda needs internet access for external API calls.\n\nFor the compute layer, the Lambda function must be configured with VPC settings (SubnetIds and SecurityGroupIds) and an execution role that includes AWSLambdaVPCAccessExecutionRole for ENI management. Be aware that VPC-attached Lambda functions experience 1-10s cold starts due to ENI attachment.\n\nThe API Gateway REST API connects to Lambda via proxy integration, routing HTTP requests to your function. API Gateway itself doesn't need VPC access; it invokes Lambda through the AWS service network.\n\nKey trade-off: VPC attachment adds cold start latency but is required for RDS access. Use Provisioned Concurrency for latency-sensitive APIs.",
     sources: ["lambda/latest/dg/configuration-vpc.html", "AmazonRDS/latest/UserGuide/USER_VPC.html", "apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html"],
     latencyMs: 720,
     tokensUsed: 189,
     costUsd: 0.0028,
   },
   pageindex: {
-    answer: "Based on the documentation structure, this question spans three main topic areas: Lambda VPC configuration, API Gateway integration, and RDS networking.\n\nLambda VPC Configuration: Attach your Lambda function to private subnets in the same VPC as RDS. The function needs an execution role with AWSLambdaVPCAccessExecutionRole to create Elastic Network Interfaces (ENIs) in your subnets. Lambda functions in a VPC lose default internet access — add a NAT Gateway or VPC endpoints if needed.\n\nAPI Gateway Setup: Create a REST API with Lambda proxy integration. API Gateway invokes Lambda via the AWS internal network, so no VPC configuration is needed on the API Gateway side. The proxy integration passes the full HTTP request to your function.\n\nRDS Connectivity: Place RDS in a DB subnet group spanning private subnets across 2+ AZs. Configure security groups so the Lambda security group can reach the RDS security group on port 3306 (MySQL) or 5432 (PostgreSQL).\n\nCritical path: API Gateway → Lambda (proxy integration) → VPC ENI → Private Subnet → RDS. Cold starts add 1-10s for ENI attachment; use Provisioned Concurrency for production APIs.",
+    answer: "Based on the documentation structure, this question spans three main topic areas: Lambda VPC configuration, API Gateway integration, and RDS networking.\n\nLambda VPC Configuration: Attach your Lambda function to private subnets in the same VPC as RDS. The function needs an execution role with AWSLambdaVPCAccessExecutionRole to create Elastic Network Interfaces (ENIs) in your subnets. Lambda functions in a VPC lose default internet access; add a NAT Gateway or VPC endpoints if needed.\n\nAPI Gateway Setup: Create a REST API with Lambda proxy integration. API Gateway invokes Lambda via the AWS internal network, so no VPC configuration is needed on the API Gateway side. The proxy integration passes the full HTTP request to your function.\n\nRDS Connectivity: Place RDS in a DB subnet group spanning private subnets across 2+ AZs. Configure security groups so the Lambda security group can reach the RDS security group on port 3306 (MySQL) or 5432 (PostgreSQL).\n\nCritical path: API Gateway → Lambda (proxy integration) → VPC ENI → Private Subnet → RDS. Cold starts add 1-10s for ENI attachment; use Provisioned Concurrency for production APIs.",
     sources: ["lambda/latest/dg/configuration-vpc.html", "AmazonRDS/latest/UserGuide/USER_VPC.html", "apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html"],
     latencyMs: 950,
     tokensUsed: 215,
@@ -58,11 +58,13 @@ const DEMO_RESULTS: Partial<Record<Strategy, DemoResult>> = {
   },
 };
 
+const DEMO_STRATEGIES = Object.keys(DEMO_RESULTS) as Strategy[];
+
 export default function DemoPage() {
   const [query, setQuery] = useState(DEMO_QUESTION);
   const [corpus, setCorpus] = useState("aws-compute");
   const [corpora, setCorpora] = useState(CORPORA);
-  const [selectedStrategies, setSelectedStrategies] = useState<Strategy[]>([...STRATEGIES]);
+  const [selectedStrategies, setSelectedStrategies] = useState<Strategy[]>([...DEMO_STRATEGIES]);
   const [trigger, setTrigger] = useState(0);
   const [history, setHistory] = useState<Message[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -113,7 +115,7 @@ export default function DemoPage() {
       <div className="space-y-3">
         {/* Strategy toggles */}
         <div className="flex flex-wrap gap-2">
-          {STRATEGIES.map((s) => {
+          {DEMO_STRATEGIES.map((s) => {
             const active = selectedStrategies.includes(s);
             return (
               <button
@@ -134,11 +136,11 @@ export default function DemoPage() {
         </div>
 
         {/* Query input */}
-        <form onSubmit={handleSubmit} className="flex gap-3">
+        <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3 sm:flex">
           <select
             value={corpus}
             onChange={(e) => setCorpus(e.target.value)}
-            className="px-3 py-2 rounded-lg border text-sm shrink-0"
+            className="col-span-2 px-3 py-2 rounded-lg border text-sm sm:shrink-0"
             style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
           >
             {corpora.map((c) => (
@@ -150,7 +152,7 @@ export default function DemoPage() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Ask a question about your documentation..."
-            className="flex-1 px-4 py-2 rounded-lg border text-sm outline-none"
+            className="col-span-2 min-w-0 px-4 py-2 rounded-lg border text-sm outline-none sm:flex-1"
             style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
           />
           <button
@@ -198,7 +200,7 @@ export default function DemoPage() {
           className="px-3 py-2 rounded-lg text-xs"
           style={{ background: "var(--border)", color: "var(--muted)" }}
         >
-          Showing a pre-computed example. Submit a query to get live results from your data.
+          Showing precomputed sample output. Live queries use your configured API; no-key demo mode stays read-only.
         </div>
       )}
 

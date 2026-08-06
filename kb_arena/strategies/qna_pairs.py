@@ -16,7 +16,15 @@ from kb_arena.generate.qna import generate_pairs_for_section
 from kb_arena.models.document import Document, Section
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
-from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.strategies.base import AnswerResult, Strategy, validate_top_k
+from kb_arena.strategies.chroma_index import (
+    index_build_lock,
+    index_read_lock,
+    index_where,
+    new_generation,
+    parse_query_result,
+    publish_collection_build,
+)
 from kb_arena.strategies.embeddings import get_embedding_function
 
 COLLECTION_NAME = "qna_pairs"
@@ -77,16 +85,18 @@ class QnAPairStrategy(Strategy):
 
         sem = asyncio.Semaphore(5)
 
-        async def _safe_generate(section, doc_id):
+        async def _bounded_generate(section, doc_id):
             async with sem:
-                try:
-                    return await self._generate_pairs(section, doc_id)
-                except Exception:
-                    return []
+                pairs = await self._generate_pairs(section, doc_id)
+                if not pairs:
+                    raise RuntimeError(
+                        f"Q&A generation returned no pairs for {doc_id}/{section.id}"
+                    )
+                return pairs
 
         for doc in documents:
             sections = [s for s in doc.sections if s.content.strip()]
-            results = await asyncio.gather(*[_safe_generate(s, doc.id) for s in sections])
+            results = await asyncio.gather(*[_bounded_generate(s, doc.id) for s in sections])
             for section, pairs in zip(sections, results):
                 for pair in pairs:
                     q = pair.get("question", "").strip()
@@ -96,56 +106,71 @@ class QnAPairStrategy(Strategy):
 
                     pair_id = f"qna::{doc.id}::{section.id}::{pair_counter}"
                     pair_counter += 1
-                    ids.append(pair_id)
+                    ids.append(f"{doc.corpus}::{pair_id}")
                     questions.append(q)
                     metadatas.append(
                         {
                             "answer": a[:2000],  # ChromaDB metadata value limit
                             "source_id": doc.id,
+                            "corpus": doc.corpus,
+                            "chunk_id": f"qna:{pair_id}",
                             "section_id": section.id,
                             "section_ref": pair.get("section_ref", ""),
                         }
                     )
 
-        if ids:
-            batch = 500
-            for start in range(0, len(ids), batch):
-                collection.upsert(
-                    ids=ids[start : start + batch],
-                    documents=questions[start : start + batch],
-                    metadatas=metadatas[start : start + batch],
-                )
+        corpora = list(dict.fromkeys(doc.corpus for doc in documents))
+        if not corpora:
+            return
+        generation = new_generation()
+        async with index_build_lock():
+            publish_collection_build(
+                collection,
+                COLLECTION_NAME,
+                corpora,
+                generation,
+                ids,
+                questions,
+                metadatas,
+            )
 
-    async def query(self, question: str, top_k: int = 5) -> AnswerResult:
+    async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Match question embedding → retrieve pre-generated answer.
 
         No LLM call for the answer itself — just embedding lookup.
         """
+        validate_top_k(top_k)
         start = self._start_timer()
         collection = self._get_collection()
 
         retrieval_start = time.perf_counter()
-        results = collection.query(
-            query_texts=[question],
-            n_results=top_k,
-            include=["documents", "metadatas", "distances"],
-        )
-        metas = results["metadatas"][0] if results["metadatas"] else []
-        matched_questions = results["documents"][0] if results["documents"] else []
-        ids = results["ids"][0] if results.get("ids") else []
-        distances = results["distances"][0] if results.get("distances") else []
+        query_kwargs = {
+            "query_texts": [question],
+            "n_results": top_k,
+            "include": ["documents", "metadatas", "distances"],
+        }
+        with index_read_lock():
+            query_kwargs["where"] = index_where(COLLECTION_NAME, corpus)
+            results = collection.query(**query_kwargs)
+        ids, matched_questions, metas, distances = parse_query_result(results)
         retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
         retrieved_chunks = [
             RetrievedChunk(
-                chunk_id=f"qna:{ids[i]}" if i < len(ids) else f"qna:unknown-{i}",
+                chunk_id=(
+                    metas[i].get("chunk_id")
+                    if i < len(metas) and metas[i].get("chunk_id")
+                    else f"qna:{ids[i]}"
+                    if i < len(ids)
+                    else f"qna:unknown-{i}"
+                ),
                 doc_id=(metas[i].get("source_id") if i < len(metas) else "") or "",
                 content=(
                     f"Q: {matched_questions[i]}\nA: {metas[i].get('answer', '')}"
                     if i < len(metas) and i < len(matched_questions)
                     else ""
                 ),
-                score=1.0 - (distances[i] if i < len(distances) else 0.0),
+                score=1.0 - distances[i],
                 rank=i + 1,
                 source_strategy=self.name,
                 metadata=dict(metas[i]) if i < len(metas) else {},

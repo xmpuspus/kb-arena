@@ -17,7 +17,20 @@ import numpy as np
 from kb_arena.models.document import Document
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
-from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.strategies.base import AnswerResult, Strategy, validate_top_k
+from kb_arena.strategies.chroma_index import (
+    activate_generations,
+    discard_staged_ids,
+    index_activation_lock,
+    index_build_lock,
+    index_read_lock,
+    index_where,
+    new_generation,
+    parse_query_result,
+    prune_collection,
+    staged_where,
+    upsert_staged_records,
+)
 from kb_arena.strategies.embeddings import get_embedding_function
 from kb_arena.tokenizer import detokenize, tokenize
 
@@ -25,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 CHUNK_TOKENS = 512
 OVERLAP_TOKENS = 50
+COLLECTION_NAMES = tuple(f"raptor_l{level}" for level in range(3))
 
 SYSTEM_PROMPT = (
     "You are a documentation assistant. Answer the question using ONLY the provided context.\n"
@@ -46,6 +60,8 @@ def _chunk_text(
         chunk_tokens = settings.chunk_tokens
     if overlap_tokens is None:
         overlap_tokens = settings.chunk_overlap_tokens
+    if chunk_tokens < 1 or overlap_tokens < 0 or overlap_tokens >= chunk_tokens:
+        raise ValueError("chunk overlap must satisfy 0 <= overlap_tokens < chunk_tokens")
     tokens = tokenize(text)
     if not tokens:
         return []
@@ -125,16 +141,26 @@ class RaptorStrategy(Strategy):
         )
         return resp.text.strip()
 
-    async def _build_level(self, source_collection, target_collection, level_tag: str) -> int:
+    async def _build_level(
+        self,
+        source_collection,
+        target_collection,
+        level_tag: str,
+        corpus: str,
+        generation: str,
+    ) -> list[str]:
         """Cluster source_collection and upsert summaries to target_collection."""
-        data = source_collection.get(include=["embeddings", "documents"])
+        data = source_collection.get(
+            where=staged_where(corpus, generation),
+            include=["embeddings", "documents"],
+        )
         ids_list = data.get("ids") or []
         embeddings_raw = data.get("embeddings")
         embeddings = embeddings_raw if embeddings_raw is not None else []
         docs = data.get("documents") or []
 
         if not ids_list:
-            return 0
+            return []
 
         emb_array = np.array(embeddings, dtype=np.float32)
         k = max(1, len(ids_list) // 5)
@@ -147,20 +173,24 @@ class RaptorStrategy(Strategy):
         summary_ids, summary_texts, summary_metas = [], [], []
         for ci, texts in clusters.items():
             summary = await self._summarize_cluster(texts)
-            summary_ids.append(f"{level_tag}_cluster_{ci}")
+            summary_ids.append(f"{corpus}::{level_tag}_cluster_{ci}")
             summary_texts.append(summary)
-            summary_metas.append({"source_id": f"cluster_{ci}", "level": int(level_tag[-1])})
+            summary_metas.append(
+                {
+                    "source_id": f"cluster_{ci}",
+                    "corpus": corpus,
+                    "chunk_id": f"{level_tag}_cluster_{ci}",
+                    "level": int(level_tag[-1]),
+                }
+            )
 
-        if summary_ids:
-            batch = 500
-            for start in range(0, len(summary_ids), batch):
-                target_collection.upsert(
-                    ids=summary_ids[start : start + batch],
-                    documents=summary_texts[start : start + batch],
-                    metadatas=summary_metas[start : start + batch],
-                )
-
-        return len(summary_ids)
+        return upsert_staged_records(
+            target_collection,
+            generation,
+            summary_ids,
+            summary_texts,
+            summary_metas,
+        )
 
     async def build_index(self, documents: list[Document]) -> None:
         """Chunk all sections → L0. Cluster L0 → L1 summaries. Optionally L1 → L2."""
@@ -172,30 +202,68 @@ class RaptorStrategy(Strategy):
                 chunks = _chunk_text(section.content)
                 for i, chunk in enumerate(chunks):
                     chunk_id = f"{doc.id}::{section.id}::{i}"
-                    ids.append(chunk_id)
+                    ids.append(f"{doc.corpus}::{chunk_id}")
                     texts.append(chunk)
-                    metadatas.append({"source_id": doc.id, "level": 0})
+                    metadatas.append(
+                        {
+                            "source_id": doc.id,
+                            "corpus": doc.corpus,
+                            "chunk_id": chunk_id,
+                            "level": 0,
+                        }
+                    )
 
-        if ids:
-            batch = 500
-            for start in range(0, len(ids), batch):
-                l0.upsert(
-                    ids=ids[start : start + batch],
-                    documents=texts[start : start + batch],
-                    metadatas=metadatas[start : start + batch],
-                )
-
+        corpora = list(dict.fromkeys(doc.corpus for doc in documents))
+        if not corpora:
+            return
         l1 = self._get_collection(1)
-        n_l1 = await self._build_level(l0, l1, "l1")
-        logger.info("RAPTOR: built %d L0 chunks, %d L1 summaries", len(ids), n_l1)
+        l2 = self._get_collection(2)
 
-        if n_l1 >= 10:
-            l2 = self._get_collection(2)
-            n_l2 = await self._build_level(l1, l2, "l2")
-            logger.info("RAPTOR: built %d L2 summaries", n_l2)
+        generation = new_generation()
+        collections = (l0, l1, l2)
+        staged_by_level: list[list[str]] = [[], [], []]
+        total_l1 = 0
+        async with index_build_lock():
+            try:
+                staged_by_level[0] = upsert_staged_records(l0, generation, ids, texts, metadatas)
+                for corpus in corpora:
+                    l1_ids = await self._build_level(l0, l1, "l1", corpus, generation)
+                    staged_by_level[1].extend(l1_ids)
+                    total_l1 += len(l1_ids)
 
-    async def query(self, question: str, top_k: int = 5) -> AnswerResult:
+                    l2_ids = (
+                        await self._build_level(l1, l2, "l2", corpus, generation)
+                        if len(l1_ids) >= 10
+                        else []
+                    )
+                    staged_by_level[2].extend(l2_ids)
+                    if l2_ids:
+                        logger.info("RAPTOR: built %d L2 summaries for %s", len(l2_ids), corpus)
+
+                with index_activation_lock():
+                    activate_generations(
+                        {
+                            collection_name: {corpus: generation for corpus in corpora}
+                            for collection_name in COLLECTION_NAMES
+                        }
+                    )
+                    for collection, collection_name in zip(collections, COLLECTION_NAMES):
+                        try:
+                            prune_collection(collection, collection_name, corpora)
+                        except Exception as exc:
+                            logger.warning(
+                                "Could not prune inactive %s records: %s", collection_name, exc
+                            )
+            except Exception:
+                for collection, staged_ids in zip(collections, staged_by_level):
+                    discard_staged_ids(collection, staged_ids)
+                raise
+
+        logger.info("RAPTOR: built %d L0 chunks, %d L1 summaries", len(ids), total_l1)
+
+    async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Search L0, L1, L2 simultaneously → fuse context → Sonnet."""
+        validate_top_k(top_k)
         start = self._start_timer()
 
         retrieval_start = time.perf_counter()
@@ -203,41 +271,47 @@ class RaptorStrategy(Strategy):
         all_sources: set[str] = set()
         retrieved_chunks: list[RetrievedChunk] = []
 
-        for level in (0, 1, 2):
-            try:
+        with index_read_lock():
+            for level in (0, 1, 2):
                 coll = self._get_collection(level)
                 count = coll.count()
                 if count == 0:
                     continue
                 n = min(top_k, count)
-                results = coll.query(
-                    query_texts=[question],
-                    n_results=n,
-                    include=["documents", "metadatas", "distances"],
-                )
-                chunks = results["documents"][0] if results["documents"] else []
-                metas = results["metadatas"][0] if results["metadatas"] else []
-                ids = results["ids"][0] if results.get("ids") else []
-                distances = results["distances"][0] if results.get("distances") else []
+                query_kwargs = {
+                    "query_texts": [question],
+                    "n_results": n,
+                    "include": ["documents", "metadatas", "distances"],
+                }
+                query_kwargs["where"] = index_where(COLLECTION_NAMES[level], corpus)
+                results = coll.query(**query_kwargs)
+                ids, chunks, metas, distances = parse_query_result(results)
                 all_chunks.extend(chunks)
                 for i, ch_text in enumerate(chunks):
                     src = (metas[i].get("source_id") if i < len(metas) else "") or ""
                     if src:
                         all_sources.add(src)
-                    raw_id = ids[i] if i < len(ids) else f"unknown-{i}"
+                    raw_id = (
+                        metas[i].get("chunk_id")
+                        if i < len(metas) and metas[i].get("chunk_id")
+                        else ids[i]
+                        if i < len(ids)
+                        else f"unknown-{i}"
+                    )
                     retrieved_chunks.append(
                         RetrievedChunk(
                             chunk_id=f"L{level}:{raw_id}",
                             doc_id=src,
                             content=ch_text,
-                            score=1.0 - (distances[i] if i < len(distances) else 0.0),
+                            score=1.0 - distances[i],
                             rank=len(retrieved_chunks) + 1,
                             source_strategy=self.name,
-                            metadata={"level": level, **(dict(metas[i]) if i < len(metas) else {})},
+                            metadata={
+                                "level": level,
+                                **(dict(metas[i]) if i < len(metas) else {}),
+                            },
                         )
                     )
-            except Exception as exc:
-                logger.debug("RAPTOR: skipping level %d - %s", level, exc)
         retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
         trace = RetrievalTrace(

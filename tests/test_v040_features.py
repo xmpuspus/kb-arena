@@ -74,6 +74,17 @@ class TestRagasMetrics:
         score = await compute_context_recall("reference answer", ["ctx"], mock_llm)
         assert score == 1.0
 
+    async def test_boolean_metric_score_is_rejected(self, mock_llm):
+        from kb_arena.benchmark.ragas_metrics import (
+            RAGASExecutionError,
+            compute_answer_relevancy,
+        )
+
+        mock_llm.judge.return_value = MagicMock(text='{"relevancy": true}')
+
+        with pytest.raises(RAGASExecutionError, match="JSON number"):
+            await compute_answer_relevancy("what is X?", "X is a thing", mock_llm)
+
     async def test_empty_input_returns_zero(self, mock_llm):
         from kb_arena.benchmark.ragas_metrics import (
             compute_answer_relevancy,
@@ -219,13 +230,13 @@ class TestReadyEndpoint:
     def test_ready_route_exists(self):
         from kb_arena.chatbot.api import app
 
-        routes = [r.path for r in app.routes]
+        routes = {getattr(route, "path", None) for route in app.routes}
         assert "/ready" in routes
 
     def test_health_route_exists(self):
         from kb_arena.chatbot.api import app
 
-        routes = [r.path for r in app.routes]
+        routes = {getattr(route, "path", None) for route in app.routes}
         assert "/health" in routes
 
 
@@ -236,7 +247,7 @@ class TestDebugEndpoint:
     def test_debug_route_exists(self):
         from kb_arena.chatbot.api import app
 
-        routes = [r.path for r in app.routes]
+        routes = {getattr(route, "path", None) for route in app.routes}
         assert "/api/debug/explain" in routes
 
 

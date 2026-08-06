@@ -10,6 +10,17 @@ from kb_arena.llm.client import LLMResponse
 from kb_arena.models.document import CodeBlock, CrossRef, Document, Section, Table
 
 
+@pytest.fixture(autouse=True)
+def isolate_chroma_activation_state(tmp_path, monkeypatch, request):
+    """Keep non-live activation manifests isolated from the working tree."""
+    if request.node.get_closest_marker("live"):
+        return
+
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(settings, "chroma_path", str(tmp_path / "chroma"))
+
+
 @pytest.fixture
 def sample_section():
     return Section(

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from kb_arena.benchmark.retriever_lab import _summarize_with_tiers
+import pytest
+
+from kb_arena.benchmark.retriever_lab import _bootstrap_ci, _summarize_with_tiers
 from kb_arena.models.benchmark import RetrievalMetrics
 
 
@@ -51,3 +53,15 @@ def test_summarize_with_tiers_includes_new_v08_metrics():
     assert "mean_average_precision" in summary
     assert "mean_r_precision" in summary
     assert "mean_bpref" in summary
+
+
+def test_bootstrap_runtime_failure_is_not_reported_as_zero_uncertainty(monkeypatch):
+    import scipy.stats
+
+    def fail_bootstrap(*args, **kwargs):
+        raise OSError("bootstrap worker failed")
+
+    monkeypatch.setattr(scipy.stats, "bootstrap", fail_bootstrap)
+
+    with pytest.raises(OSError, match="bootstrap worker failed"):
+        _bootstrap_ci([0.0, 1.0])

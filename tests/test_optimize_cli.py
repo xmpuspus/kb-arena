@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+import pytest
 from typer.testing import CliRunner
 
 from kb_arena.cli import app
@@ -53,3 +54,74 @@ def test_optimize_dry_run_no_keys_needed(monkeypatch):
     assert "plan" in out
     assert "naive_vector" in out
     assert "bm25" in out
+
+
+def test_optimize_rejects_unknown_search_method():
+    result = runner.invoke(
+        app,
+        [
+            "optimize",
+            "--corpus",
+            "aws-compute",
+            "--strategies",
+            "naive_vector",
+            "--method",
+            "genetic",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert "unknown search method" in _clean(result.stdout).lower()
+
+
+def test_optimize_rejects_negative_trial_limit():
+    result = runner.invoke(
+        app,
+        [
+            "optimize",
+            "--corpus",
+            "aws-compute",
+            "--strategies",
+            "naive_vector",
+            "--max-trials",
+            "-1",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert "max-trials must be nonnegative" in _clean(result.stdout).lower()
+
+
+@pytest.mark.parametrize(
+    ("option_args", "message"),
+    [
+        (["--top-ks", "0"], "top-k values must be positive"),
+        (["--chunk-sizes", "0"], "chunk sizes must be greater"),
+        (["--chunk-sizes", "-1"], "chunk sizes must be greater"),
+        (["--chunk-sizes", "50"], "chunk sizes must be greater"),
+        (["--top-ks", "not-a-number"], "invalid integer list"),
+        (["--strategies", "unknown"], "unknown strategy"),
+        (["--strategies", ""], "choose at least one strategy"),
+    ],
+)
+def test_optimize_rejects_unexecutable_plans(option_args, message):
+    result = runner.invoke(
+        app,
+        [
+            "optimize",
+            "--corpus",
+            "aws-compute",
+            "--strategies",
+            "naive_vector",
+            *option_args,
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert message in _clean(result.stdout).lower()

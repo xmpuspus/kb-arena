@@ -1,213 +1,126 @@
 # Contributing to KB Arena
 
-Thanks for your interest in contributing. This guide covers setup, conventions, and how to add new corpora, strategies, and questions.
+KB Arena accepts bug reports, documentation fixes, new corpus adapters, retrieval strategies, and
+evaluation improvements. Read the [code of conduct](CODE_OF_CONDUCT.md) before participating.
 
-## Development Setup
+## Choose a contribution path
+
+- Report a reproducible product defect with the bug template.
+- Propose a user problem with the feature template before a large implementation.
+- Improve an existing corpus, qrel, or evidence record.
+- Add a strategy when it shows a distinct retrieval method and includes a fair baseline.
+- Improve onboarding or documentation with commands checked against the current CLI.
+
+For a first contribution, start with a documentation correction, a missing regression test, or a
+small qrel review. Avoid changing benchmark numbers without the run artifacts that produced them.
+
+## Development setup
 
 ```bash
 git clone https://github.com/xmpuspus/kb-arena
 cd kb-arena
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e '.[dev]'
+```
 
-# Start Neo4j for integration tests
+Start Neo4j only for graph integration work:
+
+```bash
+export KB_ARENA_NEO4J_PASSWORD=choose-a-password
 docker compose up neo4j -d
 ```
 
-## Running Tests
+## Checks
+
+Backend:
 
 ```bash
-# Unit tests (fast, no dependencies)
-pytest tests/test_benchmark.py tests/test_strategies.py tests/test_graph/ tests/test_ingest.py tests/test_router.py -q
-
-# Full suite
-pytest tests/ -q
-
-# Integration tests (requires Neo4j + ChromaDB)
-pytest tests/integration/ -v
-
-# Live tests (requires API keys)
-ANTHROPIC_API_KEY=sk-ant-... OPENAI_API_KEY=sk-... pytest tests/live/ -v
+ruff check .
+ruff format --check .
+pytest tests/ -q --ignore=tests/live
 ```
 
-## Code Style
-
-Ruff handles both linting and formatting:
+Frontend:
 
 ```bash
-ruff check .          # lint
-ruff format .         # format
-ruff check --fix .    # auto-fix
+cd web
+npm ci
+npm run lint
+npm run build
 ```
 
-Run before every commit. CI will reject PRs that don't pass `ruff check . && ruff format --check .`
+Frontend development needs Node.js 20.9 or later.
 
-## Project Conventions
+Live tests need provider keys and can spend money. Run them only when your change needs that proof:
 
-- **Python 3.11+** — f-strings, `match` statements, `X | Y` union types
-- **Pydantic v2** — All data models use `BaseModel`. No dataclasses, no TypedDicts for interchange
-- **Async first** — Strategies, LLM calls, Neo4j queries are all async
-- **Type hints** — All public functions and methods are typed
-- **Tests** — `pytest` + `pytest-asyncio` with `asyncio_mode = "auto"`
-- **Imports** — `from __future__ import annotations` in every file
+```bash
+pytest tests/live/ -v
+```
 
-## Adding a New Corpus
+## Project rules
 
-A corpus is a documentation domain (e.g., Python stdlib, Kubernetes, SEC EDGAR). To add one:
+- Support Python 3.11 through 3.13.
+- Use Pydantic models for stored and exchanged data.
+- Keep strategy and service calls asynchronous where the existing interface is asynchronous.
+- Add a regression test before a behavior fix.
+- Keep benchmark inputs, model versions, settings, and run IDs with public metrics.
+- Do not commit API keys, corpus secrets, local indexes, or unrelated run output.
+- Do not change a test only to hide a product failure.
 
-### 1. Parser
+## Add a corpus
 
-Create `kb_arena/ingest/parsers/your_corpus.py`:
+1. Create `datasets/<name>/raw`, `processed`, and `questions`.
+2. Record the source URL, version, retrieval date, license, and content hash.
+3. Parse source files into the common `Document` model.
+4. Use stable document and section identifiers.
+5. Add reviewed questions and qrels with source anchors and reasons.
+6. Split development, validation, and holdout questions before tuning.
+7. Add validation tests for source hashes, duplicate questions, qrel targets, and split counts.
+8. Document limits and prohibited interpretations.
+
+See [the method guide](docs/methodology.md) for the public evidence contract.
+
+## Add a strategy
+
+Create a `Strategy` subclass under `kb_arena/strategies/`:
 
 ```python
 from kb_arena.models.document import Document
-
-def parse(path: str) -> list[Document]:
-    """Parse raw files into Document models."""
-    documents = []
-    # ... your parsing logic
-    return documents
-```
-
-Register in `kb_arena/ingest/pipeline.py`.
-
-### 2. Graph Schema
-
-Add node and relationship enums to `kb_arena/graph/schema.py`:
-
-```python
-class YourNodeType(str, Enum):
-    ENTITY_A = "EntityA"
-    ENTITY_B = "EntityB"
-
-class YourRelType(str, Enum):
-    RELATES_TO = "RELATES_TO"
-```
-
-Register in `_CORPUS_SCHEMA`:
-
-```python
-_CORPUS_SCHEMA["your-corpus"] = (YourNodeType, YourRelType)
-```
-
-### 3. Questions
-
-Create 5 YAML files in `datasets/your-corpus/questions/`:
-
-```
-tier1_factoid.yaml        # 10-20 single-fact lookups
-tier2_multi_entity.yaml   # 10-15 questions involving 2+ entities
-tier3_comparative.yaml    # 10-15 compare/contrast questions
-tier4_relational.yaml     # 8-12 relationship traversal questions
-tier5_temporal.yaml       # 8-12 version/change tracking questions
-```
-
-### 4. Tests
-
-- Parser test in `tests/test_ingest.py`
-- Schema validation test in `tests/test_graph/`
-- At least one integration test showing the full pipeline
-
-## Adding a New Strategy
-
-### 1. Implementation
-
-Create `kb_arena/strategies/your_strategy.py`:
-
-```python
 from kb_arena.strategies.base import AnswerResult, Strategy
-from kb_arena.models.document import Document
 
-class YourStrategy(Strategy):
-    name = "your_strategy"
+
+class MyStrategy(Strategy):
+    name = "my_strategy"
 
     async def build_index(self, documents: list[Document]) -> None:
-        """Build the retrieval index."""
         ...
 
     async def query(self, question: str, top_k: int = 5) -> AnswerResult:
-        """Answer a question."""
-        start = self._start_timer()
-        # ... your retrieval + generation logic
-        latency = self._record_metrics(start, sources=sources)
-        return AnswerResult(
-            answer=answer,
-            sources=sources,
-            strategy=self.name,
-            latency_ms=latency,
-        )
+        ...
 ```
 
-### 2. Registration
+Then:
 
-In `kb_arena/strategies/__init__.py`:
+1. Add it to `STRATEGY_REGISTRY`.
+2. Add one `StrategySpec` to `kb_arena/strategies/catalog.py`.
+3. Return stable `RetrievedChunk` identifiers and source information.
+4. Add happy-path, empty-index, failure, and retrieval-trace tests.
+5. Explain the architecture, dependencies, expected advantage, and fair baseline.
+6. Include a run that can disprove the advantage.
 
-```python
-STRATEGY_REGISTRY["your_strategy"] = YourStrategy
-```
+External plugins can use `--strategy-module package.module`. A plugin module must export exactly one
+`Strategy` subclass.
 
-Update `get_strategy()` if it needs special initialization (e.g., database clients).
+## Pull requests
 
-### 3. Chatbot Integration
+A pull request should state:
 
-Add to the lifespan in `kb_arena/chatbot/api.py`:
+- the user problem and chosen behavior;
+- files and interfaces changed;
+- tests and checks run;
+- benchmark evidence, when the change affects results;
+- costs, migrations, or compatibility limits;
+- screenshots or recordings for visible UI changes.
 
-```python
-app.state.strategies["your_strategy"] = YourStrategy(...)
-```
-
-### 4. Tests
-
-Add tests in `tests/test_strategies.py` covering:
-- Index building (or mocked)
-- Query with expected answer structure
-- Error handling (timeout, empty result)
-
-## Writing Benchmark Questions
-
-### Format
-
-```yaml
-- id: "corpus-tN-NNN"
-  tier: 1-5
-  type: factoid|comparison|relational|temporal|causal
-  hops: 1-5
-  question: "The actual question"
-  ground_truth:
-    answer: "Complete reference answer"
-    source_refs:
-      - "doc.html#section"
-    required_entities:
-      - "entity.name"
-  constraints:
-    must_mention:
-      - "term"
-    must_not_claim:
-      - "false claim"
-```
-
-### Guidelines
-
-- **ID format:** `{corpus_prefix}-t{tier}-{3-digit-number}` (e.g., `py-t1-001`, `k8s-t3-012`)
-- **Tier 1-2:** Answerable by any strategy. Tests basic retrieval.
-- **Tier 3:** Requires comparing two entities. Tests the knowledge graph's ability to find shared neighbors.
-- **Tier 4:** Requires traversing 3+ relationships. Only graph-backed strategies should score well.
-- **Tier 5:** Requires temporal reasoning (version changes, deprecations). The hardest tier.
-- **`must_mention`:** Terms that a correct answer definitely includes. Be specific but not overly restrictive.
-- **`must_not_claim`:** Common misconceptions. Don't include obscure edge cases — test for real confusions.
-- **Ground truth:** Write the ideal answer, not just a keyword. The LLM judge uses it as reference.
-- **Source refs:** Point to specific document sections, not entire documents.
-
-## Pull Requests
-
-- One feature per PR
-- Include tests
-- Run `ruff check . && ruff format --check .` before submitting
-- Simple commit messages, no prefix format
-
-## Reporting Issues
-
-Use GitHub Issues. Include:
-- What you expected
-- What happened
-- Steps to reproduce
-- Python version, OS
+Keep the change focused. Maintainers may ask to split unrelated behavior, data, or documentation.

@@ -21,11 +21,11 @@ class _Q:
 
 @pytest.fixture
 def patched(monkeypatch, tmp_path):
-    monkeypatch.setattr(opt, "load_documents", lambda corpus: ["doc"])
+    monkeypatch.setattr(opt, "load_documents", lambda corpus, **kwargs: ["doc"])
     monkeypatch.setattr(opt, "load_questions", lambda corpus: [_Q(1), _Q(2)])
 
     # Score: top_k=10 is best for naive_vector, baseline (top_k=5) mid, top_k=3 worst.
-    async def fake_score(strategy, cfg, documents, questions, metric, baseline):
+    async def fake_score(strategy, cfg, documents, questions, metric, baseline, corpus="all"):
         from kb_arena.benchmark.optimizer import TrialResult
 
         table = {3: 0.20, 5: 0.40, 10: 0.62}
@@ -61,8 +61,47 @@ async def test_run_optimize_writes_report_with_best_and_delta(patched):
 
 
 @pytest.mark.asyncio
+async def test_run_optimize_auto_uses_development_split_and_records_it(patched, monkeypatch):
+    development = _Q(1)
+    development.split = "development"
+    holdout = _Q(2)
+    holdout.split = "holdout"
+    monkeypatch.setattr(opt, "load_questions", lambda corpus: [development, holdout])
+
+    code = await opt.run_optimize(
+        "aws-compute",
+        "naive_vector",
+        top_ks=[5],
+        out_dir=str(patched),
+    )
+
+    assert code == 0
+    report = json.loads((patched / "optimize.json").read_text())
+    assert report["question_split"] == "development"
+
+
+@pytest.mark.asyncio
+async def test_run_optimize_aborts_without_report_on_trial_failure(patched, monkeypatch, capsys):
+    async def fail_trial(*args, **kwargs):
+        raise opt.OptimizationTrialError("retrieval backend unavailable")
+
+    monkeypatch.setattr(opt, "_score_trial", fail_trial)
+
+    code = await opt.run_optimize(
+        "aws-compute",
+        "naive_vector",
+        top_ks=[5],
+        out_dir=str(patched),
+    )
+
+    assert code == 1
+    assert not (patched / "optimize.json").exists()
+    assert "No recommendation report was written" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
 async def test_dry_run_plans_without_scoring(monkeypatch, tmp_path):
-    monkeypatch.setattr(opt, "load_documents", lambda corpus: ["doc"])
+    monkeypatch.setattr(opt, "load_documents", lambda corpus, **kwargs: ["doc"])
     monkeypatch.setattr(opt, "load_questions", lambda corpus: [_Q(1)])
 
     called = False
@@ -93,6 +132,16 @@ async def test_dry_run_plans_without_scoring(monkeypatch, tmp_path):
     # 3 of them (one per top_k value, at chunk=512, emb=openai). 12-3=9 rebuilds.
     assert by_strategy["naive_vector"]["n_trials"] == 12
     assert by_strategy["naive_vector"]["n_rebuilds"] == 9
+
+    llm_built_plan = opt.plan_optimize(
+        ["qna_pairs", "raptor"],
+        top_ks=[3, 5, 10],
+        chunk_sizes=[256, 512],
+        embedding_providers=["openai", "bge"],
+        reranker_backends=[],
+    )
+    assert all(item["dims"] == ["top_k"] for item in llm_built_plan)
+    assert all(item["n_rebuilds"] == 0 for item in llm_built_plan)
 
 
 @pytest.mark.asyncio

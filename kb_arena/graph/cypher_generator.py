@@ -1,37 +1,13 @@
-"""Text-to-Cypher via LLM with template fallback and syntax validation."""
+"""Allowlisted parameterized Cypher template selection."""
 
 from __future__ import annotations
 
-import logging
 import re
 
 from kb_arena.graph import cypher_templates
-from kb_arena.graph.schema import get_schema
 from kb_arena.llm.client import LLMClient
 
-logger = logging.getLogger(__name__)
-
-# Minimal Cypher syntax check — catches unterminated strings and bare MATCH-less queries.
-_CYPHER_SAFE_PATTERN = re.compile(r"\b(MATCH|CALL|RETURN|WITH|UNWIND)\b", re.IGNORECASE)
-
-# Reject write operations to defend against LLM-generated destructive queries (ASI05).
-# Includes APOC write paths that bypass the bare-keyword check.
-_CYPHER_WRITE_PATTERN = re.compile(
-    r"""\b(
-        CREATE | DELETE | DETACH | SET | REMOVE | MERGE | DROP
-      | LOAD\s+CSV
-      | CALL\s+apoc\.(?:
-            schema | create | merge | refactor | delete | remove | set | drop
-          | iterate | periodic\.iterate
-          | cypher\.runWrite | cypher\.doIt
-          | export | load | trigger
-        )
-      | CALL\s+dbms\.security\.
-    )\b""",
-    re.IGNORECASE | re.VERBOSE,
-)
-
-# Template keyword triggers — ordered by specificity
+# Template keyword triggers, ordered by specificity.
 _TEMPLATE_TRIGGERS: list[tuple[list[str], str]] = [
     (["inherit", "hierarchy", "subclass", "superclass", "extends"], "TYPE_HIERARCHY"),
     (["depend", "import", "require"], "DEPENDENCY_CHAIN"),
@@ -41,87 +17,61 @@ _TEMPLATE_TRIGGERS: list[tuple[list[str], str]] = [
     (["find", "lookup", "get", "show", "what is"], "SINGLE_ENTITY_LOOKUP"),
 ]
 
-_SYSTEM_PROMPT_TEMPLATE = """You are a Neo4j Cypher expert. Generate a single valid Cypher query.
+_REQUIRED_PARAMS: dict[str, frozenset[str]] = {
+    "TYPE_HIERARCHY": frozenset({"fqn"}),
+    "DEPENDENCY_CHAIN": frozenset({"start"}),
+    "CROSS_REFERENCE": frozenset({"fqn"}),
+    "COMPARISON_QUERY": frozenset({"entity_a", "entity_b"}),
+    "MULTI_HOP_QUERY": frozenset({"target", "depth", "allowed_rel_types"}),
+    "SINGLE_ENTITY_LOOKUP": frozenset({"fqn"}),
+}
 
-Schema for corpus '{corpus}':
-Node types: {node_types}
-Relationship types: {rel_types}
 
-Rules:
-- Use ONLY the node and relationship types listed above
-- Always use parameterized queries ($param), never interpolate values
-- Return only the Cypher query, no explanation, no markdown fences
-- The query must start with MATCH, CALL, or WITH
-- Limit results to 50 unless the question asks for more
-"""
+def _normalize_cypher(cypher: str) -> str:
+    return re.sub(r"\s+", " ", cypher).strip()
+
+
+_ALLOWED_CYPHER = {
+    _normalize_cypher(value)
+    for name, value in vars(cypher_templates).items()
+    if name.isupper() and isinstance(value, str)
+}
 
 
 def _validate_cypher(cypher: str) -> bool:
-    """Check that query contains a read clause and no write operations."""
-    if _CYPHER_WRITE_PATTERN.search(cypher):
-        return False
-    return bool(_CYPHER_SAFE_PATTERN.search(cypher))
+    """Accept only an exact query from the project's parameterized allowlist."""
+    return _normalize_cypher(cypher) in _ALLOWED_CYPHER
 
 
 def _pick_template(query: str) -> str | None:
     """Return a template name if the query matches known trigger keywords."""
-    q = query.lower()
+    normalized_query = query.lower()
     for keywords, template_name in _TEMPLATE_TRIGGERS:
-        if any(kw in q for kw in keywords):
+        if any(keyword in normalized_query for keyword in keywords):
             return template_name
     return None
 
 
 def _get_template(name: str) -> str | None:
-    return getattr(cypher_templates, name, None)
+    template = getattr(cypher_templates, name, None)
+    return template if isinstance(template, str) and _validate_cypher(template) else None
 
 
 class CypherGenerator:
     def __init__(self, llm: LLMClient, corpus: str) -> None:
+        # Keep the constructor contract for callers; query text never becomes executable Cypher.
         self._llm = llm
         self._corpus = corpus
-        node_enum, rel_enum = get_schema(corpus)
-        self._node_types = [e.value for e in node_enum]
-        self._rel_types = [e.value for e in rel_enum]
-        self._system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(
-            corpus=corpus,
-            node_types=", ".join(self._node_types),
-            rel_types=", ".join(self._rel_types),
-        )
 
     async def generate(self, query: str, params: dict | None = None) -> tuple[str, dict]:
-        """Return (cypher, params) for executing against Neo4j.
-
-        Tries LLM first. Falls back to template matching if LLM output
-        is invalid Cypher or the call fails.
-        """
-        params = params or {}
-
-        # LLM attempt
-        try:
-            resp = await self._llm.extract(text=query, system_prompt=self._system_prompt)
-            cypher = resp.text.strip()
-            # Strip markdown fences if the model wrapped them
-            if cypher.startswith("```"):
-                cypher = re.sub(r"^```[a-z]*\n?", "", cypher)
-                cypher = re.sub(r"\n?```$", "", cypher).strip()
-
-            if _validate_cypher(cypher):
-                logger.debug("CypherGenerator: LLM produced valid Cypher")
-                return cypher, params
-            logger.warning("CypherGenerator: LLM output failed validation, using template")
-        except Exception as exc:
-            logger.warning("CypherGenerator: LLM call failed (%s), using template", exc)
-
-        # Template fallback
+        """Return a parameterized allowlisted template and its parameters."""
+        resolved_params = dict(params or {})
         template_name = _pick_template(query)
-        if template_name:
+        if template_name and _REQUIRED_PARAMS[template_name] <= resolved_params.keys():
             template = _get_template(template_name)
             if template:
-                logger.debug("CypherGenerator: using template %s", template_name)
-                return template, params
+                return template, resolved_params
 
-        # Last resort: fulltext search
-        params.setdefault("query", query)
-        params.setdefault("limit", 20)
-        return cypher_templates.FULLTEXT_ENTITY_SEARCH, params
+        resolved_params.setdefault("query", query)
+        resolved_params.setdefault("limit", 20)
+        return cypher_templates.FULLTEXT_ENTITY_SEARCH, resolved_params

@@ -33,6 +33,17 @@ from kb_arena.models.document import Document
 from kb_arena.models.graph import GraphContext
 from kb_arena.models.retrieval import RetrievalTrace
 
+# Bound fanout strategies before they allocate or request an amplified candidate set.
+MAX_RETRIEVAL_CANDIDATES = 1000
+
+
+def validate_top_k(top_k: int) -> None:
+    """Reject retrieval counts that can invert slices or amplify backend work."""
+    if isinstance(top_k, bool) or not isinstance(top_k, int):
+        raise ValueError("top_k must be an integer")
+    if not 1 <= top_k <= MAX_RETRIEVAL_CANDIDATES:
+        raise ValueError(f"top_k must be between 1 and {MAX_RETRIEVAL_CANDIDATES}")
+
 
 class AnswerResult(BaseModel):
     """Unified answer result from any strategy."""
@@ -95,17 +106,20 @@ class Strategy(ABC):
         """
 
     @abstractmethod
-    async def query(self, question: str, top_k: int = 5) -> AnswerResult:
+    async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Answer a question using this strategy's retrieval approach.
 
         Returns a structured AnswerResult with answer, sources, metrics.
         """
 
     async def stream_answer(
-        self, question: str, history: list[dict] | None = None
+        self,
+        question: str,
+        history: list[dict] | None = None,
+        corpus: str = "all",
     ) -> AsyncIterator[str | dict]:
         """Stream answer tokens. Default: call query() and yield full answer + meta."""
-        result = await self.query(question)
+        result = await self.query(question, corpus=corpus)
         yield result.answer
         yield meta_packet(result)
 

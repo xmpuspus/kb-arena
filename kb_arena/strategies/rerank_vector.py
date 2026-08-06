@@ -19,16 +19,20 @@ between "naive_vector" and "naive_vector + BGE rerank".
 
 from __future__ import annotations
 
-import logging
+import math
 import time
 from typing import Any
 
+from kb_arena.exceptions import RerankerError
 from kb_arena.models.document import Document
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
-from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.strategies.base import (
+    MAX_RETRIEVAL_CANDIDATES,
+    AnswerResult,
+    Strategy,
+    validate_top_k,
+)
 from kb_arena.strategies.naive_vector import NaiveVectorStrategy
-
-logger = logging.getLogger(__name__)
 
 RERANK_FANOUT = 4  # retrieve top_k * 4, rerank, keep top_k
 
@@ -135,13 +139,21 @@ class RerankVectorStrategy(Strategy):
     async def build_index(self, documents: list[Document]) -> None:
         await self._base.build_index(documents)
 
-    async def query(self, question: str, top_k: int = 5) -> AnswerResult:
+    async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         start = self._start_timer()
+        validate_top_k(top_k)
         # Retrieve a wider pool first.
-        candidate_k = max(top_k * RERANK_FANOUT, top_k + 5)
+        candidate_k = min(
+            max(top_k * RERANK_FANOUT, top_k + 5),
+            MAX_RETRIEVAL_CANDIDATES,
+        )
 
         retrieve_t0 = time.perf_counter()
-        candidate = await self._base.query(question, top_k=candidate_k)
+        candidate = await self._base.query(
+            question,
+            top_k=candidate_k,
+            corpus=corpus,
+        )
         retrieve_ms = (time.perf_counter() - retrieve_t0) * 1000
 
         chunks: list[RetrievedChunk] = (
@@ -154,9 +166,16 @@ class RerankVectorStrategy(Strategy):
         passages = [c.content or "" for c in chunks]
         try:
             scores = self._get_reranker().score(question, passages)
-        except Exception as exc:  # noqa: BLE001 — fall back to base ordering on backend failure
-            logger.warning("Reranker failed (%s) — using base ordering", exc)
-            scores = [c.score for c in chunks]
+        except Exception as exc:
+            raise RerankerError(f"Reranker backend failed: {exc}") from exc
+
+        # A NaN compares False against everything, so it can hold rank 1 and silently
+        # push the genuinely relevant chunk out of the generated context.
+        for position, score in enumerate(scores):
+            if isinstance(score, bool) or not isinstance(score, int | float):
+                raise RerankerError(f"Reranker returned a non-numeric score at position {position}")
+            if not math.isfinite(score):
+                raise RerankerError(f"Reranker returned a non-finite score at position {position}")
 
         ranked: list[tuple[float, RetrievedChunk]] = sorted(
             zip(scores, chunks, strict=True), key=lambda x: x[0], reverse=True

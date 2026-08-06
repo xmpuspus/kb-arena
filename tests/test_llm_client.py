@@ -301,3 +301,35 @@ async def test_call_returns_llm_response_with_cost(mock_provider):
     assert result.input_tokens == 100
     assert result.output_tokens == 50
     assert result.cost_usd > 0
+
+
+@pytest.mark.asyncio
+async def test_stream_can_emit_per_call_usage_marker(mock_provider):
+    from kb_arena.llm.providers import ProviderResponse
+
+    async def stream_text(**kwargs):
+        yield "answer"
+        yield ProviderResponse(
+            text="",
+            input_tokens=10,
+            output_tokens=5,
+            model=kwargs["model"],
+        )
+
+    mock_provider.stream_text = stream_text
+    client = LLMClient(api_key="test-key")
+
+    output = [
+        item
+        async for item in client.stream(
+            query="Q",
+            context="C",
+            system_prompt="S",
+            include_usage=True,
+        )
+    ]
+
+    assert output[0] == "answer"
+    assert isinstance(output[-1], LLMResponse)
+    assert output[-1].total_tokens == 15
+    assert output[-1].cost_usd > 0

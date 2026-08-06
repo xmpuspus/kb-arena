@@ -1,0 +1,2 @@
+datasets/nist-800-171-r3/raw/nist-sp-800-171r3.html -text -diff
+kb_arena/static/** -diff linguist-generated=true

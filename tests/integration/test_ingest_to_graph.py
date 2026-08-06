@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from importlib.resources import as_file, files
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
 from kb_arena.graph.resolver import (
@@ -19,9 +22,7 @@ from kb_arena.graph.schema import (
 )
 from kb_arena.models.graph import Entity, ExtractionResult, Relationship
 
-# ---------------------------------------------------------------------------
 # Schema enum validation
-# ---------------------------------------------------------------------------
 
 
 def test_node_types_match_enum():
@@ -84,9 +85,7 @@ def test_all_universal_rel_types_are_valid():
     assert set(rel_type_values("aws-compute")) == expected
 
 
-# ---------------------------------------------------------------------------
 # Mock LLM extraction → entity validation
-# ---------------------------------------------------------------------------
 
 
 def _make_entity(name: str, type_str: str, eid: str | None = None) -> Entity:
@@ -135,9 +134,7 @@ def test_extraction_result_schema():
     assert result.document_id == "aws-compute-lambda"
 
 
-# ---------------------------------------------------------------------------
 # Entity resolver
-# ---------------------------------------------------------------------------
 
 
 def test_resolver_merges_near_identical_entities():
@@ -219,9 +216,7 @@ def test_normalize_name_uppercases():
     assert normalize_name("lambda") == "LAMBDA"
 
 
-# ---------------------------------------------------------------------------
 # Mock Neo4j store — nodes before edges
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -246,9 +241,10 @@ async def test_neo4j_store_loads_nodes_before_edges(mock_neo4j_driver):
     # Should have made at least one call for nodes and one for edges
     assert len(calls) >= 2
 
-    # First call should be for nodes (MERGE on fqn)
+    # First call should create only nodes owned by KB Arena.
     first_query = str(calls[0])
     assert "MERGE" in first_query
+    assert "KBArenaEntity" in first_query
 
 
 @pytest.mark.asyncio
@@ -301,3 +297,73 @@ async def test_neo4j_store_execute_query(mock_neo4j_driver):
 
     rows = await store.execute_query("MATCH (n) RETURN n.fqn AS fqn, labels(n)[0] AS label")
     assert isinstance(rows, list)
+
+
+@pytest.mark.asyncio
+async def test_neo4j_store_targets_configured_database(mock_neo4j_driver):
+    from kb_arena.graph.neo4j_store import Neo4jStore
+
+    store = Neo4jStore(driver=mock_neo4j_driver, database="kb_arena")
+
+    await store.execute_query("RETURN 1")
+
+    mock_neo4j_driver.session.assert_called_once_with(database="kb_arena")
+
+
+@pytest.mark.asyncio
+async def test_neo4j_store_closes_driver_when_connectivity_check_fails(monkeypatch):
+    from kb_arena.graph.neo4j_store import Neo4jStore
+
+    driver = MagicMock()
+    session = AsyncMock()
+    session.run.side_effect = OSError("Neo4j unavailable")
+    context = AsyncMock()
+    context.__aenter__ = AsyncMock(return_value=session)
+    context.__aexit__ = AsyncMock(return_value=False)
+    driver.session.return_value = context
+    driver.close = AsyncMock()
+    monkeypatch.setattr(
+        "kb_arena.graph.neo4j_store.AsyncGraphDatabase.driver",
+        lambda *args, **kwargs: driver,
+    )
+
+    with pytest.raises(OSError, match="Neo4j unavailable"):
+        await Neo4jStore.connect(database="kb_arena")
+
+    driver.session.assert_called_once_with(database="kb_arena")
+    driver.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_schema_never_deletes_legacy_or_unrelated_entities(mock_neo4j_driver):
+    from kb_arena.graph.neo4j_store import Neo4jStore
+
+    store = Neo4jStore(driver=mock_neo4j_driver)
+    with as_file(files("kb_arena.cypher").joinpath("schema_default.cypher")) as schema_file:
+        await store.load_schema(schema_file)
+
+    session = mock_neo4j_driver.session.return_value.__aenter__.return_value
+    statements = [call.args[0] for call in session.run.call_args_list]
+    assert all("DELETE" not in statement for statement in statements)
+    assert all("DROP CONSTRAINT" not in statement for statement in statements)
+    assert any("kb_arena_entity_id" in statement for statement in statements)
+
+
+@pytest.mark.asyncio
+async def test_legacy_constraint_migration_drops_only_known_names(mock_neo4j_driver):
+    from kb_arena.graph.neo4j_store import Neo4jStore
+
+    store = Neo4jStore(driver=mock_neo4j_driver)
+    session = mock_neo4j_driver.session.return_value.__aenter__.return_value
+    result = session.run.return_value
+    result.data.return_value = [
+        {"name": "topic_fqn"},
+        {"name": "unrelated_constraint"},
+    ]
+
+    dropped = await store.drop_legacy_constraints()
+
+    assert dropped == ["topic_fqn"]
+    statements = [call.args[0] for call in session.run.call_args_list]
+    assert "DROP CONSTRAINT `topic_fqn` IF EXISTS" in statements
+    assert all("unrelated_constraint" not in statement for statement in statements)
