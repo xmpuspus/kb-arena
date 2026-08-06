@@ -129,8 +129,11 @@ def _build_arena(strategies: dict) -> tuple[ArenaEngine | None, str]:
     try:
         return ArenaEngine(strategies), ""
     except Exception as exc:
+        # /health needs no token, so the reason it publishes follows the same
+        # redaction rule as every other error surface. The log above keeps the
+        # full traceback for whoever operates the deployment.
         logger.exception("Arena engine failed to initialize; arena endpoints return 503")
-        return None, str(exc)
+        return None, _public_error_message(exc)
 
 
 @asynccontextmanager

@@ -287,7 +287,8 @@ def test_arena_startup_failure_is_logged_not_silently_swallowed(monkeypatch, cap
         state, reason = api_module._build_arena({"a": object(), "b": object()})
 
     assert state is None
-    assert reason == "corrupt arena state"
+    assert reason  # a reason reaches /health; see the redaction test below
+    # The operator-facing log keeps the detail even when the response redacts it.
     assert "corrupt arena state" in caplog.text
 
 
@@ -336,6 +337,24 @@ def test_health_reports_a_failed_arena(app_client):
 
     assert body["arena"]["available"] is False
     assert body["arena"]["last_error"] == "corrupt arena state"
+
+
+def test_build_arena_redacts_the_reason_without_debug(monkeypatch):
+    """/health needs no token, so the stored reason follows the same redaction rule."""
+    import kb_arena.chatbot.api as api_module
+    from kb_arena.settings import settings
+
+    def _explode(_strategies):
+        raise PermissionError("/srv/private/results/arena_state.json unreadable")
+
+    monkeypatch.setattr(api_module, "ArenaEngine", _explode)
+    monkeypatch.setattr(settings, "debug", False)
+
+    engine, reason = api_module._build_arena({"a": object(), "b": object()})
+
+    assert engine is None
+    assert "/srv/private" not in reason
+    assert reason == "An internal error occurred"
 
 
 def test_arena_match_redacts_internal_error_without_debug(app_client, monkeypatch):
