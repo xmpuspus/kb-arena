@@ -53,3 +53,43 @@ def test_optimize_dry_run_no_keys_needed(monkeypatch):
     assert "plan" in out
     assert "naive_vector" in out
     assert "bm25" in out
+
+
+def test_optimize_rejects_unknown_search_method():
+    result = runner.invoke(
+        app,
+        [
+            "optimize",
+            "--corpus",
+            "aws-compute",
+            "--strategies",
+            "naive_vector",
+            "--method",
+            "genetic",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert "unknown search method" in _clean(result.stdout).lower()
+
+
+def test_optimize_rejects_negative_trial_limit():
+    result = runner.invoke(
+        app,
+        [
+            "optimize",
+            "--corpus",
+            "aws-compute",
+            "--strategies",
+            "naive_vector",
+            "--max-trials",
+            "-1",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert "max-trials must be nonnegative" in _clean(result.stdout).lower()

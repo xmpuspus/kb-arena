@@ -169,12 +169,28 @@ def run_ingest_special(
         console.print("[yellow]No documents extracted from source.[/yellow]")
         return 0
 
+    staged_file = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=out_dir,
+        prefix=".documents.",
+        suffix=".tmp",
+        delete=False,
+    )
+    staged_path = Path(staged_file.name)
     total_sections = 0
-    with out_path.open("w", encoding="utf-8") as fout:
-        for doc in docs:
-            fout.write(doc.model_dump_json())
-            fout.write("\n")
-            total_sections += len(doc.sections)
+    published = False
+    try:
+        with staged_file as fout:
+            for doc in docs:
+                fout.write(doc.model_dump_json())
+                fout.write("\n")
+                total_sections += len(doc.sections)
+        staged_path.replace(out_path)
+        published = True
+    finally:
+        if not published:
+            staged_path.unlink(missing_ok=True)
 
     console.print(
         f"[green]Done.[/green] {len(docs)} documents, {total_sections} sections "

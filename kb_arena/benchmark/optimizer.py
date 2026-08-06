@@ -595,6 +595,12 @@ async def run_optimize(
     chunk_sizes = chunk_sizes or []
     embedding_providers = embedding_providers or []
     reranker_backends = reranker_backends or []
+    if method not in {"grid", "random"}:
+        console.print("[red]Unknown search method. Use 'grid' or 'random'.[/red]")
+        return 1
+    if max_trials < 0:
+        console.print("[red]--max-trials must be nonnegative.[/red]")
+        return 1
     if metric not in _METRIC_FIELDS:
         console.print(f"[red]Unknown metric {metric!r}. Use one of {sorted(_METRIC_FIELDS)}[/red]")
         return 1
