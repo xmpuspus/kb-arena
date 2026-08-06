@@ -1,6 +1,6 @@
 # KB Arena 0.10.0 release post draft
 
-> Status: Draft only. Do not post automatically.
+> Draft only. Do not post automatically.
 
 Choosing a retrieval architecture should not start with a generic leaderboard but with evidence
 from your own documents.
@@ -18,16 +18,16 @@ tiers, but only 35 have chunk-level labels. Contextual Vector recorded 0.355 Rec
 Vector recorded 0.352. That 0.003 gap documents the run, but it does not support a general winner
 claim.
 
-Try the precomputed demo without an API key or external service:
+Run the precomputed demo without an API key or external service.
 
 ```bash
 pip install kb-arena==0.10.0
 kb-arena demo
 ```
 
-Project: https://github.com/xmpuspus/kb-arena
+[Project repository and visual walkthrough](https://github.com/xmpuspus/kb-arena)
 
-Package: https://pypi.org/project/kb-arena/0.10.0/
+[Published package](https://pypi.org/project/kb-arena/0.10.0/)
 
 The included NIST questions are machine-generated drafts. A qualified reviewer should check the
 questions, answers, constraints, and holdout isolation before anyone publishes a strategy winner
