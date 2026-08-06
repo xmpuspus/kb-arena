@@ -46,8 +46,13 @@ All notable changes to KB Arena.
   queue so unattended builds cannot accumulate without limit.
 - Kept optimization retrieval-only by reusing prebuilt QnA Pairs and RAPTOR indexes instead of
   regenerating their LLM-built artifacts during a sweep.
+- Preserved the last complete QnA and ingested corpus outputs when any source section, model
+  response, or input file fails. Standalone QnA output now publishes atomically.
 - Stopped retrieval execution failures from becoming valid zero-score observations or optimizer
   recommendations, and made concurrent rate-limit consumption atomic.
+- Surfaced RAPTOR backend failures instead of reporting them as valid empty retrieval, bounded
+  graph extraction scheduling and unbounded optimizer plans, and kept optimizer, arena, and label
+  retrieval within the selected corpus.
 - Kept retrieval-only LLM stubs task-local and rendered failed Retriever Lab queries without
   treating their missing metrics as numeric results.
 - Made benchmark, judge, retrieval-ceiling, and empty-question-set failures explicit. Included
@@ -61,6 +66,8 @@ All notable changes to KB Arena.
 - Defaulted the local server to loopback, rejected unauthenticated LLM requests from remote
   clients, authenticated graph-build streams, and reconnected interrupted browser streams without
   launching duplicate builds.
+- Used the configured trusted-proxy client identity for open-mode authorization, so a loopback
+  reverse proxy cannot make an external LLM request appear local.
 - Honored HTTP, HTTPS, and GitHub sources in one-shot runs regardless of scheme casing, and
   invalidated downstream checkpoints when an explicit source changes.
 - Published ingested corpora atomically, bounded optimizer search construction, and expanded
@@ -68,13 +75,18 @@ All notable changes to KB Arena.
 - Updated Typer, Click, FastAPI, and Starlette to compatible releases that address current
   command-execution and HTTP request-processing advisories.
 - Added tested Python 3.13 support and bounded package metadata to Python 3.11 through 3.13.
-- Isolated every index build path by corpus, including default all-corpus builds. Current-format
-  filters and rebuild replacement exclude legacy records.
+- Isolated every index build path by corpus, including default all-corpus builds. Chroma rebuilds
+  stage versioned generations, switch all rebuilt corpora through one atomic activation manifest,
+  and serialize publishers so failed or concurrent builds cannot become partially visible.
+- Restricted graph retrieval to parameterized allowlisted Cypher templates. Query text and model
+  output can no longer become executable Cypher.
 
-Indexes built before 0.10.0 must be rebuilt once so corpus metadata and namespaced storage IDs are
-present in Chroma and Neo4j. Graph rebuilds label current KB Arena entities and exclude legacy
-nodes from reads without deleting data. Use a Neo4j database dedicated to KB Arena because schema
-setup removes the legacy KB Arena constraints by name.
+Indexes built before 0.10.0 must be rebuilt once so corpus metadata, generation state, and
+namespaced storage IDs are present in Chroma and Neo4j. Vector reads ignore inactive and legacy
+generations; successful rebuilds prune inactive records only for the rebuilt corpora. Graph
+rebuilds label current KB Arena entities and exclude legacy nodes from reads without deleting data.
+Use a Neo4j database dedicated to KB Arena because schema setup removes the legacy KB Arena
+constraints by name.
 
 ## [0.9.3] - 2026-06-22 - Retrieval ceiling and cost efficiency
 

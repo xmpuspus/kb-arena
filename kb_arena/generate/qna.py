@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 import json
-import logging
 import re
 from collections.abc import Callable
 
 from kb_arena.llm.client import LLMClient
 from kb_arena.models.document import Document, Section
-
-log = logging.getLogger(__name__)
 
 QNA_GENERATION_PROMPT = """You are a technical documentation expert. \
 Generate 3-5 question-answer pairs from this documentation section.
@@ -58,8 +55,22 @@ async def generate_pairs_for_section(
     prompt = QNA_GENERATION_PROMPT.format(heading=heading, content=content[:2000])
     resp = await llm.extract(text=prompt, system_prompt="Return only valid JSON. No prose.")
     pairs = parse_qna_json(resp.text)
+    if not pairs:
+        raise ValueError(f"Q&A generation returned no valid pairs for {doc_id}/{section.id}")
 
     for pair in pairs:
+        if not isinstance(pair, dict):
+            raise ValueError(f"Q&A generation returned a non-object for {doc_id}/{section.id}")
+        question = pair.get("question")
+        answer = pair.get("answer")
+        if not isinstance(question, str) or not question.strip():
+            raise ValueError(
+                f"Q&A generation returned an incomplete pair for {doc_id}/{section.id}"
+            )
+        if not isinstance(answer, str) or not answer.strip():
+            raise ValueError(
+                f"Q&A generation returned an incomplete pair for {doc_id}/{section.id}"
+            )
         pair["source_id"] = doc_id
         pair["section_id"] = section.id
         pair.setdefault("section_ref", heading)
@@ -84,12 +95,8 @@ async def generate_pairs_for_documents(
         for section in doc.sections:
             if not section.content.strip():
                 continue
-            try:
-                pairs = await generate_pairs_for_section(section, doc.id, llm)
-                doc_pairs.extend(pairs)
-            except Exception as exc:
-                log.warning("Failed to generate pairs for %s/%s: %s", doc.id, section.id, exc)
-                continue
+            pairs = await generate_pairs_for_section(section, doc.id, llm)
+            doc_pairs.extend(pairs)
 
         all_pairs.extend(doc_pairs)
         if on_progress:

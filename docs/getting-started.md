@@ -128,12 +128,16 @@ Important settings:
 
 Run `kb-arena health` to inspect corpus state and local service connectivity.
 
-Rebuild vector and graph indexes created before 0.10.0. Current indexes store corpus metadata and
-corpus-namespaced backend IDs so a request cannot retrieve records from another corpus. Vector
-rebuilds remove legacy records from KB Arena collections. Graph rebuilds label current entities and
-exclude legacy nodes from current reads without deleting them. Use a Neo4j database dedicated to
-KB Arena because schema setup removes the legacy KB Arena constraints by name. Rebuild every graph
-corpus you still need after upgrading.
+Rebuild vector and graph indexes created before 0.10.0. Current indexes store corpus metadata,
+generation state, and corpus-namespaced backend IDs so a request cannot retrieve records from
+another corpus. Vector rebuilds stage a complete generation before atomically activating it;
+failed and concurrent rebuilds cannot expose a partial index. Inactive records are pruned only for
+the corpora rebuilt successfully.
+
+Graph rebuilds label current entities and exclude legacy nodes from current reads without deleting
+them. Use a Neo4j database dedicated to KB Arena because
+schema setup removes the legacy KB Arena constraints by name. Rebuild every graph corpus you still
+need after upgrading.
 
 Capped runs launch one query at a time so queued work stops at the boundary. The final in-flight
 query can make recorded cost exceed the cap. Set the cap to `0` to use parallel execution without

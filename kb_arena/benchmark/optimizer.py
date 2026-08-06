@@ -36,6 +36,7 @@ from kb_arena.strategies import load_documents
 CHUNKING_STRATEGIES = frozenset({"naive_vector", "contextual_vector"})
 EMBEDDING_STRATEGIES = frozenset({"naive_vector", "contextual_vector", "rerank_vector"})
 RERANKER_STRATEGIES = frozenset({"rerank_vector"})
+MAX_UNBOUNDED_TRIALS = 10_000
 
 # A change in either of these requires rebuilding the strategy's index;
 # top_k and reranker_backend are query-time only (free to vary).
@@ -175,6 +176,13 @@ def build_trials(
 
     axes = (top_k_axis, chunk_axis, emb_axis, rer_axis)
     total_combinations = math.prod(len(axis) for axis in axes)
+    if max_trials > MAX_UNBOUNDED_TRIALS:
+        raise ValueError(f"max_trials must be {MAX_UNBOUNDED_TRIALS:,} or fewer")
+    if max_trials == 0 and total_combinations > MAX_UNBOUNDED_TRIALS:
+        raise ValueError(
+            f"Search space has {total_combinations:,} trials; set --max-trials "
+            f"to {MAX_UNBOUNDED_TRIALS:,} or fewer."
+        )
     if max_trials == 1:
         return [baseline]
 
@@ -290,7 +298,7 @@ def _bootstrap_ci(
             random_state=0,
         )
         return (float(res.confidence_interval.low), float(res.confidence_interval.high))
-    except Exception:  # noqa: BLE001 - degrade gracefully if scipy is missing
+    except ImportError:  # optional scientific stack is unavailable
         m = fmean(values)
         return (m, m)
 
@@ -514,7 +522,9 @@ class _ApplyOverrides:
         return False
 
 
-async def _score_trial(strategy, cfg, documents, questions, metric, baseline) -> TrialResult:
+async def _score_trial(
+    strategy, cfg, documents, questions, metric, baseline, corpus: str = "all"
+) -> TrialResult:
     """Per-question scores + latencies for one (strategy, config) trial.
 
     Retrieval-only (LLM generation stubbed) so a full sweep stays ~10x cheaper
@@ -543,7 +553,7 @@ async def _score_trial(strategy, cfg, documents, questions, metric, baseline) ->
             latencies: list[float] = []
             for q in questions:
                 try:
-                    trace = await _retrieve_only(inst, q.question, cfg.top_k)
+                    trace = await _retrieve_only(inst, q.question, cfg.top_k, corpus=corpus)
                 except Exception as exc:
                     raise OptimizationTrialError(
                         f"retrieval failed for strategy {strategy!r}, config {cfg}, "
@@ -649,16 +659,20 @@ async def run_optimize(
         return 1
 
     if dry_run:
-        plan = plan_optimize(
-            strategies,
-            top_ks=top_ks,
-            chunk_sizes=chunk_sizes,
-            embedding_providers=embedding_providers,
-            reranker_backends=reranker_backends,
-            method=method,
-            max_trials=max_trials,
-            seed=seed,
-        )
+        try:
+            plan = plan_optimize(
+                strategies,
+                top_ks=top_ks,
+                chunk_sizes=chunk_sizes,
+                embedding_providers=embedding_providers,
+                reranker_backends=reranker_backends,
+                method=method,
+                max_trials=max_trials,
+                seed=seed,
+            )
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/red]")
+            return 1
         t = Table(title=f"optimize plan: {corpus} (metric={metric}, method={method})")
         t.add_column("Strategy", style="bold")
         t.add_column("Trials", justify="right")
@@ -694,22 +708,26 @@ async def run_optimize(
     run_id = uuid4().hex[:8]
     results: dict[str, OptimizeResult] = {}
     for s in strategies:
-        trials = _trials_for(
-            s,
-            top_ks=top_ks,
-            chunk_sizes=chunk_sizes,
-            embedding_providers=embedding_providers,
-            reranker_backends=reranker_backends,
-            method=method,
-            max_trials=max_trials,
-            seed=seed,
-        )
+        try:
+            trials = _trials_for(
+                s,
+                top_ks=top_ks,
+                chunk_sizes=chunk_sizes,
+                embedding_providers=embedding_providers,
+                reranker_backends=reranker_backends,
+                method=method,
+                max_trials=max_trials,
+                seed=seed,
+            )
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/red]")
+            return 1
         trial_results: list[TrialResult] = []
         base = baseline_config(s)
         for cfg in trials:
             start = time.perf_counter()
             try:
-                tr = await _score_trial(s, cfg, documents, questions, metric, base)
+                tr = await _score_trial(s, cfg, documents, questions, metric, base, corpus=corpus)
             except Exception as exc:
                 console.print(f"[red]Optimization aborted[/red] {exc}")
                 console.print("[red]No recommendation report was written.[/red]")

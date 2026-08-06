@@ -79,6 +79,7 @@ def run_ingest(path: str, corpus: str = "custom", format: str = "auto") -> int:
 
     total_docs = 0
     total_sections = 0
+    failed_files: list[Path] = []
 
     published = False
     try:
@@ -98,7 +99,8 @@ def run_ingest(path: str, corpus: str = "custom", format: str = "auto") -> int:
                 parser_cls = PARSERS.get(fmt)
 
                 if parser_cls is None:
-                    log.warning("No parser for format %r, skipping %s", fmt, file)
+                    log.warning("No parser for format %r: %s", fmt, file)
+                    failed_files.append(file)
                     progress.advance(task)
                     continue
 
@@ -107,6 +109,13 @@ def run_ingest(path: str, corpus: str = "custom", format: str = "auto") -> int:
                     docs: list[Document] = parser.parse(file, corpus)
                 except Exception as exc:  # noqa: BLE001
                     log.warning("Failed to parse %s: %s", file, exc)
+                    failed_files.append(file)
+                    progress.advance(task)
+                    continue
+
+                if not docs:
+                    log.warning("Parser returned no documents for %s", file)
+                    failed_files.append(file)
                     progress.advance(task)
                     continue
 
@@ -117,6 +126,13 @@ def run_ingest(path: str, corpus: str = "custom", format: str = "auto") -> int:
                     total_sections += len(doc.sections)
 
                 progress.advance(task)
+
+        if failed_files:
+            console.print(
+                f"[red]Ingestion failed for {len(failed_files)} of {len(files)} files; "
+                "the existing corpus was preserved.[/red]"
+            )
+            raise SystemExit(1)
 
         if total_docs > 0:
             staged_path.replace(out_path)

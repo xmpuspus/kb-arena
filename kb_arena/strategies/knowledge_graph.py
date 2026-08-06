@@ -1,6 +1,6 @@
 """Strategy 4: Knowledge Graph (Neo4j).
 
-Intent → select Cypher template or generate Cypher → execute → assemble context → Sonnet.
+Intent → select an allowlisted Cypher template → execute → assemble context → Sonnet.
 Falls back to mock data with warning when Neo4j is unavailable (Pattern 15).
 Tracks graph_context for Sigma.js visualization.
 """
@@ -11,33 +11,13 @@ import logging
 import re
 import time
 
-from kb_arena.graph.schema import node_type_values, rel_type_values
+from kb_arena.graph.schema import rel_type_values
 from kb_arena.models.document import Document
 from kb_arena.models.graph import GraphContext
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.strategies.base import AnswerResult, Strategy
 
 logger = logging.getLogger(__name__)
-
-# Reject LLM-generated Cypher that contains write operations.
-# Note: this is layer 1; layer 2 is the read-only session below in _run_cypher
-# which the Neo4j driver enforces at the protocol level. APOC procedures with
-# write semantics need an explicit deny because some run inside read-marked sessions.
-_WRITE_CYPHER_RE = re.compile(
-    r"""\b(
-        CREATE | MERGE | SET | DELETE | REMOVE | DROP | DETACH
-      | LOAD\s+CSV
-      | CALL\s+apoc\.(?:
-            schema | create | merge | refactor | delete | remove | set | drop
-          | iterate | periodic\.iterate
-          | cypher\.runWrite | cypher\.doIt
-          | export | load | trigger
-        )
-      | CALL\s+dbms\.security\.
-    )\b""",
-    re.IGNORECASE | re.VERBOSE,
-)
-_OWNED_GRAPH_LABEL_RE = re.compile(r":\s*KBArenaEntity\b", re.IGNORECASE)
 
 # --- Cypher templates (Pattern 6 from PLAN.md) ---
 
@@ -118,37 +98,6 @@ SYSTEM_PROMPT = """You are a documentation assistant with access to a knowledge 
 The context contains entities, relationships, and paths extracted from the graph.
 Answer the question accurately using the graph context provided.
 Be specific about relationships and dependencies. If the graph context is incomplete, say so."""
-
-CYPHER_GEN_PROMPT_TEMPLATE = """\
-You are a Neo4j Cypher expert. The graph contains documentation entities.
-
-Node types: {node_types}
-Relationship types: {rel_types}
-
-Write a Cypher query to answer: {{question}}
-
-Rules:
-- Require the :KBArenaEntity label on every matched node
-- Return only the Cypher query, no explanation
-- Use LIMIT 50 to cap results
-- Always return: name, fqn, type, source_doc_id, source_section_id, and any
-  relevant relationship fields (alias node properties exactly as
-  `source_doc_id` and `source_section_id`)
-- Use $params for parameters (available: $query string)
-"""
-
-
-def _extract_cypher(raw: str) -> str:
-    """Pull Cypher from LLM output that may include prose or markdown."""
-    raw = raw.strip()
-    # Strip markdown fences
-    match = re.search(r"```(?:cypher)?\s*([\s\S]+?)```", raw, re.IGNORECASE)
-    if match:
-        return match.group(1).strip()
-    # Assume the whole response is Cypher if it starts with MATCH/CALL/WITH
-    if re.match(r"^\s*(MATCH|CALL|WITH|RETURN|OPTIONAL)", raw, re.IGNORECASE):
-        return raw
-    return raw
 
 
 def _mock_graph_context() -> GraphContext:
@@ -377,35 +326,12 @@ class KnowledgeGraphStrategy(Strategy):
         return records, cypher
 
     async def _generate_cypher(self, question: str) -> tuple[list[dict], str, float]:
-        """Text-to-Cypher fallback for novel queries. Returns (records, cypher, cost_usd)."""
-        llm = self._get_llm()
-        cypher_gen_prompt = CYPHER_GEN_PROMPT_TEMPLATE.format(
-            node_types=", ".join(node_type_values("")),
-            rel_types=", ".join(rel_type_values("")),
+        """Use the owned-node full-text template for queries without template evidence."""
+        records = await self._run_cypher(
+            FULLTEXT_SEARCH,
+            {"query": question, "corpus": "all"},
         )
-        prompt = cypher_gen_prompt.format(question=question)
-        resp = await llm.extract(text=prompt, system_prompt="Output only Cypher. No prose.")
-        cypher_cost = resp.cost_usd
-        cypher = _extract_cypher(resp.text)
-
-        if _WRITE_CYPHER_RE.search(cypher) or not _OWNED_GRAPH_LABEL_RE.search(cypher):
-            logger.warning("Blocked unsafe or unscoped LLM-generated Cypher: %.200s", cypher)
-            records = await self._run_cypher(
-                FULLTEXT_SEARCH,
-                {"query": question, "corpus": "all"},
-            )
-            return records, FULLTEXT_SEARCH, cypher_cost
-
-        try:
-            records = await self._run_cypher(cypher, {"query": question})
-            return records, cypher, cypher_cost
-        except Exception:
-            # Cypher generation can produce invalid queries — fall through to fulltext
-            records = await self._run_cypher(
-                FULLTEXT_SEARCH,
-                {"query": question, "corpus": "all"},
-            )
-            return records, FULLTEXT_SEARCH, cypher_cost
+        return records, FULLTEXT_SEARCH, 0.0
 
     async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Intent → Cypher template → execute → LLM answer."""

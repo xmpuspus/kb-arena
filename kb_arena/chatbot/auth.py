@@ -99,7 +99,7 @@ def require_auth(
         if not provided or not hmac.compare_digest(provided, expected):
             raise HTTPException(status_code=401, detail="unauthorized")
     else:
-        client_host = request.client.host if request.client else ""
+        client_host = _client_key(request)
         try:
             is_loopback = ipaddress.ip_address(client_host).is_loopback
         except ValueError:

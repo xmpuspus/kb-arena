@@ -37,7 +37,7 @@ def test_initial_elo(arena):
 
 @pytest.mark.asyncio
 async def test_create_match(arena):
-    match = await arena.create_match("What is Lambda?")
+    match = await arena.create_match("What is Lambda?", corpus="alpha")
     assert match.id
     assert match.question == "What is Lambda?"
     assert match.strategy_a in arena.strategies
@@ -46,6 +46,9 @@ async def test_create_match(arena):
     assert match.answer_a
     assert match.answer_b
     assert match.winner is None
+    called = [strategy for strategy in arena.strategies.values() if strategy.query.await_count]
+    assert len(called) == 2
+    assert all(strategy.query.await_args.kwargs["corpus"] == "alpha" for strategy in called)
 
 
 def test_vote_a_wins(arena):

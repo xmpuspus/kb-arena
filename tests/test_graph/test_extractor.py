@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from unittest.mock import AsyncMock
 
@@ -118,6 +119,36 @@ async def test_extract_document_calls_llm_per_section(sample_document):
     # Called once per section in sample_document
     assert mock_llm.extract.call_count == len(sample_document.sections)
     assert isinstance(result, ExtractionResult)
+
+
+@pytest.mark.asyncio
+async def test_extract_document_schedules_at_most_five_sections(sample_document, monkeypatch):
+    from kb_arena.graph import extractor
+
+    active = 0
+    maximum_active = 0
+
+    async def fake_extract(section, corpus, llm, system_prompt):
+        nonlocal active, maximum_active
+        active += 1
+        maximum_active = max(maximum_active, active)
+        await asyncio.sleep(0.005)
+        active -= 1
+        return ExtractionResult(section_id=section.id)
+
+    base_section = sample_document.sections[0]
+    document = sample_document.model_copy(
+        update={
+            "sections": [
+                base_section.model_copy(update={"id": f"section-{index}"}) for index in range(12)
+            ]
+        }
+    )
+    monkeypatch.setattr(extractor, "_extract_section", fake_extract)
+
+    await extractor.extract_document(document, AsyncMock(), "prompt")
+
+    assert maximum_active == 5
 
 
 @pytest.mark.asyncio

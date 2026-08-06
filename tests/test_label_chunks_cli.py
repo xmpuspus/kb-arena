@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from typer.testing import CliRunner
@@ -58,6 +59,29 @@ def test_benchmark_dry_run_does_not_preflight_credentials(monkeypatch):
 
     assert result.exit_code == 0, result.stdout
     assert "Dry run: benchmark" in _clean(result.stdout)
+
+
+@pytest.mark.asyncio
+async def test_label_candidates_are_scoped_to_selected_corpus():
+    from kb_arena.benchmark.expected_chunks import label_one_question
+
+    empty_result = MagicMock()
+    empty_result.retrieval.retrieved = []
+    empty_result.cost_usd = 0.0
+    bm25 = MagicMock()
+    bm25.query = AsyncMock(return_value=empty_result)
+    extra = MagicMock()
+    extra.name = "naive_vector"
+    extra.query = AsyncMock(return_value=empty_result)
+
+    ids, cost = await label_one_question(
+        "question", bm25, AsyncMock(), "alpha", extra_retrievers=[extra]
+    )
+
+    assert ids == []
+    assert cost == 0.0
+    bm25.query.assert_awaited_once_with("question", top_k=20, corpus="alpha")
+    extra.query.assert_awaited_once_with("question", top_k=20, corpus="alpha")
 
 
 @pytest.mark.parametrize("value", ["nan", "inf", "-inf", "-0.1", "1.1"])

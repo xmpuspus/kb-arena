@@ -66,6 +66,21 @@ def test_grid_expansion_is_cartesian_over_applicable_dims():
     assert len(trials) == 2 * 2 * 2  # top_k x chunk x embedding
 
 
+def test_unbounded_search_rejects_oversized_cartesian_product(monkeypatch):
+    from kb_arena.benchmark import optimizer
+
+    monkeypatch.setattr(optimizer, "MAX_UNBOUNDED_TRIALS", 3)
+    with pytest.raises(ValueError, match="Search space has"):
+        build_trials(
+            "naive_vector",
+            top_ks=[1, 2, 3, 4],
+            chunk_sizes=[],
+            embedding_providers=[],
+            reranker_backends=[],
+            baseline=_base("naive_vector"),
+        )
+
+
 def test_baseline_is_always_first_trial():
     trials = build_trials(
         "naive_vector",
@@ -221,3 +236,31 @@ async def test_score_trial_raises_when_index_rebuild_fails(monkeypatch):
 
     with pytest.raises(OptimizationTrialError, match="vector store offline"):
         await _score_trial("naive_vector", cfg, [], [object()], "ndcg", base)
+
+
+@pytest.mark.asyncio
+async def test_score_trial_passes_selected_corpus_to_retrieval(monkeypatch):
+    from types import SimpleNamespace
+
+    from kb_arena import strategies
+    from kb_arena.benchmark import retriever_lab
+    from kb_arena.benchmark.optimizer import _score_trial
+    from kb_arena.models.retrieval import RetrievalTrace
+
+    class FakeStrategy:
+        name = "naive_vector"
+
+    seen_corpora = []
+
+    async def fake_retrieve(strategy, question, top_k, corpus="all"):
+        seen_corpora.append(corpus)
+        return RetrievalTrace(query=question, retrieved=[], top_k=top_k)
+
+    monkeypatch.setattr(strategies, "get_strategy", lambda name: FakeStrategy())
+    monkeypatch.setattr(retriever_lab, "_retrieve_only", fake_retrieve)
+    question = SimpleNamespace(id="q1", question="question", expected_chunks=[], ground_truth=None)
+    base = _base("naive_vector")
+
+    await _score_trial("naive_vector", base, [], [question], "ndcg", base, corpus="alpha")
+
+    assert seen_corpora == ["alpha"]

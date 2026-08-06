@@ -88,6 +88,6 @@ def test_entity_returning_cypher_templates_expose_source_provenance():
         assert "source_doc_id" in tmpl, f"{tmpl_name} missing source_doc_id"
         assert "source_section_id" in tmpl, f"{tmpl_name} missing source_section_id"
 
-    # Text-to-Cypher fallback must instruct the LLM to return provenance too.
-    assert "source_doc_id" in kg.CYPHER_GEN_PROMPT_TEMPLATE
-    assert "source_section_id" in kg.CYPHER_GEN_PROMPT_TEMPLATE
+    # Novel queries fall back to the owned-node template instead of executable LLM output.
+    assert "KBArenaEntity" in kg.FULLTEXT_SEARCH
+    assert "$query" in kg.FULLTEXT_SEARCH

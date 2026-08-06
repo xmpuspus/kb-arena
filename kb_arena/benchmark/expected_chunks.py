@@ -89,6 +89,7 @@ async def label_one_question(
     question_text: str,
     bm25: BM25Strategy,
     llm: LLMClient,
+    corpus: str,
     n_candidates: int = 20,
     extra_retrievers: list | None = None,
 ) -> tuple[list[str], float]:
@@ -99,7 +100,7 @@ async def label_one_question(
     structurally limited to chunks BM25 would surface, which biases IR metrics
     in favour of keyword-overlap strategies.
     """
-    result = await bm25.query(question_text, top_k=n_candidates)
+    result = await bm25.query(question_text, top_k=n_candidates, corpus=corpus)
     candidates: list = (
         list(result.retrieval.retrieved) if result.retrieval and result.retrieval.retrieved else []
     )
@@ -108,7 +109,9 @@ async def label_one_question(
     if extra_retrievers:
         for retriever in extra_retrievers:
             try:
-                extra_result = await retriever.query(question_text, top_k=n_candidates)
+                extra_result = await retriever.query(
+                    question_text, top_k=n_candidates, corpus=corpus
+                )
             except Exception as exc:  # noqa: BLE001 — best-effort extras
                 log.warning("Extra retriever %s failed: %s", retriever.name, exc)
                 continue
@@ -181,7 +184,7 @@ async def label_corpus(corpus: str, force: bool = False, n_candidates: int = 20)
             try:
                 inst = cls(chroma_client=chroma)
                 # Probe — query a trivial string; failure means no index built.
-                await inst.query("kb_arena_index_probe", top_k=1)
+                await inst.query("kb_arena_index_probe", top_k=1, corpus=corpus)
                 extra_retrievers.append(inst)
             except Exception as exc:  # noqa: BLE001 — best-effort
                 log.info(
@@ -231,7 +234,12 @@ async def label_corpus(corpus: str, force: bool = False, n_candidates: int = 20)
             halted = True
             break
         ids, cost = await label_one_question(
-            q.question, bm25, llm, n_candidates, extra_retrievers=extra_retrievers
+            q.question,
+            bm25,
+            llm,
+            corpus,
+            n_candidates,
+            extra_retrievers=extra_retrievers,
         )
         total_cost += cost
         out_dict[q.id] = ids

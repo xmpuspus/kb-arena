@@ -425,9 +425,41 @@ def test_pipeline_preserves_existing_corpus_when_every_parse_fails(tmp_path, mon
     monkeypatch.setattr(settings, "datasets_path", str(tmp_path / "datasets"))
     monkeypatch.setitem(pipeline.PARSERS, "markdown", BrokenParser)
 
-    count = pipeline.run_ingest(str(raw_dir), corpus="test-corpus", format="markdown")
+    with pytest.raises(SystemExit) as exc_info:
+        pipeline.run_ingest(str(raw_dir), corpus="test-corpus", format="markdown")
 
-    assert count == 0
+    assert exc_info.value.code == 1
+    assert out_path.read_text() == original
+    assert list(out_dir.glob(".documents.*.tmp")) == []
+
+
+def test_pipeline_preserves_existing_corpus_when_one_parse_fails(tmp_path, monkeypatch):
+    from kb_arena.ingest import pipeline
+    from kb_arena.settings import settings
+
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "good.md").write_text("# Good\n\nComplete source.")
+    (raw_dir / "broken.md").write_text("# Broken")
+    out_dir = tmp_path / "datasets" / "test-corpus" / "processed"
+    out_dir.mkdir(parents=True)
+    out_path = out_dir / "documents.jsonl"
+    original = '{"id":"existing"}\n'
+    out_path.write_text(original)
+
+    class PartialParser:
+        def parse(self, path, corpus):
+            if path.name == "broken.md":
+                raise OSError("cannot read source")
+            return MarkdownParser().parse(path, corpus)
+
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path / "datasets"))
+    monkeypatch.setitem(pipeline.PARSERS, "markdown", PartialParser)
+
+    with pytest.raises(SystemExit) as exc_info:
+        pipeline.run_ingest(str(raw_dir), corpus="test-corpus", format="markdown")
+
+    assert exc_info.value.code == 1
     assert out_path.read_text() == original
     assert list(out_dir.glob(".documents.*.tmp")) == []
 

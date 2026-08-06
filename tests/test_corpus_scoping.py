@@ -10,7 +10,7 @@ from kb_arena.llm.client import LLMResponse
 from kb_arena.models.document import Document
 from kb_arena.models.retrieval import RetrievalTrace
 from kb_arena.strategies.base import AnswerResult
-from kb_arena.strategies.chroma_index import INDEX_FORMAT_VERSION
+from kb_arena.strategies.chroma_index import INDEX_FORMAT_VERSION, activate_generations
 
 
 def _empty_vector_response() -> dict:
@@ -24,14 +24,14 @@ def _empty_vector_response() -> dict:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "strategy_path",
+    ("strategy_path", "collection_name"),
     [
-        "kb_arena.strategies.naive_vector.NaiveVectorStrategy",
-        "kb_arena.strategies.contextual_vector.ContextualVectorStrategy",
-        "kb_arena.strategies.qna_pairs.QnAPairStrategy",
+        ("kb_arena.strategies.naive_vector.NaiveVectorStrategy", "naive_vector"),
+        ("kb_arena.strategies.contextual_vector.ContextualVectorStrategy", "contextual_vector"),
+        ("kb_arena.strategies.qna_pairs.QnAPairStrategy", "qna_pairs"),
     ],
 )
-async def test_chroma_strategies_filter_selected_corpus(strategy_path):
+async def test_chroma_strategies_filter_selected_corpus(strategy_path, collection_name):
     from importlib import import_module
 
     module_name, class_name = strategy_path.rsplit(".", 1)
@@ -42,11 +42,16 @@ async def test_chroma_strategies_filter_selected_corpus(strategy_path):
     strategy._collection = collection
     strategy._llm = AsyncMock()
     strategy._llm.generate.return_value = LLMResponse(text="")
+    activate_generations({collection_name: {"nist": "generation-nist"}})
 
     await strategy.query("question", corpus="nist")
 
     assert collection.query.call_args.kwargs["where"] == {
-        "$and": [{"index_version": INDEX_FORMAT_VERSION}, {"corpus": "nist"}]
+        "$and": [
+            {"index_version": INDEX_FORMAT_VERSION},
+            {"corpus": "nist"},
+            {"generation": "generation-nist"},
+        ]
     }
 
 
@@ -96,13 +101,20 @@ async def test_raptor_filters_each_tree_level_by_corpus():
     collection.query.return_value = _empty_vector_response()
     strategy = RaptorStrategy(chroma_client=MagicMock())
     strategy._get_collection = MagicMock(return_value=collection)
+    activate_generations({f"raptor_l{level}": {"nist": "generation-nist"} for level in range(3)})
 
     await strategy.query("question", corpus="nist")
 
     assert collection.query.call_count == 3
     assert all(
         call.kwargs["where"]
-        == {"$and": [{"index_version": INDEX_FORMAT_VERSION}, {"corpus": "nist"}]}
+        == {
+            "$and": [
+                {"index_version": INDEX_FORMAT_VERSION},
+                {"corpus": "nist"},
+                {"generation": "generation-nist"},
+            ]
+        }
         for call in collection.query.call_args_list
     )
 
@@ -165,7 +177,7 @@ async def test_graph_template_receives_selected_corpus():
 
 
 @pytest.mark.asyncio
-async def test_unscoped_generated_cypher_falls_back_to_owned_fulltext_query():
+async def test_novel_graph_query_uses_owned_fulltext_without_generated_cypher():
     from kb_arena.strategies.knowledge_graph import FULLTEXT_SEARCH, KnowledgeGraphStrategy
 
     strategy = KnowledgeGraphStrategy(neo4j_driver=MagicMock())
@@ -177,6 +189,7 @@ async def test_unscoped_generated_cypher_falls_back_to_owned_fulltext_query():
 
     assert records == []
     assert cypher == FULLTEXT_SEARCH
+    strategy._llm.extract.assert_not_awaited()
     strategy._run_cypher.assert_awaited_once_with(
         FULLTEXT_SEARCH,
         {"query": "question", "corpus": "all"},

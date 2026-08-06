@@ -18,9 +18,10 @@ from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy
 from kb_arena.strategies.chroma_index import (
-    finalize_collection_build,
-    index_metadata,
+    index_build_lock,
     index_where,
+    new_generation,
+    publish_collection_build,
 )
 from kb_arena.strategies.embeddings import get_embedding_function
 
@@ -82,16 +83,18 @@ class QnAPairStrategy(Strategy):
 
         sem = asyncio.Semaphore(5)
 
-        async def _safe_generate(section, doc_id):
+        async def _bounded_generate(section, doc_id):
             async with sem:
-                try:
-                    return await self._generate_pairs(section, doc_id)
-                except Exception:
-                    return []
+                pairs = await self._generate_pairs(section, doc_id)
+                if not pairs:
+                    raise RuntimeError(
+                        f"Q&A generation returned no pairs for {doc_id}/{section.id}"
+                    )
+                return pairs
 
         for doc in documents:
             sections = [s for s in doc.sections if s.content.strip()]
-            results = await asyncio.gather(*[_safe_generate(s, doc.id) for s in sections])
+            results = await asyncio.gather(*[_bounded_generate(s, doc.id) for s in sections])
             for section, pairs in zip(sections, results):
                 for pair in pairs:
                     q = pair.get("question", "").strip()
@@ -111,19 +114,23 @@ class QnAPairStrategy(Strategy):
                             "chunk_id": f"qna:{pair_id}",
                             "section_id": section.id,
                             "section_ref": pair.get("section_ref", ""),
-                            **index_metadata(),
                         }
                     )
 
-        if ids:
-            batch = 500
-            for start in range(0, len(ids), batch):
-                collection.upsert(
-                    ids=ids[start : start + batch],
-                    documents=questions[start : start + batch],
-                    metadatas=metadatas[start : start + batch],
-                )
-        finalize_collection_build(collection, (doc.corpus for doc in documents), ids)
+        corpora = list(dict.fromkeys(doc.corpus for doc in documents))
+        if not corpora:
+            return
+        generation = new_generation()
+        async with index_build_lock():
+            publish_collection_build(
+                collection,
+                COLLECTION_NAME,
+                corpora,
+                generation,
+                ids,
+                questions,
+                metadatas,
+            )
 
     async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         """Match question embedding → retrieve pre-generated answer.
@@ -139,7 +146,7 @@ class QnAPairStrategy(Strategy):
             "n_results": top_k,
             "include": ["documents", "metadatas", "distances"],
         }
-        query_kwargs["where"] = index_where(corpus)
+        query_kwargs["where"] = index_where(COLLECTION_NAME, corpus)
         results = collection.query(**query_kwargs)
         metas = results["metadatas"][0] if results["metadatas"] else []
         matched_questions = results["documents"][0] if results["documents"] else []

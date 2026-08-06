@@ -225,6 +225,33 @@ async def test_qna_query_empty_collection(mock_chroma_client, mock_llm_client):
     assert "No relevant" in result.answer
 
 
+@pytest.mark.asyncio
+async def test_qna_build_preserves_active_index_when_generation_fails(
+    mock_chroma_client, sample_document
+):
+    strategy = QnAPairStrategy(chroma_client=mock_chroma_client)
+    strategy._generate_pairs = AsyncMock(side_effect=ConnectionError("provider offline"))
+
+    with pytest.raises(ConnectionError, match="provider offline"):
+        await strategy.build_index([sample_document])
+
+    collection = mock_chroma_client.get_or_create_collection.return_value
+    collection.upsert.assert_not_called()
+    collection.delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_qna_build_rejects_empty_section_generation(mock_chroma_client, sample_document):
+    strategy = QnAPairStrategy(chroma_client=mock_chroma_client)
+    strategy._generate_pairs = AsyncMock(return_value=[])
+
+    with pytest.raises(RuntimeError, match="returned no pairs"):
+        await strategy.build_index([sample_document])
+
+    collection = mock_chroma_client.get_or_create_collection.return_value
+    collection.upsert.assert_not_called()
+
+
 # --- KnowledgeGraphStrategy ---
 
 
@@ -418,6 +445,21 @@ async def test_raptor_query_empty_collection(mock_chroma_client, mock_llm_client
 
     result = await strategy.query("What is Lambda?")
     assert "build-vectors" in result.answer or "No indexed" in result.answer
+
+
+@pytest.mark.asyncio
+async def test_raptor_query_surfaces_chroma_failure(mock_chroma_client, mock_llm_client):
+    collection = mock_chroma_client.get_or_create_collection.return_value
+    collection.count.return_value = 1
+    collection.query.side_effect = ConnectionError("chroma offline")
+
+    from kb_arena.strategies.raptor import RaptorStrategy
+
+    strategy = RaptorStrategy(chroma_client=mock_chroma_client)
+    strategy._llm = mock_llm_client
+
+    with pytest.raises(ConnectionError, match="chroma offline"):
+        await strategy.query("What is Lambda?")
 
 
 def test_cosine_kmeans_basic():

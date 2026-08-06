@@ -170,7 +170,10 @@ async def extract_document(
         async with _EXTRACTION_SEMAPHORE:
             return await _extract_section(section, doc.corpus, llm, system_prompt)
 
-    results = await asyncio.gather(*[_bounded(s) for s in doc.sections])
+    results: list[ExtractionResult] = []
+    for start in range(0, len(doc.sections), 5):
+        batch = [_bounded(section) for section in doc.sections[start : start + 5]]
+        results.extend(await asyncio.gather(*batch))
 
     for result in results:
         all_entities.extend(result.entities)

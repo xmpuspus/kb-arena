@@ -73,6 +73,18 @@ def test_constant_bootstrap_ci_does_not_import_optional_dependencies(monkeypatch
     assert _bootstrap_ci([0.55] * 30) == (0.55, 0.55)
 
 
+def test_bootstrap_runtime_failure_is_not_reported_as_zero_uncertainty(monkeypatch):
+    import scipy.stats
+
+    def fail_bootstrap(*args, **kwargs):
+        raise OSError("worker failed")
+
+    monkeypatch.setattr(scipy.stats, "bootstrap", fail_bootstrap)
+
+    with pytest.raises(OSError, match="worker failed"):
+        _bootstrap_ci([0.0, 1.0])
+
+
 def test_summarize_wilcoxon_significant_when_clear_lift():
     base = _cfg("bm25")
     baseline = _trial("bm25", 5, [0.30 + 0.01 * i for i in range(30)], [10.0] * 30)

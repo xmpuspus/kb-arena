@@ -25,7 +25,7 @@ def patched(monkeypatch, tmp_path):
     monkeypatch.setattr(opt, "load_questions", lambda corpus: [_Q(1), _Q(2)])
 
     # Score: top_k=10 is best for naive_vector, baseline (top_k=5) mid, top_k=3 worst.
-    async def fake_score(strategy, cfg, documents, questions, metric, baseline):
+    async def fake_score(strategy, cfg, documents, questions, metric, baseline, corpus="all"):
         from kb_arena.benchmark.optimizer import TrialResult
 
         table = {3: 0.20, 5: 0.40, 10: 0.62}

@@ -9,13 +9,15 @@ from fastapi import HTTPException
 from starlette.requests import Request
 
 
-def _request(client_ip: str) -> Request:
+def _request(client_ip: str, headers: dict[str, str] | None = None) -> Request:
     return Request(
         {
             "type": "http",
             "method": "POST",
             "path": "/chat",
-            "headers": [],
+            "headers": [
+                (name.lower().encode(), value.encode()) for name, value in (headers or {}).items()
+            ],
             "client": (client_ip, 12345),
             "server": ("testserver", 80),
             "scheme": "http",
@@ -110,6 +112,22 @@ def test_open_mode_rejects_remote_requests(monkeypatch):
 
     with pytest.raises(HTTPException) as exc_info:
         auth.require_auth(_request("192.0.2.10"))
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "api_token_required_for_remote_access"
+
+
+def test_open_mode_rejects_remote_client_forwarded_by_loopback_proxy(monkeypatch):
+    from kb_arena.chatbot import auth
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(settings, "api_token", "")
+    monkeypatch.setattr(settings, "demo_mode", False)
+    monkeypatch.setattr(settings, "trusted_proxy_header", "X-Forwarded-For")
+    request = _request("127.0.0.1", {"X-Forwarded-For": "192.0.2.10"})
+
+    with pytest.raises(HTTPException) as exc_info:
+        auth.require_auth(request)
 
     assert exc_info.value.status_code == 401
     assert exc_info.value.detail == "api_token_required_for_remote_access"
