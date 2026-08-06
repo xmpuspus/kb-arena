@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/auth";
+import { CORPORA, fetchCorpora } from "@/lib/api";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -94,6 +95,8 @@ export default function ArenaPage() {
   const [voting, setVoting] = useState(false);
   const [totalVotes, setTotalVotes] = useState(0);
   const [error, setError] = useState("");
+  const [corpus, setCorpus] = useState("all");
+  const [corpora, setCorpora] = useState(CORPORA);
 
   async function fetchLeaderboard() {
     try {
@@ -116,7 +119,7 @@ export default function ArenaPage() {
       const res = await apiFetch(`${API}/api/arena/match`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: question.trim() }),
+        body: JSON.stringify({ question: question.trim(), corpus }),
       });
       const data: unknown = await res.json();
       if (!res.ok) throw new Error(errorMessage(data, "Failed to create match"));
@@ -154,6 +157,7 @@ export default function ArenaPage() {
   // Fetch leaderboard on mount
   useEffect(() => {
     fetchLeaderboard();
+    fetchCorpora().then(setCorpora);
   }, []);
 
   return (
@@ -175,6 +179,21 @@ export default function ArenaPage() {
 
       {/* Question Input */}
       <div className="space-y-3 max-w-2xl mx-auto">
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-medium" style={{ color: "var(--muted)" }}>Corpus</label>
+          <select
+            value={corpus}
+            onChange={(e) => setCorpus(e.target.value)}
+            className="px-3 py-1.5 rounded-lg border text-sm"
+            style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
+            disabled={loading}
+          >
+            <option value="all">All corpora</option>
+            {corpora.map((c) => (
+              <option key={c.value} value={c.value}>{c.label}</option>
+            ))}
+          </select>
+        </div>
         <div className="flex gap-2">
           <input
             type="text"

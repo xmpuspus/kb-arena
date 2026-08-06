@@ -433,6 +433,19 @@ async def test_generate_fixes_empty(mock_llm_client):
 # ── qa-pairs endpoint ──
 
 
+def test_generate_request_rejects_the_all_corpora_sentinel():
+    """Generation writes one corpus, so "all" would publish into a phantom corpus."""
+    import pytest as _pytest
+
+    from kb_arena.chatbot.tools_api import AuditRequest, GenerateRequest
+
+    with _pytest.raises(ValueError, match="all"):
+        GenerateRequest(corpus="all")
+
+    # The read-only audit path may still span every corpus.
+    assert AuditRequest(corpus="all").corpus == "all"
+
+
 async def test_generate_qa_load_failure_preserves_previous_pairs():
     from unittest.mock import MagicMock
 

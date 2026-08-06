@@ -17,6 +17,7 @@ def mock_strategies():
         result.latency_ms = 500.0
         result.cost_usd = 0.01
         result.sources = ["doc1.md"]
+        result.mock = False  # AnswerResult.mock defaults to False; MagicMock would be truthy.
         strat.query = AsyncMock(return_value=result)
         strategies[name] = strat
     return strategies
@@ -49,6 +50,33 @@ async def test_create_match(arena):
     called = [strategy for strategy in arena.strategies.values() if strategy.query.await_count]
     assert len(called) == 2
     assert all(strategy.query.await_args.kwargs["corpus"] == "alpha" for strategy in called)
+
+
+@pytest.mark.asyncio
+async def test_create_match_rejects_mock_backed_strategies(arena):
+    """A mock answer records an outage, so it must never reach a rated match."""
+    from kb_arena.exceptions import ArenaError
+
+    for name, strategy in arena.strategies.items():
+        result = MagicMock()
+        result.answer = f"Answer from {name}"
+        result.latency_ms = 500.0
+        result.cost_usd = 0.01
+        result.sources = ["doc1.md"]
+        result.mock = name == "knowledge_graph"
+        strategy.query = AsyncMock(return_value=result)
+
+    # knowledge_graph is one of three, so repeated draws select it eventually.
+    seen_mock_pairing = False
+    for _ in range(60):
+        try:
+            match = await arena.create_match("What is Lambda?", corpus="alpha")
+        except ArenaError:
+            seen_mock_pairing = True
+            continue
+        assert "knowledge_graph" not in (match.strategy_a, match.strategy_b)
+
+    assert seen_mock_pairing, "knowledge_graph was never drawn; the test proved nothing"
 
 
 def test_vote_a_wins(arena):

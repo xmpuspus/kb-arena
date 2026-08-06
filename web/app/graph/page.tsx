@@ -184,9 +184,16 @@ export default function GraphPage() {
 
   useEffect(() => {
     let active = true;
+    // A live build advances the epoch. Without this check, a slow first response
+    // lands after the build finishes and overwrites the graph it just produced.
+    const fetchEpoch = buildEpochRef.current;
     setLoading(true);
     fetchGraphData(corpus).then((data) => {
       if (!active) return;
+      if (buildEpochRef.current !== fetchEpoch) {
+        setLoading(false);
+        return;
+      }
       setConnected(data.connected);
       if (data.connected) {
         setNodes(apiToGraphNodes(data.nodes));

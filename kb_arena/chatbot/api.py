@@ -28,6 +28,7 @@ from kb_arena.arena.engine import ArenaEngine
 from kb_arena.chatbot.auth import require_auth
 from kb_arena.chatbot.session import SessionStore
 from kb_arena.chatbot.tools_api import router as tools_router
+from kb_arena.exceptions import ArenaError
 from kb_arena.models.api import (
     ArenaMatchRequest,
     ArenaVoteRequest,
@@ -116,6 +117,20 @@ def _check_rate_limit(client_ip: str) -> bool:
     audit tests, even though the production store is a deque.
     """
     return _auth_module._consume_rate_limit(client_ip)
+
+
+def _build_arena(strategies: dict) -> ArenaEngine | None:
+    """Build the arena, and leave a diagnosable record when it cannot be built.
+
+    A missing arena and a broken arena both end as None here, because neither should
+    stop the rest of the API from serving. Only the log tells them apart, so the
+    exception has to reach it.
+    """
+    try:
+        return ArenaEngine(strategies)
+    except Exception:
+        logger.exception("Arena engine failed to initialize; arena endpoints return 503")
+        return None
 
 
 @asynccontextmanager
@@ -251,11 +266,7 @@ async def lifespan(app: FastAPI):
 
         app.state.strategies["sqr"] = SQRStrategy(chroma_client=chroma, llm_client=llm)
 
-    # Arena engine
-    try:
-        app.state.arena = ArenaEngine(app.state.strategies)
-    except Exception:
-        app.state.arena = None
+    app.state.arena = _build_arena(app.state.strategies)
 
     # Periodic session cleanup task
     async def _cleanup_sessions():
@@ -853,6 +864,13 @@ async def arena_create_match(body: ArenaMatchRequest, request: Request):
             "sources_a": match.sources_a,
             "sources_b": match.sources_b,
         }
+    except ArenaError as exc:
+        # A strategy answered from mock data, so rating the match would record an
+        # outage in the leaderboard. That is unavailability, not a server fault.
+        return JSONResponse(
+            {"error": {"code": "strategy_unavailable", "message": str(exc)}},
+            503,
+        )
     except Exception as exc:
         return JSONResponse(
             {

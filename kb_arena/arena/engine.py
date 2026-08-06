@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
 
+from kb_arena.exceptions import ArenaError
 from kb_arena.settings import settings
 
 log = logging.getLogger(__name__)
@@ -129,6 +130,16 @@ class ArenaEngine:
             self.strategies[a_name].query(question, corpus=selected_corpus),
             self.strategies[b_name].query(question, corpus=selected_corpus),
         )
+
+        # A mock answer reports an outage, not a retrieval design. Rating it would
+        # write an infrastructure failure into the persistent leaderboard.
+        mocked = [
+            name
+            for name, result in ((a_name, result_a), (b_name, result_b))
+            if getattr(result, "mock", False)
+        ]
+        if mocked:
+            raise ArenaError(f"Strategy unavailable, so the match cannot be rated: {mocked}")
 
         match = Match(
             id=uuid4().hex[:8],

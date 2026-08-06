@@ -272,6 +272,43 @@ def test_arena_match_passes_selected_corpus(app_client):
     arena.create_match.assert_awaited_once_with("What is the control?", corpus="nist")
 
 
+def test_arena_startup_failure_is_logged_not_silently_swallowed(monkeypatch, caplog):
+    """A broken arena must leave a diagnosable record, not look like a disabled feature."""
+    import logging
+
+    import kb_arena.chatbot.api as api_module
+
+    def _explode(_strategies):
+        raise RuntimeError("corrupt arena state")
+
+    monkeypatch.setattr(api_module, "ArenaEngine", _explode)
+
+    with caplog.at_level(logging.ERROR, logger="kb_arena.chatbot.api"):
+        state = api_module._build_arena({"a": object(), "b": object()})
+
+    assert state is None
+    assert "corrupt arena state" in caplog.text
+
+
+def test_arena_match_reports_unavailable_strategy_as_503(app_client):
+    """An unrateable match is an outage, not a server fault, so it must not be a 500."""
+    from kb_arena.exceptions import ArenaError
+
+    arena = MagicMock()
+    arena.create_match = AsyncMock(
+        side_effect=ArenaError("Strategy unavailable, so the match cannot be rated: ['a']")
+    )
+    app_client.app.state.arena = arena
+
+    response = app_client.post(
+        "/api/arena/match",
+        json={"question": "What is the control?", "corpus": "nist"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "strategy_unavailable"
+
+
 def test_arena_match_redacts_internal_error_without_debug(app_client, monkeypatch):
     from kb_arena.settings import settings
 
