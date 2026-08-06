@@ -22,6 +22,8 @@ All notable changes to KB Arena.
 - Upgraded the static frontend to Next.js 16.3.0, Node.js 20.9+, and ESLint 9 flat configuration.
 - Backfilled release history from 0.7.0 through 0.9.3 and refreshed citation, package, security, and
   archive metadata.
+- Added the optional `rerank` dependency group for the local BGE cross-encoder and removed
+  `rerank_vector` from the core default benchmark.
 
 ### Fixed
 - Made `kb-arena run` ingest populated corpus `raw/` directories automatically and continue after
@@ -50,6 +52,8 @@ All notable changes to KB Arena.
   response, or input file fails. Standalone QnA output now publishes atomically.
 - Stopped retrieval execution failures from becoming valid zero-score observations or optimizer
   recommendations, and made concurrent rate-limit consumption atomic.
+- Made reranker backend failures explicit instead of reporting base-vector ordering as successful
+  reranker evidence.
 - Surfaced RAPTOR backend failures instead of reporting them as valid empty retrieval, bounded
   graph extraction scheduling and unbounded optimizer plans, and kept optimizer, arena, and label
   retrieval within the selected corpus.
@@ -83,14 +87,17 @@ All notable changes to KB Arena.
 - Restricted graph retrieval to parameterized allowlisted Cypher templates. Query text and model
   output can no longer become executable Cypher.
 - Packaged the Neo4j schema with the Python distribution and load it independently of the caller's
-  working directory. Missing schema resources now fail explicitly instead of silently skipping DDL.
+  working directory. Missing schema resources now fail explicitly instead of silently skipping
+  DDL, and ordinary graph builds never drop legacy constraints.
 
 Indexes built before 0.10.0 must be rebuilt once so corpus metadata, generation state, and
 namespaced storage IDs are present in Chroma and Neo4j. Vector reads ignore inactive and legacy
 generations. Successful rebuilds prune inactive records only for the rebuilt corpora. Graph
 rebuilds label current KB Arena entities and exclude legacy nodes from reads without deleting data.
-Use a Neo4j database dedicated to KB Arena because schema setup removes the legacy KB Arena
-constraints by name.
+Use a Neo4j database dedicated to KB Arena. Before rebuilding a pre-0.10 graph, run
+`kb-arena migrate-graph-schema --database <name> --confirm-dedicated-database`; ordinary graph
+builds refuse the migration instead of dropping legacy constraints implicitly. Set
+`KB_ARENA_NEO4J_DATABASE` to the same database name for later graph reads and writes.
 
 ## [0.9.3] - 2026-06-22 - Retrieval ceiling and cost efficiency
 

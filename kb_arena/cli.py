@@ -238,6 +238,41 @@ def build_graph(
 
 
 @app.command()
+def migrate_graph_schema(
+    database: str = typer.Option(
+        ...,
+        "--database",
+        help="Exact Neo4j database to migrate; also set KB_ARENA_NEO4J_DATABASE to this value.",
+    ),
+    confirm_dedicated_database: bool = typer.Option(
+        False,
+        "--confirm-dedicated-database",
+        help="Confirm that the target Neo4j database is dedicated to KB Arena.",
+    ),
+):
+    """Replace pre-0.10 graph constraints after explicit operator confirmation."""
+    import asyncio
+
+    if not database.strip():
+        console.print("[red]Migration not run. --database must not be empty.[/red]")
+        raise typer.Exit(1)
+    if not confirm_dedicated_database:
+        console.print(
+            "[red]Migration not run. Use a Neo4j database dedicated to KB Arena, "
+            "then pass --confirm-dedicated-database.[/red]"
+        )
+        raise typer.Exit(1)
+
+    from kb_arena.graph.extractor import migrate_legacy_graph_schema
+
+    dropped = asyncio.run(migrate_legacy_graph_schema(database.strip()))
+    if dropped:
+        console.print(f"[green]Migrated graph schema.[/green] Dropped: {', '.join(dropped)}")
+    else:
+        console.print("[green]Graph schema is current.[/green] No legacy constraints found.")
+
+
+@app.command()
 def build_vectors(
     corpus: str = typer.Option(..., help="Corpus to build vectors for"),
     strategy: str = typer.Option(
@@ -711,13 +746,14 @@ def run(
     if not skip_graph:
         from neo4j.exceptions import ServiceUnavailable
 
+        from kb_arena.exceptions import GraphError
         from kb_arena.graph.extractor import run_extraction
 
         def _graph() -> bool | None:
             nonlocal graph_available
             try:
                 asyncio.run(run_extraction(corpus=corpus))
-            except (OSError, ConnectionError, ServiceUnavailable) as exc:
+            except (GraphError, OSError, ConnectionError, ServiceUnavailable) as exc:
                 graph_available = False
                 console.print(
                     f"[yellow]build-graph failed: {exc}\n"
@@ -1003,6 +1039,7 @@ def health(
     has_openai = bool(settings.openai_api_key)
 
     async def check_neo4j():
+        driver = None
         try:
             import neo4j
 
@@ -1010,11 +1047,15 @@ def health(
                 settings.neo4j_uri,
                 auth=(settings.neo4j_user, settings.neo4j_password),
             )
-            await driver.verify_connectivity()
-            await driver.close()
+            async with driver.session(database=settings.neo4j_database) as session:
+                result = await session.run("RETURN 1")
+                await result.consume()
             return True
         except Exception:
             return False
+        finally:
+            if driver is not None:
+                await driver.close()
 
     neo4j_ok = asyncio.run(check_neo4j())
 

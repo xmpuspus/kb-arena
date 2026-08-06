@@ -19,16 +19,14 @@ between "naive_vector" and "naive_vector + BGE rerank".
 
 from __future__ import annotations
 
-import logging
 import time
 from typing import Any
 
+from kb_arena.exceptions import RerankerError
 from kb_arena.models.document import Document
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
-from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.strategies.base import MAX_RETRIEVAL_CANDIDATES, AnswerResult, Strategy
 from kb_arena.strategies.naive_vector import NaiveVectorStrategy
-
-logger = logging.getLogger(__name__)
 
 RERANK_FANOUT = 4  # retrieve top_k * 4, rerank, keep top_k
 
@@ -137,8 +135,13 @@ class RerankVectorStrategy(Strategy):
 
     async def query(self, question: str, top_k: int = 5, corpus: str = "all") -> AnswerResult:
         start = self._start_timer()
+        if not 1 <= top_k <= MAX_RETRIEVAL_CANDIDATES:
+            raise ValueError(f"top_k must be between 1 and {MAX_RETRIEVAL_CANDIDATES}")
         # Retrieve a wider pool first.
-        candidate_k = max(top_k * RERANK_FANOUT, top_k + 5)
+        candidate_k = min(
+            max(top_k * RERANK_FANOUT, top_k + 5),
+            MAX_RETRIEVAL_CANDIDATES,
+        )
 
         retrieve_t0 = time.perf_counter()
         candidate = await self._base.query(
@@ -158,9 +161,8 @@ class RerankVectorStrategy(Strategy):
         passages = [c.content or "" for c in chunks]
         try:
             scores = self._get_reranker().score(question, passages)
-        except Exception as exc:  # noqa: BLE001 — fall back to base ordering on backend failure
-            logger.warning("Reranker failed (%s) — using base ordering", exc)
-            scores = [c.score for c in chunks]
+        except Exception as exc:
+            raise RerankerError(f"Reranker backend failed: {exc}") from exc
 
         ranked: list[tuple[float, RetrievedChunk]] = sorted(
             zip(scores, chunks, strict=True), key=lambda x: x[0], reverse=True

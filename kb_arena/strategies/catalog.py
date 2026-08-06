@@ -6,6 +6,8 @@ import importlib.util
 from collections.abc import Collection
 from dataclasses import asdict, dataclass
 
+from kb_arena.settings import settings
+
 
 @dataclass(frozen=True, slots=True)
 class StrategySpec:
@@ -30,7 +32,14 @@ STRATEGY_CATALOG: tuple[StrategySpec, ...] = (
     StrategySpec("raptor", "RAPTOR", "hierarchical"),
     StrategySpec("pageindex", "PageIndex", "hierarchical"),
     StrategySpec("bm25", "BM25", "lexical"),
-    StrategySpec("rerank_vector", "Rerank Vector", "reranked dense"),
+    StrategySpec(
+        "rerank_vector",
+        "Rerank Vector",
+        "reranked dense",
+        default_benchmark=False,
+        optional_extra="rerank",
+        required_modules=("sentence_transformers",),
+    ),
     StrategySpec("qiss", "QISS", "quantum-inspired", experimental=True),
     StrategySpec(
         "sqr",
@@ -49,9 +58,33 @@ def default_strategy_names() -> tuple[str, ...]:
     return tuple(spec.name for spec in STRATEGY_CATALOG if spec.default_benchmark)
 
 
+def runtime_required_modules(spec: StrategySpec) -> tuple[str, ...]:
+    """Return dependencies for the selected runtime backend."""
+    if spec.name == "rerank_vector":
+        return {
+            "bge": ("sentence_transformers",),
+            "cohere": ("cohere",),
+            "voyage": ("voyageai",),
+        }[settings.reranker_backend]
+    return spec.required_modules
+
+
+def optional_install_command(spec: StrategySpec) -> str:
+    """Return the install command for an unavailable optional strategy."""
+    if spec.name == "rerank_vector":
+        return {
+            "bge": "pip install 'kb-arena[rerank]'",
+            "cohere": "pip install cohere",
+            "voyage": "pip install voyageai",
+        }[settings.reranker_backend]
+    return f"pip install 'kb-arena[{spec.optional_extra}]'"
+
+
 def missing_optional_modules(spec: StrategySpec) -> tuple[str, ...]:
     """Return optional modules that are unavailable in this interpreter."""
-    return tuple(name for name in spec.required_modules if importlib.util.find_spec(name) is None)
+    return tuple(
+        name for name in runtime_required_modules(spec) if importlib.util.find_spec(name) is None
+    )
 
 
 def public_catalog(loaded_names: Collection[str]) -> list[dict]:
@@ -60,6 +93,7 @@ def public_catalog(loaded_names: Collection[str]) -> list[dict]:
     records: list[dict] = []
     for spec in STRATEGY_CATALOG:
         record = asdict(spec)
+        record["required_modules"] = runtime_required_modules(spec)
         missing = missing_optional_modules(spec)
         if spec.name in loaded:
             record.update(status="loaded", unavailable_reason=None)
@@ -67,7 +101,7 @@ def public_catalog(loaded_names: Collection[str]) -> list[dict]:
             record.update(
                 status="unavailable",
                 unavailable_reason=(
-                    f"Install kb-arena[{spec.optional_extra}] to add " f"{', '.join(missing)}."
+                    f"Run {optional_install_command(spec)} to add {', '.join(missing)}."
                 ),
             )
         elif not spec.api_supported:

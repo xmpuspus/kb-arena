@@ -133,6 +133,21 @@ def test_open_mode_rejects_remote_client_forwarded_by_loopback_proxy(monkeypatch
     assert exc_info.value.detail == "api_token_required_for_remote_access"
 
 
+def test_open_mode_rejects_loopback_proxy_without_client_header(monkeypatch):
+    from kb_arena.chatbot import auth
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(settings, "api_token", "")
+    monkeypatch.setattr(settings, "demo_mode", False)
+    monkeypatch.setattr(settings, "trusted_proxy_header", "X-Forwarded-For")
+
+    with pytest.raises(HTTPException) as exc_info:
+        auth.require_auth(_request("127.0.0.1"))
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "api_token_required_for_remote_access"
+
+
 def test_open_mode_rejects_spoofed_loopback_header_from_remote_peer(monkeypatch):
     from kb_arena.chatbot import auth
     from kb_arena.settings import settings

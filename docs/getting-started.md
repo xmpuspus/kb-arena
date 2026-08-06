@@ -104,10 +104,13 @@ kb-arena benchmark --corpus my-docs --top-k 5
 kb-arena report --corpus my-docs --format markdown
 ```
 
-The default benchmark runs the core strategy set. Run optional SQR explicitly after installing its
-dependencies:
+The default benchmark runs the core strategy set. Install the optional dependencies, then run
+cross-encoder or SQR comparisons explicitly.
 
 ```bash
+pip install 'kb-arena[rerank]'
+kb-arena benchmark --corpus my-docs --strategy rerank_vector
+
 pip install 'kb-arena[quantum]'
 kb-arena benchmark --corpus my-docs --strategy sqr
 ```
@@ -122,6 +125,7 @@ Important settings:
 | `KB_ARENA_BENCHMARK_MAX_CONCURRENT` | `5` | Limits concurrent benchmark queries |
 | `KB_ARENA_BENCHMARK_QUERY_TIMEOUT_S` | `120` | Limits each strategy query |
 | `KB_ARENA_BENCHMARK_MAX_RETRIES` | `2` | Retries transient failures |
+| `KB_ARENA_NEO4J_DATABASE` | `neo4j` | Selects the database for every graph read and write |
 | `KB_ARENA_CHROMA_PATH` | `./chroma_data` | Stores local vector indexes |
 | `KB_ARENA_DATASETS_PATH` | `./datasets` | Stores corpus inputs and questions |
 | `KB_ARENA_RESULTS_PATH` | `./results` | Stores benchmark artifacts |
@@ -135,9 +139,20 @@ failed and concurrent rebuilds cannot expose a partial index. Inactive records a
 the corpora rebuilt successfully.
 
 Graph rebuilds label current entities and exclude legacy nodes from current reads without deleting
-them. Use a Neo4j database dedicated to KB Arena because
-schema setup removes the legacy KB Arena constraints by name. Rebuild every graph corpus you still
-need after upgrading.
+them. Ordinary builds do not alter legacy constraints. Before rebuilding a pre-0.10 graph, point
+KB Arena at a dedicated Neo4j database, take a backup, and explicitly migrate its schema. The
+database named in the command must match `KB_ARENA_NEO4J_DATABASE` used for later builds.
+
+```bash
+export KB_ARENA_NEO4J_DATABASE=neo4j
+kb-arena migrate-graph-schema \
+  --database "$KB_ARENA_NEO4J_DATABASE" \
+  --confirm-dedicated-database
+kb-arena build-graph --corpus my-docs
+```
+
+The migration removes any of five known legacy KB Arena constraints that are present. Rebuild every
+graph corpus you still need after upgrading.
 
 Capped runs launch one query at a time so queued work stops at the boundary. The final in-flight
 query can make recorded cost exceed the cap. Set the cap to `0` to use parallel execution without

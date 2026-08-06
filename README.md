@@ -176,9 +176,9 @@ synthetic question sets.
 
 ## Strategy catalog
 
-The core installation registers the strategies below. The default `all` benchmark excludes SQR
-because it needs the optional `quantum` dependency group. The API reports loaded and unavailable
-strategies at `GET /strategies`.
+The catalog includes the strategies below. The default `all` benchmark excludes Rerank Vector and
+SQR. Rerank Vector needs the dependency for its selected backend, and SQR needs the optional
+`quantum` dependency group. The API reports loaded and unavailable strategies at `GET /strategies`.
 
 | Strategy | Architecture | Default | Notes |
 |---|---|:---:|---|
@@ -190,7 +190,7 @@ strategies at `GET /strategies`.
 | RAPTOR | Hierarchical | Yes | Retrieves chunks and recursive summaries |
 | PageIndex | Hierarchical | Yes | Uses document structure and LLM tree traversal |
 | BM25 | Lexical | Yes | Keyless keyword baseline |
-| Rerank Vector | Reranked dense | Yes | Rescores dense candidates with a cross-encoder |
+| Rerank Vector | Reranked dense | No | The BGE backend uses `kb-arena[rerank]`. |
 | QISS | Experimental | Yes | Pure NumPy fidelity reranker over dense candidates |
 | SQR | Experimental | No | Qiskit Aer SWAP-test reranker, install `kb-arena[quantum]` |
 

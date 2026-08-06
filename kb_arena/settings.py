@@ -2,7 +2,7 @@
 
 import math
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = ""  # set KB_ARENA_NEO4J_PASSWORD or NEO4J_AUTH in docker-compose
+    neo4j_database: str = "neo4j"
 
     # ChromaDB
     chroma_path: str = "./chroma_data"
@@ -112,6 +113,24 @@ class Settings(BaseSettings):
         if not math.isfinite(value) or value < 0:
             raise ValueError("benchmark cost cap must be a finite non-negative number")
         return value
+
+    @field_validator("reranker_backend")
+    @classmethod
+    def _validate_reranker_backend(cls, value: str) -> str:
+        normalized = value.lower()
+        if normalized not in {"bge", "cohere", "voyage"}:
+            raise ValueError("reranker backend must be one of: bge, cohere, voyage")
+        return normalized
+
+    @model_validator(mode="after")
+    def _validate_chunk_window(self) -> "Settings":
+        if (
+            self.chunk_tokens < 1
+            or self.chunk_overlap_tokens < 0
+            or self.chunk_overlap_tokens >= self.chunk_tokens
+        ):
+            raise ValueError("chunk overlap must satisfy 0 <= overlap_tokens < chunk_tokens")
+        return self
 
 
 settings = Settings()

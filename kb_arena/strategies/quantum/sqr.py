@@ -32,7 +32,7 @@ import numpy as np
 
 from kb_arena.models.document import Document
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
-from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.strategies.base import MAX_RETRIEVAL_CANDIDATES, AnswerResult, Strategy
 from kb_arena.strategies.embeddings import get_embedding_function
 from kb_arena.strategies.naive_vector import NaiveVectorStrategy
 from kb_arena.strategies.quantum.circuits import build_swap_test_circuit
@@ -107,8 +107,13 @@ class SQRStrategy(Strategy):
         from kb_arena.settings import settings
 
         start = self._start_timer()
+        if not 1 <= top_k <= MAX_RETRIEVAL_CANDIDATES:
+            raise ValueError(f"top_k must be between 1 and {MAX_RETRIEVAL_CANDIDATES}")
         fanout = max(int(settings.sqr_fanout), 1)
-        candidate_k = max(top_k * fanout, top_k + 5)
+        candidate_k = min(
+            max(top_k * fanout, top_k + 5),
+            MAX_RETRIEVAL_CANDIDATES,
+        )
         target_dim = dim_for_qubits(int(settings.sqr_n_qubits))
         shots = int(settings.sqr_shots)
 

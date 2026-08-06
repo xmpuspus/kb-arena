@@ -11,7 +11,11 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from kb_arena.models.document import Document
 from kb_arena.settings import settings
 from kb_arena.strategies.bm25 import BM25Strategy
-from kb_arena.strategies.catalog import STRATEGY_CATALOG
+from kb_arena.strategies.catalog import (
+    STRATEGY_CATALOG,
+    missing_optional_modules,
+    optional_install_command,
+)
 from kb_arena.strategies.contextual_vector import ContextualVectorStrategy
 from kb_arena.strategies.hybrid import HybridStrategy
 from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
@@ -43,15 +47,13 @@ STRATEGY_REGISTRY: dict[str, type] = {
 # Optional-dependency strategies: name -> (modules required, extra name).
 # get_strategy raises a clear install hint when any module is missing, so the
 # benchmark/retriever-lab loaders skip them instead of emitting empty traces.
-_OPTIONAL_DEP_STRATEGIES: dict[str, tuple[tuple[str, ...], str]] = {
-    spec.name: (spec.required_modules, spec.optional_extra)
-    for spec in STRATEGY_CATALOG
-    if spec.optional_extra is not None
+_OPTIONAL_DEP_STRATEGIES = {
+    spec.name: spec for spec in STRATEGY_CATALOG if spec.optional_extra is not None
 }
 
 
-def load_documents(corpus: str) -> list[Document]:
-    """Load processed JSONL documents for a corpus."""
+def load_documents(corpus: str, *, strict: bool = False) -> list[Document]:
+    """Load processed JSONL documents, optionally rejecting the first malformed row."""
     base = Path(settings.datasets_path)
     if corpus == "all":
         paths = list(base.glob("*/processed/*.jsonl"))
@@ -61,12 +63,16 @@ def load_documents(corpus: str) -> list[Document]:
     documents: list[Document] = []
     for path in paths:
         with open(path) as f:
-            for line in f:
+            for line_number, line in enumerate(f, start=1):
                 line = line.strip()
                 if line:
                     try:
                         documents.append(Document.model_validate_json(line))
                     except Exception as exc:
+                        if strict:
+                            raise ValueError(
+                                f"Malformed processed document at {path}:{line_number}"
+                            ) from exc
                         logger.warning("Skipping malformed JSONL line in %s: %s", path, exc)
 
     logger.info("Loaded %d documents for corpus=%s", len(documents), corpus)
@@ -83,7 +89,7 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
 
     from kb_arena.llm.client import LLMClient
 
-    documents = load_documents(corpus)
+    documents = load_documents(corpus, strict=True)
 
     if not documents:
         raise ValueError(f"No processed documents found for corpus={corpus}")
@@ -210,15 +216,13 @@ def get_strategy(name: str):
     # Give optional-dependency strategies such as sqr a clear install hint.
     # when the extra is absent, so loaders skip them rather than running empty.
     if name in _OPTIONAL_DEP_STRATEGIES:
-        import importlib.util
-
-        required, extra = _OPTIONAL_DEP_STRATEGIES[name]
-        missing = [m for m in required if importlib.util.find_spec(m) is None]
+        spec = _OPTIONAL_DEP_STRATEGIES[name]
+        missing = missing_optional_modules(spec)
         if missing:
             raise ImportError(
-                f"Strategy '{name}' needs the optional [{extra}] extra "
+                f"Strategy '{name}' is missing an optional dependency "
                 f"({', '.join(missing)} not installed). "
-                f"Install with: pip install 'kb-arena[{extra}]'"
+                f"Install with: {optional_install_command(spec)}"
             )
 
     # No-dependency strategies

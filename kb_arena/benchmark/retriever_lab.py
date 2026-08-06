@@ -147,28 +147,23 @@ def _aggregate_means(records: list[RetrievalMetrics]) -> dict[str, float | int]:
 
 
 def _bootstrap_ci(values: list[float]) -> tuple[float, float]:
-    """Percentile bootstrap 95% CI on the mean; degenerate-band when scipy
-    missing or all values identical so the summary never crashes."""
+    """Percentile bootstrap 95% CI on the mean."""
     if not values:
         return (0.0, 0.0)
     if all(v == values[0] for v in values):
         return (values[0], values[0])
-    try:
-        import numpy as np
-        from scipy.stats import bootstrap
+    import numpy as np
+    from scipy.stats import bootstrap
 
-        res = bootstrap(
-            (np.asarray(values),),
-            statistic=np.mean,
-            n_resamples=1000,
-            confidence_level=0.95,
-            method="percentile",
-            random_state=0,
-        )
-        return (float(res.confidence_interval.low), float(res.confidence_interval.high))
-    except Exception:  # noqa: BLE001
-        m = sum(values) / len(values)
-        return (m, m)
+    res = bootstrap(
+        (np.asarray(values),),
+        statistic=np.mean,
+        n_resamples=1000,
+        confidence_level=0.95,
+        method="percentile",
+        random_state=0,
+    )
+    return (float(res.confidence_interval.low), float(res.confidence_interval.high))
 
 
 def _summarize_with_tiers(
@@ -334,6 +329,7 @@ async def run_retriever_lab(
 
     _llm_patch = _PatchLLMClient()
     _llm_patch.__enter__()
+    run_error: Exception | None = None
     try:
         _exit_code = await _run_corpora_loop(
             corpora,
@@ -345,6 +341,16 @@ async def run_retriever_lab(
             ceiling_k,
             split,
         )
+        overall["status"] = "complete"
+    except Exception as exc:
+        run_error = exc
+        _exit_code = 1
+        overall["status"] = "incomplete"
+        overall["execution_error"] = {
+            "type": type(exc).__name__,
+            "message": str(exc),
+        }
+        console.print(f"[red]Retriever Lab failed: {type(exc).__name__}: {exc}[/red]")
     finally:
         _llm_patch.__exit__(None, None, None)
 
@@ -398,13 +404,15 @@ async def run_retriever_lab(
                 floor_violation = True
 
     no_questions = not overall["corpora"]
-    if no_questions:
+    if run_error is not None:
+        console.print(f"[red]Incomplete run written to {results_dir}/[/red]")
+    elif no_questions:
         console.print(
             f"[red]No questions were selected; incomplete run written to {results_dir}/[/red]"
         )
     else:
         console.print(f"[green]Run {run_id} written to {results_dir}/[/green]")
-    return 1 if no_questions or floor_violation else _exit_code
+    return 1 if run_error is not None or no_questions or floor_violation else _exit_code
 
 
 async def _run_corpora_loop(

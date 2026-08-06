@@ -12,10 +12,12 @@ import re
 import time
 
 from kb_arena.graph.schema import rel_type_values
+from kb_arena.llm.client import LLMResponse
 from kb_arena.models.document import Document
 from kb_arena.models.graph import GraphContext
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
-from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.settings import settings
+from kb_arena.strategies.base import AnswerResult, Strategy, meta_packet
 
 logger = logging.getLogger(__name__)
 
@@ -256,7 +258,10 @@ class KnowledgeGraphStrategy(Strategy):
             session_kwargs = {"default_access_mode": _neo4j.READ_ACCESS}
         except ImportError:  # pragma: no cover — neo4j is a hard dep
             session_kwargs = {}
-        async with self._driver.session(**session_kwargs) as session:
+        async with self._driver.session(
+            database=settings.neo4j_database,
+            **session_kwargs,
+        ) as session:
             result = await session.run(cypher, parameters=params)
             records = await result.data()
             await result.consume()
@@ -410,8 +415,19 @@ class KnowledgeGraphStrategy(Strategy):
         start = self._start_timer()
 
         if self._driver is None:
-            yield "[Graph database not connected. Showing mock data.]"
-            self._record_metrics(start, graph_context=_mock_graph_context())
+            answer = "[Graph database not connected. Showing mock data.]"
+            graph_ctx = _mock_graph_context()
+            yield answer
+            latency_ms = self._record_metrics(start, graph_context=graph_ctx)
+            yield meta_packet(
+                AnswerResult(
+                    answer=answer,
+                    graph_context=graph_ctx,
+                    strategy=self.name,
+                    latency_ms=latency_ms,
+                    mock=True,
+                )
+            )
             return
 
         intent = await self._classify_intent(question)
@@ -423,15 +439,34 @@ class KnowledgeGraphStrategy(Strategy):
         graph_ctx = _records_to_graph_context(records, cypher_used)
         sources = [r.get("fqn", "") for r in records if r.get("fqn")]
 
-        self.last_sources = sources
-        self.last_graph_context = graph_ctx
-
         llm = self._get_llm()
-        async for token in llm.stream(
+        usage = LLMResponse(text="")
+        async for item in llm.stream(
             query=question,
             context=context,
             system_prompt=SYSTEM_PROMPT,
+            include_usage=True,
         ):
-            yield token
+            if isinstance(item, LLMResponse):
+                usage = item
+            else:
+                yield item
 
-        self._record_metrics(start, sources=sources, graph_context=graph_ctx)
+        latency_ms = self._record_metrics(
+            start,
+            tokens=usage.total_tokens,
+            cost=usage.cost_usd,
+            sources=sources,
+            graph_context=graph_ctx,
+        )
+        yield meta_packet(
+            AnswerResult(
+                answer="",
+                sources=sources,
+                graph_context=graph_ctx,
+                strategy=self.name,
+                latency_ms=latency_ms,
+                tokens_used=usage.total_tokens,
+                cost_usd=usage.cost_usd,
+            )
+        )

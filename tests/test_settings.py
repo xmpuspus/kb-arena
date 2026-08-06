@@ -38,6 +38,13 @@ def test_settings_default_neo4j_user():
     assert s.neo4j_user == "neo4j"
 
 
+def test_settings_default_neo4j_database():
+    from kb_arena.settings import Settings
+
+    s = Settings()
+    assert s.neo4j_database == "neo4j"
+
+
 def test_settings_default_chroma_path():
     from kb_arena.settings import Settings
 
@@ -163,6 +170,14 @@ def test_settings_neo4j_uri_via_env(monkeypatch):
 
     s = Settings()
     assert s.neo4j_uri == "bolt://remote:7687"
+
+
+def test_settings_neo4j_database_via_env(monkeypatch):
+    monkeypatch.setenv("KB_ARENA_NEO4J_DATABASE", "kb_arena")
+    from kb_arena.settings import Settings
+
+    s = Settings()
+    assert s.neo4j_database == "kb_arena"
 
 
 def test_settings_datasets_path_via_env(monkeypatch):

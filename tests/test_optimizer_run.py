@@ -21,7 +21,7 @@ class _Q:
 
 @pytest.fixture
 def patched(monkeypatch, tmp_path):
-    monkeypatch.setattr(opt, "load_documents", lambda corpus: ["doc"])
+    monkeypatch.setattr(opt, "load_documents", lambda corpus, **kwargs: ["doc"])
     monkeypatch.setattr(opt, "load_questions", lambda corpus: [_Q(1), _Q(2)])
 
     # Score: top_k=10 is best for naive_vector, baseline (top_k=5) mid, top_k=3 worst.
@@ -101,7 +101,7 @@ async def test_run_optimize_aborts_without_report_on_trial_failure(patched, monk
 
 @pytest.mark.asyncio
 async def test_dry_run_plans_without_scoring(monkeypatch, tmp_path):
-    monkeypatch.setattr(opt, "load_documents", lambda corpus: ["doc"])
+    monkeypatch.setattr(opt, "load_documents", lambda corpus, **kwargs: ["doc"])
     monkeypatch.setattr(opt, "load_questions", lambda corpus: [_Q(1)])
 
     called = False

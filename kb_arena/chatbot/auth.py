@@ -69,7 +69,10 @@ def _client_key(request: Request) -> str:
     if settings.trusted_proxy_header and _is_loopback_host(socket_host):
         forwarded = request.headers.get(settings.trusted_proxy_header)
         if forwarded:
-            return forwarded.split(",")[0].strip()
+            client_host = forwarded.split(",")[0].strip()
+            if client_host:
+                return client_host
+        return "unknown"
     return socket_host
 
 

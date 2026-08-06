@@ -1,6 +1,10 @@
 """Compare retrieval architectures and choose with reproducible evidence."""
 
 import os as _os
+import tomllib as _tomllib
+from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
+from importlib.metadata import version as _distribution_version
+from pathlib import Path as _Path
 
 # ChromaDB 0.5.x can emit failing telemetry callbacks from local-only clients.
 # Set one value before any strategy constructs a shared Chroma system.
@@ -21,9 +25,16 @@ __all__ = [
     "Strategy",
 ]
 
-try:
-    from importlib.metadata import version
 
-    __version__ = version("kb-arena")
-except Exception:
-    __version__ = "0.1.0"
+def _resolve_version() -> str:
+    try:
+        return _distribution_version("kb-arena")
+    except _PackageNotFoundError:
+        manifest = _Path(__file__).resolve().parents[1] / "pyproject.toml"
+        try:
+            return _tomllib.loads(manifest.read_text(encoding="utf-8"))["project"]["version"]
+        except (KeyError, OSError, _tomllib.TOMLDecodeError):
+            return "unknown"
+
+
+__version__ = _resolve_version()

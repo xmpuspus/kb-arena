@@ -48,7 +48,11 @@ competitive when identifiers and exact terms dominate.
 ### Rerank Vector
 
 Retrieves a wider dense candidate set and rescores it with BGE, Cohere, or Voyage. Compare the
-quality lift with its latency and provider cost.
+quality lift with its latency and provider cost. It is excluded from the default benchmark because
+the local BGE backend needs the `kb-arena[rerank]` dependency group. BGE is the default. For Cohere
+or Voyage, install `cohere` or `voyageai`, set `KB_ARENA_RERANKER_BACKEND` to `cohere` or `voyage`,
+and set `KB_ARENA_COHERE_API_KEY` or `KB_ARENA_VOYAGE_API_KEY`. Run the strategy explicitly after
+installing the selected backend.
 
 ## Experimental methods
 

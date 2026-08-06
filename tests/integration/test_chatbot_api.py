@@ -114,6 +114,29 @@ def test_health_lists_strategies(app_client):
     assert "hybrid" in data["strategies"]
 
 
+def test_benchmark_results_match_exact_payload_corpus(app_client, tmp_path, monkeypatch):
+    from kb_arena.settings import settings
+
+    exact = {
+        "corpus": "alpha",
+        "strategy": "exact",
+        "records": [{"question_tier": 1, "score": {"accuracy": 1.0}}],
+    }
+    overlapping = {
+        "corpus": "alpha-private",
+        "strategy": "private",
+        "records": [{"question_tier": 1, "score": {"accuracy": 0.0}}],
+    }
+    (tmp_path / "misleading-name.json").write_text(json.dumps(exact))
+    (tmp_path / "alpha-private-result.json").write_text(json.dumps(overlapping))
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+
+    response = app_client.get("/api/benchmark/results?corpus=alpha")
+
+    assert response.status_code == 200
+    assert [row["strategy"] for row in response.json()["results"]] == ["exact"]
+
+
 def test_arena_match_passes_selected_corpus(app_client):
     arena = MagicMock()
     arena.create_match = AsyncMock(
@@ -137,6 +160,24 @@ def test_arena_match_passes_selected_corpus(app_client):
 
     assert response.status_code == 200
     arena.create_match.assert_awaited_once_with("What is the control?", corpus="nist")
+
+
+def test_arena_match_redacts_internal_error_without_debug(app_client, monkeypatch):
+    from kb_arena.settings import settings
+
+    arena = MagicMock()
+    arena.create_match = AsyncMock(side_effect=RuntimeError("secret provider detail"))
+    app_client.app.state.arena = arena
+    monkeypatch.setattr(settings, "debug", False)
+
+    response = app_client.post(
+        "/api/arena/match",
+        json={"question": "What is the control?", "corpus": "nist"},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["error"]["message"] == "An internal error occurred"
+    assert "secret provider detail" not in response.text
 
 
 def test_debug_explain_passes_selected_corpus(app_client):
@@ -231,6 +272,71 @@ def test_lifespan_accepts_generic_key_for_selected_generation_provider(monkeypat
         assert settings.demo_mode is False
 
     assert initialized["llm"] is True
+
+
+def test_lifespan_closes_neo4j_driver_when_target_database_verification_fails(monkeypatch):
+    import chromadb
+    import neo4j
+
+    from kb_arena.chatbot.api import app
+    from kb_arena.llm import client as llm_client_module
+    from kb_arena.settings import settings
+
+    driver = MagicMock()
+    session = AsyncMock()
+    session.run.side_effect = OSError("database unavailable")
+    context = AsyncMock()
+    context.__aenter__ = AsyncMock(return_value=session)
+    context.__aexit__ = AsyncMock(return_value=False)
+    driver.session.return_value = context
+    driver.close = AsyncMock()
+
+    monkeypatch.setattr(settings, "demo_mode", False)
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(settings, "llm_api_key", "configured-key")
+    monkeypatch.setattr(settings, "neo4j_database", "kb_arena")
+    monkeypatch.setattr(llm_client_module, "LLMClient", lambda *args, **kwargs: MagicMock())
+    monkeypatch.setattr(chromadb, "PersistentClient", lambda *args, **kwargs: MagicMock())
+    monkeypatch.setattr(neo4j.AsyncGraphDatabase, "driver", MagicMock(return_value=driver))
+
+    with TestClient(app):
+        assert app.state.neo4j is None
+        assert app.state.neo4j_error == "database unavailable"
+
+    driver.session.assert_called_once_with(database="kb_arena")
+    driver.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_readiness_checks_configured_neo4j_database(monkeypatch):
+    from kb_arena.chatbot.api import readiness
+    from kb_arena.settings import settings
+
+    driver = MagicMock()
+    session = AsyncMock()
+    result = AsyncMock()
+    session.run.return_value = result
+    context = AsyncMock()
+    context.__aenter__ = AsyncMock(return_value=session)
+    context.__aexit__ = AsyncMock(return_value=False)
+    driver.session.return_value = context
+    state = SimpleNamespace(
+        strategies={"knowledge_graph": MagicMock()},
+        neo4j=driver,
+        llm=MagicMock(),
+    )
+    request = SimpleNamespace(app=SimpleNamespace(state=state))
+
+    monkeypatch.setattr(settings, "demo_mode", False)
+    monkeypatch.setattr(settings, "llm_provider", "ollama")
+    monkeypatch.setattr(settings, "neo4j_database", "kb_arena")
+
+    response = await readiness(request)
+
+    assert response.status_code == 200
+    driver.session.assert_called_once_with(database="kb_arena")
+    session.run.assert_awaited_once_with("RETURN 1")
+    result.consume.assert_awaited_once()
 
 
 def test_configured_llm_initialization_failure_stops_startup(monkeypatch):
@@ -639,6 +745,29 @@ def test_chat_stream_invalid_strategy_returns_error(app_client):
         assert r.status_code in (400, 422)
 
 
+def test_chat_stream_redacts_internal_error_without_debug(app_client, monkeypatch):
+    from kb_arena.settings import settings
+
+    strategy = app_client.app.state.strategies["naive_vector"]
+
+    async def broken_stream(question, history=None, corpus="all"):
+        raise RuntimeError("secret provider detail")
+        yield  # pragma: no cover
+
+    strategy.stream_answer = broken_stream
+    monkeypatch.setattr(settings, "debug", False)
+
+    with app_client.stream(
+        "POST", "/chat/stream", json={"query": "What is X?", "strategy": "naive_vector"}
+    ) as response:
+        body = response.read().decode()
+
+    events = _parse_sse_events(body)
+    error = next(event for event in events if event.get("event") == "error")
+    assert json.loads(error["data"])["message"] == "An internal error occurred"
+    assert "secret provider detail" not in body
+
+
 # CORS headers
 
 
@@ -818,6 +947,42 @@ async def test_hung_graph_build_times_out_and_releases_active_slot(tmp_path, mon
         assert retained[-1] is None
         assert retained[-2]["type"] == "error"
         assert "timed out" in retained[-2]["data"]["message"]
+    finally:
+        api._graph_build_queues.pop(build_id, None)
+
+
+@pytest.mark.asyncio
+async def test_graph_build_redacts_internal_error_without_debug(tmp_path, monkeypatch):
+    import asyncio
+
+    from kb_arena.chatbot import api
+    from kb_arena.settings import settings
+
+    processed = tmp_path / "sample" / "processed"
+    processed.mkdir(parents=True)
+    (processed / "documents.jsonl").write_text("{}\n")
+
+    async def fake_extraction(corpus: str, event_callback) -> None:
+        raise RuntimeError("secret provider detail")
+
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path))
+    monkeypatch.setattr(settings, "debug", False)
+    monkeypatch.setattr("kb_arena.graph.extractor.run_extraction", fake_extraction)
+    monkeypatch.setattr(api, "_GRAPH_BUILD_QUEUE_TTL_SECONDS", 60.0)
+
+    response = await api.trigger_graph_build(api._GraphBuildRequest(corpus="sample"))
+    build_id = response["build_id"]
+    task = api._graph_build_tasks[build_id]
+    try:
+        await asyncio.wait_for(task, timeout=1)
+        queue = api._graph_build_queues[build_id]
+        retained = []
+        while not queue.empty():
+            retained.append(queue.get_nowait())
+
+        assert retained[-1] is None
+        assert retained[-2]["type"] == "error"
+        assert retained[-2]["data"]["message"] == "An internal error occurred"
     finally:
         api._graph_build_queues.pop(build_id, None)
 

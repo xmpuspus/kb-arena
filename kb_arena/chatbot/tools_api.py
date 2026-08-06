@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import tempfile
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -55,7 +56,15 @@ async def generate_qa(body: GenerateRequest, request: Request) -> EventSourceRes
     from kb_arena.strategies import load_documents
 
     async def event_generator() -> AsyncIterator[dict]:
-        documents = load_documents(body.corpus)
+        try:
+            documents = load_documents(body.corpus, strict=True)
+        except Exception as exc:
+            logger.warning("Failed to load processed corpus %s: %s", body.corpus, exc)
+            yield {
+                "event": "error",
+                "data": json.dumps({"message": "The processed corpus could not be loaded"}),
+            }
+            return
         if not documents:
             msg = f"No documents found for corpus '{body.corpus}'"
             yield {"event": "error", "data": json.dumps({"message": msg})}
@@ -72,6 +81,12 @@ async def generate_qa(body: GenerateRequest, request: Request) -> EventSourceRes
 
         total = len(all_sections)
         yield {"event": "started", "data": json.dumps({"total_sections": total})}
+        if total == 0:
+            yield {
+                "event": "error",
+                "data": json.dumps({"message": "No non-empty sections are available"}),
+            }
+            return
 
         all_pairs: list[dict] = []
         for idx, (section, doc_id) in enumerate(all_sections):
@@ -93,18 +108,43 @@ async def generate_qa(body: GenerateRequest, request: Request) -> EventSourceRes
             try:
                 pairs = await generate_pairs_for_section(section, doc_id, llm)
                 for pair in pairs:
-                    yield {"event": "pair", "data": json.dumps(pair)}
                     all_pairs.append(pair)
             except Exception as exc:
                 logger.warning("Failed to generate pairs for %s/%s: %s", doc_id, section.id, exc)
+                yield {
+                    "event": "error",
+                    "data": json.dumps(
+                        {"message": "Q&A generation failed before the new file was published"}
+                    ),
+                }
+                return
 
         # Write to JSONL
         output_dir = Path(settings.datasets_path) / body.corpus / "qa-pairs"
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / "qa_pairs.jsonl"
-        with open(output_path, "w") as f:
-            for pair in all_pairs:
-                f.write(json.dumps(pair) + "\n")
+        staged_file = tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=output_dir,
+            prefix=f".{output_path.name}.",
+            suffix=".tmp",
+            delete=False,
+        )
+        staged_path = Path(staged_file.name)
+        published = False
+        try:
+            with staged_file as handle:
+                for pair in all_pairs:
+                    handle.write(json.dumps(pair, ensure_ascii=False) + "\n")
+            staged_path.replace(output_path)
+            published = True
+        finally:
+            if not published:
+                staged_path.unlink(missing_ok=True)
+
+        for pair in all_pairs:
+            yield {"event": "pair", "data": json.dumps(pair)}
 
         yield {
             "event": "complete",

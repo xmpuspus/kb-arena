@@ -1,11 +1,5 @@
-// Universal documentation schema - idempotent for a database dedicated to KB Arena
+// Universal documentation schema - non-destructive and idempotent
 // Works for any documentation domain (AWS, software docs, wikis, etc.)
-
-DROP CONSTRAINT topic_fqn IF EXISTS;
-DROP CONSTRAINT component_fqn IF EXISTS;
-DROP CONSTRAINT process_fqn IF EXISTS;
-DROP CONSTRAINT config_fqn IF EXISTS;
-DROP CONSTRAINT constraint_fqn IF EXISTS;
 
 CREATE CONSTRAINT kb_arena_entity_id IF NOT EXISTS
 FOR (n:KBArenaEntity) REQUIRE n.entity_id IS UNIQUE;

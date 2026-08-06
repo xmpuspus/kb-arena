@@ -33,6 +33,9 @@ from kb_arena.models.document import Document
 from kb_arena.models.graph import GraphContext
 from kb_arena.models.retrieval import RetrievalTrace
 
+# Bound fanout strategies before they allocate or request an amplified candidate set.
+MAX_RETRIEVAL_CANDIDATES = 1000
+
 
 class AnswerResult(BaseModel):
     """Unified answer result from any strategy."""

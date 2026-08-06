@@ -194,6 +194,40 @@ async def test_qiss_query_empty_candidates_passes_through(mock_chroma_client, mo
 
 
 @pytest.mark.asyncio
+async def test_qiss_caps_amplified_candidate_count(
+    monkeypatch, mock_chroma_client, mock_llm_client
+):
+    from unittest.mock import AsyncMock
+
+    from kb_arena.settings import settings
+    from kb_arena.strategies.base import MAX_RETRIEVAL_CANDIDATES
+
+    strategy = QISSStrategy(chroma_client=mock_chroma_client, llm_client=mock_llm_client)
+    strategy._base.query = AsyncMock(
+        return_value=AnswerResult(
+            answer="nothing",
+            retrieval=RetrievalTrace(query="Q", retrieved=[], top_k=5),
+            strategy="naive_vector",
+        )
+    )
+    monkeypatch.setattr(settings, "qiss_fanout", 1_000_000)
+
+    await strategy.query("Q", top_k=50)
+
+    strategy._base.query.assert_awaited_once_with("Q", top_k=MAX_RETRIEVAL_CANDIDATES, corpus="all")
+
+
+@pytest.mark.asyncio
+async def test_qiss_rejects_top_k_above_candidate_ceiling(mock_chroma_client, mock_llm_client):
+    from kb_arena.strategies.base import MAX_RETRIEVAL_CANDIDATES
+
+    strategy = QISSStrategy(chroma_client=mock_chroma_client, llm_client=mock_llm_client)
+
+    with pytest.raises(ValueError, match="top_k must be between"):
+        await strategy.query("Q", top_k=MAX_RETRIEVAL_CANDIDATES + 1)
+
+
+@pytest.mark.asyncio
 async def test_qiss_multiquery_uses_subspace(mock_chroma_client, mock_llm_client):
     from unittest.mock import AsyncMock
 

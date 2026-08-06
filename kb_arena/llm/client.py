@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator
 from contextvars import ContextVar
 from dataclasses import dataclass
 
@@ -258,23 +259,32 @@ class LLMClient:
         query: str,
         context: str,
         system_prompt: str,
+        include_usage: bool = False,
         **kwargs,
-    ):
-        """Streaming generation. Yields text deltas."""
+    ) -> AsyncIterator[str | LLMResponse]:
+        """Stream text deltas and optionally a final per-call usage marker."""
+        from kb_arena.llm.providers import ProviderResponse
+
         model = self._models["generate"]
         user_content = f"Context:\n{context}\n\nQuery: {query}" if context else query
         max_tokens = kwargs.pop("max_tokens", 4096)
 
-        async for text in self._provider.stream_text(
+        raw: ProviderResponse | None = None
+        async for item in self._provider.stream_text(
             model=model,
             system=system_prompt,
             user=user_content,
             max_tokens=max_tokens,
         ):
-            yield text
+            if isinstance(item, ProviderResponse):
+                raw = item
+            else:
+                yield item
 
-        # Capture usage if the provider recorded it (Anthropic does, others may not)
-        raw = getattr(self._provider, "last_stream_response", None)
+        # Backward compatibility for third-party providers that only expose the
+        # legacy instance field. Built-in providers emit a per-call marker.
+        if raw is None:
+            raw = getattr(self._provider, "last_stream_response", None)
         if raw is not None:
             cost = _compute_cost(
                 model,
@@ -289,3 +299,5 @@ class LLMClient:
                 output_tokens=raw.output_tokens,
                 cost_usd=cost,
             )
+            if include_usage:
+                yield self._last_stream_usage

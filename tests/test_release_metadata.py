@@ -26,6 +26,20 @@ def test_release_metadata_is_aligned() -> None:
     assert "| 0.10.x | Active fixes |" in security
 
 
+def test_source_version_fallback_matches_project_metadata(monkeypatch) -> None:
+    from importlib.metadata import PackageNotFoundError
+
+    import kb_arena
+
+    monkeypatch.setattr(
+        kb_arena,
+        "_distribution_version",
+        lambda name: (_ for _ in ()).throw(PackageNotFoundError(name)),
+    )
+
+    assert kb_arena._resolve_version() == TARGET_VERSION
+
+
 def test_readme_links_resolve_from_package_indexes() -> None:
     readme = (ROOT / "README.md").read_text()
     relative_targets = []
@@ -69,6 +83,7 @@ def test_supported_python_versions_match_dependencies_and_ci() -> None:
     assert "typer==0.27.1" in project["dependencies"]
     assert "fastapi==0.141.1" in project["dependencies"]
     assert "starlette==1.4.1" in project["dependencies"]
+    assert "sentence-transformers>=5.0,<6" in project["optional-dependencies"]["rerank"]
     assert 'python-version: ["3.11", "3.12", "3.13"]' in workflow
 
 

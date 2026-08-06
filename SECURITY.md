@@ -53,8 +53,11 @@ network. Set a token and a narrow CORS list before any network exposure.
 - Every allowlisted graph query matches only nodes with the `KBArenaEntity` ownership label.
 - Neo4j read paths use `neo4j.READ_ACCESS` at the driver level.
 - Production graph extraction uses parameterized Cypher.
-- Use a Neo4j database dedicated to KB Arena. Schema setup removes legacy KB Arena constraints by
-  name during an upgrade and is not designed for a shared application database.
+- Ordinary graph builds never drop constraints. Upgrades from a pre-0.10 graph fail until an
+  operator explicitly runs `kb-arena migrate-graph-schema` with `--database <name>` and
+  `--confirm-dedicated-database`. Run that migration only against a named Neo4j database dedicated
+  to KB Arena; it removes any of five known legacy KB Arena constraints that are present. Take a
+  database backup first.
 
 ### URL ingestion
 

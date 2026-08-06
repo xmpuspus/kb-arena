@@ -34,10 +34,9 @@ from kb_arena.strategies.catalog import default_strategy_names
 console = Console()
 
 STRATEGY_NAMES = list(default_strategy_names())
-# Note: `sqr` is intentionally not in the default "all" set because it needs the
-# optional [quantum] extra (qiskit/qiskit-aer/scikit-learn). Run it explicitly
-# with `--strategies sqr`; get_strategy("sqr") raises a clear install hint when
-# the extra is missing.
+# Optional rerank_vector and sqr strategies are intentionally outside the
+# default "all" set. Explicit requests receive a clear install hint when their
+# extra is missing.
 
 RETRY_BASE_S = 1.0  # base for exponential backoff: 1s, 2s, 4s, ...
 

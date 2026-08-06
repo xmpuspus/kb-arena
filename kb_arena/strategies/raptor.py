@@ -59,6 +59,8 @@ def _chunk_text(
         chunk_tokens = settings.chunk_tokens
     if overlap_tokens is None:
         overlap_tokens = settings.chunk_overlap_tokens
+    if chunk_tokens < 1 or overlap_tokens < 0 or overlap_tokens >= chunk_tokens:
+        raise ValueError("chunk overlap must satisfy 0 <= overlap_tokens < chunk_tokens")
     tokens = tokenize(text)
     if not tokens:
         return []

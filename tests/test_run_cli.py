@@ -10,6 +10,7 @@ import pytest
 from typer.testing import CliRunner
 
 from kb_arena.cli import app
+from kb_arena.exceptions import GraphError
 from kb_arena.settings import settings
 
 runner = CliRunner()
@@ -35,6 +36,78 @@ def _corpus(tmp_path: Path, name: str = "sample") -> Path:
     (base / "questions").mkdir()
     (base / "questions" / "questions.yaml").write_text(MINIMAL_QUESTION)
     return base
+
+
+def test_graph_schema_migration_requires_explicit_confirmation(monkeypatch):
+    called = False
+
+    async def fake_migration(database):
+        nonlocal called
+        called = True
+        return ["topic_fqn"]
+
+    monkeypatch.setattr(
+        "kb_arena.graph.extractor.migrate_legacy_graph_schema",
+        fake_migration,
+    )
+
+    result = runner.invoke(app, ["migrate-graph-schema", "--database", "kb_arena"])
+
+    assert result.exit_code == 1
+    assert "--confirm-dedicated-database" in result.stdout
+    assert called is False
+
+
+def test_graph_schema_migration_runs_after_confirmation(monkeypatch):
+    migrated: list[str] = []
+
+    async def fake_migration(database):
+        migrated.append(database)
+        return ["topic_fqn"]
+
+    monkeypatch.setattr(
+        "kb_arena.graph.extractor.migrate_legacy_graph_schema",
+        fake_migration,
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "migrate-graph-schema",
+            "--database",
+            "kb_arena",
+            "--confirm-dedicated-database",
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert "topic_fqn" in result.stdout
+    assert migrated == ["kb_arena"]
+
+
+def test_health_checks_configured_database_and_closes_failed_driver(monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock
+
+    import neo4j
+
+    driver = MagicMock()
+    session = AsyncMock()
+    session.run.side_effect = OSError("database unavailable")
+    context = AsyncMock()
+    context.__aenter__ = AsyncMock(return_value=session)
+    context.__aexit__ = AsyncMock(return_value=False)
+    driver.session.return_value = context
+    driver.close = AsyncMock()
+
+    monkeypatch.setattr(settings, "neo4j_database", "kb_arena")
+    monkeypatch.setattr(neo4j.AsyncGraphDatabase, "driver", MagicMock(return_value=driver))
+    monkeypatch.setattr("chromadb.PersistentClient", lambda *args, **kwargs: MagicMock())
+
+    result = runner.invoke(app, ["health", "--format", "json"])
+
+    assert result.exit_code == 0, result.stdout
+    driver.session.assert_called_once_with(database="kb_arena")
+    driver.close.assert_awaited_once()
 
 
 def test_run_ingests_files_already_in_raw_directory(tmp_path, monkeypatch):
@@ -67,7 +140,7 @@ def test_run_ingests_files_already_in_raw_directory(tmp_path, monkeypatch):
         ("vectors", "sample"),
         (
             "benchmark",
-            "naive_vector,contextual_vector,qna_pairs,raptor,pageindex,bm25,rerank_vector,qiss",
+            "naive_vector,contextual_vector,qna_pairs,raptor,pageindex,bm25,qiss",
         ),
     ]
 
@@ -170,21 +243,22 @@ def test_run_new_explicit_docs_invalidate_downstream_checkpoints(tmp_path, monke
         f"ingest:{new_docs}",
         "vectors",
         "questions",
-        "benchmark:naive_vector,contextual_vector,qna_pairs,raptor,pageindex,bm25,rerank_vector,qiss",
+        "benchmark:naive_vector,contextual_vector,qna_pairs,raptor,pageindex,bm25,qiss",
     ]
     state = json.loads((base / ".pipeline_state.json").read_text())
     assert state["ingest_source"] == str(new_docs)
     assert "build_graph" not in state
 
 
-def test_run_continues_after_graph_failure_without_checkpointing_it(tmp_path, monkeypatch):
+@pytest.mark.parametrize("failure", [OSError("Neo4j is unavailable"), GraphError("bad graph")])
+def test_run_continues_after_graph_failure_without_checkpointing_it(tmp_path, monkeypatch, failure):
     base = _corpus(tmp_path)
     (base / "processed" / "documents.jsonl").write_text(MINIMAL_DOCUMENT)
     calls: list[str] = []
 
     async def failing_graph(corpus: str) -> None:
         calls.append("graph")
-        raise OSError("Neo4j is unavailable")
+        raise failure
 
     async def fake_vectors(corpus: str, strategy: str = "all") -> None:
         calls.append("vectors")
@@ -204,7 +278,7 @@ def test_run_continues_after_graph_failure_without_checkpointing_it(tmp_path, mo
     assert calls == [
         "graph",
         "vectors",
-        "benchmark:naive_vector,contextual_vector,qna_pairs,raptor,pageindex,bm25,rerank_vector,qiss",
+        "benchmark:naive_vector,contextual_vector,qna_pairs,raptor,pageindex,bm25,qiss",
     ]
     state_path = base / ".pipeline_state.json"
     state = json.loads(state_path.read_text())
@@ -243,7 +317,7 @@ def test_run_reruns_benchmark_when_graph_recovers(tmp_path, monkeypatch):
     assert first.exit_code == 0, first.stdout
     assert second.exit_code == 0, second.stdout
     assert benchmark_strategies == [
-        "naive_vector,contextual_vector,qna_pairs,raptor,pageindex,bm25,rerank_vector,qiss",
+        "naive_vector,contextual_vector,qna_pairs,raptor,pageindex,bm25,qiss",
         "all",
     ]
     state = json.loads((base / ".pipeline_state.json").read_text())

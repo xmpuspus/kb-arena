@@ -253,12 +253,12 @@ async def test_knowledge_graph_mock_fallback():
 async def test_knowledge_graph_stream_mock_fallback():
     """Streaming from KnowledgeGraphStrategy works without Neo4j."""
     strategy = KnowledgeGraphStrategy(neo4j_driver=None)
-    tokens = []
-    async for token in strategy.stream_answer("What is json?"):
-        tokens.append(token)
-    assert len(tokens) > 0
-    full = "".join(tokens)
+    output = [item async for item in strategy.stream_answer("What is json?")]
+    assert len(output) > 1
+    assert isinstance(output[-1], dict)
+    full = "".join(item for item in output if isinstance(item, str))
     assert "Graph database not connected" in full
+    assert output[-1]["_kb_arena_meta"]["graph_context"] is not None
 
 
 async def test_naive_vector_latency_recorded(naive_strategy_with_index):

@@ -432,6 +432,138 @@ async def test_generate_fixes_empty(mock_llm_client):
 # ── qa-pairs endpoint ──
 
 
+async def test_generate_qa_load_failure_preserves_previous_pairs():
+    from unittest.mock import MagicMock
+
+    from kb_arena.chatbot.tools_api import GenerateRequest, generate_qa
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        qa_dir = Path(tmpdir) / "test-corpus" / "qa-pairs"
+        qa_dir.mkdir(parents=True)
+        output_path = qa_dir / "qa_pairs.jsonl"
+        previous = b'{"question":"previous"}\n'
+        output_path.write_bytes(previous)
+        request = MagicMock()
+
+        with patch(
+            "kb_arena.strategies.load_documents",
+            side_effect=ValueError("malformed row at /private/path"),
+        ):
+            response = await generate_qa(GenerateRequest(corpus="test-corpus"), request)
+            events = [event async for event in response.body_iterator]
+
+        assert output_path.read_bytes() == previous
+        assert [event["event"] for event in events] == ["error"]
+        assert "/private/path" not in events[0]["data"]
+
+
+async def test_generate_qa_failure_preserves_previous_pairs():
+    from unittest.mock import MagicMock
+
+    from kb_arena.chatbot.tools_api import GenerateRequest, generate_qa
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        qa_dir = Path(tmpdir) / "test-corpus" / "qa-pairs"
+        qa_dir.mkdir(parents=True)
+        output_path = qa_dir / "qa_pairs.jsonl"
+        previous = b'{"question":"previous"}\n'
+        output_path.write_bytes(previous)
+        request = MagicMock()
+        request.is_disconnected = AsyncMock(return_value=False)
+
+        document = _make_document()
+        document.sections.append(
+            Section(
+                id="s2",
+                title="Details",
+                content="More content.",
+                heading_path=["Details"],
+                level=2,
+            )
+        )
+        new_pair = {"question": "Provisional?", "answer": "Not published."}
+
+        with (
+            patch("kb_arena.chatbot.tools_api.settings") as mock_settings,
+            patch("kb_arena.strategies.load_documents", return_value=[document]),
+            patch("kb_arena.llm.client.LLMClient", return_value=MagicMock()),
+            patch(
+                "kb_arena.generate.qna.generate_pairs_for_section",
+                new_callable=AsyncMock,
+                side_effect=[[new_pair], RuntimeError("provider unavailable")],
+            ),
+        ):
+            mock_settings.datasets_path = tmpdir
+            response = await generate_qa(GenerateRequest(corpus="test-corpus"), request)
+            events = [event async for event in response.body_iterator]
+
+        assert output_path.read_bytes() == previous
+        assert events[-1]["event"] == "error"
+        assert all(event["event"] != "pair" for event in events)
+        assert all(event["event"] != "complete" for event in events)
+
+
+async def test_generate_qa_empty_sections_preserve_previous_pairs():
+    from unittest.mock import MagicMock
+
+    from kb_arena.chatbot.tools_api import GenerateRequest, generate_qa
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        qa_dir = Path(tmpdir) / "test-corpus" / "qa-pairs"
+        qa_dir.mkdir(parents=True)
+        output_path = qa_dir / "qa_pairs.jsonl"
+        previous = b'{"question":"previous"}\n'
+        output_path.write_bytes(previous)
+        request = MagicMock()
+        request.is_disconnected = AsyncMock(return_value=False)
+        empty = _make_document(content="   ")
+
+        with (
+            patch("kb_arena.chatbot.tools_api.settings") as mock_settings,
+            patch("kb_arena.strategies.load_documents", return_value=[empty]),
+        ):
+            mock_settings.datasets_path = tmpdir
+            response = await generate_qa(GenerateRequest(corpus="test-corpus"), request)
+            events = [event async for event in response.body_iterator]
+
+        assert output_path.read_bytes() == previous
+        assert events[-1]["event"] == "error"
+        assert all(event["event"] != "complete" for event in events)
+
+
+async def test_generate_qa_success_replaces_pairs_after_all_sections_finish():
+    from unittest.mock import MagicMock
+
+    from kb_arena.chatbot.tools_api import GenerateRequest, generate_qa
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        qa_dir = Path(tmpdir) / "test-corpus" / "qa-pairs"
+        qa_dir.mkdir(parents=True)
+        output_path = qa_dir / "qa_pairs.jsonl"
+        output_path.write_text('{"question":"previous"}\n')
+        request = MagicMock()
+        request.is_disconnected = AsyncMock(return_value=False)
+        new_pair = {"question": "New?", "answer": "New answer."}
+
+        with (
+            patch("kb_arena.chatbot.tools_api.settings") as mock_settings,
+            patch("kb_arena.strategies.load_documents", return_value=[_make_document()]),
+            patch("kb_arena.llm.client.LLMClient", return_value=MagicMock()),
+            patch(
+                "kb_arena.generate.qna.generate_pairs_for_section",
+                new_callable=AsyncMock,
+                return_value=[new_pair],
+            ),
+        ):
+            mock_settings.datasets_path = tmpdir
+            response = await generate_qa(GenerateRequest(corpus="test-corpus"), request)
+            events = [event async for event in response.body_iterator]
+
+        assert [json.loads(line) for line in output_path.read_text().splitlines()] == [new_pair]
+        assert events[-1]["event"] == "complete"
+        assert not list(qa_dir.glob("*.tmp"))
+
+
 async def test_get_qa_pairs_returns_stored():
     """GET /api/tools/qa-pairs returns stored JSONL pairs."""
     with tempfile.TemporaryDirectory() as tmpdir:

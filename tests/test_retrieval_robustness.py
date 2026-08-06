@@ -57,6 +57,101 @@ async def test_rerank_vector_returns_nonempty_trace(mock_chroma_client, mock_llm
     assert result.sources == ["doc"]  # exercises the c.doc_id source-building path
 
 
+@pytest.mark.asyncio
+async def test_rerank_vector_backend_failure_is_not_reported_as_success(
+    mock_chroma_client, mock_llm_client
+):
+    from kb_arena.strategies.rerank_vector import RerankVectorStrategy
+
+    strategy = RerankVectorStrategy(chroma_client=mock_chroma_client, llm_client=mock_llm_client)
+    strategy._base.query = AsyncMock(
+        return_value=AnswerResult(
+            answer="base answer",
+            retrieval=RetrievalTrace(query="Q", retrieved=_candidates(3), latency_ms=1.0, top_k=12),
+            strategy="naive_vector",
+        )
+    )
+
+    class _BrokenReranker:
+        def score(self, query, passages):
+            raise RuntimeError("reranker offline")
+
+    strategy._reranker = _BrokenReranker()
+
+    from kb_arena.exceptions import RerankerError
+
+    with pytest.raises(RerankerError, match="reranker offline") as caught:
+        await strategy.query("Q", top_k=2)
+
+    assert isinstance(caught.value.__cause__, RuntimeError)
+    mock_llm_client.generate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_rerank_vector_caps_candidate_count(mock_chroma_client, mock_llm_client):
+    from kb_arena.strategies.base import MAX_RETRIEVAL_CANDIDATES
+    from kb_arena.strategies.rerank_vector import RerankVectorStrategy
+
+    strategy = RerankVectorStrategy(chroma_client=mock_chroma_client, llm_client=mock_llm_client)
+    strategy._base.query = AsyncMock(
+        return_value=AnswerResult(
+            answer="",
+            retrieval=RetrievalTrace(query="Q", retrieved=[], top_k=MAX_RETRIEVAL_CANDIDATES),
+            strategy="naive_vector",
+        )
+    )
+
+    await strategy.query("Q", top_k=400)
+
+    assert strategy._base.query.await_args.kwargs["top_k"] == MAX_RETRIEVAL_CANDIDATES
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("top_k", [0, 1001])
+async def test_rerank_vector_rejects_invalid_top_k(mock_chroma_client, mock_llm_client, top_k):
+    from kb_arena.strategies.rerank_vector import RerankVectorStrategy
+
+    strategy = RerankVectorStrategy(chroma_client=mock_chroma_client, llm_client=mock_llm_client)
+    strategy._base.query = AsyncMock()
+
+    with pytest.raises(ValueError, match="top_k must be between"):
+        await strategy.query("Q", top_k=top_k)
+
+    strategy._base.query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retriever_lab_writes_incomplete_artifact_on_infrastructure_failure(
+    monkeypatch, tmp_path
+):
+    from kb_arena.benchmark import retriever_lab, runner
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(
+        runner,
+        "_load_strategies",
+        lambda strategy_filter: [SimpleNamespace(name="naive_vector")],
+    )
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+
+    async def fail_run(*args, **kwargs):
+        args[4]["corpora"]["partial"] = {}
+        raise OSError("bootstrap worker failed")
+
+    monkeypatch.setattr(retriever_lab, "_run_corpora_loop", fail_run)
+
+    code = await retriever_lab.run_retriever_lab(corpus="test", min_recall=0.0)
+
+    assert code == 1
+    report_path = next(tmp_path.glob("run_*/retriever_lab.json"))
+    report = json.loads(report_path.read_text())
+    assert report["status"] == "incomplete"
+    assert report["execution_error"] == {
+        "type": "OSError",
+        "message": "bootstrap worker failed",
+    }
+
+
 # --- Retrieval failures are errors, not valid zero-score observations ---
 
 

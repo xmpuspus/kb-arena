@@ -20,7 +20,7 @@ import time
 from kb_arena.models.document import Document
 from kb_arena.models.graph import GraphContext
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
-from kb_arena.strategies.base import AnswerResult, Strategy
+from kb_arena.strategies.base import MAX_RETRIEVAL_CANDIDATES, AnswerResult, Strategy
 
 logger = logging.getLogger(__name__)
 
@@ -180,9 +180,10 @@ class HybridStrategy(Strategy):
         else:
             # Procedural — RRF fuse passages, generate one final answer over fused context.
             retrieval_start = time.perf_counter()
+            expanded_top_k = min(top_k * 2, MAX_RETRIEVAL_CANDIDATES)
             vector_result, graph_result = await asyncio.gather(
-                self._get_vector().query(question, top_k=top_k * 2, corpus=corpus),
-                self._get_graph().query(question, top_k=top_k * 2, corpus=corpus),
+                self._get_vector().query(question, top_k=expanded_top_k, corpus=corpus),
+                self._get_graph().query(question, top_k=expanded_top_k, corpus=corpus),
             )
             retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 

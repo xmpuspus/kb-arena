@@ -36,11 +36,19 @@ def _prepare_for_neo4j(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 BATCH_SIZE = 1000
+LEGACY_CONSTRAINT_NAMES = (
+    "topic_fqn",
+    "component_fqn",
+    "process_fqn",
+    "config_fqn",
+    "constraint_fqn",
+)
 
 
 class Neo4jStore:
-    def __init__(self, driver: AsyncDriver) -> None:
+    def __init__(self, driver: AsyncDriver, database: str | None = None) -> None:
         self._driver = driver
+        self._database = database or settings.neo4j_database
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -50,13 +58,21 @@ class Neo4jStore:
         uri: str | None = None,
         user: str | None = None,
         password: str | None = None,
+        database: str | None = None,
     ) -> Neo4jStore:
+        target_database = database or settings.neo4j_database
         driver = AsyncGraphDatabase.driver(
             uri or settings.neo4j_uri,
             auth=(user or settings.neo4j_user, password or settings.neo4j_password),
         )
-        await driver.verify_connectivity()
-        return cls(driver)
+        try:
+            async with driver.session(database=target_database) as session:
+                result = await session.run("RETURN 1")
+                await result.consume()
+        except BaseException:
+            await driver.close()
+            raise
+        return cls(driver, database=target_database)
 
     async def close(self) -> None:
         await self._driver.close()
@@ -70,7 +86,7 @@ class Neo4jStore:
 
         Always consumes the result to avoid cursor leaks.
         """
-        async with self._driver.session() as session:
+        async with self._driver.session(database=self._database) as session:
             result = await session.run(cypher, params or {})
             records = await result.data()
             await result.consume()
@@ -85,11 +101,31 @@ class Neo4jStore:
         """
         text = Path(cypher_file).read_text()
         statements = [s.strip() for s in text.split(";") if s.strip()]
-        async with self._driver.session() as session:
+        async with self._driver.session(database=self._database) as session:
             for stmt in statements:
                 result = await session.run(stmt)
                 await result.consume()
         logger.info("Loaded schema from %s (%d statements)", cypher_file, len(statements))
+
+    async def legacy_constraint_names(self) -> list[str]:
+        """Return pre-0.10 KB Arena constraints present in the target database."""
+        rows = await self.execute_query(
+            "SHOW CONSTRAINTS YIELD name " "WHERE name IN $names " "RETURN name ORDER BY name",
+            {"names": list(LEGACY_CONSTRAINT_NAMES)},
+        )
+        return [row["name"] for row in rows if row.get("name") in LEGACY_CONSTRAINT_NAMES]
+
+    async def drop_legacy_constraints(self) -> list[str]:
+        """Drop only known pre-0.10 constraints after explicit operator confirmation."""
+        names = await self.legacy_constraint_names()
+        if not names:
+            return []
+
+        async with self._driver.session(database=self._database) as session:
+            for name in names:
+                result = await session.run(f"DROP CONSTRAINT `{name}` IF EXISTS")
+                await result.consume()
+        return names
 
     # ── Batch node loading ────────────────────────────────────────────────────
 
@@ -112,7 +148,7 @@ class Neo4jStore:
         MERGE (n:{label.value}:KBArenaEntity {{entity_id: record.entity_id}})
         SET n += record
         """
-        async with self._driver.session() as session:
+        async with self._driver.session(database=self._database) as session:
             for i in range(0, len(safe_nodes), BATCH_SIZE):
                 batch = safe_nodes[i : i + BATCH_SIZE]
                 result = await session.run(query, records=batch)
@@ -154,7 +190,7 @@ class Neo4jStore:
             r.extraction_confidence = record.extraction_confidence,
             r.properties = record.properties
         """
-        async with self._driver.session() as session:
+        async with self._driver.session(database=self._database) as session:
             for i in range(0, len(safe_edges), BATCH_SIZE):
                 batch = safe_edges[i : i + BATCH_SIZE]
                 result = await session.run(query, records=batch)

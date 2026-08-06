@@ -91,6 +91,11 @@ _rate_store = _auth_module._rate_store
 RATE_LIMIT_RPM = _auth_module.RATE_LIMIT_RPM
 
 
+def _public_error_message(exc: Exception) -> str:
+    """Expose exception details only in explicitly enabled debug mode."""
+    return str(exc) if settings.debug else "An internal error occurred"
+
+
 def _generation_configured() -> bool:
     """Return whether the selected generation provider has usable credentials."""
     provider = settings.llm_provider.lower()
@@ -171,15 +176,20 @@ async def lifespan(app: FastAPI):
             neo4j = None  # type: ignore[assignment]
 
         if neo4j is not None:
+            driver = None
             try:
                 driver = neo4j.AsyncGraphDatabase.driver(
                     settings.neo4j_uri,
                     auth=(settings.neo4j_user, settings.neo4j_password),
                 )
-                await driver.verify_connectivity()
+                async with driver.session(database=settings.neo4j_database) as session:
+                    result = await session.run("RETURN 1")
+                    await result.consume()
                 app.state.neo4j = driver
                 logger.info("Neo4j connected at %s", settings.neo4j_uri)
-            except (OSError, neo4j.exceptions.ServiceUnavailable) as exc:
+            except (OSError, neo4j.exceptions.GqlError) as exc:
+                if driver is not None:
+                    await driver.close()
                 app.state.neo4j_error = str(exc)
                 logger.warning(
                     "Neo4j not available at %s (%s); knowledge_graph and hybrid will use mock "
@@ -187,6 +197,10 @@ async def lifespan(app: FastAPI):
                     settings.neo4j_uri,
                     exc,
                 )
+            except BaseException:
+                if driver is not None:
+                    await driver.close()
+                raise
 
     # ChromaDB 0.5.x can emit telemetry callback errors even when the client is local.
     import os
@@ -219,11 +233,16 @@ async def lifespan(app: FastAPI):
         "raptor": RaptorStrategy(chroma_client=chroma),
         "pageindex": PageIndexStrategy(),
         "bm25": BM25Strategy(),
-        "rerank_vector": RerankVectorStrategy(chroma_client=chroma, llm_client=llm),
         "qiss": QISSStrategy(chroma_client=chroma, llm_client=llm),
     }
 
     from kb_arena.strategies.catalog import STRATEGY_CATALOG, missing_optional_modules
+
+    rerank_spec = next(spec for spec in STRATEGY_CATALOG if spec.name == "rerank_vector")
+    if not missing_optional_modules(rerank_spec):
+        app.state.strategies["rerank_vector"] = RerankVectorStrategy(
+            chroma_client=chroma, llm_client=llm
+        )
 
     sqr_spec = next(spec for spec in STRATEGY_CATALOG if spec.name == "sqr")
     if not missing_optional_modules(sqr_spec):
@@ -280,11 +299,10 @@ app.include_router(tools_router)
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Consistent error envelope (Pattern 14 from PLAN.md)."""
-    message = str(exc) if settings.debug else "An internal error occurred"
     return JSONResponse(
         status_code=500,
         content=ErrorResponse(
-            error=ErrorDetail(code="internal_error", message=message)
+            error=ErrorDetail(code="internal_error", message=_public_error_message(exc))
         ).model_dump(),
     )
 
@@ -363,7 +381,7 @@ async def chat_stream(body: ChatRequest, request: Request) -> EventSourceRespons
         except Exception as exc:
             yield {
                 "event": "error",
-                "data": json.dumps({"code": "stream_error", "message": str(exc)}),
+                "data": json.dumps({"code": "stream_error", "message": _public_error_message(exc)}),
             }
             return
 
@@ -497,10 +515,10 @@ async def benchmark_results(corpus: str = "all") -> dict:
 
     all_results = []
     for f in sorted(results_dir.glob("*.json")):
-        if corpus != "all" and corpus not in f.name:
-            continue
         try:
             data = json.loads(f.read_text())
+            if corpus != "all" and data.get("corpus") != corpus:
+                continue
             all_results.append(data)
         except (json.JSONDecodeError, OSError):
             continue
@@ -611,7 +629,7 @@ async def graph_data(request: Request, corpus: str = "all", limit: int = 200) ->
         params["corpus"] = corpus
 
     nodes = []
-    async with driver.session() as session:
+    async with driver.session(database=settings.neo4j_database) as session:
         result = await session.run(node_query, params)
         records = await result.data()
         await result.consume()
@@ -639,7 +657,7 @@ async def graph_data(request: Request, corpus: str = "all", limit: int = 200) ->
         if corpus != "all":
             edge_params["corpus"] = corpus
 
-        async with driver.session() as session:
+        async with driver.session(database=settings.neo4j_database) as session:
             result = await session.run(edge_query, edge_params)
             records = await result.data()
             await result.consume()
@@ -710,7 +728,13 @@ async def trigger_graph_build(body: _GraphBuildRequest) -> dict:
                 },
             )
         except Exception as exc:
-            _enqueue_graph_build_event(queue, {"type": "error", "data": {"message": str(exc)}})
+            _enqueue_graph_build_event(
+                queue,
+                {
+                    "type": "error",
+                    "data": {"message": _public_error_message(exc)},
+                },
+            )
         finally:
             _graph_build_tasks.pop(build_id, None)
             _enqueue_graph_build_event(queue, None)  # Sentinel that signals stream end.
@@ -799,7 +823,15 @@ async def arena_create_match(body: ArenaMatchRequest, request: Request):
             "sources_b": match.sources_b,
         }
     except Exception as exc:
-        return JSONResponse({"error": {"code": "match_failed", "message": str(exc)}}, 500)
+        return JSONResponse(
+            {
+                "error": {
+                    "code": "match_failed",
+                    "message": _public_error_message(exc),
+                }
+            },
+            500,
+        )
 
 
 @app.post("/api/arena/vote", dependencies=[Depends(require_auth)])
@@ -993,7 +1025,9 @@ async def readiness(request: Request) -> JSONResponse:
             ready = False
         else:
             try:
-                await driver.verify_connectivity()
+                async with driver.session(database=settings.neo4j_database) as session:
+                    result = await session.run("RETURN 1")
+                    await result.consume()
                 checks["neo4j"] = True
             except Exception:
                 checks["neo4j"] = False

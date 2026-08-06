@@ -686,7 +686,7 @@ async def run_optimize(
         console.print(f"[dim]{total} trials total. Re-run without --dry-run to execute.[/dim]")
         return 0
 
-    documents = load_documents(corpus)
+    documents = load_documents(corpus, strict=True)
     try:
         all_questions = load_questions(corpus)
     except FileNotFoundError:

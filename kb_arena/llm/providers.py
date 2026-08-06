@@ -43,7 +43,7 @@ class LLMProvider(abc.ABC):
         user: str,
         max_tokens: int = 4096,
         temperature: float = 0,
-    ) -> AsyncIterator[str]: ...
+    ) -> AsyncIterator[str | ProviderResponse]: ...
 
 
 class AnthropicProvider(LLMProvider):
@@ -86,7 +86,7 @@ class AnthropicProvider(LLMProvider):
             # Capture usage after stream completes and store on instance
             final = await stream.get_final_message()
             usage = final.usage
-            self.last_stream_response = ProviderResponse(
+            response = ProviderResponse(
                 text="",
                 input_tokens=usage.input_tokens,
                 output_tokens=usage.output_tokens,
@@ -94,6 +94,8 @@ class AnthropicProvider(LLMProvider):
                 cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
                 cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
             )
+            self.last_stream_response = response
+            yield response
 
 
 class OpenAIProvider(LLMProvider):
@@ -142,12 +144,14 @@ class OpenAIProvider(LLMProvider):
             if chunk.usage:
                 last_usage = chunk.usage
 
-        self.last_stream_response = ProviderResponse(
+        response = ProviderResponse(
             text="",
             input_tokens=last_usage.prompt_tokens if last_usage else 0,
             output_tokens=last_usage.completion_tokens if last_usage else 0,
             model=model,
         )
+        self.last_stream_response = response
+        yield response
 
 
 class OllamaProvider(LLMProvider):
@@ -204,12 +208,14 @@ class OllamaProvider(LLMProvider):
                         yield content
                     # Final chunk has done=true with token counts
                     if data.get("done"):
-                        self.last_stream_response = ProviderResponse(
+                        response = ProviderResponse(
                             text="",
                             input_tokens=data.get("prompt_eval_count", 0),
                             output_tokens=data.get("eval_count", 0),
                             model=model,
                         )
+                        self.last_stream_response = response
+                        yield response
 
 
 def create_provider(provider_name: str, **kwargs) -> LLMProvider:
