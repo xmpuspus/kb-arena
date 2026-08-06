@@ -86,7 +86,7 @@ All notable changes to KB Arena.
 
 Indexes built before 0.10.0 must be rebuilt once so corpus metadata, generation state, and
 namespaced storage IDs are present in Chroma and Neo4j. Vector reads ignore inactive and legacy
-generations; successful rebuilds prune inactive records only for the rebuilt corpora. Graph
+generations. Successful rebuilds prune inactive records only for the rebuilt corpora. Graph
 rebuilds label current KB Arena entities and exclude legacy nodes from reads without deleting data.
 Use a Neo4j database dedicated to KB Arena because schema setup removes the legacy KB Arena
 constraints by name.
