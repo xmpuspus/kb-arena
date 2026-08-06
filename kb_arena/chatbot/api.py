@@ -103,17 +103,7 @@ def _check_rate_limit(client_ip: str) -> bool:
     Tolerates plain-list assignment (`_rate_store[ip] = [...]`) used by older
     audit tests, even though the production store is a deque.
     """
-    import time as _time
-
-    now = _time.time()
-    window = 60.0
-    bucket = _auth_module._rate_bucket(client_ip)
-    while bucket and now - bucket[0] >= window:
-        bucket.popleft()
-    if len(bucket) >= RATE_LIMIT_RPM:
-        return False
-    bucket.append(now)
-    return True
+    return _auth_module._consume_rate_limit(client_ip)
 
 
 @asynccontextmanager

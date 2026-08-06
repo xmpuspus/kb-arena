@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import itertools
 import json
-import logging
 import random
 import tempfile
 import time
@@ -30,8 +29,6 @@ from kb_arena.benchmark.ir_metrics import compute_all
 from kb_arena.benchmark.questions import load_questions
 from kb_arena.settings import settings
 from kb_arena.strategies import load_documents
-
-log = logging.getLogger(__name__)
 
 # Which dimensions each strategy actually consumes. Sweeping a dimension a
 # strategy ignores just burns wall-clock on duplicate trials.
@@ -84,6 +81,10 @@ class TrialResult(BaseModel):
     @property
     def mean_latency_ms(self) -> float:
         return fmean(self.per_question_latency_ms) if self.per_question_latency_ms else 0.0
+
+
+class OptimizationTrialError(RuntimeError):
+    """A trial failed before it could produce a complete score vector."""
 
 
 class OptimizeResult(BaseModel):
@@ -509,13 +510,20 @@ async def _score_trial(strategy, cfg, documents, questions, metric, baseline) ->
             if rebuild and hasattr(inst, "build_index"):
                 try:
                     await inst.build_index(documents)
-                except Exception as exc:  # noqa: BLE001 - score unusable configurations as zero
-                    log.warning("optimize: build_index failed for %s %s: %s", strategy, cfg, exc)
-                    return TrialResult(cfg=cfg, per_question_scores=[0.0] * len(questions))
+                except Exception as exc:
+                    raise OptimizationTrialError(
+                        f"build failed for strategy {strategy!r}, config {cfg}: {exc}"
+                    ) from exc
             scores: list[float] = []
             latencies: list[float] = []
             for q in questions:
-                trace = await _retrieve_only(inst, q.question, cfg.top_k)
+                try:
+                    trace = await _retrieve_only(inst, q.question, cfg.top_k)
+                except Exception as exc:
+                    raise OptimizationTrialError(
+                        f"retrieval failed for strategy {strategy!r}, config {cfg}, "
+                        f"question {getattr(q, 'id', '<unknown>')!r}: {exc}"
+                    ) from exc
                 m = compute_all(
                     retrieved=trace.retrieved,
                     expected_ids=set(getattr(q, "expected_chunks", []) or []),
@@ -632,7 +640,12 @@ async def run_optimize(
         base = baseline_config(s)
         for cfg in trials:
             start = time.perf_counter()
-            tr = await _score_trial(s, cfg, documents, questions, metric, base)
+            try:
+                tr = await _score_trial(s, cfg, documents, questions, metric, base)
+            except Exception as exc:
+                console.print(f"[red]Optimization aborted[/red] {exc}")
+                console.print("[red]No recommendation report was written.[/red]")
+                return 1
             trial_results.append(tr)
             console.print(
                 f"[dim]{s} {cfg.model_dump(exclude={'strategy'})} "

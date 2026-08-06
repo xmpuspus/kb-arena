@@ -181,3 +181,20 @@ async def test_score_trial_stubs_llm_during_index_rebuild(monkeypatch):
 
     assert build_called is True
     assert result.per_question_scores == []
+
+
+@pytest.mark.asyncio
+async def test_score_trial_raises_when_index_rebuild_fails(monkeypatch):
+    from kb_arena import strategies
+    from kb_arena.benchmark.optimizer import OptimizationTrialError, _score_trial
+
+    class BrokenStrategy:
+        async def build_index(self, documents):
+            raise ConnectionError("vector store offline")
+
+    monkeypatch.setattr(strategies, "get_strategy", lambda name: BrokenStrategy())
+    base = _base("naive_vector")
+    cfg = base.model_copy(update={"chunk_tokens": 256})
+
+    with pytest.raises(OptimizationTrialError, match="vector store offline"):
+        await _score_trial("naive_vector", cfg, [], [object()], "ndcg", base)

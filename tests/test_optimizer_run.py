@@ -81,6 +81,25 @@ async def test_run_optimize_auto_uses_development_split_and_records_it(patched, 
 
 
 @pytest.mark.asyncio
+async def test_run_optimize_aborts_without_report_on_trial_failure(patched, monkeypatch, capsys):
+    async def fail_trial(*args, **kwargs):
+        raise opt.OptimizationTrialError("retrieval backend unavailable")
+
+    monkeypatch.setattr(opt, "_score_trial", fail_trial)
+
+    code = await opt.run_optimize(
+        "aws-compute",
+        "naive_vector",
+        top_ks=[5],
+        out_dir=str(patched),
+    )
+
+    assert code == 1
+    assert not (patched / "optimize.json").exists()
+    assert "No recommendation report was written" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
 async def test_dry_run_plans_without_scoring(monkeypatch, tmp_path):
     monkeypatch.setattr(opt, "load_documents", lambda corpus: ["doc"])
     monkeypatch.setattr(opt, "load_questions", lambda corpus: [_Q(1)])

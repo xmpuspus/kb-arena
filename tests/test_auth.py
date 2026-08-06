@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 from starlette.requests import Request
 
 
@@ -37,3 +39,29 @@ def test_rate_limit_store_evicts_least_recently_used_client(monkeypatch):
         assert list(auth._rate_store) == ["192.0.2.2", "192.0.2.3", "192.0.2.4"]
     finally:
         auth._rate_store.clear()
+
+
+def test_rate_limit_consumption_is_atomic_at_capacity():
+    from kb_arena.chatbot import auth
+
+    client_id = "concurrent-client"
+    with auth._rate_lock:
+        auth._rate_store.clear()
+        auth._rate_bucket(client_id).extend([100.0] * (auth.RATE_LIMIT_RPM - 1))
+
+    try:
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            allowed = list(
+                pool.map(
+                    lambda _: auth._consume_rate_limit(client_id, now=101.0),
+                    range(8),
+                )
+            )
+
+        assert allowed.count(True) == 1
+        assert allowed.count(False) == 7
+        with auth._rate_lock:
+            assert len(auth._rate_store[client_id]) == auth.RATE_LIMIT_RPM
+    finally:
+        with auth._rate_lock:
+            auth._rate_store.clear()
