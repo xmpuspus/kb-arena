@@ -283,14 +283,14 @@ class WebParser:
         # A URL must not arrive wrapped in Path(): that collapses "https://"
         # to "https:/" and the scheme check below then reads it as a file.
         url = str(path)
-        if not urlparse(url).scheme.lower() in ("http", "https"):
+        if urlparse(url).scheme.lower() not in ("http", "https"):
             # Try reading URL from file
             try:
                 url = path.read_text().strip()
             except Exception:  # noqa: BLE001
                 log.warning("Failed to read URL from %s", path, exc_info=True)
                 return []
-            if not urlparse(url).scheme.lower() in ("http", "https"):
+            if urlparse(url).scheme.lower() not in ("http", "https"):
                 return []
 
         return self._scrape(url, corpus)
