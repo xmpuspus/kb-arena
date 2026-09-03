@@ -11,14 +11,16 @@ from kb_arena.ingest.parsers import web
 @pytest.fixture(autouse=True)
 def _skip_ssrf_checks(monkeypatch):
     # The byte cap is independent of the SSRF guard, so tests skip DNS lookups.
-    monkeypatch.setattr(web, "_validate_url", lambda url: None)
+    # _validate_url returns the IPs _safe_get pins the socket to, so the stub
+    # returns one too. MockTransport never dials it, so the value is inert.
+    monkeypatch.setattr(web, "_validate_url", lambda url: ["203.0.113.1"])
 
 
 def _client(body: bytes, status_code: int = 200, headers: dict | None = None) -> httpx.Client:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(status_code, headers=headers or {}, content=body)
 
-    return httpx.Client(transport=httpx.MockTransport(handler))
+    return web._PinnedClient(transport=httpx.MockTransport(handler))
 
 
 def test_a_response_under_the_cap_passes_through():
@@ -39,7 +41,7 @@ def test_a_response_over_the_cap_is_rejected_during_streaming_with_no_declared_l
         del resp.headers["content-length"]
         return resp
 
-    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+    with web._PinnedClient(transport=httpx.MockTransport(handler)) as client:
         with pytest.raises(web.ResponseTooLargeError, match="exceeded"):
             web._safe_get(client, "https://docs.example.com/huge-page")
 
@@ -78,6 +80,6 @@ def test_the_cap_applies_at_every_redirect_hop():
             return httpx.Response(302, headers={"location": "/next"})
         return httpx.Response(200, content=b"x" * (web._MAX_RESPONSE_BYTES + 1))
 
-    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+    with web._PinnedClient(transport=httpx.MockTransport(handler)) as client:
         with pytest.raises(web.ResponseTooLargeError):
             web._safe_get(client, "https://docs.example.com/start")
