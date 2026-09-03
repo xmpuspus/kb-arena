@@ -3,9 +3,9 @@
   "name": "kb-arena-demo",
   "version": 2,
   "framework": "nextjs",
-  "buildCommand": "cd web && npm install && npx next build",
+  "buildCommand": "cd web && npm ci && npx next build",
   "outputDirectory": "web/.next",
-  "installCommand": "cd web && npm install",
+  "installCommand": "cd web && npm ci",
   "env": {
     "NEXT_PUBLIC_API_URL": "https://kb-arena-api.fly.dev"
   },

@@ -15,6 +15,10 @@ build/
 venv/
 env/
 
+# The repo pins direct dependencies in pyproject.toml, so it does not
+# publish a transitive lock file.
+uv.lock
+
 # IDE
 .vscode/
 .idea/
@@ -58,6 +62,12 @@ datasets/*/raw/*.txt
 datasets/*/processed/*.jsonl
 !datasets/*/processed/.gitkeep
 !datasets/nist-800-171-r3/processed/documents.jsonl
+
+# Other generated processed files (bm25 indexes, etc.), except the tracked
+# ground-truth trees. Run `git ls-files 'datasets/*/processed/*.json'` before
+# adding a new tracked file here, so it does not get ignored by accident.
+datasets/*/processed/*.json
+!datasets/aws-compute/processed/pageindex_tree.json
 
 # Generated Q&A pairs
 datasets/*/qa-pairs/

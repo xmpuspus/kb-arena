@@ -1,6 +1,8 @@
 services:
   neo4j:
-    image: neo4j:5-community
+    # Docker Hub has no 5.27 tag; 5.26 is the newest 5.x community line, so
+    # this pins the latest patch release on it (checked 2026-09-03).
+    image: neo4j:5.26.30-community
     # Bind to localhost only by default — exposing 7687 to 0.0.0.0 with a default
     # password is how databases get popped on the public internet.
     ports:
@@ -13,7 +15,6 @@ services:
       - NEO4J_PLUGINS=["apoc"]
     volumes:
       - neo4j_data:/data
-      - ./cypher:/cypher
     healthcheck:
       test: ["CMD", "neo4j", "status"]
       interval: 10s
@@ -54,7 +55,8 @@ services:
       - ./datasets:/datasets
       - ./results:/results
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      # /ready checks Neo4j and LLM wiring; /health stays for liveness only.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/ready"]
       interval: 15s
       timeout: 5s
       retries: 5
