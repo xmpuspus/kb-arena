@@ -79,12 +79,20 @@ _MIN_DOC_SHARE = 200  # a header plus one sentence; below this a share is useles
 
 
 def _cut(text: str, limit: int) -> str:
-    """Cut text to limit at a word boundary, so an excerpt never ends mid-word."""
+    """Cut text to limit at a whitespace boundary, so an excerpt never ends mid-word.
+
+    The piece keeps the whitespace it ends on. A later piece of the same
+    section then starts on a fresh word instead of gluing onto the last one.
+    """
     if len(text) <= limit:
         return text
     cut = text[:limit]
-    space = cut.rfind(" ")
-    return cut[:space] if space > limit // 2 else cut
+    boundary = max(cut.rfind(" "), cut.rfind("\n"))
+    return cut[: boundary + 1] if boundary > limit // 2 else cut
+
+
+def _share(max_chars: int, count: int) -> int:
+    return (max_chars - len(_DOC_SEPARATOR) * (count - 1)) // count
 
 
 def _load_doc_excerpts(
@@ -130,16 +138,20 @@ def _load_doc_excerpts(
             if not content or len(content) < 50:
                 continue
             header = f"[{title} / {section.get('title', '')}]\n"
-            parts.append((header, content[:_SECTION_SLICE]))
+            body = _cut(content, _SECTION_SLICE)
+            if len(body) < len(content):
+                body = body.rstrip()
+            parts.append((header, body))
         usable.append(parts)
 
     with_content = [i for i, parts in enumerate(usable) if parts]
+    # The separators between documents count against the cap too. Widen the
+    # stride until the share each selected document gets clears the floor.
     selected = list(with_content)
-    if selected and max_chars // len(selected) < _MIN_DOC_SHARE:
-        per_doc_cost = _MIN_DOC_SHARE + len(_DOC_SEPARATOR)
-        stride = -(-len(selected) * per_doc_cost // max_chars)  # ceil
-        selected = selected[::stride]
-    # The separators between documents count against the cap too.
+    stride = 1
+    while len(selected) > 1 and _share(max_chars, len(selected)) < _MIN_DOC_SHARE:
+        stride += 1
+        selected = with_content[::stride]
     budget = max_chars - len(_DOC_SEPARATOR) * max(0, len(selected) - 1)
     share = budget // len(selected) if selected else 0
 
@@ -157,19 +169,18 @@ def _load_doc_excerpts(
             header, body = parts[sec]
             rest = body[off:]
             need_header = off == 0
-            overhead = len(header) if need_header else 0
-            if room - spent - overhead < 50:
+            # A new section after an earlier piece gets the same separator
+            # documents get, and it counts against the cap like they do.
+            lead = (_DOC_SEPARATOR if taken[i] else "") + header if need_header else ""
+            if room - spent - len(lead) < 50:
                 break
-            piece = _cut(rest, room - spent - overhead)
+            piece = _cut(rest, room - spent - len(lead))
             if not piece:
                 break
-            taken[i].append((header if need_header else "") + piece)
-            spent += overhead + len(piece)
+            taken[i].append(lead + piece)
+            spent += len(lead) + len(piece)
             if len(piece) < len(rest):
                 off += len(piece)
-                # skip the whitespace the word-boundary cut left behind
-                while off < len(body) and body[off] == " ":
-                    off += 1
             else:
                 sec, off = sec + 1, 0
         cursor[i] = (sec, off)
