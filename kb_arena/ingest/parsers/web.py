@@ -285,6 +285,7 @@ class WebParser:
         url = str(path)
         if urlparse(url).scheme.lower() not in ("http", "https"):
             # Try reading URL from file
+            path = Path(path)
             try:
                 url = path.read_text().strip()
             except Exception:  # noqa: BLE001

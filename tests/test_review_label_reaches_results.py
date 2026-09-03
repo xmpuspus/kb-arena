@@ -35,11 +35,15 @@ async def test_run_one_stamps_the_review_label_on_the_record(monkeypatch):
         object(),
         asyncio.Semaphore(1),
         review_status="machine-assisted-draft",
+        reviewed_by="Codex draft pass",
     )
 
     assert record.question_review_status == "machine-assisted-draft"
-    # The label survives serialisation, which is what a results file is.
-    assert record.model_dump()["question_review_status"] == "machine-assisted-draft"
+    assert record.question_reviewed_by == "Codex draft pass"
+    # Both survive serialisation, which is what a results file is.
+    dumped = record.model_dump()
+    assert dumped["question_review_status"] == "machine-assisted-draft"
+    assert dumped["question_reviewed_by"] == "Codex draft pass"
 
 
 def test_a_record_built_without_a_label_reads_unspecified():

@@ -34,8 +34,10 @@ def test_web_parser_still_reads_a_url_from_a_file(tmp_path, monkeypatch):
     url_file.write_text("https://example.com/from-file\n")
 
     WebParser().parse(url_file, "c")
+    # The parser accepts a plain string path too, not only a URL string.
+    WebParser().parse(str(url_file), "c")
 
-    assert seen == ["https://example.com/from-file"]
+    assert seen == ["https://example.com/from-file", "https://example.com/from-file"]
 
 
 def test_a_path_wrapped_url_is_what_broke_before():
