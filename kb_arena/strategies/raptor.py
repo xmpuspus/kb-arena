@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from typing import Any
 
 import chromadb
 import numpy as np
@@ -20,6 +21,7 @@ from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy, validate_top_k
 from kb_arena.strategies.chroma_index import (
+    INIT_LOCK,
     activate_generations,
     discard_staged_ids,
     index_activation_lock,
@@ -111,6 +113,7 @@ class RaptorStrategy(Strategy):
     def __init__(self, chroma_client=None):
         super().__init__()
         self._client = chroma_client
+        self._collections: dict[int, Any] = {}
         self._llm = None
 
     def _get_client(self):
@@ -119,12 +122,21 @@ class RaptorStrategy(Strategy):
         return self._client
 
     def _get_collection(self, level: int):
-        ef = get_embedding_function()
-        return self._get_client().get_or_create_collection(
-            name=f"raptor_l{level}",
-            embedding_function=ef,
-            metadata={"hnsw:space": "cosine"},
-        )
+        # get_or_create_collection reaches the sqlite system store. Resolving
+        # it once per level keeps five concurrent searches from opening
+        # fifteen write transactions on the pool.
+        with INIT_LOCK:
+            cached = self._collections.get(level)
+            if cached is not None:
+                return cached
+            ef = get_embedding_function()
+            collection = self._get_client().get_or_create_collection(
+                name=f"raptor_l{level}",
+                embedding_function=ef,
+                metadata={"hnsw:space": "cosine"},
+            )
+            self._collections[level] = collection
+            return collection
 
     def _get_llm(self):
         if self._llm is None:

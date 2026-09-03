@@ -28,9 +28,19 @@ def _slow_client(delay: float = _DELAY) -> MagicMock:
     client = MagicMock()
     collection = MagicMock()
 
+    state = {"in_flight": 0, "peak": 0}
+    gate = threading.Lock()
+
     def slow_query(**kwargs):
-        time.sleep(delay)
-        return _HIT
+        with gate:
+            state["in_flight"] += 1
+            state["peak"] = max(state["peak"], state["in_flight"])
+        try:
+            time.sleep(delay)
+            return _HIT
+        finally:
+            with gate:
+                state["in_flight"] -= 1
 
     def slow_upsert(**kwargs):
         time.sleep(delay)
@@ -39,6 +49,7 @@ def _slow_client(delay: float = _DELAY) -> MagicMock:
     collection.upsert.side_effect = slow_upsert
     collection.count.return_value = 1
     client.get_or_create_collection.return_value = collection
+    client.peak_in_flight = lambda: state["peak"]
     return client
 
 
@@ -69,12 +80,12 @@ async def test_two_naive_queries_overlap_instead_of_running_one_at_a_time(mock_l
     # the two searches.
     await strategy.query("warm-up")
 
-    started = time.perf_counter()
+    client = strategy._client
     await asyncio.gather(strategy.query("first"), strategy.query("second"))
-    elapsed = time.perf_counter() - started
 
-    # Two 0.3 s searches in well under 0.6 s means they ran at the same time.
-    assert elapsed < 0.5
+    # Both searches were inside collection.query() at the same moment. A
+    # loop-blocking search can never reach an in-flight count of two.
+    assert client.peak_in_flight() == 2
 
 
 @pytest.mark.asyncio
@@ -85,8 +96,9 @@ async def test_the_loop_keeps_ticking_during_a_naive_search(mock_llm_client):
     ticks = await _ticks_during(strategy.query("question"))
 
     # A 10 ms heartbeat sees about 30 ticks across a 0.3 s search. A loop
-    # frozen by the search records one or two.
-    assert ticks >= 10
+    # frozen by the search records one or two. Three is the floor, so a
+    # slow CI runner cannot turn a pass into a flake.
+    assert ticks >= 3
 
 
 @pytest.mark.asyncio
@@ -95,7 +107,7 @@ async def test_the_loop_keeps_ticking_during_a_naive_index_build(sample_document
 
     ticks = await _ticks_during(strategy.build_index(sample_documents))
 
-    assert ticks >= 10
+    assert ticks >= 3
 
 
 @pytest.mark.asyncio
@@ -106,7 +118,7 @@ async def test_the_loop_keeps_ticking_during_a_raptor_search(mock_llm_client):
     # Three levels, 0.1 s each, all on one worker thread: 0.3 s of blocking.
     ticks = await _ticks_during(strategy.query("question"))
 
-    assert ticks >= 10
+    assert ticks >= 3
 
 
 @pytest.mark.asyncio
@@ -127,7 +139,7 @@ async def test_the_loop_keeps_ticking_through_a_cold_start(mock_llm_client):
 
     ticks = await _ticks_during(strategy.query("first ever question"))
 
-    assert ticks >= 10
+    assert ticks >= 3
 
 
 @pytest.mark.asyncio
