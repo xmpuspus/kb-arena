@@ -49,8 +49,8 @@ sentinel. The read-only audit and fix endpoints still accept it.
 
 A cross-model review of the DNS-rebinding fix in `kb_arena/ingest/parsers/web.py` found three
 pre-existing defects that the fix did not introduce. They stayed out of that PR to keep its scope.
-Each one has a ledger row in the enhancement train, N-12 to N-14. The crawl cap and the resolver
-failure moved to the fixed section below. The URL ingest defect has its fix in PR 32.
+Each one has a ledger row in the enhancement train, N-12 to N-14. All three are fixed now: the URL
+ingest defect in PR 32, the crawl cap and the resolver failure in the section below.
 
 ### `kb-arena ingest https://example.com` never sends a request, because `Path()` turns `https://` into `https:/`
 
