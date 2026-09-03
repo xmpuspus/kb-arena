@@ -1,4 +1,5 @@
-FROM python:3.12-slim AS builder
+# Pinned to the python:3.12-slim digest checked on 2026-09-03.
+FROM python:3.12-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea AS builder
 
 WORKDIR /app
 
@@ -10,7 +11,8 @@ COPY kb_arena/ kb_arena/
 
 RUN pip install --no-cache-dir --prefix=/install .
 
-FROM python:3.12-slim
+# Pinned to the same python:3.12-slim digest as the builder stage.
+FROM python:3.12-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea
 
 # Non-root user — ASI09 / SOC2 baseline. UID 1000 matches typical k8s securityContext.
 RUN useradd -m -u 1000 kbarena && mkdir -p /app /data && chown -R kbarena:kbarena /app /data
