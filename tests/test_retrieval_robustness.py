@@ -363,7 +363,9 @@ async def test_retriever_lab_fails_and_records_retrieval_ceiling_error(monkeypat
     monkeypatch.setattr(strategies, "get_strategy", lambda name: BrokenCeilingStrategy())
     monkeypatch.setattr(settings, "results_path", str(tmp_path))
 
-    code = await retriever_lab.run_retriever_lab(corpus="test", min_recall=0.0)
+    # "working" does not rank over the naive_vector pool, so the ceiling only
+    # runs here because the caller asks for it, the same as --ceiling-k.
+    code = await retriever_lab.run_retriever_lab(corpus="test", min_recall=0.0, ceiling_k=20)
 
     assert code == 1
     report_path = next(tmp_path.glob("run_*/retriever_lab.json"))

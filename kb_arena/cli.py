@@ -1319,7 +1319,9 @@ def retriever_lab(
         0,
         "--ceiling-k",
         help="Deeper cutoff for the retrieval-ceiling diagnostic (0 = top_k*4). "
-        "Reports base-retriever Recall@top_k vs Recall@ceiling_k = ranking headroom.",
+        "Reports base-retriever Recall@top_k vs Recall@ceiling_k = ranking headroom. "
+        "The diagnostic runs on its own only when a strategy ranks over the naive_vector "
+        "pool; pass this flag to force it for any run.",
     ),
 ):
     """Run retrieval-only benchmark with classical IR metrics. ~10x cheaper than `benchmark`."""
