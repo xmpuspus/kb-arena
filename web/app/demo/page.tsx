@@ -1,8 +1,16 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import ChatPanel, { type DemoResult } from "@/components/ChatPanel";
-import { STRATEGY_LABELS, CORPORA, fetchCorpora, type Strategy, type Message } from "@/lib/api";
+import { useCallback, useState, useRef, useEffect } from "react";
+import ChatPanel, { type DemoResult, type PanelOutcome } from "@/components/ChatPanel";
+import {
+  STRATEGY_LABELS,
+  CORPORA,
+  fetchCorpora,
+  fetchServerStatus,
+  type ServerStatus,
+  type Strategy,
+  type Message,
+} from "@/lib/api";
 
 const DEMO_QUESTION = "How do I set up a Lambda function behind API Gateway with VPC access to an RDS database?";
 
@@ -67,16 +75,51 @@ export default function DemoPage() {
   const [selectedStrategies, setSelectedStrategies] = useState<Strategy[]>([...DEMO_STRATEGIES]);
   const [trigger, setTrigger] = useState(0);
   const [history, setHistory] = useState<Message[]>([]);
+  const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
+  const [outcomes, setOutcomes] = useState<
+    Partial<Record<Strategy, { outcome: PanelOutcome; message?: string }>>
+  >({});
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { fetchCorpora().then(setCorpora); }, []);
+  useEffect(() => { fetchServerStatus().then(setServerStatus); }, []);
+
+  const readOnly = serverStatus?.demoMode === true;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const q = query.trim();
     if (!q) return;
+    setOutcomes({});
     setHistory((prev) => [...prev, { role: "user", content: q }]);
     setTrigger((t) => t + 1);
+  }
+
+  const handleOutcome = useCallback(
+    (strategy: Strategy, outcome: PanelOutcome, message?: string) => {
+      setOutcomes((prev) => ({ ...prev, [strategy]: { outcome, message } }));
+    },
+    []
+  );
+
+  // Every selected panel failed. Seven copies of "HTTP 503" say less than one
+  // line that names the cause, so the panels go quiet and the page speaks.
+  const failed = selectedStrategies.filter((s) => outcomes[s]?.outcome === "error");
+  const allFailed =
+    trigger > 0 && selectedStrategies.length > 0 && failed.length === selectedStrategies.length;
+  const failureMessage = allFailed ? outcomes[failed[0]]?.message ?? "request failed" : "";
+  const failureHint =
+    allFailed && readOnly
+      ? "The server runs in read-only demo mode with no model key, so live questions cannot run. " +
+        "Set KB_ARENA_ANTHROPIC_API_KEY or KB_ARENA_OPENAI_API_KEY on the server to enable them."
+      : allFailed && failureMessage.includes("503")
+      ? "The server answered 503 for every strategy, so it is not ready to serve live questions."
+      : "";
+
+  function handleBackToSample() {
+    setOutcomes({});
+    setHistory([]);
+    setTrigger(0);
   }
 
   function toggleStrategy(s: Strategy) {
@@ -88,6 +131,7 @@ export default function DemoPage() {
   function handleClear() {
     setQuery("");
     setHistory([]);
+    setOutcomes({});
     setTrigger(0);
     inputRef.current?.focus();
   }
@@ -157,7 +201,8 @@ export default function DemoPage() {
           />
           <button
             type="submit"
-            disabled={!query.trim() || selectedStrategies.length === 0}
+            disabled={!query.trim() || selectedStrategies.length === 0 || readOnly}
+            title={readOnly ? "Live questions are off: the server runs in read-only demo mode" : undefined}
             className="px-4 py-2 rounded-lg text-sm font-medium transition-opacity disabled:opacity-30"
             style={{ background: "var(--accent)", color: "#fff" }}
           >
@@ -194,13 +239,47 @@ export default function DemoPage() {
         </div>
       </div>
 
-      {/* Pre-computed example note */}
-      {trigger === 0 && selectedStrategies.length > 0 && (
+      {/* One banner before submit: read-only demo, or precomputed sample */}
+      {trigger === 0 && selectedStrategies.length > 0 && readOnly && (
+        <div
+          role="status"
+          className="px-3 py-2 rounded-lg text-xs border"
+          style={{ borderColor: "var(--accent)", background: "var(--card)", color: "var(--foreground)" }}
+        >
+          <span className="font-semibold">Read-only demo.</span> The server has no model key, so live
+          questions are off and the panels below show precomputed sample output. Set
+          KB_ARENA_ANTHROPIC_API_KEY or KB_ARENA_OPENAI_API_KEY on the server to enable live queries.
+        </div>
+      )}
+      {trigger === 0 && selectedStrategies.length > 0 && !readOnly && (
         <div
           className="px-3 py-2 rounded-lg text-xs"
           style={{ background: "var(--border)", color: "var(--muted)" }}
         >
-          Showing precomputed sample output. Live queries use your configured API; no-key demo mode stays read-only.
+          Showing precomputed sample output. Live queries use your configured API.
+        </div>
+      )}
+
+      {/* One consolidated failure after submit */}
+      {allFailed && (
+        <div
+          role="alert"
+          className="px-3 py-2 rounded-lg text-xs border space-y-2"
+          style={{ borderColor: "var(--danger)", background: "var(--card)", color: "var(--foreground)" }}
+        >
+          <p>
+            <span className="font-semibold" style={{ color: "var(--danger)" }}>
+              All {selectedStrategies.length} strategies failed: {failureMessage}.
+            </span>{" "}
+            {failureHint}
+          </p>
+          <button
+            onClick={handleBackToSample}
+            className="text-xs px-2 py-1 rounded border transition-colors hover:opacity-70"
+            style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+          >
+            Back to sample output
+          </button>
         </div>
       )}
 
@@ -222,6 +301,8 @@ export default function DemoPage() {
               history={history}
               trigger={trigger}
               demoResult={trigger === 0 ? DEMO_RESULTS[s] : undefined}
+              onOutcome={handleOutcome}
+              muted={allFailed}
             />
           ))}
         </div>
