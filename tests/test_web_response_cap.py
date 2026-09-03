@@ -37,9 +37,9 @@ def test_a_response_over_the_cap_is_rejected_during_streaming_with_no_declared_l
     oversized = b"x" * (web._MAX_RESPONSE_BYTES + 1)
 
     def handler(request: httpx.Request) -> httpx.Response:
-        resp = httpx.Response(200, content=oversized)
-        del resp.headers["content-length"]
-        return resp
+        # A streamed body carries no Content-Length and reaches the reader
+        # raw, so the running byte count is the only guard that can fire.
+        return httpx.Response(200, stream=httpx.ByteStream(oversized))
 
     with web._PinnedClient(transport=httpx.MockTransport(handler)) as client:
         with pytest.raises(web.ResponseTooLargeError, match="exceeded"):
@@ -78,7 +78,7 @@ def test_the_cap_applies_at_every_redirect_hop():
     def handler(request: httpx.Request) -> httpx.Response:
         if str(request.url).endswith("/start"):
             return httpx.Response(302, headers={"location": "/next"})
-        return httpx.Response(200, content=b"x" * (web._MAX_RESPONSE_BYTES + 1))
+        return httpx.Response(200, stream=httpx.ByteStream(b"x" * (web._MAX_RESPONSE_BYTES + 1)))
 
     with web._PinnedClient(transport=httpx.MockTransport(handler)) as client:
         with pytest.raises(web.ResponseTooLargeError):
