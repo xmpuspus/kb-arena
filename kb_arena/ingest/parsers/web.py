@@ -155,14 +155,19 @@ class _PinnedClient(httpx.Client):
 
     _safe_get stores the checked IPs for a host in `pins` right before each
     request, and the transport dials those. Tests can pass a MockTransport;
-    the pins still record what the guard checked. With a proxy set in the
-    environment, httpx routes through the proxy transport instead, and the
-    proxy resolves the host itself, so the pin does not apply on that path.
+    the pins still record what the guard checked.
+
+    Environment proxies stay off. With HTTPS_PROXY set, httpx would mount a
+    proxy transport ahead of the pinned one, and the proxy would resolve the
+    host itself, so a rebinding host could still reach a private address
+    through it. The transport's own SSL context still reads SSL_CERT_FILE
+    and SSL_CERT_DIR, so a corporate CA bundle keeps working.
     """
 
     def __init__(self, **kwargs) -> None:
         self.pins: dict[str, list[str]] = {}
         kwargs.setdefault("transport", _PinnedTransport(self.pins))
+        kwargs.setdefault("trust_env", False)
         super().__init__(**kwargs)
 
 
@@ -223,19 +228,64 @@ def _safe_get(client, url: str, timeout: int = 15, max_redirects: int = 5):
     raise SSRFBlocked(f"too many redirects starting from {url}")
 
 
+class _DeflateDecoder:
+    """zlib-wrapped deflate first, raw deflate on the first error, like httpx.
+
+    Servers disagree on whether "deflate" means a zlib stream or a raw one,
+    and httpx's own decoder retries raw on the first zlib error. Without the
+    same fallback, every raw-deflate page would come back as no page.
+    """
+
+    def __init__(self) -> None:
+        self._inner = zlib.decompressobj(wbits=zlib.MAX_WBITS)
+        self._first = True
+
+    def decompress(self, data: bytes, max_length: int = 0) -> bytes:
+        try:
+            out = self._inner.decompress(data, max_length)
+        except zlib.error:
+            if not self._first:
+                raise
+            self._inner = zlib.decompressobj(wbits=-zlib.MAX_WBITS)
+            out = self._inner.decompress(data, max_length)
+        self._first = False
+        return out
+
+    @property
+    def unconsumed_tail(self) -> bytes:
+        return self._inner.unconsumed_tail
+
+    @property
+    def unused_data(self) -> bytes:
+        return self._inner.unused_data
+
+    @property
+    def eof(self) -> bool:
+        return self._inner.eof
+
+    def flush(self) -> bytes:
+        return self._inner.flush()
+
+
 def _decoder_for(encoding: str):
-    """Return a factory for a zlib decompressor matching Content-Encoding, or None.
+    """Return a factory for a decompressor matching Content-Encoding, or None.
 
     A factory, not one decompressor: a gzip body can hold several members
-    back to back, and each member needs a fresh decompressor.
+    back to back, and each member needs a fresh decompressor. The header can
+    list several codings, "gzip, identity" for one, so it parses as a list.
     """
-    enc = encoding.strip().lower()
-    if enc in ("", "identity"):
+    tokens = [tok.strip().lower() for tok in encoding.split(",") if tok.strip()]
+    tokens = [tok for tok in tokens if tok != "identity"]
+    if not tokens:
         return None
-    if enc in ("gzip", "x-gzip"):
+    if len(tokens) > 1:
+        raise httpx.DecodingError(
+            f"unsupported content-encoding chain {encoding!r}; the request asked for identity"
+        )
+    if tokens[0] in ("gzip", "x-gzip"):
         return lambda: zlib.decompressobj(wbits=16 + zlib.MAX_WBITS)
-    if enc == "deflate":
-        return lambda: zlib.decompressobj()
+    if tokens[0] == "deflate":
+        return _DeflateDecoder
     raise httpx.DecodingError(
         f"unsupported content-encoding {encoding!r}; the request asked for identity"
     )
@@ -290,6 +340,13 @@ def _read_capped(resp, url: str) -> bytes:
     chunks: list[bytes] = []
     raw_total = 0
     total = 0
+    try:
+        return _drain(resp, decoder, make, chunks, raw_total, total, too_large, url)
+    except zlib.error as exc:
+        raise httpx.DecodingError(f"{url}: corrupt compressed body: {exc}") from exc
+
+
+def _drain(resp, decoder, make, chunks, raw_total, total, too_large, url: str) -> bytes:
     for raw in resp.iter_raw():
         raw_total += len(raw)
         if raw_total > _MAX_RESPONSE_BYTES:
@@ -365,7 +422,15 @@ def _extract_links(html: str, base_url: str, bs_class) -> list[str]:
     return links
 
 
-def _fetch_page(url: str, client) -> str | None:
+def _fetch_page(url: str, client, *, raise_transport: bool = False) -> str | None:
+    """Fetch one page's HTML, or None when it cannot be used.
+
+    With raise_transport, a connect, TLS, timeout, or decoding failure
+    propagates instead of reading as "no page". The crawl sets it for the
+    entry page, so an unreachable site reports as one instead of as an
+    empty corpus. Later pages keep the lenient path: one slow link must not
+    throw away the pages already collected.
+    """
     try:
         resp = _safe_get(client, url, timeout=15)
         content_type = resp.headers.get("content-type", "")
@@ -378,6 +443,10 @@ def _fetch_page(url: str, client) -> str | None:
     except DNSFailureError:
         # An outage mid-crawl must not read as a page with no text.
         raise
+    except (httpx.TransportError, httpx.DecodingError):
+        if raise_transport:
+            raise
+        log.warning("Failed to fetch %s", url, exc_info=True)
     except Exception as exc:  # noqa: BLE001
         log.warning("Failed to fetch %s: %s", url, exc)
     return None
@@ -459,7 +528,7 @@ class WebParser:
             visited.add(url)
             attempts += 1
 
-            html = _fetch_page(url, client)
+            html = _fetch_page(url, client, raise_transport=(url == start_url))
             if not html:
                 continue
 

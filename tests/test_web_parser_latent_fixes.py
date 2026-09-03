@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import gzip
 import socket
+import zlib
 
 import httpx
 import pytest
@@ -36,7 +37,7 @@ def _streamed(body: bytes, headers: dict | None = None) -> httpx.Client:
 def test_the_crawl_cap_counts_fetch_attempts_not_extracted_pages(monkeypatch):
     fetched: list[str] = []
 
-    def fake_fetch(url, client):
+    def fake_fetch(url, client, *, raise_transport=False):
         fetched.append(url)
         return "<html></html>"
 
@@ -229,3 +230,78 @@ def test_a_gzip_stream_cut_off_early_is_not_accepted_as_complete(pin_stub):
     with _streamed(cut, {"content-encoding": "gzip"}) as client:
         with pytest.raises(httpx.DecodingError, match="ended before its stream"):
             web._safe_get(client, "https://docs.example.com/page")
+
+
+def test_a_raw_deflate_body_decodes_like_httpx_would(pin_stub):
+    # Some servers send raw deflate under the "deflate" name. httpx retries
+    # raw on the first zlib error, and the bounded reader must too.
+    raw = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+    body = raw.compress(b"<html>raw deflate</html>") + raw.flush()
+
+    with _streamed(body, {"content-encoding": "deflate"}) as client:
+        resp = web._safe_get(client, "https://docs.example.com/page")
+
+    assert resp.content == b"<html>raw deflate</html>"
+
+
+def test_a_zlib_deflate_body_decodes(pin_stub):
+    with _streamed(zlib.compress(b"<html>zlib</html>"), {"content-encoding": "deflate"}) as client:
+        resp = web._safe_get(client, "https://docs.example.com/page")
+
+    assert resp.content == b"<html>zlib</html>"
+
+
+def test_a_comma_separated_encoding_with_identity_still_decodes(pin_stub):
+    with _streamed(
+        gzip.compress(b"<html>ok</html>"), {"content-encoding": "gzip, identity"}
+    ) as client:
+        resp = web._safe_get(client, "https://docs.example.com/page")
+
+    assert resp.content == b"<html>ok</html>"
+
+
+def test_a_corrupt_compressed_body_raises_one_typed_error(pin_stub):
+    with _streamed(b"\x1f\x8b" + b"not gzip at all", {"content-encoding": "gzip"}) as client:
+        with pytest.raises(httpx.DecodingError, match="corrupt compressed body"):
+            web._safe_get(client, "https://docs.example.com/page")
+
+
+def test_the_scraper_ignores_environment_proxies(monkeypatch):
+    # A proxy resolves the host itself, so it would carry a request past
+    # the pinned socket. The client must not mount one from the environment.
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example.com:3128")
+    monkeypatch.setenv("HTTP_PROXY", "http://proxy.example.com:3128")
+
+    with web._PinnedClient() as client:
+        assert client._mounts == {}
+        assert isinstance(client._transport, web._PinnedTransport)
+
+
+def test_an_unreachable_entry_page_reports_instead_of_an_empty_corpus(pin_stub, monkeypatch):
+    def refuse(client, url, timeout=15, max_redirects=5):
+        raise httpx.ConnectTimeout("connect timed out")
+
+    monkeypatch.setattr(web, "_safe_get", refuse)
+    monkeypatch.setattr(web, "_try_import_bs4", lambda: object)
+
+    with pytest.raises(httpx.ConnectTimeout):
+        WebParser()._scrape("https://docs.example.com", "c")
+
+
+def test_a_slow_link_mid_crawl_keeps_the_pages_already_collected(monkeypatch):
+    def fetch(url, client, *, raise_transport=False):
+        if url.endswith("/slow"):
+            if raise_transport:
+                raise httpx.ReadTimeout("read timed out")
+            return None
+        return "<html>page</html>"
+
+    monkeypatch.setattr(web, "_fetch_page", fetch)
+    monkeypatch.setattr(web, "_clean_html", lambda html, bs: "some text")
+    monkeypatch.setattr(
+        web, "_extract_links", lambda html, url, bs: [f"{url}/slow"] if url.endswith("com") else []
+    )
+
+    docs = WebParser(max_depth=2, max_pages=5)._crawl("https://docs.example.com", "c", None, None)
+
+    assert [d.source for d in docs] == ["https://docs.example.com"]
