@@ -135,6 +135,14 @@ class _CountingDecoder:
     def unconsumed_tail(self) -> bytes:
         return self._inner.unconsumed_tail
 
+    @property
+    def unused_data(self) -> bytes:
+        return self._inner.unused_data
+
+    @property
+    def eof(self) -> bool:
+        return self._inner.eof
+
     def flush(self) -> bytes:
         return self._inner.flush()
 
@@ -147,8 +155,8 @@ def test_the_decoder_never_emits_past_the_cap_even_for_one_chunk(pin_stub, monke
     _CountingDecoder.largest = 0
 
     def counting_decoder_for(encoding: str):
-        inner = real_decoder_for(encoding)
-        return None if inner is None else _CountingDecoder(inner)
+        make = real_decoder_for(encoding)
+        return None if make is None else (lambda: _CountingDecoder(make()))
 
     monkeypatch.setattr(web, "_decoder_for", counting_decoder_for)
 
@@ -163,3 +171,41 @@ def test_an_encoding_the_reader_cannot_bound_is_refused(pin_stub):
     with _streamed(b"\x00", {"content-encoding": "br"}) as client:
         with pytest.raises(httpx.DecodingError, match="unsupported content-encoding"):
             web._safe_get(client, "https://docs.example.com/page")
+
+
+def test_a_gzip_body_with_several_members_decodes_in_full(pin_stub):
+    # A valid gzip stream can hold members back to back. One decompressor
+    # stops at the first member, so the reader must start a fresh one.
+    body = gzip.compress(b"first,") + gzip.compress(b"second,") + gzip.compress(b"third")
+
+    with _streamed(body, {"content-encoding": "gzip"}) as client:
+        resp = web._safe_get(client, "https://docs.example.com/page")
+
+    assert resp.content == b"first,second,third"
+
+
+def test_a_bomb_hidden_in_a_later_gzip_member_is_still_rejected(pin_stub):
+    body = gzip.compress(b"first") + gzip.compress(b"0" * (web._MAX_RESPONSE_BYTES + 1))
+
+    with _streamed(body, {"content-encoding": "gzip"}) as client:
+        with pytest.raises(web.ResponseTooLargeError):
+            web._safe_get(client, "https://docs.example.com/bomb")
+
+
+def test_a_resolver_outage_mid_crawl_still_reaches_the_operator(monkeypatch):
+    # The entry check resolves fine. Every lookup after it hits EAI_AGAIN.
+    # Both fetch paths catch generic errors, so the outage must be re-raised
+    # ahead of them instead of turning into "no llms.txt" and "no page".
+    calls = {"count": 0}
+
+    def flaky_getaddrinfo(host, port):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return [(socket.AF_INET, None, None, "", ("93.184.216.34", 0))]
+        raise socket.gaierror(socket.EAI_AGAIN, "temporary failure in name resolution")
+
+    monkeypatch.setattr(socket, "getaddrinfo", flaky_getaddrinfo)
+    monkeypatch.setattr(web, "_try_import_bs4", lambda: object)
+
+    with pytest.raises(web.DNSTemporaryError):
+        WebParser(max_pages=1)._scrape("https://docs.example.com", "c")

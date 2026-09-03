@@ -223,17 +223,47 @@ def _safe_get(client, url: str, timeout: int = 15, max_redirects: int = 5):
 
 
 def _decoder_for(encoding: str):
-    """Return a zlib decompressor for the body's Content-Encoding, or None."""
+    """Return a factory for a zlib decompressor matching Content-Encoding, or None.
+
+    A factory, not one decompressor: a gzip body can hold several members
+    back to back, and each member needs a fresh decompressor.
+    """
     enc = encoding.strip().lower()
     if enc in ("", "identity"):
         return None
-    if enc == "gzip":
-        return zlib.decompressobj(wbits=16 + zlib.MAX_WBITS)
+    if enc in ("gzip", "x-gzip"):
+        return lambda: zlib.decompressobj(wbits=16 + zlib.MAX_WBITS)
     if enc == "deflate":
-        return zlib.decompressobj()
+        return lambda: zlib.decompressobj()
     raise httpx.DecodingError(
         f"unsupported content-encoding {encoding!r}; the request asked for identity"
     )
+
+
+def _inflate(decoder, make, data: bytes, budget: int, too_large: Exception):
+    """Inflate `data` through `decoder`, at most `budget` bytes out.
+
+    Walks gzip member boundaries: when one member ends with input left over,
+    the leftover starts a fresh decompressor. Returns the output and the
+    decompressor to keep using. Raises `too_large` as soon as the output
+    would pass `budget`, before the decompressor produces the excess.
+    """
+    out = bytearray()
+    while data:
+        room = budget - len(out)
+        if room <= 0:
+            raise too_large
+        out += decoder.decompress(data, room)
+        if decoder.unconsumed_tail:
+            # Output hit the room limit with input left over: more than the
+            # budget is still to come, so stop before inflating it.
+            raise too_large
+        if decoder.eof and decoder.unused_data:
+            data = decoder.unused_data
+            decoder = make()
+            continue
+        break
+    return bytes(out), decoder
 
 
 def _read_capped(resp, url: str) -> bytes:
@@ -254,7 +284,8 @@ def _read_capped(resp, url: str) -> bytes:
         if len(resp._content) > _MAX_RESPONSE_BYTES:
             raise too_large
         return resp._content
-    decoder = _decoder_for(resp.headers.get("content-encoding", ""))
+    make = _decoder_for(resp.headers.get("content-encoding", ""))
+    decoder = make() if make is not None else None
     chunks: list[bytes] = []
     raw_total = 0
     total = 0
@@ -265,11 +296,9 @@ def _read_capped(resp, url: str) -> bytes:
         if decoder is None:
             chunk = raw
         else:
-            chunk = decoder.decompress(raw, _MAX_RESPONSE_BYTES + 1 - total)
-            if decoder.unconsumed_tail:
-                # Output hit max_length with input left over: more than the
-                # cap is still to come, so stop before inflating it.
-                raise too_large
+            chunk, decoder = _inflate(
+                decoder, make, raw, _MAX_RESPONSE_BYTES + 1 - total, too_large
+            )
         total += len(chunk)
         if total > _MAX_RESPONSE_BYTES:
             raise too_large
@@ -297,6 +326,9 @@ def _check_llms_txt(base_url: str, client) -> str | None:
         log.warning("llms.txt blocked: %s", exc)
     except ResponseTooLargeError as exc:
         log.warning("llms.txt too large, skipped: %s", exc)
+    except DNSTemporaryError:
+        # An outage is not "no llms.txt here". Let the scrape report it.
+        raise
     except Exception:  # noqa: BLE001
         log.debug("llms.txt check failed for %s", llms_url, exc_info=True)
     return None
@@ -338,6 +370,9 @@ def _fetch_page(url: str, client) -> str | None:
         log.warning("Refusing to fetch %s: %s", url, exc)
     except ResponseTooLargeError as exc:
         log.warning("Skipping oversized page %s: %s", url, exc)
+    except DNSTemporaryError:
+        # An outage mid-crawl must not read as a page with no text.
+        raise
     except Exception as exc:  # noqa: BLE001
         log.warning("Failed to fetch %s: %s", url, exc)
     return None
