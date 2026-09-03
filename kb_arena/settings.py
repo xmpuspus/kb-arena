@@ -76,8 +76,9 @@ class Settings(BaseSettings):
     debug: bool = False
     cors_origins: list[str] = []  # Override via KB_ARENA_CORS_ORIGINS='["http://myapp:3000"]'
     session_ttl_minutes: int = 30
-    # Serve /docs, /redoc, and /openapi.json. Switch off on a private deployment.
-    api_docs_enabled: bool = True
+    # Serve /docs, /redoc, and /openapi.json. Unset follows `debug`: closed in
+    # production, open under KB_ARENA_DEBUG=true. Set explicitly to override.
+    api_docs_enabled: bool | None = None
 
     # API auth — when set, requests must include `Authorization: Bearer <token>`.
     # When unset, the API runs in open mode (only safe for localhost dev).

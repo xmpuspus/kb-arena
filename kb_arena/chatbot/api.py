@@ -372,7 +372,19 @@ def _docs_urls(enabled: bool) -> tuple[str | None, str | None, str | None]:
     return "/docs", "/redoc", "/openapi.json"
 
 
-_docs_url, _redoc_url, _openapi_url = _docs_urls(settings.api_docs_enabled)
+def _resolve_docs_enabled(explicit: bool | None, debug: bool) -> bool:
+    """Use the explicit setting when an operator gave one, else follow debug.
+
+    The closed default means a production deployment that never sets
+    KB_ARENA_API_DOCS_ENABLED and never turns on debug serves no /docs,
+    /redoc, or /openapi.json.
+    """
+    return debug if explicit is None else explicit
+
+
+_docs_url, _redoc_url, _openapi_url = _docs_urls(
+    _resolve_docs_enabled(settings.api_docs_enabled, settings.debug)
+)
 
 app = FastAPI(
     title="KB Arena API",
@@ -395,6 +407,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
 app.add_middleware(RequestIDMiddleware)
 

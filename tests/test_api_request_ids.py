@@ -55,6 +55,14 @@ def test_every_response_carries_a_request_id(client):
     assert _ID.match(r.headers["X-Request-ID"])
 
 
+def test_a_browser_client_can_read_the_request_id_header(client):
+    # CORS hides response headers from JS unless the server lists them in
+    # Access-Control-Expose-Headers, so a cross-origin caller could not
+    # otherwise read X-Request-ID even though the header is on the wire.
+    r = client.get("/health", headers={"Origin": "http://localhost:3000"})
+    assert "X-Request-ID" in r.headers["access-control-expose-headers"]
+
+
 def test_a_client_request_id_is_echoed(client):
     r = client.get("/health", headers={"X-Request-ID": "trace-abc-123"})
     assert r.headers["X-Request-ID"] == "trace-abc-123"
@@ -155,9 +163,11 @@ def test_debug_explain_failures_are_logged(client, caplog, monkeypatch):
     assert "explain-request-1" in caplog.text
 
 
-def test_api_docs_are_reachable_by_default(client):
-    assert client.get("/openapi.json").status_code == 200
-    assert client.get("/docs").status_code == 200
+def test_api_docs_are_closed_by_default(client):
+    # The test process runs with debug off and api_docs_enabled unset, so the
+    # docs routes never got registered on the app this client wraps.
+    assert client.get("/openapi.json").status_code == 404
+    assert client.get("/docs").status_code == 404
 
 
 def test_api_docs_urls_resolve_from_the_docs_enabled_setting():
@@ -165,3 +175,17 @@ def test_api_docs_urls_resolve_from_the_docs_enabled_setting():
 
     assert _docs_urls(True) == ("/docs", "/redoc", "/openapi.json")
     assert _docs_urls(False) == (None, None, None)
+
+
+def test_docs_enabled_follows_debug_when_unset():
+    from kb_arena.chatbot.api import _resolve_docs_enabled
+
+    assert _resolve_docs_enabled(None, debug=False) is False
+    assert _resolve_docs_enabled(None, debug=True) is True
+
+
+def test_an_explicit_docs_setting_overrides_debug():
+    from kb_arena.chatbot.api import _resolve_docs_enabled
+
+    assert _resolve_docs_enabled(True, debug=False) is True
+    assert _resolve_docs_enabled(False, debug=True) is False

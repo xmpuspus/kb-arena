@@ -94,18 +94,35 @@ def _try_import_bs4():
 def _safe_get(client, url: str, timeout: int = 15, max_redirects: int = 5):
     """GET a URL with SSRF validation on every hop. Disables auto-follow_redirects.
 
-    Rejects a response body over _MAX_RESPONSE_BYTES, at every redirect hop, so
-    one huge or malicious page cannot blow up memory during HTML parsing.
+    Streams the body and aborts as soon as it passes _MAX_RESPONSE_BYTES, at
+    every redirect hop, so a huge or malicious page cannot buffer its full
+    body in memory before the cap gets checked.
     """
     current = url
     for _ in range(max_redirects + 1):
         _validate_url(current)
-        resp = client.get(current, timeout=timeout, follow_redirects=False)
-        if len(resp.content) > _MAX_RESPONSE_BYTES:
-            raise ResponseTooLargeError(
-                f"{current}: response body of {len(resp.content)} bytes exceeds "
-                f"the {_MAX_RESPONSE_BYTES} byte cap"
-            )
+        with client.stream("GET", current, timeout=timeout, follow_redirects=False) as resp:
+            content_length = resp.headers.get("content-length")
+            if content_length and int(content_length) > _MAX_RESPONSE_BYTES:
+                raise ResponseTooLargeError(
+                    f"{current}: content-length {content_length} exceeds "
+                    f"the {_MAX_RESPONSE_BYTES} byte cap"
+                )
+
+            chunks: list[bytes] = []
+            total = 0
+            for chunk in resp.iter_bytes():
+                total += len(chunk)
+                if total > _MAX_RESPONSE_BYTES:
+                    raise ResponseTooLargeError(
+                        f"{current}: response body exceeded the "
+                        f"{_MAX_RESPONSE_BYTES} byte cap while streaming"
+                    )
+                chunks.append(chunk)
+            # Same field httpx's own Response.read() sets, so resp.text and
+            # resp.content keep working for callers after the stream closes.
+            resp._content = b"".join(chunks)
+
         if resp.status_code in (301, 302, 303, 307, 308):
             location = resp.headers.get("location")
             if not location:
