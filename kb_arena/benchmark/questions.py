@@ -69,7 +69,10 @@ def load_questions(
     for yaml_file in sorted(questions_dir.glob("*.yaml")):
         if yaml_file.name == EXPECTED_CHUNKS_FILE:
             continue
-        raw = yaml.safe_load(yaml_file.read_text())
+        try:
+            raw = yaml.safe_load(yaml_file.read_text())
+        except yaml.YAMLError as exc:
+            raise ValueError(f"Invalid question YAML: {yaml_file}") from exc
         if not raw:
             continue
         for entry in raw:

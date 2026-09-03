@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "description": "Judge calibration set. Correct candidates use different words from the reference on purpose. Wrong candidates are fluent and specific but answer the question incorrectly.",
+  "items": [
+    {
+      "id": "correct-paraphrase-timeout",
+      "label": "correct",
+      "question": "What is the maximum execution time for a single AWS Lambda invocation?",
+      "reference": "A Lambda function can run for at most 15 minutes per invocation.",
+      "candidate": "Each invocation is capped at 900 seconds, after which the runtime stops the function.",
+      "expected_min": 0.7,
+      "expected_max": 1.0
+    },
+    {
+      "id": "correct-reordered-integration",
+      "label": "correct",
+      "question": "Which API Gateway integration type passes the raw request to Lambda without a mapping template?",
+      "reference": "Lambda proxy integration forwards the whole request to the function as an event and expects the function to shape the response.",
+      "candidate": "Proxy integration. The function receives the complete request as its event object and must return the response format itself, with no mapping template in between.",
+      "expected_min": 0.7,
+      "expected_max": 1.0
+    },
+    {
+      "id": "correct-terse-fargate",
+      "label": "correct",
+      "question": "Does ECS on Fargate require you to manage EC2 instances?",
+      "reference": "No. Fargate is serverless, so AWS provisions and manages the compute for each task.",
+      "candidate": "No, with Fargate there are no instances to patch or scale; AWS runs the task compute for you.",
+      "expected_min": 0.7,
+      "expected_max": 1.0
+    },
+    {
+      "id": "correct-extra-detail-cold-start",
+      "label": "correct",
+      "question": "What causes a Lambda cold start?",
+      "reference": "A cold start happens when Lambda must create a new execution environment before it can run the handler.",
+      "candidate": "When no warm execution environment is available, Lambda initialises a fresh one, loads the runtime and your code, then runs the handler. That setup delay is the cold start, and provisioned concurrency avoids it.",
+      "expected_min": 0.7,
+      "expected_max": 1.0
+    },
+    {
+      "id": "wrong-number-timeout",
+      "label": "wrong",
+      "question": "What is the maximum execution time for a single AWS Lambda invocation?",
+      "reference": "A Lambda function can run for at most 15 minutes per invocation.",
+      "candidate": "A single invocation can run for up to 60 minutes before Lambda terminates it.",
+      "expected_min": 0.0,
+      "expected_max": 0.3
+    },
+    {
+      "id": "wrong-swapped-integration",
+      "label": "wrong",
+      "question": "Which API Gateway integration type passes the raw request to Lambda without a mapping template?",
+      "reference": "Lambda proxy integration forwards the whole request to the function as an event and expects the function to shape the response.",
+      "candidate": "Custom (non-proxy) integration, which sends the request body straight to the function without any transformation.",
+      "expected_min": 0.0,
+      "expected_max": 0.3
+    },
+    {
+      "id": "wrong-inverted-fargate",
+      "label": "wrong",
+      "question": "Does ECS on Fargate require you to manage EC2 instances?",
+      "reference": "No. Fargate is serverless, so AWS provisions and manages the compute for each task.",
+      "candidate": "Yes. Fargate schedules tasks onto EC2 instances that you register into the cluster and keep patched.",
+      "expected_min": 0.0,
+      "expected_max": 0.3
+    },
+    {
+      "id": "wrong-off-topic-cold-start",
+      "label": "wrong",
+      "question": "What causes a Lambda cold start?",
+      "reference": "A cold start happens when Lambda must create a new execution environment before it can run the handler.",
+      "candidate": "Cold starts are caused by API Gateway throttling requests when the account-level rate limit is exceeded.",
+      "expected_min": 0.0,
+      "expected_max": 0.3
+    }
+  ]
+}

@@ -13,18 +13,13 @@ from rich.console import Console
 
 from kb_arena.models.benchmark import BenchmarkResult
 from kb_arena.settings import settings
+from kb_arena.strategies.catalog import STRATEGY_CATALOG
 
 console = Console()
 
-STRATEGY_NAMES = [
-    "naive_vector",
-    "contextual_vector",
-    "qna_pairs",
-    "knowledge_graph",
-    "hybrid",
-    "raptor",
-    "pageindex",
-]
+# Every registered strategy, from the catalog. A hand-kept list here dropped bm25,
+# rerank_vector, qiss, and sqr from every report for two releases.
+STRATEGY_NAMES = [spec.name for spec in STRATEGY_CATALOG]
 TIER_LABELS = {
     1: "Tier 1 - Factoid",
     2: "Tier 2 - Procedural",

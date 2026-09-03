@@ -84,6 +84,8 @@ class ErrorDetail(BaseModel):
 
     code: str
     message: str
+    # Echo of the X-Request-ID header, so a client can quote the log line that explains it.
+    request_id: str | None = None
 
 
 class ErrorResponse(BaseModel):

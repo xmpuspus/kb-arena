@@ -2,15 +2,26 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from pathlib import Path
 from typing import Any
 
 from neo4j import AsyncDriver, AsyncGraphDatabase
+from neo4j.exceptions import ServiceUnavailable
 
 from kb_arena.graph.schema import NodeType, RelType
 from kb_arena.settings import settings
+
+_log = logging.getLogger(__name__)
+_CONNECT_ATTEMPTS = 3
+_CONNECT_BACKOFF_S = (0.5, 1.0, 2.0)
+
+
+async def _sleep(seconds: float) -> None:
+    await asyncio.sleep(seconds)
+
 
 logger = logging.getLogger(__name__)
 
@@ -59,20 +70,43 @@ class Neo4jStore:
         user: str | None = None,
         password: str | None = None,
         database: str | None = None,
+        attempts: int = _CONNECT_ATTEMPTS,
     ) -> Neo4jStore:
+        """Open a driver and ping the database, waiting briefly for a Neo4j that still starts.
+
+        Right after ``docker compose up`` the container answers connections before it
+        accepts queries, which the driver reports as ``ServiceUnavailable``. Three short
+        retries cover that window. A wrong password or any other error, including a
+        plain connection failure, raises on the first attempt.
+        """
         target_database = database or settings.neo4j_database
         driver = AsyncGraphDatabase.driver(
             uri or settings.neo4j_uri,
             auth=(user or settings.neo4j_user, password or settings.neo4j_password),
         )
-        try:
-            async with driver.session(database=target_database) as session:
-                result = await session.run("RETURN 1")
-                await result.consume()
-        except BaseException:
-            await driver.close()
-            raise
-        return cls(driver, database=target_database)
+        for attempt in range(max(1, attempts)):
+            try:
+                async with driver.session(database=target_database) as session:
+                    result = await session.run("RETURN 1")
+                    await result.consume()
+                return cls(driver, database=target_database)
+            except ServiceUnavailable as exc:
+                if attempt >= attempts - 1:
+                    await driver.close()
+                    raise
+                delay = _CONNECT_BACKOFF_S[min(attempt, len(_CONNECT_BACKOFF_S) - 1)]
+                _log.warning(
+                    "Neo4j not ready (attempt %d/%d): %s. Retrying in %.1fs",
+                    attempt + 1,
+                    attempts,
+                    exc,
+                    delay,
+                )
+                await _sleep(delay)
+            except BaseException:
+                await driver.close()
+                raise
+        raise ServiceUnavailable("Neo4j connect exhausted its attempts")
 
     async def close(self) -> None:
         await self._driver.close()

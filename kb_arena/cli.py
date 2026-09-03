@@ -39,13 +39,14 @@ def _setup(
         is_eager=True,
     ),
 ) -> None:
-    level = logging.DEBUG if verbose else logging.WARNING
-    logging.basicConfig(
-        level=level,
-        format="%(message)s",
-        datefmt="[%X]",
-        handlers=[RichHandler(rich_tracebacks=True, show_path=verbose)],
-    )
+    from kb_arena.logging_config import configure_logging, warn_unknown_env
+    from kb_arena.settings import settings
+
+    level = logging.DEBUG if verbose else settings.log_level
+    handler = RichHandler(rich_tracebacks=True, show_path=verbose)
+    handler.setFormatter(logging.Formatter("%(message)s", datefmt="[%X]"))
+    configure_logging(level, handler=handler)
+    warn_unknown_env()
 
 
 # Pipeline: init-corpus -> ingest -> build-graph/build-vectors ->
@@ -444,13 +445,29 @@ def benchmark(
     _next_step("benchmark", corpus)
 
 
+_REPORT_FORMATS = ("rich", "json", "csv", "html", "markdown")
+
+
 @app.command()
 def report(
     corpus: str = typer.Option("all", help="Corpus to generate report for"),
     output: str | None = typer.Option(None, help="Output file path"),  # noqa: UP045
-    format: str = typer.Option("rich", help="Output format: rich, json, csv, html"),
+    format: str = typer.Option("rich", help="Output format: rich, json, csv, html, markdown"),
 ):
     """Generate benchmark report from results JSON."""
+    if format not in _REPORT_FORMATS:
+        _cli_error(
+            "UNKNOWN_FORMAT",
+            f"Unknown format '{format}'. Choose one of: {', '.join(_REPORT_FORMATS)}.",
+        )
+
+    if format == "markdown":
+        from kb_arena.benchmark.reporter import generate_report
+
+        generate_report(corpus=corpus, output=output)
+        _next_step("report")
+        return
+
     if format == "json":
         import json
         import sys
@@ -552,18 +569,24 @@ def init_corpus(
         (base / subdir).mkdir(parents=True, exist_ok=True)
 
     # Drop a sample question YAML so users can see the schema without reading docs.
+    # The example must validate as a Question; the loader rejects anything else.
     sample_q = base / "questions" / "tier1_factoid.yaml.example"
     sample_q.write_text(
-        "# Rename to tier1_factoid.yaml to activate. One YAML per tier.\n"
-        "- id: my-docs-t1-001\n"
-        '  question: "What is X?"\n'
+        "# Rename to tier1_factoid.yaml to activate. One YAML file per tier.\n"
+        "# Fields: id, tier (1-5), type, hops, split, question, ground_truth, constraints.\n"
+        f"- id: {name}-t1-001\n"
         "  tier: 1\n"
         "  type: factoid\n"
+        "  hops: 1\n"
+        "  split: development\n"
+        '  question: "What is X?"\n'
         "  ground_truth:\n"
-        '    answer_summary: "X is ..."\n'
+        '    answer: "X is ..."\n'
+        "    source_refs: []\n"
+        "    required_entities: []\n"
+        "  constraints:\n"
         '    must_mention: ["X"]\n'
-        "    must_not_claim: []\n"
-        "    source_refs: []\n",
+        "    must_not_claim: []\n",
         encoding="utf-8",
     )
 

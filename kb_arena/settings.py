@@ -59,12 +59,25 @@ class Settings(BaseSettings):
     reranker_backend: str = "bge"
     reranker_model: str = ""  # blank = backend default
 
+    # LLM call resilience. The retry predicate is provider-aware (see llm/client.py).
+    llm_call_timeout_s: float = 60.0
+    llm_max_attempts: int = 3
+    # Streaming deadlines: time to the first token, then the longest silence between tokens.
+    llm_stream_first_token_timeout_s: float = 30.0
+    llm_stream_idle_timeout_s: float = 60.0
+
+    # Logging. KB_ARENA_LOG_LEVEL applies to the CLI and the API process; --verbose wins.
+    log_level: str = "INFO"
+    log_format: str = "text"  # text | json
+
     # Server
     host: str = "127.0.0.1"
     port: int = 8000
     debug: bool = False
     cors_origins: list[str] = []  # Override via KB_ARENA_CORS_ORIGINS='["http://myapp:3000"]'
     session_ttl_minutes: int = 30
+    # Serve /docs, /redoc, and /openapi.json. Switch off on a private deployment.
+    api_docs_enabled: bool = True
 
     # API auth — when set, requests must include `Authorization: Bearer <token>`.
     # When unset, the API runs in open mode (only safe for localhost dev).
@@ -112,6 +125,29 @@ class Settings(BaseSettings):
     def _validate_benchmark_cost_cap(cls, value: float) -> float:
         if not math.isfinite(value) or value < 0:
             raise ValueError("benchmark cost cap must be a finite non-negative number")
+        return value
+
+    @field_validator("log_level")
+    @classmethod
+    def _validate_log_level(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
+            raise ValueError("log level must be one of: DEBUG, INFO, WARNING, ERROR, CRITICAL")
+        return normalized
+
+    @field_validator("log_format")
+    @classmethod
+    def _validate_log_format(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"text", "json"}:
+            raise ValueError("log format must be text or json")
+        return normalized
+
+    @field_validator("llm_max_attempts")
+    @classmethod
+    def _validate_llm_max_attempts(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("llm max attempts must be at least 1")
         return value
 
     @field_validator("reranker_backend")
