@@ -1,13 +1,12 @@
 """Strategy 9: Cross-encoder Reranker over Naive Vector.
 
 Wraps `naive_vector` retrieval at top_k * `RERANK_FANOUT` and rescores the
-candidates with a cross-encoder. Two backends are supported:
+candidates with a cross-encoder. Three backends are supported:
 
 * `bge`     — BAAI/bge-reranker-v2-m3 via sentence-transformers.CrossEncoder
               (free, fully on-prem, CPU-friendly).
 * `cohere`  — Cohere Rerank v4 / v3.5 via the cohere SDK.
 * `voyage`  — Voyage Rerank 2.5.
-* `jina`    — Jina Reranker v3 via HTTP.
 
 Pick the backend via `KB_ARENA_RERANKER_BACKEND` (default `bge` — no key needed).
 

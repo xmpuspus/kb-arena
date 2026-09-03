@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 from collections.abc import AsyncIterator
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -75,19 +76,60 @@ class LLMResponse:
         return self.input_tokens + self.output_tokens
 
 
-def _retryable_exceptions():
-    """Build the retryable exception tuple for the active provider."""
-    try:
-        import anthropic
+_RETRYABLE_HTTP_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
+_BACKOFF_CAP_S = 30.0
+_BACKOFF_JITTER_S = 0.5
 
-        return (
-            anthropic.RateLimitError,
-            anthropic.APIConnectionError,
-            anthropic.APITimeoutError,
-            anthropic.InternalServerError,
+
+async def _sleep(seconds: float) -> None:
+    """Backoff sleep, kept separate so tests can replace it without touching asyncio."""
+    await asyncio.sleep(seconds)
+
+
+def _is_retryable(exc: BaseException, provider_name: str) -> bool:
+    """Decide whether an error from the active provider is transient.
+
+    Each SDK raises its own classes, so the old Anthropic-only tuple let every OpenAI
+    and Ollama rate limit fail on the first attempt. A timeout is transient everywhere.
+    """
+    if isinstance(exc, TimeoutError):
+        return True
+    if provider_name == "anthropic":
+        try:
+            import anthropic
+        except ImportError:
+            return isinstance(exc, OSError)
+        return isinstance(
+            exc,
+            anthropic.RateLimitError
+            | anthropic.APIConnectionError
+            | anthropic.APITimeoutError
+            | anthropic.InternalServerError,
         )
-    except ImportError:
-        return (OSError,)
+    if provider_name == "openai":
+        try:
+            import openai
+        except ImportError:
+            return isinstance(exc, OSError)
+        return isinstance(
+            exc,
+            openai.RateLimitError
+            | openai.APIConnectionError
+            | openai.APITimeoutError
+            | openai.InternalServerError,
+        )
+    if provider_name == "ollama":
+        import httpx
+
+        if isinstance(exc, httpx.HTTPStatusError):
+            return exc.response.status_code in _RETRYABLE_HTTP_STATUS
+        return isinstance(exc, httpx.TransportError | OSError)
+    return isinstance(exc, OSError)
+
+
+def _backoff_delay(attempt: int) -> float:
+    """Exponential backoff with jitter so concurrent callers do not retry in lockstep."""
+    return min(float(2**attempt), _BACKOFF_CAP_S) + random.uniform(0.0, _BACKOFF_JITTER_S)
 
 
 class LLMClient:
@@ -95,6 +137,7 @@ class LLMClient:
         from kb_arena.llm.providers import create_provider
 
         provider_name = settings.llm_provider
+        self._provider_name = provider_name
 
         if provider_name == "anthropic":
             key = api_key or settings.llm_api_key or settings.anthropic_api_key
@@ -181,10 +224,20 @@ class LLMClient:
         answer: str,
         reference: str,
         system_prompt: str,
+        question: str = "",
         **kwargs,
     ) -> LLMResponse:
-        """LLM-as-judge evaluation. Uses judge model to avoid same-model bias."""
-        user_content = f"Reference answer:\n{reference}\n\nCandidate answer:\n{answer}"
+        """LLM-as-judge evaluation. Uses judge model to avoid same-model bias.
+
+        The judge scores whether the candidate answers the question, so the question
+        goes first. Without it the judge can only measure similarity to the reference.
+        """
+        parts = []
+        if question:
+            parts.append(f"Question:\n{question}")
+        parts.append(f"Reference answer:\n{reference}")
+        parts.append(f"Candidate answer:\n{answer}")
+        user_content = "\n\n".join(parts)
         return await self._call("judge", system_prompt, user_content, max_tokens=300, **kwargs)
 
     async def _call(
@@ -195,31 +248,30 @@ class LLMClient:
         max_tokens: int = 4096,
         **kwargs,
     ) -> LLMResponse:
-        """Core API call with retry (3 attempts, exponential backoff) and 60s timeout."""
-        _retryable = _retryable_exceptions()
+        """Core API call with a per-attempt deadline and provider-aware retry."""
+        attempts = max(1, settings.llm_max_attempts)
         last_exc: BaseException = RuntimeError("LLM call failed before any attempt")
-        for attempt in range(3):
+        for attempt in range(attempts):
             try:
                 return await asyncio.wait_for(
                     self._call_once(model_key, system, user, max_tokens, **kwargs),
-                    timeout=60.0,
+                    timeout=settings.llm_call_timeout_s,
                 )
-            except TimeoutError as exc:
-                last_exc = exc
-                logger.warning("LLM call timed out (attempt %d/3)", attempt + 1)
-            except _retryable as exc:
-                last_exc = exc
-                if attempt < 2:
-                    delay = 2**attempt
-                    logger.warning(
-                        "LLM call failed (attempt %d/3): %s. Retrying in %ds",
-                        attempt + 1,
-                        exc,
-                        delay,
-                    )
-                    await asyncio.sleep(delay)
-                else:
+            except Exception as exc:
+                if not _is_retryable(exc, self._provider_name):
                     raise
+                last_exc = exc
+                if attempt >= attempts - 1:
+                    raise
+                delay = _backoff_delay(attempt)
+                logger.warning(
+                    "LLM call failed (attempt %d/%d): %s. Retrying in %.1fs",
+                    attempt + 1,
+                    attempts,
+                    exc,
+                    delay,
+                )
+                await _sleep(delay)
         raise last_exc
 
     async def _call_once(
@@ -268,18 +320,60 @@ class LLMClient:
         model = self._models["generate"]
         user_content = f"Context:\n{context}\n\nQuery: {query}" if context else query
         max_tokens = kwargs.pop("max_tokens", 4096)
+        attempts = max(1, settings.llm_max_attempts)
 
         raw: ProviderResponse | None = None
-        async for item in self._provider.stream_text(
-            model=model,
-            system=system_prompt,
-            user=user_content,
-            max_tokens=max_tokens,
-        ):
-            if isinstance(item, ProviderResponse):
-                raw = item
-            else:
-                yield item
+        for attempt in range(attempts):
+            iterator = self._provider.stream_text(
+                model=model,
+                system=system_prompt,
+                user=user_content,
+                max_tokens=max_tokens,
+            ).__aiter__()
+            first_token_seen = False
+            try:
+                while True:
+                    # Before the first token a stall is a setup problem and can retry.
+                    # After it, a retry would repeat text the caller already showed.
+                    deadline = (
+                        settings.llm_stream_idle_timeout_s
+                        if first_token_seen
+                        else settings.llm_stream_first_token_timeout_s
+                    )
+                    try:
+                        item = await asyncio.wait_for(iterator.__anext__(), timeout=deadline)
+                    except StopAsyncIteration:
+                        break
+                    if isinstance(item, ProviderResponse):
+                        raw = item
+                        continue
+                    first_token_seen = True
+                    yield item
+                break
+            except Exception as exc:
+                if (
+                    first_token_seen
+                    or not _is_retryable(exc, self._provider_name)
+                    or attempt >= attempts - 1
+                ):
+                    raise
+                delay = _backoff_delay(attempt)
+                logger.warning(
+                    "LLM stream failed before the first token (attempt %d/%d): %s. "
+                    "Retrying in %.1fs",
+                    attempt + 1,
+                    attempts,
+                    exc,
+                    delay,
+                )
+                await _sleep(delay)
+            finally:
+                aclose = getattr(iterator, "aclose", None)
+                if aclose is not None:
+                    try:
+                        await aclose()
+                    except Exception:  # noqa: BLE001 - closing a broken stream must not mask the cause
+                        pass
 
         # Backward compatibility for third-party providers that only expose the
         # legacy instance field. Built-in providers emit a per-call marker.

@@ -29,6 +29,7 @@ from kb_arena.chatbot.auth import require_auth
 from kb_arena.chatbot.session import SessionStore
 from kb_arena.chatbot.tools_api import router as tools_router
 from kb_arena.exceptions import ArenaError, StrategyError
+from kb_arena.logging_config import bind_request_id, normalize_request_id, reset_request_id
 from kb_arena.models.api import (
     ArenaMatchRequest,
     ArenaVoteRequest,
@@ -38,6 +39,8 @@ from kb_arena.models.api import (
     ErrorResponse,
 )
 from kb_arena.settings import settings
+
+_REQUEST_ID_HEADER = "X-Request-ID"
 
 # Per-build UUID queues for streaming graph build events to SSE clients.
 # Keyed by build_id (not corpus) so concurrent builds for the same corpus don't collide.
@@ -96,6 +99,79 @@ RATE_LIMIT_RPM = _auth_module.RATE_LIMIT_RPM
 def _public_error_message(exc: Exception) -> str:
     """Expose exception details only in explicitly enabled debug mode."""
     return str(exc) if settings.debug else "An internal error occurred"
+
+
+def _current_request_id() -> str:
+    from kb_arena.logging_config import current_request_id
+
+    return current_request_id()
+
+
+def _request_id_for(request: Request | None = None) -> str:
+    """Read the id set by RequestIDMiddleware.
+
+    Prefers ``request.state``, which the middleware's outer ServerErrorMiddleware
+    layer can still read after an exception unwinds this middleware's own
+    ``finally`` block. Falls back to the context var for code with no request.
+    """
+    if request is not None:
+        state_id = getattr(request.state, "request_id", "")
+        if state_id:
+            return state_id
+    return _current_request_id()
+
+
+def _error_detail(code: str, exc: Exception, request: Request | None = None) -> ErrorDetail:
+    """Build one error body shape for every failure path: message plus request id."""
+    return ErrorDetail(
+        code=code, message=_public_error_message(exc), request_id=_request_id_for(request) or None
+    )
+
+
+class RequestIDMiddleware:
+    """Bind a request id for the whole request, echo it on the response.
+
+    Plain ASGI, not ``BaseHTTPMiddleware``: that class buffers the response
+    through its own task group, which breaks ``sse_starlette`` streaming and
+    raises a cross-event-loop error under the test client. This wraps only
+    ``send`` to add one header, so a streamed body passes through untouched.
+
+    A client-sent id passes through only when it matches a safe pattern, so a
+    request id can never carry attacker-controlled text into the log format.
+    """
+
+    def __init__(self, app):
+        self._app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+
+        headers = dict(scope.get("headers") or [])
+        client_id = headers.get(_REQUEST_ID_HEADER.lower().encode()) or b""
+        request_id = normalize_request_id(client_id.decode("latin-1") or None)
+        # ServerErrorMiddleware wraps this middleware and calls the registered
+        # Exception handler AFTER this call returns, once the exception has
+        # already unwound through the `finally` below and reset the context
+        # var. Scope state outlives that unwind, so the handler reads from
+        # there; bind_request_id keeps the context var for everything that
+        # runs before the reset, and for log lines with no Request object.
+        scope.setdefault("state", {})["request_id"] = request_id
+        token = bind_request_id(request_id)
+
+        async def send_with_id(message):
+            if message["type"] == "http.response.start":
+                message["headers"] = [
+                    *message.get("headers", []),
+                    (_REQUEST_ID_HEADER.encode(), request_id.encode()),
+                ]
+            await send(message)
+
+        try:
+            await self._app(scope, receive, send_with_id)
+        finally:
+            reset_request_id(token)
 
 
 def _generation_configured() -> bool:
@@ -288,11 +364,36 @@ async def lifespan(app: FastAPI):
         await app.state.neo4j.close()
 
 
+def _docs_urls(enabled: bool) -> tuple[str | None, str | None, str | None]:
+    """Resolve the three FastAPI doc routes from one setting, so a private
+    deployment can drop them without three separate flags to keep in sync."""
+    if not enabled:
+        return None, None, None
+    return "/docs", "/redoc", "/openapi.json"
+
+
+def _resolve_docs_enabled(explicit: bool | None, debug: bool) -> bool:
+    """Use the explicit setting when an operator gave one, else follow debug.
+
+    The closed default means a production deployment that never sets
+    KB_ARENA_API_DOCS_ENABLED and never turns on debug serves no /docs,
+    /redoc, or /openapi.json.
+    """
+    return debug if explicit is None else explicit
+
+
+_docs_url, _redoc_url, _openapi_url = _docs_urls(
+    _resolve_docs_enabled(settings.api_docs_enabled, settings.debug)
+)
+
 app = FastAPI(
     title="KB Arena API",
     description="Compare retrieval architectures on your documentation with recorded evidence.",
     version=__version__,
     lifespan=lifespan,
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
+    openapi_url=_openapi_url,
 )
 
 # CORS is configurable via KB_ARENA_CORS_ORIGINS and defaults to localhost dev ports.
@@ -306,19 +407,25 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
+app.add_middleware(RequestIDMiddleware)
 
 app.include_router(tools_router)
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Consistent error envelope (Pattern 14 from PLAN.md)."""
+    """Consistent error envelope (Pattern 14 from PLAN.md), logged with the request id."""
+    logger.exception(
+        "Unhandled exception on %s %s [request_id=%s]",
+        request.method,
+        request.url.path,
+        _request_id_for(request),
+    )
     return JSONResponse(
         status_code=500,
-        content=ErrorResponse(
-            error=ErrorDetail(code="internal_error", message=_public_error_message(exc))
-        ).model_dump(),
+        content=ErrorResponse(error=_error_detail("internal_error", exc, request)).model_dump(),
     )
 
 
@@ -394,9 +501,20 @@ async def chat_stream(body: ChatRequest, request: Request) -> EventSourceRespons
                     continue
                 yield {"event": "token", "data": json.dumps({"text": token})}
         except Exception as exc:
+            logger.exception(
+                "Chat stream failed for strategy %s [request_id=%s]",
+                body.strategy,
+                _current_request_id(),
+            )
             yield {
                 "event": "error",
-                "data": json.dumps({"code": "stream_error", "message": _public_error_message(exc)}),
+                "data": json.dumps(
+                    {
+                        "code": "stream_error",
+                        "message": _public_error_message(exc),
+                        "request_id": _current_request_id() or None,
+                    }
+                ),
             }
             return
 
@@ -773,11 +891,20 @@ async def trigger_graph_build(body: _GraphBuildRequest) -> dict:
                 },
             )
         except Exception as exc:
+            logger.exception(
+                "Graph build %s failed for corpus %s [request_id=%s]",
+                build_id,
+                corpus,
+                _current_request_id(),
+            )
             _enqueue_graph_build_event(
                 queue,
                 {
                     "type": "error",
-                    "data": {"message": _public_error_message(exc)},
+                    "data": {
+                        "message": _public_error_message(exc),
+                        "request_id": _current_request_id() or None,
+                    },
                 },
             )
         finally:
@@ -871,20 +998,18 @@ async def arena_create_match(body: ArenaMatchRequest, request: Request):
         # Two shapes of the same outage: a strategy answered from mock data, or it
         # failed outright. Rating either would record an outage in the leaderboard,
         # so both are unavailability rather than a server fault.
-        return JSONResponse(
-            {"error": {"code": "strategy_unavailable", "message": _public_error_message(exc)}},
-            503,
+        logger.warning(
+            "Arena match unavailable for corpus %s [request_id=%s]: %s",
+            body.corpus,
+            _current_request_id(),
+            exc,
         )
+        return JSONResponse({"error": _error_detail("strategy_unavailable", exc).model_dump()}, 503)
     except Exception as exc:
-        return JSONResponse(
-            {
-                "error": {
-                    "code": "match_failed",
-                    "message": _public_error_message(exc),
-                }
-            },
-            500,
+        logger.exception(
+            "Arena match failed for corpus %s [request_id=%s]", body.corpus, _current_request_id()
         )
+        return JSONResponse({"error": _error_detail("match_failed", exc).model_dump()}, 500)
 
 
 @app.post("/api/arena/vote", dependencies=[Depends(require_auth)])
@@ -1169,6 +1294,11 @@ async def debug_explain(body: ChatRequest, request: Request) -> dict:
     try:
         intent = await router.classify(body.query)
     except Exception as exc:
+        logger.warning(
+            "Debug explain: intent classification failed [request_id=%s]: %s",
+            _current_request_id(),
+            exc,
+        )
         intent = f"error: {exc}"
 
     # Resolve the requested or routed strategy.
@@ -1189,6 +1319,12 @@ async def debug_explain(body: ChatRequest, request: Request) -> dict:
         result = await strategy.query(body.query, top_k=5, corpus=body.corpus)
         latency_ms = (_time.perf_counter() - t0) * 1000
     except Exception as exc:
+        logger.warning(
+            "Debug explain: strategy %s query failed [request_id=%s]: %s",
+            strategy_name,
+            _current_request_id(),
+            exc,
+        )
         return {
             "intent": intent,
             "strategy": strategy_name,

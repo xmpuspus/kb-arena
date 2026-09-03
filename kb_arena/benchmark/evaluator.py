@@ -74,7 +74,9 @@ class _CostTrackingLLM:
 
 JUDGE_SYSTEM_PROMPT = """You are an expert evaluator for a retrieval benchmark.
 
-Given a reference answer and a candidate answer, score the candidate on three dimensions.
+Given the question, a reference answer, and a candidate answer, score the candidate on three
+dimensions. Judge the candidate against the question. The reference shows what a correct
+answer contains, but a correct answer can use different words.
 Return ONLY valid JSON with these exact keys:
 {
   "accuracy": <float 0.0-1.0>,
@@ -225,6 +227,7 @@ async def _evaluate_uncached(
                 answer=answer,
                 reference=ground_truth.answer,
                 system_prompt=JUDGE_SYSTEM_PROMPT,
+                question=question_text,
             )
             json_match = re.search(r"\{[^}]+\}", resp.text, re.DOTALL)
             if not json_match:
