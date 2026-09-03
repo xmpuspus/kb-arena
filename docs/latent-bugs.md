@@ -48,8 +48,9 @@ sentinel. The read-only audit and fix endpoints still accept it.
 ## Open, found by the 2026-09-03 review of the SSRF DNS-rebinding pin
 
 A cross-model review of the DNS-rebinding fix in `kb_arena/ingest/parsers/web.py` found three
-pre-existing defects that the fix did not introduce. They stay out of that PR to keep its scope.
-Each one has a ledger row in the enhancement train, N-12 to N-14.
+pre-existing defects that the fix did not introduce. They stayed out of that PR to keep its scope.
+Each one has a ledger row in the enhancement train, N-12 to N-14. All three are fixed now: the URL
+ingest defect in PR 32, the crawl cap and the resolver failure in the section below.
 
 ### `kb-arena ingest https://example.com` never sends a request, because `Path()` turns `https://` into `https:/`
 
@@ -58,6 +59,13 @@ Each one has a ledger row in the enhancement train, N-12 to N-14.
 string that does not start with `http://` or `https://`, tries to read it as a file that holds a
 URL, fails, and returns an empty list. The CLI reports that no documents came out of the source.
 A URL only works today when it sits inside a file.
+
+## Fixed by the 2026-09-04 web-parser slice
+
+The slice on branch `slice-b2-web-parser` closes the two items below. The crawl cap now counts
+every fetch the crawler starts. A resolver failure, `EAI_AGAIN` or `EAI_FAIL`, raises
+`DNSFailureError` and reaches the operator as a failed ingest. An unreachable entry page does
+the same. A name that does not exist stays a refusal.
 
 ### The crawler's page cap counts extracted pages, so failed fetches let it send more requests than `max_pages`
 

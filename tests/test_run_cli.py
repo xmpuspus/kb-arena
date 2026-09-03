@@ -541,6 +541,20 @@ def test_special_ingest_exits_when_no_documents_are_produced(monkeypatch):
     assert "Next:" not in result.stdout
 
 
+def test_ingest_auto_detects_an_uppercase_url_scheme_as_web(monkeypatch):
+    calls: list[dict] = []
+
+    def fake_special(**kwargs):
+        calls.append(kwargs)
+        return 0
+
+    monkeypatch.setattr("kb_arena.ingest.pipeline.run_ingest_special", fake_special)
+
+    runner.invoke(app, ["ingest", "HTTPS://example.com/docs", "--corpus", "sample"])
+
+    assert [(c["source"], c["format"]) for c in calls] == [("HTTPS://example.com/docs", "web")]
+
+
 def test_run_does_not_swallow_unexpected_graph_failures(tmp_path, monkeypatch):
     base = _corpus(tmp_path)
     (base / "processed" / "documents.jsonl").write_text(MINIMAL_DOCUMENT)

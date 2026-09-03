@@ -36,6 +36,17 @@ class Question(BaseModel):
     constraints: Constraints = Field(default_factory=Constraints)
     expected_chunks: list[str] = Field(default_factory=list)
     split: Literal["development", "validation", "holdout", "unspecified"] = "unspecified"
+    # Review provenance. The NIST corpus stamps every question with these. The
+    # label and the drafting pass travel onto each AnswerRecord. The rationale
+    # and the anchors stay here, joinable by question id. Pydantic drops
+    # unknown keys on load, so a field not declared here never survives the
+    # loader, even when the YAML carries it.
+    review_status: Literal["machine-assisted-draft", "human-reviewed", "unspecified"] = (
+        "unspecified"
+    )
+    reviewed_by: str = ""
+    rationale: str = ""
+    source_anchors: list[str] = Field(default_factory=list)
 
 
 class RetrievalMetrics(BaseModel):
@@ -83,6 +94,11 @@ class AnswerRecord(BaseModel):
     question_id: str
     question_tier: int = 0
     question_type: str = "unknown"
+    # Copied from the Question so a results file can never present a machine
+    # draft as a reviewed question, and can name the pass that drafted it.
+    # The rationale and source anchors stay on the question, keyed by id.
+    question_review_status: str = "unspecified"
+    question_reviewed_by: str = ""
     strategy: str
     answer: str
     score: Score

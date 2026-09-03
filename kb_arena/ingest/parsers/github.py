@@ -59,13 +59,17 @@ def _collect_files(repo_dir: Path) -> list[Path]:
 
 
 class GitHubParser:
-    def parse(self, path: Path, corpus: str) -> list[Document]:
+    def parse(self, path: Path | str, corpus: str) -> list[Document]:
         repo_spec = str(path)
 
         if repo_spec.startswith("github:"):
-            repo_spec = repo_spec[7:]
+            # Path("github://owner/repo") reads "github:/owner/repo", so the
+            # slice below would keep a leading slash and the clone URL would
+            # become github.com//owner/repo. Strip it either way.
+            repo_spec = repo_spec[7:].lstrip("/")
             return self._parse_remote(repo_spec, corpus)
 
+        path = Path(path)
         if path.is_dir() and (path / ".git").exists():
             return self._parse_local(path, corpus)
 
