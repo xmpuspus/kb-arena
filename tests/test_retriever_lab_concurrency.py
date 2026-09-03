@@ -128,9 +128,15 @@ async def test_an_explicit_ceiling_k_forces_the_diagnostic_for_any_run(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_a_vector_strategy_in_the_run_turns_the_ceiling_on(monkeypatch, tmp_path):
+async def test_a_reranker_over_the_naive_pool_turns_the_ceiling_on(monkeypatch, tmp_path):
+    from unittest.mock import MagicMock
+
+    from kb_arena.strategies.naive_vector import NaiveVectorStrategy
+
     strategy = _SlowStrategy()
-    strategy.name = "rerank_vector"
+    strategy.name = "my_plugin_reranker"
+    # Every reranker in the tree keeps its base here, plugin or built in.
+    strategy._base = NaiveVectorStrategy(chroma_client=MagicMock())
     _wire(monkeypatch, tmp_path, strategy, _questions(2))
     calls: list[str] = []
 
@@ -143,3 +149,52 @@ async def test_a_vector_strategy_in_the_run_turns_the_ceiling_on(monkeypatch, tm
     await retriever_lab.run_retriever_lab(corpus="test", min_recall=0.0)
 
     assert calls == ["ran"]
+
+
+@pytest.mark.asyncio
+async def test_hybrid_does_not_turn_the_ceiling_on_by_name(monkeypatch, tmp_path):
+    # hybrid ranks over contextual_vector, which has its own collection.
+    strategy = _SlowStrategy()
+    strategy.name = "hybrid"
+    _wire(monkeypatch, tmp_path, strategy, _questions(2))
+    calls: list[str] = []
+
+    async def spy_ceiling(*args, **kwargs):
+        calls.append("ran")
+        return {"status": "ok", "questions": 2}
+
+    monkeypatch.setattr(retriever_lab, "_retrieval_ceiling", spy_ceiling)
+
+    await retriever_lab.run_retriever_lab(corpus="test", min_recall=0.0)
+
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_raw_error_on_one_question_keeps_every_other_row(monkeypatch, tmp_path):
+    # _retrieve_only wraps backend failures, but a strategy that returns the
+    # wrong type raises a raw AttributeError past it. That must cost one row,
+    # not the whole strategy.
+    class MostlyWorking(_SlowStrategy):
+        async def query(self, question, top_k, corpus="all"):
+            if question == "question 2":
+                return object()
+            return await super().query(question, top_k, corpus)
+
+    strategy = MostlyWorking()
+    _wire(monkeypatch, tmp_path, strategy, _questions(5))
+
+    async def no_ceiling(*args, **kwargs):
+        return {}
+
+    monkeypatch.setattr(retriever_lab, "_retrieval_ceiling", no_ceiling)
+
+    code = await retriever_lab.run_retriever_lab(corpus="test", min_recall=0.0)
+
+    assert code == 1
+    report = _report(tmp_path)
+    rows = report["questions"]
+    assert [row["question_id"] for row in rows] == [f"q{i}" for i in range(5)]
+    assert "execution_error" in rows[2]
+    assert all("recall_at_k" in row for i, row in enumerate(rows) if i != 2)
+    assert report["corpora"]["test"]["bm25"]["execution_errors"] == 1

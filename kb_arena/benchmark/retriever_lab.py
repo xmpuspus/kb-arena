@@ -221,10 +221,20 @@ def _summarize_ceiling(
     }
 
 
-# The retrieval-ceiling diagnostic measures the naive_vector pool. It only says
-# something about strategies that rank over that pool, so it runs on its own
-# only when one of these is in the run. --ceiling-k forces it for any run.
-_CEILING_STRATEGIES = frozenset({"naive_vector", "rerank_vector", "qiss", "sqr", "hybrid"})
+def _ranks_over_naive_pool(strategy) -> bool:
+    """True when the strategy's candidates come from the naive_vector collection.
+
+    The retrieval-ceiling diagnostic measures that collection, so it only says
+    something about naive_vector itself and the rerankers that wrap it. Every
+    reranker in the tree, plugin or built in, keeps its base as `_base`, so
+    the check reads the type instead of a closed list of names. hybrid ranks
+    over contextual_vector, which has its own collection, so it does not count.
+    """
+    from kb_arena.strategies.naive_vector import NaiveVectorStrategy
+
+    if strategy.name == "naive_vector":
+        return True
+    return isinstance(getattr(strategy, "_base", None), NaiveVectorStrategy)
 
 
 async def _retrieval_ceiling(
@@ -317,7 +327,7 @@ async def run_retriever_lab(
     if not strategies:
         console.print("[red]No strategies available. Run build-vectors first.[/red]")
         return 1
-    run_ceiling = ceiling_requested or any(s.name in _CEILING_STRATEGIES for s in strategies)
+    run_ceiling = ceiling_requested or any(_ranks_over_naive_pool(s) for s in strategies)
 
     results_dir = Path(settings.results_path) / f"run_{run_id}"
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -469,88 +479,114 @@ async def _run_corpora_loop(
         if live is not None:
             live.start()
 
-        # Each retrieval awaits a strategy that now searches on a worker
-        # thread, so up to benchmark_max_concurrent questions run at once per
-        # strategy. Results come back in question order, so the rows and the
-        # live table look the same as a sequential run.
+        # This loop no longer serializes the awaits. How much overlaps depends
+        # on the strategy: one that searches on a worker thread overlaps fully,
+        # one that blocks the loop does not. Results are recorded as they
+        # complete so the live table keeps moving, then written out in
+        # question order so the rows and the bootstrap draws stay the same
+        # from run to run.
         limit = max(1, settings.benchmark_max_concurrent)
         semaphore = asyncio.Semaphore(limit)
 
-        async def _retrieve(s, q):
+        async def _retrieve(index, s, q):
             async with semaphore:
                 try:
-                    return await _retrieve_only(s, q.question, top_k, corpus=corp), None
+                    return index, await _retrieve_only(s, q.question, top_k, corpus=corp), None
                 except RetrievalExecutionError as exc:
-                    return None, exc
+                    return index, None, exc
+                except Exception as exc:  # noqa: BLE001 - a raw error must not drop finished rows
+                    return index, None, exc
+
+        def _row(q, trace, metrics) -> dict:
+            hits_set = set(metrics.hits)
+
+            def _is_hit(chunk):
+                if metrics.fallback_doc_level:
+                    return chunk.doc_id in hits_set
+                return _match_expected(chunk.chunk_id, hits_set) is not None
+
+            return {
+                "corpus": corp,
+                "strategy": s.name,
+                "question_id": q.id,
+                "question": q.question,
+                "recall_at_k": metrics.recall_at_k,
+                "precision_at_k": metrics.precision_at_k,
+                "hit_at_k": metrics.hit_at_k,
+                "mrr": metrics.mrr,
+                "ndcg_at_k": metrics.ndcg_at_k,
+                "fallback_doc_level": metrics.fallback_doc_level,
+                "hits": list(hits_set),
+                "retrieved": [
+                    {
+                        "chunk_id": c.chunk_id,
+                        "doc_id": c.doc_id,
+                        "rank": c.rank,
+                        "score": c.score,
+                        "source_strategy": c.source_strategy,
+                        "is_hit": _is_hit(c),
+                    }
+                    for c in trace.retrieved
+                ],
+            }
+
+        def _error_row(q, exc) -> dict:
+            cause = exc.__cause__ if isinstance(exc, RetrievalExecutionError) else None
+            return {
+                "corpus": corp,
+                "strategy": s.name,
+                "question_id": q.id,
+                "question": q.question,
+                "execution_error": {
+                    "type": type(cause).__name__ if cause else type(exc).__name__,
+                    "message": str(exc),
+                },
+            }
 
         try:
             for s in strategies:
-                outcomes = await asyncio.gather(*(_retrieve(s, q) for q in questions))
-                for q, (trace, failure) in zip(questions, outcomes):
-                    if failure is not None:
-                        exc = failure
-                        per_strategy_errors[s.name] += 1
-                        per_question_rows.append(
-                            {
-                                "corpus": corp,
-                                "strategy": s.name,
-                                "question_id": q.id,
-                                "question": q.question,
-                                "execution_error": {
-                                    "type": type(exc.__cause__).__name__
-                                    if exc.__cause__
-                                    else type(exc).__name__,
-                                    "message": str(exc),
-                                },
-                            }
+                tasks = [asyncio.create_task(_retrieve(i, s, q)) for i, q in enumerate(questions)]
+                finished: dict[int, tuple] = {}
+                try:
+                    for fut in asyncio.as_completed(tasks):
+                        index, trace, exc = await fut
+                        if exc is not None:
+                            finished[index] = (None, None, exc)
+                            console.print(
+                                f"[red]ERROR[/red] {corp}/{s.name}/{questions[index].id}: {exc}"
+                            )
+                            continue
+                        q = questions[index]
+                        metrics = compute_all(
+                            retrieved=trace.retrieved,
+                            expected_ids=set(q.expected_chunks or []),
+                            k=top_k,
+                            expected_doc_ids=set(q.ground_truth.source_refs),
                         )
-                        console.print(f"[red]ERROR[/red] {corp}/{s.name}/{q.id}: {exc}")
+                        finished[index] = (trace, metrics, None)
+                        per_strategy_rows[s.name].append(metrics)
+                        if live is not None:
+                            live.update(_build_table(title, top_k, strategies, per_strategy_rows))
+                finally:
+                    for task in tasks:
+                        task.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
+
+                # Rewrite this strategy's rows in question order.
+                per_strategy_rows[s.name] = []
+                for index, q in enumerate(questions):
+                    trace, metrics, exc = finished[index]
+                    if exc is not None:
+                        per_strategy_errors[s.name] += 1
+                        per_question_rows.append(_error_row(q, exc))
                         continue
-                    metrics = compute_all(
-                        retrieved=trace.retrieved,
-                        expected_ids=set(q.expected_chunks or []),
-                        k=top_k,
-                        expected_doc_ids=set(q.ground_truth.source_refs),
-                    )
                     per_strategy_rows[s.name].append(metrics)
                     per_strategy_tier_rows[s.name].append((int(q.tier or 0), metrics))
                     if not trace.retrieved:
                         per_strategy_empty[s.name] += 1
-                    hits_set = set(metrics.hits)
-
-                    def _is_hit(chunk):
-                        if metrics.fallback_doc_level:
-                            return chunk.doc_id in hits_set
-                        return _match_expected(chunk.chunk_id, hits_set) is not None
-
-                    per_question_rows.append(
-                        {
-                            "corpus": corp,
-                            "strategy": s.name,
-                            "question_id": q.id,
-                            "question": q.question,
-                            "recall_at_k": metrics.recall_at_k,
-                            "precision_at_k": metrics.precision_at_k,
-                            "hit_at_k": metrics.hit_at_k,
-                            "mrr": metrics.mrr,
-                            "ndcg_at_k": metrics.ndcg_at_k,
-                            "fallback_doc_level": metrics.fallback_doc_level,
-                            "hits": list(hits_set),
-                            "retrieved": [
-                                {
-                                    "chunk_id": c.chunk_id,
-                                    "doc_id": c.doc_id,
-                                    "rank": c.rank,
-                                    "score": c.score,
-                                    "source_strategy": c.source_strategy,
-                                    "is_hit": _is_hit(c),
-                                }
-                                for c in trace.retrieved
-                            ],
-                        }
-                    )
-                    if live is not None:
-                        live.update(_build_table(title, top_k, strategies, per_strategy_rows))
+                    per_question_rows.append(_row(q, trace, metrics))
+                if live is not None:
+                    live.update(_build_table(title, top_k, strategies, per_strategy_rows))
                 if live is None:
                     n = len(per_strategy_rows[s.name])
                     avg_recall = (
