@@ -165,12 +165,12 @@ def ingest(
     from collections import Counter
     from pathlib import Path
 
-    from kb_arena.ingest.pipeline import _EXT_MAP
+    from kb_arena.ingest.pipeline import _EXT_MAP, is_http_url
     from kb_arena.settings import settings
 
     detected_format = format
     if format == "auto":
-        if path.startswith(("http://", "https://")):
+        if is_http_url(path):
             detected_format = "web"
         elif path.startswith("github:"):
             detected_format = "github"
@@ -573,12 +573,18 @@ def init_corpus(
     sample_q = base / "questions" / "tier1_factoid.yaml.example"
     sample_q.write_text(
         "# Rename to tier1_factoid.yaml to activate. One YAML file per tier.\n"
-        "# Fields: id, tier (1-5), type, hops, split, question, ground_truth, constraints.\n"
+        "# Fields: id, tier (1-5), type, hops, split, review_status, reviewed_by,\n"
+        "# rationale, source_anchors, question, ground_truth, constraints.\n"
+        "# review_status is one of machine-assisted-draft, human-reviewed, unspecified.\n"
         f"- id: {name}-t1-001\n"
         "  tier: 1\n"
         "  type: factoid\n"
         "  hops: 1\n"
         "  split: development\n"
+        "  review_status: unspecified\n"
+        '  reviewed_by: ""\n'
+        '  rationale: ""\n'
+        "  source_anchors: []\n"
         '  question: "What is X?"\n'
         "  ground_truth:\n"
         '    answer: "X is ..."\n'
