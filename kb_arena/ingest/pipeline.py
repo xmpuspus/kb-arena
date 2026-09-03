@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import tempfile
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
@@ -36,6 +37,14 @@ _EXT_MAP: dict[str, str] = {
     ".tsv": "csv",
 }
 SUPPORTED_EXTENSIONS = frozenset(_EXT_MAP)
+
+
+def is_http_url(source: str) -> bool:
+    """True for an http or https URL. The scheme compares case-insensitively,
+    so `HTTPS://docs.example.com` routes to the web parser like the lowercase
+    form, instead of falling through as a filesystem path.
+    """
+    return urlsplit(source).scheme.lower() in ("http", "https")
 
 
 def _detect_format(path: Path, corpus: str) -> str:
@@ -173,7 +182,11 @@ def run_ingest_special(
         else:
             parser = parser_cls()
 
-        docs: list[Document] = parser.parse(Path(source), corpus)
+        # Path() collapses "https://" to "https:/", and the web parser then
+        # treats the result as a filename and returns nothing. A URL has to
+        # reach it as the string the user typed.
+        is_url = format == "web" and is_http_url(source)
+        docs: list[Document] = parser.parse(source if is_url else Path(source), corpus)
     except ImportError as exc:
         console.print(f"[red]{exc}[/red]")
         raise SystemExit(1) from None

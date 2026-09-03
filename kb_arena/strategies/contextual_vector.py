@@ -7,6 +7,7 @@ The "best practice" vector approach — shows how much metadata helps.
 
 from __future__ import annotations
 
+import asyncio
 import time
 
 import chromadb
@@ -16,12 +17,13 @@ from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy, validate_top_k
 from kb_arena.strategies.chroma_index import (
+    INIT_LOCK,
     index_build_lock,
-    index_read_lock,
-    index_where,
     new_generation,
     parse_query_result,
     publish_collection_build,
+    query_in_thread,
+    run_to_completion,
 )
 from kb_arena.strategies.embeddings import get_embedding_function
 from kb_arena.strategies.naive_vector import _chunk_text
@@ -78,7 +80,9 @@ class ContextualVectorStrategy(Strategy):
         return self._client
 
     def _get_collection(self):
-        if self._collection is None:
+        with INIT_LOCK:
+            if self._collection is not None:
+                return self._collection
             ef = get_embedding_function()
             self._collection = self._get_client().get_or_create_collection(
                 name=COLLECTION_NAME,
@@ -96,7 +100,7 @@ class ContextualVectorStrategy(Strategy):
 
     async def build_index(self, documents: list[Document]) -> None:
         """Chunk sections, prepend heading path, upsert with rich metadata."""
-        collection = self._get_collection()
+        collection = await asyncio.to_thread(self._get_collection)
         ids, texts, metadatas = [], [], []
 
         for doc in documents:
@@ -115,7 +119,10 @@ class ContextualVectorStrategy(Strategy):
             return
         generation = new_generation()
         async with index_build_lock():
-            publish_collection_build(
+            # Embedding and upsert run on the calling thread inside Chroma,
+            # so they go to a worker thread to keep the loop free.
+            await run_to_completion(
+                publish_collection_build,
                 collection,
                 COLLECTION_NAME,
                 corpora,
@@ -135,7 +142,7 @@ class ContextualVectorStrategy(Strategy):
         """Similarity search with optional metadata pre-filter."""
         validate_top_k(top_k)
         start = self._start_timer()
-        collection = self._get_collection()
+        collection = await asyncio.to_thread(self._get_collection)
 
         retrieval_start = time.perf_counter()
         query_kwargs: dict = {
@@ -143,9 +150,7 @@ class ContextualVectorStrategy(Strategy):
             "n_results": top_k,
             "include": ["documents", "metadatas", "distances"],
         }
-        with index_read_lock():
-            query_kwargs["where"] = index_where(COLLECTION_NAME, corpus, where)
-            results = collection.query(**query_kwargs)
+        results = await query_in_thread(collection, COLLECTION_NAME, corpus, query_kwargs, where)
         ids, chunks, metas, distances = parse_query_result(results)
         retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
