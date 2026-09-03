@@ -159,6 +159,10 @@ Return a JSON array of {count} question objects. Nothing else — just the JSON 
                 "tier": tier,
                 "type": tier_def["type"],
                 "hops": tier_def["hops"],
+                # Nobody has read these yet. The label travels with the
+                # question so a result can never present a draft as reviewed.
+                "review_status": "machine-assisted-draft",
+                "reviewed_by": "kb-arena generate-questions draft pass",
                 "question": q["question"],
                 "ground_truth": {
                     "answer": q.get("answer", ""),

@@ -457,17 +457,20 @@ class WebParser:
         self.max_depth = max_depth
         self.max_pages = max_pages
 
-    def parse(self, path: Path, corpus: str) -> list[Document]:
-        # Path is either a URL string or a file containing one
+    def parse(self, path: Path | str, corpus: str) -> list[Document]:
+        # Either the URL itself, as a str, or a Path to a file that holds one.
+        # A URL must not arrive wrapped in Path(): that collapses "https://"
+        # to "https:/" and the scheme check below then reads it as a file.
         url = str(path)
-        if not url.startswith(("http://", "https://")):
+        if urlparse(url).scheme.lower() not in ("http", "https"):
             # Try reading URL from file
+            path = Path(path)
             try:
                 url = path.read_text().strip()
             except Exception:  # noqa: BLE001
                 log.warning("Failed to read URL from %s", path, exc_info=True)
                 return []
-            if not url.startswith(("http://", "https://")):
+            if urlparse(url).scheme.lower() not in ("http", "https"):
                 return []
 
         return self._scrape(url, corpus)
