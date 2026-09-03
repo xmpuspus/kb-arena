@@ -59,7 +59,7 @@ def test_a_temporary_resolver_failure_raises_its_own_error(monkeypatch):
 
     monkeypatch.setattr(socket, "getaddrinfo", try_again)
 
-    with pytest.raises(web.DNSTemporaryError, match="retry later"):
+    with pytest.raises(web.DNSFailureError, match="dns lookup"):
         web._validate_url("https://docs.example.com/page")
 
 
@@ -79,7 +79,7 @@ def test_scrape_reports_a_resolver_outage_instead_of_an_empty_corpus(monkeypatch
 
     monkeypatch.setattr(socket, "getaddrinfo", try_again)
 
-    with pytest.raises(web.DNSTemporaryError):
+    with pytest.raises(web.DNSFailureError):
         WebParser()._scrape("https://docs.example.com", "c")
 
 
@@ -207,5 +207,25 @@ def test_a_resolver_outage_mid_crawl_still_reaches_the_operator(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", flaky_getaddrinfo)
     monkeypatch.setattr(web, "_try_import_bs4", lambda: object)
 
-    with pytest.raises(web.DNSTemporaryError):
+    with pytest.raises(web.DNSFailureError):
         WebParser(max_pages=1)._scrape("https://docs.example.com", "c")
+
+
+def test_a_non_recoverable_resolver_failure_is_not_a_policy_refusal(monkeypatch):
+    def resolver_down(host, port):
+        raise socket.gaierror(socket.EAI_FAIL, "non-recoverable failure in name resolution")
+
+    monkeypatch.setattr(socket, "getaddrinfo", resolver_down)
+
+    with pytest.raises(web.DNSFailureError, match="dns lookup"):
+        web._validate_url("https://docs.example.com/page")
+
+
+def test_a_gzip_stream_cut_off_early_is_not_accepted_as_complete(pin_stub):
+    # zlib's flush() does not object to a truncated member, so only the
+    # decoder's eof flag can tell a dropped connection from a whole page.
+    cut = gzip.compress(b"<html><body>complete</body></html>")[:-8]
+
+    with _streamed(cut, {"content-encoding": "gzip"}) as client:
+        with pytest.raises(httpx.DecodingError, match="ended before its stream"):
+            web._safe_get(client, "https://docs.example.com/page")

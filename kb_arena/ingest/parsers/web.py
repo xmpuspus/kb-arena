@@ -43,11 +43,12 @@ class ResponseTooLargeError(ValueError):
     """Raised when a fetched response body exceeds the size cap."""
 
 
-class DNSTemporaryError(OSError):
-    """Raised when the resolver asks for a retry (EAI_AGAIN).
+class DNSFailureError(OSError):
+    """Raised when the resolver itself fails (EAI_AGAIN, EAI_FAIL).
 
-    Distinct from SSRFBlocked on purpose: an outage is not a policy refusal,
-    and the scrape must report it instead of returning an empty corpus.
+    Distinct from SSRFBlocked on purpose: a resolver failure is not a policy
+    refusal, and the scrape must report it instead of returning an empty
+    corpus. A name that does not exist (EAI_NONAME) stays a refusal.
     """
 
 
@@ -71,8 +72,8 @@ def _validate_url(url: str) -> list[str]:
     try:
         infos = socket.getaddrinfo(host, None)
     except socket.gaierror as exc:
-        if exc.errno == socket.EAI_AGAIN:
-            raise DNSTemporaryError(f"dns lookup for {host} failed, retry later: {exc}") from exc
+        if exc.errno in (socket.EAI_AGAIN, socket.EAI_FAIL):
+            raise DNSFailureError(f"dns lookup for {host} failed: {exc}") from exc
         raise SSRFBlocked(f"dns resolution failed for {host}: {exc}") from exc
     checked_ips: list[str] = []
     for info in infos:
@@ -309,6 +310,10 @@ def _read_capped(resp, url: str) -> bytes:
         if total > _MAX_RESPONSE_BYTES:
             raise too_large
         chunks.append(tail)
+        if not decoder.eof:
+            # flush() does not object to a stream cut off mid-member, so a
+            # connection that dropped early would pass as a complete page.
+            raise httpx.DecodingError(f"{url}: compressed body ended before its stream did")
     # Same field httpx's own Response.read() sets, so resp.text and
     # resp.content keep working for callers after the stream closes.
     return b"".join(chunks)
@@ -326,7 +331,7 @@ def _check_llms_txt(base_url: str, client) -> str | None:
         log.warning("llms.txt blocked: %s", exc)
     except ResponseTooLargeError as exc:
         log.warning("llms.txt too large, skipped: %s", exc)
-    except DNSTemporaryError:
+    except DNSFailureError:
         # An outage is not "no llms.txt here". Let the scrape report it.
         raise
     except Exception:  # noqa: BLE001
@@ -370,7 +375,7 @@ def _fetch_page(url: str, client) -> str | None:
         log.warning("Refusing to fetch %s: %s", url, exc)
     except ResponseTooLargeError as exc:
         log.warning("Skipping oversized page %s: %s", url, exc)
-    except DNSTemporaryError:
+    except DNSFailureError:
         # An outage mid-crawl must not read as a page with no text.
         raise
     except Exception as exc:  # noqa: BLE001
