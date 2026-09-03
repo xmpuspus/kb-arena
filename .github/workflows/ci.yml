@@ -9,6 +9,7 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
@@ -18,12 +19,17 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
+      - run: pip install pip-audit
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest tests/ -v --ignore=tests/live
+      # Advisory: a known, unfixable transitive advisory must not fail every
+      # PR. --strict would turn this into a hard gate once the repo is clean.
+      - run: pip-audit --desc || true
 
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: web
@@ -35,3 +41,12 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npx next build
+      # high/critical only: low/moderate advisories must not fail every PR.
+      - run: npm audit --audit-level=high
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: bash scripts/docker-smoke.sh
