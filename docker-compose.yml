@@ -1,6 +1,12 @@
 services:
   neo4j:
-    image: neo4j:5-community
+    # Docker Hub has no 5.27 tag; 5.26 is the newest 5.x community line, so
+    # this pins the latest patch release on it (checked 2026-09-03).
+    image: neo4j:5.26.30-community
+    # Neo4j's entrypoint chowns and chmods its whole home directory when it
+    # starts as root, which fails under a read-only root. Starting directly
+    # as the image's own neo4j user (uid/gid 7474) skips that step.
+    user: "7474:7474"
     # Bind to localhost only by default — exposing 7687 to 0.0.0.0 with a default
     # password is how databases get popped on the public internet.
     ports:
@@ -13,7 +19,22 @@ services:
       - NEO4J_PLUGINS=["apoc"]
     volumes:
       - neo4j_data:/data
-      - ./cypher:/cypher
+    # Starting as the image's own neo4j user (see `user:` above) skips its
+    # entrypoint's chown of the whole home directory, which fails read-only.
+    # neo4j still writes its startup config, logs, and downloaded plugins
+    # outside /data, and the JVM extracts a native library into /tmp and
+    # maps it executable, so /tmp needs the exec mount option.
+    read_only: true
+    tmpfs:
+      - /tmp:rw,exec,nosuid,size=200m
+      - /logs
+      - /var/lib/neo4j/conf
+      - /var/lib/neo4j/plugins
+      - /var/lib/neo4j/run
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "neo4j", "status"]
       interval: 10s
@@ -53,8 +74,19 @@ services:
       - chroma_data:/data/chroma
       - ./datasets:/datasets
       - ./results:/results
+    # Ingest parsers and the optimizer write temp files and per-trial Chroma
+    # dirs under /tmp and the kbarena home cache, so both need a tmpfs.
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /home/kbarena
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      # /ready checks Neo4j and LLM wiring; /health stays for liveness only.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/ready"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -67,13 +99,25 @@ services:
     restart: unless-stopped
 
   web:
-    build: ./web
+    build:
+      context: ./web
+      # Next.js inlines NEXT_PUBLIC_* vars into the static export at build
+      # time, so this has to be a build arg. The old `environment:` entry
+      # below set it at container start, too late for a static export to
+      # ever read it, and every API call silently went to the web server.
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
     ports:
       - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
       - api
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 
 volumes:
