@@ -123,3 +123,20 @@ def test_graph_build_client_streams_with_server_build_id() -> None:
     assert "build_id: string" in api
     assert "/api/graph/build/stream/${buildId}" in api
     assert "streamGraphBuild(build.build_id" in page
+
+
+def test_release_tools_are_pinned() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    build_requires = project["build-system"]["requires"]
+    assert any(
+        re.fullmatch(r"hatchling==\d+(\.\d+)*", req) for req in build_requires
+    ), f"build-system.requires must pin an exact hatchling version, got {build_requires}"
+
+    publish_workflow = (ROOT / ".github" / "workflows" / "publish.yml").read_text()
+    install_line = next(
+        line for line in publish_workflow.splitlines() if "pip install" in line and "build" in line
+    )
+    for tool in ("build", "twine", "cyclonedx-bom"):
+        assert re.search(
+            rf"{tool}==\d+(\.\d+)*", install_line
+        ), f"publish.yml must pin an exact {tool} version, got: {install_line.strip()}"
