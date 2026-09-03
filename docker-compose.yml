@@ -99,11 +99,16 @@ services:
     restart: unless-stopped
 
   web:
-    build: ./web
+    build:
+      context: ./web
+      # Next.js inlines NEXT_PUBLIC_* vars into the static export at build
+      # time, so this has to be a build arg. The old `environment:` entry
+      # below set it at container start, too late for a static export to
+      # ever read it, and every API call silently went to the web server.
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
     ports:
       - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
       - api
     read_only: true

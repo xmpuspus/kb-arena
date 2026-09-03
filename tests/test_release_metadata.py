@@ -140,3 +140,17 @@ def test_release_tools_are_pinned() -> None:
         assert re.search(
             rf"{tool}==\d+(\.\d+)*", install_line
         ), f"publish.yml must pin an exact {tool} version, got: {install_line.strip()}"
+
+
+def test_publish_workflow_grants_attest_build_provenance_its_required_permissions() -> None:
+    # actions/attest-build-provenance (a wrapper on actions/attest as of v4)
+    # needs all three grants: id-token to mint the Sigstore OIDC token,
+    # attestations to persist the attestation, and artifact-metadata to
+    # create the artifact storage record. Miss one and the step fails.
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "publish.yml").read_text())
+    permissions = workflow["jobs"]["publish"]["permissions"]
+
+    for key in ("id-token", "attestations", "artifact-metadata"):
+        assert (
+            permissions.get(key) == "write"
+        ), f"publish job permissions must grant '{key}: write', got {permissions}"

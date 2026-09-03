@@ -11,6 +11,15 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # attest-build-provenance (a wrapper on actions/attest as of v4) mints
+      # a Sigstore OIDC token, persists the attestation, and creates the
+      # artifact storage record. All three need an explicit grant; none are
+      # in the default token permissions.
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -28,7 +37,14 @@ jobs:
         run: twine check dist/*
 
       - name: Generate SBOM
-        run: cyclonedx-py environment -o sbom.cdx.json
+        # cyclonedx-py environment scans whatever Python it is pointed at.
+        # Scanning this job's own interpreter would describe the build
+        # tools (twine, build, cyclonedx-bom), not the released package, so
+        # this installs the actual wheel into a clean venv and scans that.
+        run: |
+          python -m venv /tmp/sbom-venv
+          /tmp/sbom-venv/bin/pip install --quiet dist/*.whl
+          cyclonedx-py environment -o sbom.cdx.json /tmp/sbom-venv/bin/python
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
