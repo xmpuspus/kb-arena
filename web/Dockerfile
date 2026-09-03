@@ -9,6 +9,12 @@ RUN npm ci
 COPY . .
 RUN npm run build && chown -R node:node /app
 
+# next.config.mjs sets output: "export", so the build above writes a static
+# out/ directory with no server. "next start" cannot run against that, and
+# fails on every boot (Next.js's own error names serve as the fix), so a
+# static file server ships the export instead.
+RUN npm install -g serve
+
 # Drop root before the server runs. node:20-slim ships this user already.
 USER node
 
@@ -18,4 +24,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
   CMD node -e "fetch('http://localhost:3000').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
-CMD ["npm", "start"]
+CMD ["serve", "-s", "out", "-l", "3000"]
