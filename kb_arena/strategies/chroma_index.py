@@ -8,6 +8,7 @@ import logging
 import math
 import os
 import tempfile
+import threading
 from collections.abc import AsyncIterator, Iterable, Iterator, Mapping, Sequence
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
@@ -255,6 +256,63 @@ def _activation_lock(*, shared: bool) -> Iterator[None]:
         if acquired:
             _unlock(handle)
         handle.close()
+
+
+# Guards the lazy Chroma client and collection setup in each strategy. Two
+# first requests on worker threads must not both construct a client.
+INIT_LOCK = threading.Lock()
+
+
+async def run_to_completion(func, /, *args, **kwargs):
+    """Run func on a worker thread and never abandon it on cancellation.
+
+    asyncio.to_thread cancels only the awaiting coroutine. The thread keeps
+    running, and an `async with index_build_lock()` around it would exit and
+    free the lock while the worker still publishes, so a second build could
+    interleave and the abandoned worker could activate last. This waits for
+    the worker even after a cancel, then re-raises, so the lock stays held
+    until the publish is done.
+    """
+    task = asyncio.ensure_future(asyncio.to_thread(func, *args, **kwargs))
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                pass
+        if not task.cancelled() and task.exception() is not None:
+            logger.warning("Cancelled build step failed on its worker thread: %s", task.exception())
+        raise
+
+
+async def query_in_thread(
+    collection: Any,
+    collection_name: str,
+    corpus: str,
+    query_kwargs: dict[str, Any],
+    where: Mapping[str, Any] | None = None,
+) -> Any:
+    """Run one locked Chroma query on a worker thread.
+
+    collection.query() embeds the question and walks the index on the
+    calling thread. Inside an async strategy that froze the event loop for
+    the whole search, so a benchmark with a concurrency of eight ran its
+    queries one at a time and the API could not answer a health probe
+    meanwhile. The read lock moves with the query, since flock is held per
+    open handle and releases on the same thread that took it.
+    """
+
+    def _run() -> Any:
+        with index_read_lock():
+            if where is None:
+                query_kwargs["where"] = index_where(collection_name, corpus)
+            else:
+                query_kwargs["where"] = index_where(collection_name, corpus, where)
+            return collection.query(**query_kwargs)
+
+    return await asyncio.to_thread(_run)
 
 
 @contextmanager
