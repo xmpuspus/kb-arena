@@ -36,6 +36,16 @@ class Question(BaseModel):
     constraints: Constraints = Field(default_factory=Constraints)
     expected_chunks: list[str] = Field(default_factory=list)
     split: Literal["development", "validation", "holdout", "unspecified"] = "unspecified"
+    # Review provenance. The NIST corpus stamps every question with these so a
+    # result can say who drafted the question and what section it points at.
+    # Pydantic drops unknown keys on load, so a field that is not declared here
+    # never reaches a benchmark result, even when the YAML carries it.
+    review_status: Literal["machine-assisted-draft", "human-reviewed", "unspecified"] = (
+        "unspecified"
+    )
+    reviewed_by: str = ""
+    rationale: str = ""
+    source_anchors: list[str] = Field(default_factory=list)
 
 
 class RetrievalMetrics(BaseModel):
