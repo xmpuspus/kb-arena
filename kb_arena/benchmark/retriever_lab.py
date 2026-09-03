@@ -221,6 +221,12 @@ def _summarize_ceiling(
     }
 
 
+# The retrieval-ceiling diagnostic measures the naive_vector pool. It only says
+# something about strategies that rank over that pool, so it runs on its own
+# only when one of these is in the run. --ceiling-k forces it for any run.
+_CEILING_STRATEGIES = frozenset({"naive_vector", "rerank_vector", "qiss", "sqr", "hybrid"})
+
+
 async def _retrieval_ceiling(
     questions,
     top_k: int,
@@ -301,6 +307,7 @@ async def run_retriever_lab(
 
     run_id = uuid4().hex[:8]
     timestamp = datetime.now(UTC).isoformat()
+    ceiling_requested = ceiling_k is not None
     ceiling_k = ceiling_k if ceiling_k and ceiling_k > top_k else top_k * 4
 
     corpora = discover_corpora() if corpus == "all" else [corpus]
@@ -310,6 +317,7 @@ async def run_retriever_lab(
     if not strategies:
         console.print("[red]No strategies available. Run build-vectors first.[/red]")
         return 1
+    run_ceiling = ceiling_requested or any(s.name in _CEILING_STRATEGIES for s in strategies)
 
     results_dir = Path(settings.results_path) / f"run_{run_id}"
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -340,6 +348,7 @@ async def run_retriever_lab(
             per_question_rows,
             ceiling_k,
             split,
+            run_ceiling=run_ceiling,
         )
         overall["status"] = "complete"
     except Exception as exc:
@@ -424,6 +433,7 @@ async def _run_corpora_loop(
     per_question_rows,
     ceiling_k,
     split,
+    run_ceiling: bool = True,
 ):
     for corp in corpora:
         try:
@@ -459,12 +469,26 @@ async def _run_corpora_loop(
         if live is not None:
             live.start()
 
+        # Each retrieval awaits a strategy that now searches on a worker
+        # thread, so up to benchmark_max_concurrent questions run at once per
+        # strategy. Results come back in question order, so the rows and the
+        # live table look the same as a sequential run.
+        limit = max(1, settings.benchmark_max_concurrent)
+        semaphore = asyncio.Semaphore(limit)
+
+        async def _retrieve(s, q):
+            async with semaphore:
+                try:
+                    return await _retrieve_only(s, q.question, top_k, corpus=corp), None
+                except RetrievalExecutionError as exc:
+                    return None, exc
+
         try:
             for s in strategies:
-                for q in questions:
-                    try:
-                        trace = await _retrieve_only(s, q.question, top_k, corpus=corp)
-                    except RetrievalExecutionError as exc:
+                outcomes = await asyncio.gather(*(_retrieve(s, q) for q in questions))
+                for q, (trace, failure) in zip(questions, outcomes):
+                    if failure is not None:
+                        exc = failure
                         per_strategy_errors[s.name] += 1
                         per_question_rows.append(
                             {
@@ -545,7 +569,18 @@ async def _run_corpora_loop(
             summary[s.name] = stats
         overall["corpora"][corp] = summary
 
-        ceiling = await _retrieval_ceiling(questions, top_k, ceiling_k, corpus=corp)
+        if not run_ceiling:
+            ceiling = {
+                "status": "skipped",
+                "reason": "no strategy in this run ranks over the naive_vector pool; "
+                "pass --ceiling-k to force the diagnostic",
+                "top_k": top_k,
+                "ceiling_k": ceiling_k,
+                "questions": 0,
+            }
+            console.print(f"[dim]Retrieval ceiling skipped for {corp}: {ceiling['reason']}[/dim]")
+        else:
+            ceiling = await _retrieval_ceiling(questions, top_k, ceiling_k, corpus=corp)
         overall["retrieval_ceiling"][corp] = ceiling
         if ceiling.get("status") == "error":
             error = ceiling["execution_error"]
