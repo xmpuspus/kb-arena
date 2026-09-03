@@ -11,7 +11,9 @@ from kb_arena.ingest.parsers import web
 @pytest.fixture(autouse=True)
 def _skip_ssrf_checks(monkeypatch):
     # The byte cap is independent of the SSRF guard, so tests skip DNS lookups.
-    monkeypatch.setattr(web, "_validate_url", lambda url: None)
+    # _validate_url now returns the IP _safe_get connects to, so the stub
+    # returns one too; MockTransport never dials it, so the value is inert.
+    monkeypatch.setattr(web, "_validate_url", lambda url: "203.0.113.1")
 
 
 def _client(body: bytes, status_code: int = 200, headers: dict | None = None) -> httpx.Client:
