@@ -17,6 +17,7 @@ log = logging.getLogger(__name__)
 
 _MAX_DEPTH = 3
 _MAX_PAGES = 50
+_MAX_RESPONSE_BYTES = 10 * 1024 * 1024  # 10 MB cap — bounds memory use from one page
 
 # SSRF guard — block file://, internal IPs, and metadata endpoints.
 _BLOCKED_HOSTS = {
@@ -32,6 +33,10 @@ class SSRFBlockedError(ValueError):
 
 # Backward-compat alias for any external callers that imported the old name.
 SSRFBlocked = SSRFBlockedError
+
+
+class ResponseTooLargeError(ValueError):
+    """Raised when a fetched response body exceeds the size cap."""
 
 
 def _validate_url(url: str) -> None:
@@ -87,11 +92,37 @@ def _try_import_bs4():
 
 
 def _safe_get(client, url: str, timeout: int = 15, max_redirects: int = 5):
-    """GET a URL with SSRF validation on every hop. Disables auto-follow_redirects."""
+    """GET a URL with SSRF validation on every hop. Disables auto-follow_redirects.
+
+    Streams the body and aborts as soon as it passes _MAX_RESPONSE_BYTES, at
+    every redirect hop, so a huge or malicious page cannot buffer its full
+    body in memory before the cap gets checked.
+    """
     current = url
     for _ in range(max_redirects + 1):
         _validate_url(current)
-        resp = client.get(current, timeout=timeout, follow_redirects=False)
+        with client.stream("GET", current, timeout=timeout, follow_redirects=False) as resp:
+            content_length = resp.headers.get("content-length")
+            if content_length and int(content_length) > _MAX_RESPONSE_BYTES:
+                raise ResponseTooLargeError(
+                    f"{current}: content-length {content_length} exceeds "
+                    f"the {_MAX_RESPONSE_BYTES} byte cap"
+                )
+
+            chunks: list[bytes] = []
+            total = 0
+            for chunk in resp.iter_bytes():
+                total += len(chunk)
+                if total > _MAX_RESPONSE_BYTES:
+                    raise ResponseTooLargeError(
+                        f"{current}: response body exceeded the "
+                        f"{_MAX_RESPONSE_BYTES} byte cap while streaming"
+                    )
+                chunks.append(chunk)
+            # Same field httpx's own Response.read() sets, so resp.text and
+            # resp.content keep working for callers after the stream closes.
+            resp._content = b"".join(chunks)
+
         if resp.status_code in (301, 302, 303, 307, 308):
             location = resp.headers.get("location")
             if not location:
@@ -112,6 +143,8 @@ def _check_llms_txt(base_url: str, client) -> str | None:
             return resp.text
     except SSRFBlocked as exc:
         log.warning("llms.txt blocked: %s", exc)
+    except ResponseTooLargeError as exc:
+        log.warning("llms.txt too large, skipped: %s", exc)
     except Exception:  # noqa: BLE001
         log.debug("llms.txt check failed for %s", llms_url, exc_info=True)
     return None
@@ -151,6 +184,8 @@ def _fetch_page(url: str, client) -> str | None:
             return resp.text
     except SSRFBlocked as exc:
         log.warning("Refusing to fetch %s: %s", url, exc)
+    except ResponseTooLargeError as exc:
+        log.warning("Skipping oversized page %s: %s", url, exc)
     except Exception as exc:  # noqa: BLE001
         log.warning("Failed to fetch %s: %s", url, exc)
     return None
