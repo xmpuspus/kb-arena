@@ -93,6 +93,9 @@ class AnswerRecord(BaseModel):
     question_id: str
     question_tier: int = 0
     question_type: str = "unknown"
+    # Copied from Question.review_status so a results file can never present
+    # a machine draft as a reviewed question once it leaves the loader.
+    question_review_status: str = "unspecified"
     strategy: str
     answer: str
     score: Score

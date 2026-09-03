@@ -193,6 +193,7 @@ async def _run_one(
     top_k: int = 5,
     reference_free: bool = False,
     corpus: str = "all",
+    review_status: str = "unspecified",
 ) -> AnswerRecord:
     async with semaphore:
         attempt = 0
@@ -255,6 +256,7 @@ async def _run_one(
 
                 return AnswerRecord(
                     question_id=question_id,
+                    question_review_status=review_status,
                     strategy=strategy.name,
                     answer=answer,
                     score=score,
@@ -541,6 +543,7 @@ async def run_benchmark(
                             top_k=top_k,
                             reference_free=reference_free,
                             corpus=corp,
+                            review_status=q.review_status,
                         )
                         for q in questions
                     )
@@ -616,6 +619,7 @@ async def run_benchmark(
                             top_k=top_k,
                             reference_free=reference_free,
                             corpus=corp,
+                            review_status=q.review_status,
                         )
 
                     if cost_cap > 0:

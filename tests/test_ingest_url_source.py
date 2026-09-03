@@ -20,8 +20,11 @@ def test_special_ingest_passes_a_url_through_untouched(tmp_path, monkeypatch):
     monkeypatch.setattr(WebParser, "_scrape", fake_scrape)
 
     pipeline.run_ingest_special("https://example.com/docs", corpus="c", format="web")
+    pipeline.run_ingest_special("HTTPS://example.com/docs", corpus="c", format="web")
 
-    assert seen == ["https://example.com/docs"]
+    # The scheme compares case-insensitively, so the uppercase form still
+    # reaches the scraper as typed instead of falling through as a path.
+    assert seen == ["https://example.com/docs", "HTTPS://example.com/docs"]
 
 
 def test_web_parser_still_reads_a_url_from_a_file(tmp_path, monkeypatch):
