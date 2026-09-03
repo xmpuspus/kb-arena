@@ -25,6 +25,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from kb_arena import __version__
 from kb_arena.arena.engine import ArenaEngine
+from kb_arena.benchmark.manifest import compatibility_key, manifest_summary
 from kb_arena.chatbot.auth import require_auth
 from kb_arena.chatbot.session import SessionStore
 from kb_arena.chatbot.tools_api import router as tools_router
@@ -1055,7 +1056,7 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
         return {"corpora": [], "leaderboard": []}
 
     # Collect (corpus, strategy) -> list[per-run metrics]
-    rows: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    rows: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
     seen_corpora: set[str] = set()
 
     # Top-level files (legacy single-run shape)
@@ -1076,7 +1077,7 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
         if corpus != "all" and c != corpus:
             continue
         try:
-            rows[(c, s)].append(_summarise_run(data))
+            rows[(c, s, compatibility_key(data))].append(_summarise_run(data))
         except ValueError:
             continue
 
@@ -1099,18 +1100,29 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
             if corpus != "all" and c != corpus:
                 continue
             try:
-                rows[(c, s)].append(_summarise_run(data))
+                rows[(c, s, compatibility_key(data))].append(_summarise_run(data))
             except ValueError:
                 continue
 
+    # Runs made against different question sets, qrels, judges, or top_k
+    # values never share a row. A row names its key, and lists the other keys
+    # seen for the same corpus and strategy, so a reader can tell two
+    # incomparable rows apart instead of reading one blended number.
+    keys_by_pair: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for c, s, key in rows:
+        keys_by_pair[(c, s)].append(key)
+
     leaderboard: list[dict] = []
-    for (c, s), runs in sorted(rows.items()):
+    for (c, s, key), runs in sorted(rows.items()):
         if not runs:
             continue
         leaderboard.append(
             {
                 "corpus": c,
                 "strategy": s,
+                "compatibility_key": key,
+                "manifest": runs[0].get("manifest", {}),
+                "mixed_with": sorted(k for k in keys_by_pair[(c, s)] if k != key),
                 "runs": len(runs),
                 "mean_accuracy": _avg(runs, "overall_accuracy"),
                 "mean_recall_at_5": _avg(runs, "mean_recall_at_k"),
@@ -1178,6 +1190,7 @@ def _summarise_run(data: dict) -> dict:
     ]
     mean_latency = sum(latencies) / len(latencies) if latencies else 0.0
     return {
+        "manifest": manifest_summary(data),
         "overall_accuracy": overall,
         "mean_recall_at_k": _finite_number(data.get("mean_recall_at_k", 0.0), "mean_recall_at_k"),
         "mean_ndcg_at_k": _finite_number(data.get("mean_ndcg_at_k", 0.0), "mean_ndcg_at_k"),

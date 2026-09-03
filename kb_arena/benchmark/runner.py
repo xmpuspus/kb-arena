@@ -19,6 +19,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeEl
 
 from kb_arena.benchmark.evaluator import evaluate
 from kb_arena.benchmark.ir_metrics import compute_all as compute_ir_metrics
+from kb_arena.benchmark.manifest import SCHEMA_VERSION, build_manifest
 from kb_arena.benchmark.questions import discover_corpora, load_questions
 from kb_arena.llm.client import LLMClient
 from kb_arena.models.benchmark import (
@@ -499,6 +500,9 @@ async def run_benchmark(
         selected_questions = True
 
         questions_map = {q.id: (q.type, q.tier) for q in questions}
+        manifest = build_manifest(
+            corp, questions, top_k=top_k, split=split, reference_free=reference_free
+        )
 
         def _write_result(bench: BenchmarkResult) -> None:
             # Latest (backward compat)
@@ -531,6 +535,9 @@ async def run_benchmark(
                         run_id=run_id,
                         timestamp=timestamp,
                         config_snapshot=config_snap,
+                        schema_version=SCHEMA_VERSION,
+                        judge_provider=manifest["judge"]["provider"],
+                        manifest=manifest,
                     )
                     coros = (
                         _run_one(
@@ -607,6 +614,9 @@ async def run_benchmark(
                         run_id=run_id,
                         timestamp=timestamp,
                         config_snapshot=config_snap,
+                        schema_version=SCHEMA_VERSION,
+                        judge_provider=manifest["judge"]["provider"],
+                        manifest=manifest,
                     )
 
                     async def _run_question(q):

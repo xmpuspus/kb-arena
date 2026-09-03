@@ -335,6 +335,9 @@ def benchmark(
     ragas: bool = typer.Option(
         False, "--ragas", help="Enable RAGAS metrics (faithfulness, precision, recall, relevancy)"
     ),
+    runs: int = typer.Option(
+        1, "--runs", min=1, help="Repeat the whole benchmark N times, one run id each, for spread"
+    ),
     strategy_module: str = typer.Option(
         "",
         "--strategy-module",
@@ -410,17 +413,20 @@ def benchmark(
     from kb_arena.benchmark.runner import BenchmarkExecutionError, run_benchmark
 
     try:
-        asyncio.run(
-            run_benchmark(
-                corpus=corpus,
-                strategy=strategy,
-                tier=tier,
-                split=split,
-                parallel=parallel,
-                reference_free=reference_free,
-                top_k=top_k,
+        # Each repeat gets its own run id and result files, so a later reader
+        # can see the spread across runs instead of one point.
+        for _ in range(runs):
+            asyncio.run(
+                run_benchmark(
+                    corpus=corpus,
+                    strategy=strategy,
+                    tier=tier,
+                    split=split,
+                    parallel=parallel,
+                    reference_free=reference_free,
+                    top_k=top_k,
+                )
             )
-        )
     except BenchmarkExecutionError as exc:
         console.print(f"[red]Benchmark failed: {exc}[/red]")
         raise typer.Exit(1) from None
