@@ -8,6 +8,7 @@ architecture) questions access to broad topic synthesis that flat vector search 
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 
@@ -150,7 +151,8 @@ class RaptorStrategy(Strategy):
         generation: str,
     ) -> list[str]:
         """Cluster source_collection and upsert summaries to target_collection."""
-        data = source_collection.get(
+        data = await asyncio.to_thread(
+            source_collection.get,
             where=staged_where(corpus, generation),
             include=["embeddings", "documents"],
         )
@@ -164,7 +166,7 @@ class RaptorStrategy(Strategy):
 
         emb_array = np.array(embeddings, dtype=np.float32)
         k = max(1, len(ids_list) // 5)
-        assignments = _cosine_kmeans(emb_array, k)
+        assignments = await asyncio.to_thread(_cosine_kmeans, emb_array, k)
 
         clusters: dict[int, list[str]] = {}
         for ci, doc in zip(assignments, docs):
@@ -184,7 +186,8 @@ class RaptorStrategy(Strategy):
                 }
             )
 
-        return upsert_staged_records(
+        return await asyncio.to_thread(
+            upsert_staged_records,
             target_collection,
             generation,
             summary_ids,
@@ -223,9 +226,30 @@ class RaptorStrategy(Strategy):
         collections = (l0, l1, l2)
         staged_by_level: list[list[str]] = [[], [], []]
         total_l1 = 0
+
+        def _activate_and_prune() -> None:
+            # The activation lock is a file lock and prune walks the whole
+            # collection, so both stay off the event loop.
+            with index_activation_lock():
+                activate_generations(
+                    {
+                        collection_name: {corpus: generation for corpus in corpora}
+                        for collection_name in COLLECTION_NAMES
+                    }
+                )
+                for collection, collection_name in zip(collections, COLLECTION_NAMES):
+                    try:
+                        prune_collection(collection, collection_name, corpora)
+                    except Exception as exc:
+                        logger.warning(
+                            "Could not prune inactive %s records: %s", collection_name, exc
+                        )
+
         async with index_build_lock():
             try:
-                staged_by_level[0] = upsert_staged_records(l0, generation, ids, texts, metadatas)
+                staged_by_level[0] = await asyncio.to_thread(
+                    upsert_staged_records, l0, generation, ids, texts, metadatas
+                )
                 for corpus in corpora:
                     l1_ids = await self._build_level(l0, l1, "l1", corpus, generation)
                     staged_by_level[1].extend(l1_ids)
@@ -240,23 +264,10 @@ class RaptorStrategy(Strategy):
                     if l2_ids:
                         logger.info("RAPTOR: built %d L2 summaries for %s", len(l2_ids), corpus)
 
-                with index_activation_lock():
-                    activate_generations(
-                        {
-                            collection_name: {corpus: generation for corpus in corpora}
-                            for collection_name in COLLECTION_NAMES
-                        }
-                    )
-                    for collection, collection_name in zip(collections, COLLECTION_NAMES):
-                        try:
-                            prune_collection(collection, collection_name, corpora)
-                        except Exception as exc:
-                            logger.warning(
-                                "Could not prune inactive %s records: %s", collection_name, exc
-                            )
+                await asyncio.to_thread(_activate_and_prune)
             except Exception:
                 for collection, staged_ids in zip(collections, staged_by_level):
-                    discard_staged_ids(collection, staged_ids)
+                    await asyncio.to_thread(discard_staged_ids, collection, staged_ids)
                 raise
 
         logger.info("RAPTOR: built %d L0 chunks, %d L1 summaries", len(ids), total_l1)
@@ -271,47 +282,54 @@ class RaptorStrategy(Strategy):
         all_sources: set[str] = set()
         retrieved_chunks: list[RetrievedChunk] = []
 
-        with index_read_lock():
-            for level in (0, 1, 2):
-                coll = self._get_collection(level)
-                count = coll.count()
-                if count == 0:
-                    continue
-                n = min(top_k, count)
-                query_kwargs = {
-                    "query_texts": [question],
-                    "n_results": n,
-                    "include": ["documents", "metadatas", "distances"],
-                }
-                query_kwargs["where"] = index_where(COLLECTION_NAMES[level], corpus)
-                results = coll.query(**query_kwargs)
-                ids, chunks, metas, distances = parse_query_result(results)
-                all_chunks.extend(chunks)
-                for i, ch_text in enumerate(chunks):
-                    src = (metas[i].get("source_id") if i < len(metas) else "") or ""
-                    if src:
-                        all_sources.add(src)
-                    raw_id = (
-                        metas[i].get("chunk_id")
-                        if i < len(metas) and metas[i].get("chunk_id")
-                        else ids[i]
-                        if i < len(ids)
-                        else f"unknown-{i}"
+        def _search_levels():
+            # Every level's count and query run on the calling thread inside
+            # Chroma, so the whole locked search moves to a worker thread.
+            found = []
+            with index_read_lock():
+                for level in (0, 1, 2):
+                    coll = self._get_collection(level)
+                    count = coll.count()
+                    if count == 0:
+                        continue
+                    n = min(top_k, count)
+                    query_kwargs = {
+                        "query_texts": [question],
+                        "n_results": n,
+                        "include": ["documents", "metadatas", "distances"],
+                    }
+                    query_kwargs["where"] = index_where(COLLECTION_NAMES[level], corpus)
+                    found.append((level, coll.query(**query_kwargs)))
+            return found
+
+        for level, results in await asyncio.to_thread(_search_levels):
+            ids, chunks, metas, distances = parse_query_result(results)
+            all_chunks.extend(chunks)
+            for i, ch_text in enumerate(chunks):
+                src = (metas[i].get("source_id") if i < len(metas) else "") or ""
+                if src:
+                    all_sources.add(src)
+                raw_id = (
+                    metas[i].get("chunk_id")
+                    if i < len(metas) and metas[i].get("chunk_id")
+                    else ids[i]
+                    if i < len(ids)
+                    else f"unknown-{i}"
+                )
+                retrieved_chunks.append(
+                    RetrievedChunk(
+                        chunk_id=f"L{level}:{raw_id}",
+                        doc_id=src,
+                        content=ch_text,
+                        score=1.0 - distances[i],
+                        rank=len(retrieved_chunks) + 1,
+                        source_strategy=self.name,
+                        metadata={
+                            "level": level,
+                            **(dict(metas[i]) if i < len(metas) else {}),
+                        },
                     )
-                    retrieved_chunks.append(
-                        RetrievedChunk(
-                            chunk_id=f"L{level}:{raw_id}",
-                            doc_id=src,
-                            content=ch_text,
-                            score=1.0 - distances[i],
-                            rank=len(retrieved_chunks) + 1,
-                            source_strategy=self.name,
-                            metadata={
-                                "level": level,
-                                **(dict(metas[i]) if i < len(metas) else {}),
-                            },
-                        )
-                    )
+                )
         retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
         trace = RetrievalTrace(

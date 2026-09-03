@@ -257,6 +257,34 @@ def _activation_lock(*, shared: bool) -> Iterator[None]:
         handle.close()
 
 
+async def query_in_thread(
+    collection: Any,
+    collection_name: str,
+    corpus: str,
+    query_kwargs: dict[str, Any],
+    where: Mapping[str, Any] | None = None,
+) -> Any:
+    """Run one locked Chroma query on a worker thread.
+
+    collection.query() embeds the question and walks the index on the
+    calling thread. Inside an async strategy that froze the event loop for
+    the whole search, so a benchmark with a concurrency of eight ran its
+    queries one at a time and the API could not answer a health probe
+    meanwhile. The read lock moves with the query, since flock is held per
+    open handle and releases on the same thread that took it.
+    """
+
+    def _run() -> Any:
+        with index_read_lock():
+            if where is None:
+                query_kwargs["where"] = index_where(collection_name, corpus)
+            else:
+                query_kwargs["where"] = index_where(collection_name, corpus, where)
+            return collection.query(**query_kwargs)
+
+    return await asyncio.to_thread(_run)
+
+
 @contextmanager
 def index_read_lock() -> Iterator[None]:
     """Keep the selected generations alive until a complete query finishes."""
