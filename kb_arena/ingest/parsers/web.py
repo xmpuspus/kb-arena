@@ -7,6 +7,7 @@ import logging
 import re
 import socket
 import tempfile
+import zlib
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -42,6 +43,14 @@ class ResponseTooLargeError(ValueError):
     """Raised when a fetched response body exceeds the size cap."""
 
 
+class DNSTemporaryError(OSError):
+    """Raised when the resolver asks for a retry (EAI_AGAIN).
+
+    Distinct from SSRFBlocked on purpose: an outage is not a policy refusal,
+    and the scrape must report it instead of returning an empty corpus.
+    """
+
+
 def _validate_url(url: str) -> list[str]:
     """Reject non-HTTP(S) schemes and IPs in private/loopback/link-local ranges.
 
@@ -62,6 +71,8 @@ def _validate_url(url: str) -> list[str]:
     try:
         infos = socket.getaddrinfo(host, None)
     except socket.gaierror as exc:
+        if exc.errno == socket.EAI_AGAIN:
+            raise DNSTemporaryError(f"dns lookup for {host} failed, retry later: {exc}") from exc
         raise SSRFBlocked(f"dns resolution failed for {host}: {exc}") from exc
     checked_ips: list[str] = []
     for info in infos:
@@ -183,7 +194,15 @@ def _safe_get(client, url: str, timeout: int = 15, max_redirects: int = 5):
     for _ in range(max_redirects + 1):
         host = (urlparse(current).hostname or "").lower()
         client.pins[host] = _validate_url(current)
-        with client.stream("GET", current, timeout=timeout, follow_redirects=False) as resp:
+        with client.stream(
+            "GET",
+            current,
+            timeout=timeout,
+            follow_redirects=False,
+            # Ask for an uncompressed body. A server that compresses anyway
+            # goes through the bounded decoder below, never httpx's own.
+            headers={"Accept-Encoding": "identity"},
+        ) as resp:
             content_length = resp.headers.get("content-length")
             if content_length and int(content_length) > _MAX_RESPONSE_BYTES:
                 raise ResponseTooLargeError(
@@ -191,19 +210,7 @@ def _safe_get(client, url: str, timeout: int = 15, max_redirects: int = 5):
                     f"the {_MAX_RESPONSE_BYTES} byte cap"
                 )
 
-            chunks: list[bytes] = []
-            total = 0
-            for chunk in resp.iter_bytes():
-                total += len(chunk)
-                if total > _MAX_RESPONSE_BYTES:
-                    raise ResponseTooLargeError(
-                        f"{current}: response body exceeded the "
-                        f"{_MAX_RESPONSE_BYTES} byte cap while streaming"
-                    )
-                chunks.append(chunk)
-            # Same field httpx's own Response.read() sets, so resp.text and
-            # resp.content keep working for callers after the stream closes.
-            resp._content = b"".join(chunks)
+            resp._content = _read_capped(resp, current)
 
         if resp.status_code in (301, 302, 303, 307, 308):
             location = resp.headers.get("location")
@@ -213,6 +220,69 @@ def _safe_get(client, url: str, timeout: int = 15, max_redirects: int = 5):
             continue
         return resp
     raise SSRFBlocked(f"too many redirects starting from {url}")
+
+
+def _decoder_for(encoding: str):
+    """Return a zlib decompressor for the body's Content-Encoding, or None."""
+    enc = encoding.strip().lower()
+    if enc in ("", "identity"):
+        return None
+    if enc == "gzip":
+        return zlib.decompressobj(wbits=16 + zlib.MAX_WBITS)
+    if enc == "deflate":
+        return zlib.decompressobj()
+    raise httpx.DecodingError(
+        f"unsupported content-encoding {encoding!r}; the request asked for identity"
+    )
+
+
+def _read_capped(resp, url: str) -> bytes:
+    """Read a streamed body under _MAX_RESPONSE_BYTES, counted on both sides.
+
+    Raw network bytes and decoded bytes both count. resp.iter_bytes() would
+    hand back each raw chunk fully inflated, so a small gzip body could
+    expand a 64 KB chunk to tens of megabytes before any check ran. Here
+    the decompressor gets a max_length, so it never emits past the cap.
+    """
+    too_large = ResponseTooLargeError(
+        f"{url}: response body exceeded the {_MAX_RESPONSE_BYTES} byte cap while streaming"
+    )
+    if resp.is_stream_consumed and hasattr(resp, "_content"):
+        # httpx already read and decoded this body, which happens for a
+        # pre-built response such as one a MockTransport hands back. A live
+        # response streams lazily and never takes this path.
+        if len(resp._content) > _MAX_RESPONSE_BYTES:
+            raise too_large
+        return resp._content
+    decoder = _decoder_for(resp.headers.get("content-encoding", ""))
+    chunks: list[bytes] = []
+    raw_total = 0
+    total = 0
+    for raw in resp.iter_raw():
+        raw_total += len(raw)
+        if raw_total > _MAX_RESPONSE_BYTES:
+            raise too_large
+        if decoder is None:
+            chunk = raw
+        else:
+            chunk = decoder.decompress(raw, _MAX_RESPONSE_BYTES + 1 - total)
+            if decoder.unconsumed_tail:
+                # Output hit max_length with input left over: more than the
+                # cap is still to come, so stop before inflating it.
+                raise too_large
+        total += len(chunk)
+        if total > _MAX_RESPONSE_BYTES:
+            raise too_large
+        chunks.append(chunk)
+    if decoder is not None:
+        tail = decoder.flush()
+        total += len(tail)
+        if total > _MAX_RESPONSE_BYTES:
+            raise too_large
+        chunks.append(tail)
+    # Same field httpx's own Response.read() sets, so resp.text and
+    # resp.content keep working for callers after the stream closes.
+    return b"".join(chunks)
 
 
 def _check_llms_txt(base_url: str, client) -> str | None:
@@ -338,11 +408,16 @@ class WebParser:
         queue: list[tuple[str, int]] = [(start_url, 0)]
         pages: list[tuple[str, str]] = []  # (url, text_content)
 
-        while queue and len(pages) < self.max_pages:
+        # max_pages caps fetch attempts, not extracted pages. A failed or
+        # textless page adds nothing to `pages` but still adds links, so a
+        # cap on `pages` alone let the crawl send many times more requests.
+        attempts = 0
+        while queue and attempts < self.max_pages:
             url, depth = queue.pop(0)
             if url in visited:
                 continue
             visited.add(url)
+            attempts += 1
 
             html = _fetch_page(url, client)
             if not html:
