@@ -44,3 +44,31 @@ log.
 joint file to `datasets/all/qa-pairs/qa_pairs.jsonl`. No per-corpus read uses that directory, so the
 pairs lost the link to the corpora their sections came from. `GenerateRequest` now rejects the
 sentinel. The read-only audit and fix endpoints still accept it.
+
+## Open, found by the 2026-09-03 review of the SSRF DNS-rebinding pin
+
+A cross-model review of the DNS-rebinding fix in `kb_arena/ingest/parsers/web.py` found three
+pre-existing defects that the fix did not introduce. They stay out of that PR to keep its scope.
+Each one has a ledger row in the enhancement train, N-12 to N-14.
+
+### `kb-arena ingest https://example.com` never sends a request, because `Path()` turns `https://` into `https:/`
+
+`kb_arena/ingest/pipeline.py` wraps every source in `Path()` before it calls the parser.
+`Path("https://example.com")` normalises to `https:/example.com`. `WebParser.parse` then sees a
+string that does not start with `http://` or `https://`, tries to read it as a file that holds a
+URL, fails, and returns an empty list. The CLI reports that no documents came out of the source.
+A URL only works today when it sits inside a file.
+
+### The crawler's page cap counts extracted pages, so failed fetches let it send more requests than `max_pages`
+
+`WebParser._crawl` loops while `len(pages) < max_pages`. A fetch that fails, or a page with no
+text, adds nothing to `pages` but still adds its links to the queue. With `max_pages=1` and
+`max_depth=3`, a site whose pages each link to two empty pages draws 15 requests and returns
+nothing. The cap must count every fetch it starts.
+
+### A temporary DNS failure reads as an SSRF refusal and an empty corpus
+
+`_validate_url` turns every `socket.gaierror` into `SSRFBlocked`, including `EAI_AGAIN`, the
+resolver's "try again later" code. `_scrape` catches that, logs a refusal, and returns an empty
+list. An outage and a source with no documents look the same to the operator. A retryable
+resolver error must surface as its own failure.

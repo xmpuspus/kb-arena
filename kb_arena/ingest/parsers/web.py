@@ -8,7 +8,10 @@ import re
 import socket
 import tempfile
 from pathlib import Path
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import urljoin, urlparse
+
+import httpcore
+import httpx
 
 from kb_arena.ingest.parsers.utils import slugify, token_count, unique_id
 from kb_arena.models.document import Document, Section
@@ -39,14 +42,14 @@ class ResponseTooLargeError(ValueError):
     """Raised when a fetched response body exceeds the size cap."""
 
 
-def _validate_url(url: str) -> str:
+def _validate_url(url: str) -> list[str]:
     """Reject non-HTTP(S) schemes and IPs in private/loopback/link-local ranges.
 
     Resolves DNS and checks every resolved IP, so attackers can't use a domain
     that resolves to 127.0.0.1 or 169.254.169.254 (AWS metadata). Returns the
-    first checked IP as a string. The caller must connect to that exact IP
-    instead of resolving the host again: a second resolution can return a
-    different address (DNS rebinding), which would skip this check.
+    checked IPs in resolver order. The connection must go to one of them, not
+    to a fresh lookup: a second resolution can return a different address
+    (DNS rebinding), which would skip this check.
     """
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
@@ -71,35 +74,84 @@ def _validate_url(url: str) -> str:
             raise SSRFBlocked(f"refusing to fetch private address {ip_str} ({host})")
         if ip.is_reserved or ip.is_unspecified:
             raise SSRFBlocked(f"refusing to fetch reserved address {ip_str} ({host})")
-        checked_ips.append(ip_str)
+        # getaddrinfo repeats each address once per socket type.
+        if ip_str not in checked_ips:
+            checked_ips.append(ip_str)
     if not checked_ips:
         raise SSRFBlocked(f"dns resolution returned no usable address for {host}")
-    return checked_ips[0]
+    return checked_ips
 
 
-def _pin_url_to_ip(url: str, ip: str) -> str:
-    """Rewrite a URL's host to a literal IP, keeping the scheme, port, path, and query.
+class _PinnedBackend(httpcore.SyncBackend):
+    """Open each socket to an IP _validate_url checked, never to a fresh DNS answer.
 
-    _safe_get sends the request to this URL so the connection goes to the
-    exact IP _validate_url checked, not to a host that DNS could resolve
-    differently a second time.
+    httpcore hands connect_tcp the URL's hostname and then starts TLS against
+    that same hostname, so certificate checks, the Host header, cookies, and
+    the connection-pool key all keep the real host. Only the socket target
+    changes. Rewriting the URL to the IP instead would pool two hostnames that
+    share an IP onto one TLS session and scope cookies to the IP.
     """
-    parsed = urlparse(url)
-    netloc = f"[{ip}]" if ":" in ip else ip
-    if parsed.port:
-        netloc = f"{netloc}:{parsed.port}"
-    return urlunparse(parsed._replace(netloc=netloc))
+
+    def __init__(self, pins: dict[str, list[str]]) -> None:
+        super().__init__()
+        self._pins = pins
+
+    def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        targets = self._pins.get(host.lower())
+        if not targets:
+            # Fail closed: a host that never passed _validate_url gets no socket.
+            raise httpcore.ConnectError(f"no checked address for {host}")
+        # Every address here passed the check, so falling through to the next
+        # one on a refused connect keeps the multi-address fallback a plain
+        # hostname connect would have had.
+        for ip in targets[:-1]:
+            try:
+                return super().connect_tcp(
+                    ip,
+                    port,
+                    timeout=timeout,
+                    local_address=local_address,
+                    socket_options=socket_options,
+                )
+            except (httpcore.ConnectError, httpcore.ConnectTimeout):
+                continue
+        return super().connect_tcp(
+            targets[-1],
+            port,
+            timeout=timeout,
+            local_address=local_address,
+            socket_options=socket_options,
+        )
 
 
-def _try_import_httpx():
-    try:
-        import httpx
+class _PinnedTransport(httpx.HTTPTransport):
+    """HTTPTransport whose connection pool dials through _PinnedBackend."""
 
-        return httpx
-    except ImportError:
-        raise ImportError(
-            "httpx is required for web scraping. Install with: pip install kb-arena[web]"
-        ) from None
+    def __init__(self, pins: dict[str, list[str]]) -> None:
+        super().__init__()
+        # HTTPTransport builds its pool with no way to pass a network backend,
+        # so this swaps in one that does. Same pool class and SSL context.
+        self._pool.close()
+        self._pool = httpcore.ConnectionPool(
+            ssl_context=httpx.create_ssl_context(),
+            network_backend=_PinnedBackend(pins),
+        )
+
+
+class _PinnedClient(httpx.Client):
+    """httpx.Client that only connects to addresses _validate_url checked.
+
+    _safe_get stores the checked IPs for a host in `pins` right before each
+    request, and the transport dials those. Tests can pass a MockTransport;
+    the pins still record what the guard checked. With a proxy set in the
+    environment, httpx routes through the proxy transport instead, and the
+    proxy resolves the host itself, so the pin does not apply on that path.
+    """
+
+    def __init__(self, **kwargs) -> None:
+        self.pins: dict[str, list[str]] = {}
+        kwargs.setdefault("transport", _PinnedTransport(self.pins))
+        super().__init__(**kwargs)
 
 
 def _try_import_bs4():
@@ -116,13 +168,12 @@ def _try_import_bs4():
 def _safe_get(client, url: str, timeout: int = 15, max_redirects: int = 5):
     """GET a URL with SSRF validation on every hop. Disables auto-follow_redirects.
 
-    Connects to the exact IP _validate_url checked, not the hostname, at
-    every hop. This closes a DNS-rebinding gap: without the pin, the check
-    resolves the host once, and the HTTP client resolves it again to open
-    the socket. A rebinding host can answer the check with a public IP and
-    the connect with a private one. The Host header and TLS SNI still carry
-    the real hostname, so the server sees a normal request and certificate
-    checks still pass.
+    Pins the socket, at every hop, to the IPs _validate_url checked. This
+    closes a DNS-rebinding gap: without the pin, the check resolves the host
+    once, and the HTTP client resolves it again to open the socket. A
+    rebinding host can answer the check with a public IP and the connect with
+    a private one. `client` must be a _PinnedClient; its transport refuses
+    any host that has no entry in `client.pins`.
 
     Streams the body and aborts as soon as it passes _MAX_RESPONSE_BYTES, at
     every redirect hop, so a huge or malicious page cannot buffer its full
@@ -130,17 +181,9 @@ def _safe_get(client, url: str, timeout: int = 15, max_redirects: int = 5):
     """
     current = url
     for _ in range(max_redirects + 1):
-        host = urlparse(current).hostname or ""
-        pinned_ip = _validate_url(current)
-        pinned_url = _pin_url_to_ip(current, pinned_ip)
-        with client.stream(
-            "GET",
-            pinned_url,
-            timeout=timeout,
-            follow_redirects=False,
-            headers={"Host": host},
-            extensions={"sni_hostname": host},
-        ) as resp:
+        host = (urlparse(current).hostname or "").lower()
+        client.pins[host] = _validate_url(current)
+        with client.stream("GET", current, timeout=timeout, follow_redirects=False) as resp:
             content_length = resp.headers.get("content-length")
             if content_length and int(content_length) > _MAX_RESPONSE_BYTES:
                 raise ResponseTooLargeError(
@@ -257,10 +300,9 @@ class WebParser:
             log.error("Refusing to scrape %s: %s", url, exc)
             return []
 
-        httpx = _try_import_httpx()
         bs_class = _try_import_bs4()
 
-        with httpx.Client(
+        with _PinnedClient(
             headers={"User-Agent": "kb-arena/1.0 (documentation indexer)"},
             follow_redirects=False,
         ) as client:
