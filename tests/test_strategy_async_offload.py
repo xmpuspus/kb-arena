@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from unittest.mock import MagicMock
 
 import pytest
 
+from kb_arena.strategies import chroma_index
 from kb_arena.strategies.naive_vector import NaiveVectorStrategy
 from kb_arena.strategies.raptor import RaptorStrategy
 
@@ -105,3 +107,57 @@ async def test_the_loop_keeps_ticking_during_a_raptor_search(mock_llm_client):
     ticks = await _ticks_during(strategy.query("question"))
 
     assert ticks >= 10
+
+
+@pytest.mark.asyncio
+async def test_the_loop_keeps_ticking_through_a_cold_start(mock_llm_client):
+    # The first request builds the client, the embedding function, and the
+    # collection. That setup used to run on the loop thread.
+    client = _slow_client(0.0)
+
+    def slow_setup(**kwargs):
+        time.sleep(_DELAY)
+        return client.get_or_create_collection.return_value
+
+    collection = client.get_or_create_collection.return_value
+    client.get_or_create_collection.side_effect = slow_setup
+    client.get_or_create_collection.return_value = collection
+    strategy = NaiveVectorStrategy(chroma_client=client)
+    strategy._llm = mock_llm_client
+
+    ticks = await _ticks_during(strategy.query("first ever question"))
+
+    assert ticks >= 10
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_build_keeps_the_lock_until_its_worker_finishes(sample_documents):
+    # asyncio.to_thread cancels only the coroutine. The publish keeps running
+    # on its thread, so the build lock must stay held until it is done.
+    entered = threading.Event()
+    release = threading.Event()
+    client = MagicMock()
+    collection = MagicMock()
+
+    def blocking_upsert(**kwargs):
+        entered.set()
+        release.wait(5)
+
+    collection.upsert.side_effect = blocking_upsert
+    client.get_or_create_collection.return_value = collection
+    strategy = NaiveVectorStrategy(chroma_client=client)
+
+    build = asyncio.create_task(strategy.build_index(sample_documents))
+    await asyncio.to_thread(entered.wait, 5)
+    build.cancel()
+    await asyncio.sleep(0.1)
+
+    lock_path = chroma_index._index_directory() / chroma_index._LOCK_FILENAME
+    with lock_path.open("a+b") as handle:
+        # Still held: the worker has not finished, so no second build may start.
+        assert chroma_index._try_lock(handle) is False
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await build
+        assert chroma_index._try_lock(handle) is True
+        chroma_index._unlock(handle)

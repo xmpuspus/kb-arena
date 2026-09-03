@@ -29,6 +29,7 @@ from kb_arena.strategies.chroma_index import (
     new_generation,
     parse_query_result,
     prune_collection,
+    run_to_completion,
     staged_where,
     upsert_staged_records,
 )
@@ -186,7 +187,7 @@ class RaptorStrategy(Strategy):
                 }
             )
 
-        return await asyncio.to_thread(
+        return await run_to_completion(
             upsert_staged_records,
             target_collection,
             generation,
@@ -197,7 +198,9 @@ class RaptorStrategy(Strategy):
 
     async def build_index(self, documents: list[Document]) -> None:
         """Chunk all sections → L0. Cluster L0 → L1 summaries. Optionally L1 → L2."""
-        l0 = self._get_collection(0)
+        # get_or_create_collection and the embedding function set up on the
+        # calling thread, so the cold start goes to a worker thread too.
+        l0 = await asyncio.to_thread(self._get_collection, 0)
         ids, texts, metadatas = [], [], []
 
         for doc in documents:
@@ -219,8 +222,8 @@ class RaptorStrategy(Strategy):
         corpora = list(dict.fromkeys(doc.corpus for doc in documents))
         if not corpora:
             return
-        l1 = self._get_collection(1)
-        l2 = self._get_collection(2)
+        l1 = await asyncio.to_thread(self._get_collection, 1)
+        l2 = await asyncio.to_thread(self._get_collection, 2)
 
         generation = new_generation()
         collections = (l0, l1, l2)
@@ -247,7 +250,7 @@ class RaptorStrategy(Strategy):
 
         async with index_build_lock():
             try:
-                staged_by_level[0] = await asyncio.to_thread(
+                staged_by_level[0] = await run_to_completion(
                     upsert_staged_records, l0, generation, ids, texts, metadatas
                 )
                 for corpus in corpora:
@@ -264,10 +267,10 @@ class RaptorStrategy(Strategy):
                     if l2_ids:
                         logger.info("RAPTOR: built %d L2 summaries for %s", len(l2_ids), corpus)
 
-                await asyncio.to_thread(_activate_and_prune)
+                await run_to_completion(_activate_and_prune)
             except Exception:
                 for collection, staged_ids in zip(collections, staged_by_level):
-                    await asyncio.to_thread(discard_staged_ids, collection, staged_ids)
+                    await run_to_completion(discard_staged_ids, collection, staged_ids)
                 raise
 
         logger.info("RAPTOR: built %d L0 chunks, %d L1 summaries", len(ids), total_l1)
