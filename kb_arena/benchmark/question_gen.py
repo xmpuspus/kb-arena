@@ -73,7 +73,21 @@ Rules:
 """
 
 
-def _load_doc_excerpts(corpus: str, max_chars: int = 50000) -> tuple[list[dict], str]:
+def _load_doc_excerpts(
+    corpus: str, max_chars: int = 50000
+) -> tuple[list[dict], str, dict[str, int]]:
+    """Build the excerpt text the generator reads, one budget per document.
+
+    The old walk took sections in corpus order until one global cap filled,
+    so on the 130-document NIST corpus only the first 36 documents ever
+    reached the prompt. Each document now gets an equal share of max_chars,
+    so every document with a usable section contributes, and a corpus that
+    changes order does not change which documents the questions cover.
+
+    Returns the raw documents, the excerpt text, and a coverage record:
+    documents seen, documents that contributed, documents with no section of
+    50 characters or more, and the characters used.
+    """
     processed_dir = Path(settings.datasets_path) / corpus / "processed"
     if not processed_dir.exists():
         raise FileNotFoundError(
@@ -91,29 +105,52 @@ def _load_doc_excerpts(corpus: str, max_chars: int = 50000) -> tuple[list[dict],
     if not docs:
         raise ValueError(f"No documents found in {processed_dir}")
 
+    # Equal share per document, but never so small that a section header
+    # plus a sentence cannot fit. A tiny corpus keeps the old 2,000-char
+    # section slice as its ceiling.
+    per_doc_budget = max(300, min(2000, max_chars // len(docs)))
+
     excerpts = []
     total_chars = 0
+    contributed = 0
+    no_usable_section = 0
     for doc in docs:
         title = doc.get("title", "Untitled")
         source = doc.get("source", "")
         sections = doc.get("sections", [])
 
+        remaining = per_doc_budget
+        doc_excerpts = []
         for section in sections:
             content = section.get("content", "")
             if not content or len(content) < 50:
                 continue
-
-            excerpt = f"[{title} / {section.get('title', '')}]\n{content[:2000]}"
-            if total_chars + len(excerpt) > max_chars:
+            header = f"[{title} / {section.get('title', '')}]\n"
+            room = remaining - len(header)
+            if room < 50:
                 break
-            excerpts.append({"text": excerpt, "source": source})
-            total_chars += len(excerpt)
+            body = content[: min(2000, room)]
+            doc_excerpts.append({"text": header + body, "source": source})
+            remaining -= len(header) + len(body)
+            if remaining < 100:
+                break
 
-        if total_chars >= max_chars:
-            break
+        if not doc_excerpts:
+            no_usable_section += 1
+            continue
+        contributed += 1
+        excerpts.extend(doc_excerpts)
+        total_chars += sum(len(e["text"]) for e in doc_excerpts)
 
+    coverage = {
+        "documents": len(docs),
+        "documents_in_prompt": contributed,
+        "documents_without_usable_section": no_usable_section,
+        "chars": total_chars,
+        "per_document_budget": per_doc_budget,
+    }
     excerpt_text = "\n\n---\n\n".join(e["text"] for e in excerpts)
-    return docs, excerpt_text
+    return docs, excerpt_text, coverage
 
 
 async def _generate_tier_questions(
@@ -186,8 +223,13 @@ async def run_question_generation(corpus: str, count: int = 50) -> None:
     console = Console()
     console.print(f"\n[bold]Generating {count} questions for corpus: {corpus}[/bold]\n")
 
-    docs, excerpt_text = _load_doc_excerpts(corpus)
-    console.print(f"  Loaded {len(docs)} documents, {len(excerpt_text):,} chars of excerpts")
+    docs, excerpt_text, coverage = _load_doc_excerpts(corpus)
+    console.print(
+        f"  Loaded {len(docs)} documents, {len(excerpt_text):,} chars of excerpts. "
+        f"{coverage['documents_in_prompt']} of {coverage['documents']} documents reach the "
+        f"prompt at {coverage['per_document_budget']:,} chars each, "
+        f"{coverage['documents_without_usable_section']} have no section of 50 chars or more."
+    )
 
     llm = LLMClient()
     questions_dir = Path(settings.datasets_path) / corpus / "questions"
