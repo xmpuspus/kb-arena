@@ -21,6 +21,10 @@ class RerankerError(StrategyError):
     """A reranker backend failed before it could produce valid scores."""
 
 
+class ArenaError(KBArenaError):
+    """A match cannot be rated, so no vote may follow it."""
+
+
 class EvaluationError(KBArenaError):
     """Error during benchmark evaluation."""
 

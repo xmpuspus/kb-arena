@@ -43,11 +43,23 @@ def _validate_corpus_name(v: str) -> str:
     return v
 
 
+def _validate_writable_corpus_name(v: str) -> str:
+    """Reject the all-corpora sentinel on a path that writes one corpus.
+
+    Generation reads sections from every corpus under "all", then writes the joint
+    result to datasets/all/. No per-corpus read ever looks there, so the pairs lose
+    the link to the corpora their sections came from.
+    """
+    if _validate_corpus_name(v) == "all":
+        raise ValueError("Corpus 'all' cannot be written to; name a single corpus")
+    return v
+
+
 class GenerateRequest(BaseModel):
     corpus: str
     max_sections: int = Field(default=50, ge=1, le=500)
 
-    validate_corpus = field_validator("corpus")(_validate_corpus_name)
+    validate_corpus = field_validator("corpus")(_validate_writable_corpus_name)
 
 
 class AuditRequest(BaseModel):

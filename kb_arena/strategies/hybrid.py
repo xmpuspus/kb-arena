@@ -149,6 +149,10 @@ class HybridStrategy(Strategy):
         retrieval_ms = 0.0
         gen_ms = 0.0
         sub_traces: list[RetrievalTrace] = []
+        # Hybrid builds a fresh result rather than returning a sub-result, so an
+        # outage flag has to be carried forward by hand. Without it the arena treats
+        # a mock graph answer as a real one and rates it.
+        mocked = False
 
         if intent in ("comparison", "relational"):
             retrieval_start = time.perf_counter()
@@ -164,6 +168,7 @@ class HybridStrategy(Strategy):
             total_tokens = graph_result.tokens_used
             total_cost = graph_result.cost_usd
             gen_ms = graph_result.generation_latency_ms
+            mocked = graph_result.mock
             if graph_result.retrieval:
                 sub_traces.append(graph_result.retrieval)
 
@@ -180,6 +185,7 @@ class HybridStrategy(Strategy):
             total_tokens = vector_result.tokens_used
             total_cost = vector_result.cost_usd
             gen_ms = vector_result.generation_latency_ms
+            mocked = vector_result.mock
             if vector_result.retrieval:
                 sub_traces.append(vector_result.retrieval)
 
@@ -198,6 +204,7 @@ class HybridStrategy(Strategy):
             # they were spent on retrieval+generation upstream — for cost honesty.
             total_tokens = vector_result.tokens_used + graph_result.tokens_used
             total_cost = vector_result.cost_usd + graph_result.cost_usd
+            mocked = vector_result.mock or graph_result.mock
 
             vec_chunks: list[RetrievedChunk] = (
                 list(vector_result.retrieval.retrieved) if vector_result.retrieval else []
@@ -278,6 +285,7 @@ class HybridStrategy(Strategy):
             generation_latency_ms=gen_ms,
             tokens_used=total_tokens,
             cost_usd=total_cost,
+            mock=mocked,
         )
 
     async def stream_answer(

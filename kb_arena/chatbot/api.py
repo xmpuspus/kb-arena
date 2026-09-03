@@ -28,6 +28,7 @@ from kb_arena.arena.engine import ArenaEngine
 from kb_arena.chatbot.auth import require_auth
 from kb_arena.chatbot.session import SessionStore
 from kb_arena.chatbot.tools_api import router as tools_router
+from kb_arena.exceptions import ArenaError, StrategyError
 from kb_arena.models.api import (
     ArenaMatchRequest,
     ArenaVoteRequest,
@@ -116,6 +117,23 @@ def _check_rate_limit(client_ip: str) -> bool:
     audit tests, even though the production store is a deque.
     """
     return _auth_module._consume_rate_limit(client_ip)
+
+
+def _build_arena(strategies: dict) -> tuple[ArenaEngine | None, str]:
+    """Build the arena, and report why when it cannot be built.
+
+    A broken arena must not stop the rest of the API from serving, so the failure
+    ends as None either way. The log line and the returned reason are what tell a
+    broken arena apart from an absent one, on the log and on /health.
+    """
+    try:
+        return ArenaEngine(strategies), ""
+    except Exception as exc:
+        # /health needs no token, so the reason it publishes follows the same
+        # redaction rule as every other error surface. The log above keeps the
+        # full traceback for whoever operates the deployment.
+        logger.exception("Arena engine failed to initialize; arena endpoints return 503")
+        return None, _public_error_message(exc)
 
 
 @asynccontextmanager
@@ -251,11 +269,7 @@ async def lifespan(app: FastAPI):
 
         app.state.strategies["sqr"] = SQRStrategy(chroma_client=chroma, llm_client=llm)
 
-    # Arena engine
-    try:
-        app.state.arena = ArenaEngine(app.state.strategies)
-    except Exception:
-        app.state.arena = None
+    app.state.arena, app.state.arena_error = _build_arena(app.state.strategies)
 
     # Periodic session cleanup task
     async def _cleanup_sessions():
@@ -853,6 +867,14 @@ async def arena_create_match(body: ArenaMatchRequest, request: Request):
             "sources_a": match.sources_a,
             "sources_b": match.sources_b,
         }
+    except (ArenaError, StrategyError) as exc:
+        # Two shapes of the same outage: a strategy answered from mock data, or it
+        # failed outright. Rating either would record an outage in the leaderboard,
+        # so both are unavailability rather than a server fault.
+        return JSONResponse(
+            {"error": {"code": "strategy_unavailable", "message": _public_error_message(exc)}},
+            503,
+        )
     except Exception as exc:
         return JSONResponse(
             {
@@ -1063,6 +1085,10 @@ async def health(request: Request) -> dict:
             "provider": settings.llm_provider,
             "configured": _generation_configured(),
             "available": request.app.state.llm is not None,
+        },
+        "arena": {
+            "available": request.app.state.arena is not None,
+            "last_error": getattr(request.app.state, "arena_error", "") or None,
         },
         "strategies": list(request.app.state.strategies.keys()),
         "demo_mode": settings.demo_mode,
