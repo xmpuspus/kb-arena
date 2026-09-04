@@ -269,3 +269,17 @@ async def test_dependency_chains_report_their_load_so_a_missing_entity_is_explai
     assert analyzer.last_load["nodes_total"] == 6
     again = await analyzer.find_dependency_chains("c::n0", max_depth=4)
     assert again and analyzer.last_load["nodes_loaded"] == 3
+
+
+@pytest.mark.asyncio
+async def test_parallel_relationships_are_counted_as_rows_and_as_one_edge(monkeypatch):
+    monkeypatch.setattr(settings, "graph_node_budget", 100)
+    nodes, edges = _chain(3)
+    edges = edges + [{"src": "c::n0", "dst": "c::n1", "rel": "CONFIGURES"}]  # a second relationship
+    analyzer = GraphAnalyzer(_store(nodes, edges))
+
+    graph = await analyzer._build_networkx_graph()
+
+    assert analyzer.last_load["edge_rows_loaded"] == 3
+    assert analyzer.last_load["edges_loaded"] == 2
+    assert graph.number_of_edges() == 2

@@ -133,6 +133,9 @@ class GraphAnalyzer:
             "corpora_in_slice": corpora,
             "nodes_loaded": graph.number_of_nodes(),
             "nodes_total": total,
+            # Two relationships between one pair fold into one undirected
+            # edge, so the row count and the edge count are both reported.
+            "edge_rows_loaded": len(edges),
             "edges_loaded": graph.number_of_edges(),
             "node_budget": settings.graph_node_budget,
             "edge_budget": settings.graph_edge_budget,
@@ -199,6 +202,7 @@ class GraphAnalyzer:
             "nodes_total": (
                 await self._count_nodes(corpus) if nodes_truncated else graph.number_of_nodes()
             ),
+            "edge_rows_loaded": len(edges),
             "edges_loaded": graph.number_of_edges(),
             "node_budget": settings.graph_node_budget,
             "edge_budget": settings.graph_edge_budget,
