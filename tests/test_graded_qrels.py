@@ -157,11 +157,11 @@ async def test_the_pool_adds_random_chunks_the_retrievers_missed():
     assert len({line for line in shown}) == 8
 
 
-def test_a_truncated_judge_object_is_reported_not_stored_as_empty(caplog):
-    import logging
-
+def test_a_truncated_judge_object_raises_instead_of_storing_an_empty_label():
     grades, parsed = labeler._parse_grades('{"a": 2, "b":', {"a", "b"}, report=True)
     assert (grades, parsed) == ({}, False)
+    listed, parsed_list = labeler._parse_grades('["a"]', {"a"}, report=True)
+    assert (listed, parsed_list) == ({"a": 1}, True), "the list branch reports too"
 
     class _BM25:
         name = "bm25"
@@ -189,13 +189,10 @@ def test_a_truncated_judge_object_is_reported_not_stored_as_empty(caplog):
         async def extract(self, text, system_prompt=""):
             return SimpleNamespace(text='{"doc::a": 2, "doc::b":', cost_usd=0.0)
 
-    with caplog.at_level(logging.WARNING, logger="kb_arena.benchmark.expected_chunks"):
-        grades, _ = asyncio.run(
+    with pytest.raises(labeler.JudgeParseError, match="did not parse as grades"):
+        asyncio.run(
             labeler.label_one_question("q?", _BM25(), _Truncated(), "c", n_candidates=1, n_random=0)
         )
-
-    assert grades == {}
-    assert "did not parse as grades" in caplog.text
 
 
 def test_the_system_prompt_asks_for_grades():
@@ -204,3 +201,25 @@ def test_the_system_prompt_asks_for_grades():
     source = inspect.getsource(labeler.label_one_question)
     assert "JSON object literal mapping chunk_id to a grade" in source
     assert "JSON array literal" not in source
+
+
+def test_judged_negatives_reach_bpref():
+    """bpref counts only judged non-relevant chunks. Without the labels it
+    treats every retrieved chunk as one, which penalises a run for ranking
+    a chunk nobody judged."""
+    from kb_arena.benchmark.ir_metrics import compute_all
+    from kb_arena.models.retrieval import RetrievedChunk
+
+    def _ranked(*ids):
+        return [
+            RetrievedChunk(chunk_id=c, doc_id="doc", content="t", rank=i + 1, source_strategy="x")
+            for i, c in enumerate(ids)
+        ]
+
+    expected = {"doc::yes"}
+    ranked = _ranked("doc::unjudged", "doc::yes")
+    guessed = compute_all(ranked, expected, 2)
+    judged = compute_all(ranked, expected, 2, judged_nonrelevant={"doc::elsewhere"})
+
+    assert guessed.bpref < 1.0, "with no labels the unjudged chunk counts against the run"
+    assert judged.bpref == 1.0, "a chunk nobody judged no longer counts against it"

@@ -79,6 +79,10 @@ def _strip_fences(text: str) -> str:
     return text.strip()
 
 
+class JudgeParseError(RuntimeError):
+    """The judge answered, and nothing in the answer parsed as grades."""
+
+
 def _parse_grades(text: str, valid: set[str], report: bool = False):
     """The judge's grades, and whether anything parsed at all when report is true.
 
@@ -102,7 +106,14 @@ def _parse_grades(text: str, valid: set[str], report: bool = False):
                         out[str(cid)] = int(grade)
                 return (out, True) if report else out
             if isinstance(parsed, list):
-                return {str(c): 1 for c in parsed if str(c) in valid}
+                # The prompt asks for grades. A bare list is a model that
+                # answered the old way, so the labels carry no grade-2
+                # signal and the caller must know.
+                log.warning(
+                    "Judge returned a list, not grades. Every chunk gets grade 1: %.120s", text
+                )
+                listed = {str(c): 1 for c in parsed if str(c) in valid}
+                return (listed, True) if report else listed
             start = text.find(opener, start + 1)
     return ({}, False) if report else {}
 
@@ -223,9 +234,10 @@ async def label_one_question(
     valid = {c.chunk_id for c in deduped}
     grades, parsed_any = _parse_grades(resp.text, valid, report=True)
     if not parsed_any:
-        # A truncated object parses as nothing. An empty label would go to
-        # disk and force=False would skip that question forever.
-        log.warning("Judge output did not parse as grades: %.200s", resp.text)
+        # A truncated reply parses as nothing. Storing an empty label would
+        # make force=False skip that question forever, so the caller learns
+        # the judge failed and the question stays unlabeled.
+        raise JudgeParseError(f"judge output did not parse as grades: {resp.text[:200]}")
     return grades, cost
 
 
@@ -318,6 +330,7 @@ async def label_corpus(
     }
     skipped = 0
     labeled = 0
+    unparsed = 0
     halted = False
 
     for q in questions:
@@ -328,15 +341,22 @@ async def label_corpus(
             log.warning("Cost cap reached at $%.2f", total_cost)
             halted = True
             break
-        grades, cost = await label_one_question(
-            q.question,
-            bm25,
-            llm,
-            corpus,
-            n_candidates,
-            n_random,
-            extra_retrievers=extra_retrievers,
-        )
+        try:
+            grades, cost = await label_one_question(
+                q.question,
+                bm25,
+                llm,
+                corpus,
+                n_candidates,
+                n_random,
+                extra_retrievers=extra_retrievers,
+            )
+        except JudgeParseError as exc:
+            # The question stays unlabeled, so the next run tries it again
+            # without --force. A stored empty label would be permanent.
+            log.warning("Skipping %s: %s", q.id, exc)
+            unparsed += 1
+            continue
         total_cost += cost
         out_dict[q.id] = grades
         labeled += 1
@@ -347,6 +367,7 @@ async def label_corpus(
     return {
         "labeled": labeled,
         "skipped": skipped,
+        "unparsed": unparsed,
         "cost_usd": total_cost,
         "path": str(out_path),
         "halted_by_cost_cap": halted,

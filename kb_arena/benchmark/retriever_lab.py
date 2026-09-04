@@ -194,6 +194,11 @@ def _summarize_with_tiers(
     return out
 
 
+def _negatives_of(question) -> set[str]:
+    """Chunks a judge called irrelevant, for bpref. Empty when the labels hold none."""
+    return set(getattr(question, "judged_negatives", None) or [])
+
+
 def _grades_of(question) -> dict[str, float] | None:
     """Graded relevance for the IR metrics, or None when the labels carry no grades."""
     grades = getattr(question, "expected_grades", None) or {}
@@ -296,6 +301,7 @@ async def _retrieval_ceiling(
             k=top_k,
             expected_doc_ids=doc_ids,
             expected_relevance=grades,
+            judged_nonrelevant=_negatives_of(q),
         )
         m_ceil = compute_all(
             retrieved=retrieved[:ceiling_k],
@@ -303,6 +309,7 @@ async def _retrieval_ceiling(
             k=ceiling_k,
             expected_doc_ids=doc_ids,
             expected_relevance=grades,
+            judged_nonrelevant=_negatives_of(q),
         )
         top_recalls.append(m_top.recall_at_k)
         ceiling_recalls.append(m_ceil.recall_at_k)
@@ -577,6 +584,7 @@ async def _run_corpora_loop(
                             retrieved=trace.retrieved,
                             expected_ids=set(q.expected_chunks or []),
                             expected_relevance=_grades_of(q),
+                            judged_nonrelevant=_negatives_of(q),
                             k=top_k,
                             expected_doc_ids=set(q.ground_truth.source_refs),
                         )
