@@ -13,6 +13,8 @@ export interface DemoResult {
   costUsd: number;
 }
 
+export type PanelOutcome = "complete" | "error";
+
 interface Props {
   strategy: Strategy;
   query: string;
@@ -20,6 +22,10 @@ interface Props {
   history: Message[];
   trigger: number; // increment to fire a new query
   demoResult?: DemoResult; // pre-filled result for showcase mode
+  onOutcome?: (strategy: Strategy, outcome: PanelOutcome, message?: string) => void;
+  // When every panel failed the same way, the page shows one message and
+  // each panel drops to a single line instead of repeating the error.
+  muted?: boolean;
 }
 
 interface Result {
@@ -30,7 +36,16 @@ interface Result {
   costUsd: number;
 }
 
-export default function ChatPanel({ strategy, query, corpus, history, trigger, demoResult }: Props) {
+export default function ChatPanel({
+  strategy,
+  query,
+  corpus,
+  history,
+  trigger,
+  demoResult,
+  onOutcome,
+  muted = false,
+}: Props) {
   const [state, setState] = useState<PanelState>(demoResult ? "complete" : "idle");
   const [answer, setAnswer] = useState(demoResult?.answer ?? "");
   const [result, setResult] = useState<Result | null>(demoResult ?? null);
@@ -71,15 +86,19 @@ export default function ChatPanel({ strategy, query, corpus, history, trigger, d
           } else if (event.type === "error") {
             setError(event.message);
             setState("error");
+            onOutcome?.(strategy, "error", event.message);
             return;
           }
         }
         setResult({ answer: accumulated, sources, latencyMs, tokensUsed, costUsd });
         setState("complete");
+        onOutcome?.(strategy, "complete");
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
-        setError((err as Error).message ?? "Unknown error");
+        const message = (err as Error).message ?? "Unknown error";
+        setError(message);
         setState("error");
+        onOutcome?.(strategy, "error", message);
       }
     }
 
@@ -146,7 +165,13 @@ export default function ChatPanel({ strategy, query, corpus, history, trigger, d
           </div>
         )}
 
-        {state === "error" && (
+        {state === "error" && muted && (
+          <p className="text-xs" style={{ color: "var(--muted)" }}>
+            Unavailable. See the message above the panels.
+          </p>
+        )}
+
+        {state === "error" && !muted && (
           <div>
             <p className="text-xs mb-2" style={{ color: "var(--danger)" }}>
               {error || "An error occurred"}
