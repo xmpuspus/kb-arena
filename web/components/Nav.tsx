@@ -45,6 +45,10 @@ export default function Nav() {
     setApiToken(token);
     setHasToken(Boolean(token.trim()));
     setTokenOpen(false);
+    // A page that already got 401 keeps showing the refusal until something
+    // reads again. Entering the token is the moment to retry, or the user
+    // sees no change and thinks the token did not work.
+    window.dispatchEvent(new Event("kb-arena-token-changed"));
   }
 
   function removeToken() {
@@ -52,6 +56,7 @@ export default function Nav() {
     setToken("");
     setHasToken(false);
     setTokenOpen(false);
+    window.dispatchEvent(new Event("kb-arena-token-changed"));
   }
 
   return (

@@ -55,6 +55,7 @@ def test_the_public_demo_still_serves_its_reads(monkeypatch):
     write dependency would turn the product's shop window off.
     """
     monkeypatch.setattr(settings, "demo_mode", True)
+    monkeypatch.setattr(settings, "demo_mode_auto", False)
     monkeypatch.setattr(settings, "api_token", "")
 
     assert require_read_auth(_request("203.0.113.7"), None) is None
@@ -104,6 +105,7 @@ def test_the_demo_command_serves_this_machine_by_default():
 def test_demo_mode_never_removes_a_token_an_operator_set(monkeypatch):
     """Demo mode says who may read WITHOUT a token. It does not delete one."""
     monkeypatch.setattr(settings, "demo_mode", True)
+    monkeypatch.setattr(settings, "demo_mode_auto", False)
     monkeypatch.setattr(settings, "api_token", "s3cret")
 
     with pytest.raises(HTTPException) as refused:
@@ -176,3 +178,60 @@ def test_the_generate_tab_handles_a_refused_read():
     tab = Path("web/components/tools/GenerateTab.tsx").read_text()
     assert ".catch(" in tab
     assert 'setState("error")' in tab
+
+
+def test_demo_mode_the_app_turned_on_itself_never_widens_reads(monkeypatch):
+    """A laptop with no API key auto-enables demo mode.
+
+    Without this distinction the read gate would have allowed every remote
+    reader on exactly the setup a first-time user has: no key, no token.
+    """
+    monkeypatch.setattr(settings, "demo_mode", True)
+    monkeypatch.setattr(settings, "demo_mode_auto", True)
+    monkeypatch.setattr(settings, "api_token", "")
+
+    with pytest.raises(HTTPException) as refused:
+        require_read_auth(_request("203.0.113.7"), None)
+    assert refused.value.status_code == 401
+
+    # An operator who asked for a demo still gets one.
+    monkeypatch.setattr(settings, "demo_mode_auto", False)
+    assert require_read_auth(_request("203.0.113.7"), None) is None
+
+
+def test_the_app_marks_demo_mode_it_enabled_for_itself():
+    """The flag has to be set where demo mode turns itself on, or it is a lie."""
+    import inspect
+
+    from kb_arena.chatbot import api
+
+    source = inspect.getsource(api)
+    assert "settings.demo_mode_auto = True" in source
+
+
+def test_a_refused_graph_read_is_never_shown_as_a_database_outage():
+    """`connected: false` is a claim about the deployment, and a 401 is not one."""
+    from pathlib import Path
+
+    assert "GRAPH_UNAUTHORIZED" in Path("web/lib/api.ts").read_text()
+    page = Path("web/app/graph/page.tsx").read_text()
+    assert "readError" in page
+    assert "kb-arena-token-changed" in page, "a saved token must retry the refused read"
+
+
+def test_saving_a_token_announces_itself():
+    """A page that already got 401 shows the refusal until something reads again."""
+    from pathlib import Path
+
+    nav = Path("web/components/Nav.tsx").read_text()
+    assert (
+        nav.count('new Event("kb-arena-token-changed")') == 2
+    ), "both saving and removing a token change what a page may read"
+
+
+def test_a_failed_run_read_never_leaves_the_previous_run_on_screen():
+    """One run's numbers under another run's name is the worst kind of wrong."""
+    from pathlib import Path
+
+    page = Path("web/app/retriever-lab/page.tsx").read_text()
+    assert "setData(null)" in page

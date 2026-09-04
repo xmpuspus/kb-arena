@@ -2,6 +2,10 @@ import { API_URL } from "./api";
 import { apiFetch } from "./auth";
 
 // A refusal to read is not an answer about the corpus.
+// A rate limit or a server error is not an answer about the corpus either.
+export const QA_PAIRS_UNAVAILABLE =
+  "The Q&A pairs could not be read just now. Try again in a moment.";
+
 export const QA_PAIRS_UNAUTHORIZED =
   "The Q&A pairs need an API token. Enter one to read them.";
 
@@ -210,15 +214,22 @@ export async function fetchQaPairs(corpus: string): Promise<{ pairs: QaPair[]; t
   try {
     // Document-derived questions and answers, so it carries the API token.
     const res = await apiFetch(`${API_URL}/api/tools/qa-pairs?corpus=${corpus}`);
-    if (res.status === 401) {
+    if (res.status === 401 || res.status === 429 || res.status >= 500) {
       // An empty list here reads as "this corpus has no pairs", which is a
       // claim about the corpus. The truth is that the read was refused.
-      throw new Error(QA_PAIRS_UNAUTHORIZED);
+      throw new Error(
+        res.status === 401 ? QA_PAIRS_UNAUTHORIZED : QA_PAIRS_UNAVAILABLE,
+      );
     }
     if (!res.ok) return { pairs: [], total: 0 };
     return await res.json();
   } catch (err: unknown) {
-    if (err instanceof Error && err.message === QA_PAIRS_UNAUTHORIZED) throw err;
+    if (
+      err instanceof Error &&
+      (err.message === QA_PAIRS_UNAUTHORIZED || err.message === QA_PAIRS_UNAVAILABLE)
+    ) {
+      throw err;
+    }
     return { pairs: [], total: 0 };
   }
 }

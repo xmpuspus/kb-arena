@@ -249,6 +249,10 @@ async def lifespan(app: FastAPI):
                 "chat/arena/tools endpoints return 503 until a key is set."
             )
             settings.demo_mode = True
+            # Nobody asked to publish this corpus. `require_read_auth` reads
+            # this flag so a laptop with no API key does not start serving its
+            # documents to the network.
+            settings.demo_mode_auto = True
 
     # The read-only demo does not need a model client. Configured deployments
     # share one client across strategies; initialization failures stop startup.

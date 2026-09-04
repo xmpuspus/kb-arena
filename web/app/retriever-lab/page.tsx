@@ -195,6 +195,9 @@ export default function RetrieverLabPage() {
       })
       .catch((e) => {
         if (e instanceof Error && e.name !== "AbortError") {
+          // Leaving the old run on screen puts one run's numbers under
+          // another run's name. Clear it and say what happened.
+          if (active) setData(null);
           setError(`Failed to load run: ${e}`);
         }
       })

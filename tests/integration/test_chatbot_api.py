@@ -50,7 +50,7 @@ def _make_mock_strategy(
 @pytest.fixture
 def app_client():
     from kb_arena.chatbot.api import _rate_store, app
-    from kb_arena.chatbot.auth import require_auth
+    from kb_arena.chatbot.auth import require_auth, require_read_auth
     from kb_arena.settings import settings
 
     strategies = {
@@ -69,8 +69,14 @@ def app_client():
     # so we (a) override auth to a no-op, (b) force demo_mode off for the
     # duration of the test session.
     prior_demo_mode = settings.demo_mode
+    prior_demo_auto = settings.demo_mode_auto
     settings.demo_mode = False
+    settings.demo_mode_auto = False
     app.dependency_overrides[require_auth] = lambda: None
+    # The read gate refuses a caller that is not on the loopback address, and
+    # a TestClient presents the host "testclient". These tests model a
+    # configured deployment, so the gate is overridden the same way.
+    app.dependency_overrides[require_read_auth] = lambda: None
 
     try:
         with TestClient(app, raise_server_exceptions=False) as client:
@@ -79,7 +85,9 @@ def app_client():
             yield client
     finally:
         app.dependency_overrides.pop(require_auth, None)
+        app.dependency_overrides.pop(require_read_auth, None)
         settings.demo_mode = prior_demo_mode
+        settings.demo_mode_auto = prior_demo_auto
 
 
 # GET /health

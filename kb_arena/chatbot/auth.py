@@ -97,7 +97,9 @@ def require_read_auth(
 
     - A token is set: the token is required, whatever else is true. Demo mode
       says who may read WITHOUT a token; it never removes one.
-    - Demo mode and no token: allowed. The demo publishes its corpus on purpose.
+    - Demo mode an OPERATOR set, and no token: allowed. That publishes the
+      corpus on purpose. Demo mode the app turned on for itself, because no
+      LLM key was configured, is not that choice and does not widen reads.
     - No token, not a demo, and the caller is not on the loopback address:
       refused. A laptop that binds to every interface would otherwise serve
       its documents to the whole network.
@@ -118,10 +120,11 @@ def require_read_auth(
             raise HTTPException(status_code=401, detail="unauthorized")
         return
 
-    if settings.demo_mode:
-        # A public demo serves its own corpus deliberately, and it set no
-        # token. Rate limiting still applies, so a reader cannot walk the
-        # whole corpus at speed.
+    if settings.demo_mode and not settings.demo_mode_auto:
+        # An operator published this corpus deliberately, and set no token.
+        # Rate limiting still applies, so a reader cannot walk the whole corpus
+        # at speed. Demo mode the app turned on for itself, because no LLM key
+        # was configured, is not that choice and does not land here.
         return
 
     client_host = _client_key(request)

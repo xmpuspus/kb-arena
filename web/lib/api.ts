@@ -1,6 +1,10 @@
 import { apiFetch } from "./auth";
 
 // A refusal to read is not a benchmark result.
+// A refusal to read is not an outage of the graph database.
+export const GRAPH_UNAUTHORIZED =
+  "The graph needs an API token. Enter one to read it.";
+
 export const BENCHMARK_UNAUTHORIZED =
   "The benchmark results need an API token. Enter one to read them.";
 
@@ -197,9 +201,15 @@ export async function fetchGraphData(corpus: string = "all"): Promise<GraphData>
     // The route returns entities extracted from the documents, so it carries
     // the API token when one is set.
     const res = await apiFetch(`${API_URL}/api/graph/data?corpus=${corpus}`);
+    if (res.status === 401) {
+      // `connected: false` reads as "the graph database is down", which is a
+      // claim about the deployment. The truth is that the read was refused.
+      throw new Error(GRAPH_UNAUTHORIZED);
+    }
     if (!res.ok) return { nodes: [], edges: [], connected: false };
     return await res.json();
-  } catch {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === GRAPH_UNAUTHORIZED) throw err;
     return { nodes: [], edges: [], connected: false };
   }
 }
