@@ -428,9 +428,9 @@ def _build_summary(results: list[BenchmarkResult]) -> dict:
     summary: dict = {
         "corpora": {},
         "rankings": {},
+        "profiles": PROFILES,
         "review": review_summary([rec for result in results for rec in result.records]),
     }
-    summary: dict = {"corpora": {}, "rankings": {}, "profiles": PROFILES}
     for key, group in group_by_experiment(results).items():
         summary["rankings"][key] = {
             "experiment": _experiment_label(group, key),
