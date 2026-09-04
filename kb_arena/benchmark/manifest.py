@@ -22,6 +22,8 @@ from kb_arena.settings import settings
 
 SCHEMA_VERSION = 2
 LEGACY_KEY = "legacy"  # a result file written before manifests existed
+# A run that names no version and no commit. Two of them are not one build.
+UNRECORDED_BUILD = "unrecorded"
 
 
 def _digest(payload: Any) -> str:
@@ -211,6 +213,29 @@ def build_manifest(
         "git_sha": git_sha(),
         "compatibility_key": _digest(core_of(core)),
     }
+
+
+def build_identity(run: dict) -> str:
+    """The build a stored result came from, for grouping repeats.
+
+    A compatibility key says two runs measured the same experiment. It leaves
+    the code version out on purpose, so a reader can compare across releases.
+    That makes it the wrong key for a spread or a mean: two runs from different
+    commits differ by a code change, and averaging them reports that change as
+    noise. Several commits share one unreleased version during development, so
+    the commit decides.
+
+    Every surface that groups runs calls this, so `kb-arena variance` and the
+    leaderboard cannot disagree about what a repeat is.
+    """
+    manifest = run.get("manifest")
+    manifest = manifest if isinstance(manifest, dict) else {}
+    version = manifest.get("code_version")
+    sha = manifest.get("git_sha")
+    if not version and not sha:
+        return UNRECORDED_BUILD
+    label = str(version) if version else UNRECORDED_BUILD
+    return f"{label}@{sha}" if sha else label
 
 
 def seed_identity(covers_whole_run: bool = True) -> dict:

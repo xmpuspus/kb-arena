@@ -27,7 +27,7 @@ from sse_starlette.sse import EventSourceResponse
 from kb_arena import __version__
 from kb_arena.arena.engine import ArenaEngine, scope_key
 from kb_arena.benchmark.compare import compare_result_files, resolve_result_path
-from kb_arena.benchmark.manifest import compatibility_key, manifest_summary
+from kb_arena.benchmark.manifest import build_identity, compatibility_key, manifest_summary
 from kb_arena.benchmark.review import REVIEWED, STATUSES, review_summary
 from kb_arena.chatbot.auth import require_auth, require_read_auth
 from kb_arena.chatbot.session import SessionStore
@@ -1130,7 +1130,7 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
         return {"corpora": [], "leaderboard": []}
 
     # Collect (corpus, strategy) -> list[per-run metrics]
-    rows: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
+    rows: dict[tuple[str, str, str, str], list[dict]] = defaultdict(list)
     seen_corpora: set[str] = set()
     # The runner writes each result twice, once at the top level and once
     # under its run directory. One run counts once.
@@ -1170,7 +1170,10 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
         # copy never hides the good copy under its run directory.
         if not _first_sighting(c, s, data):
             continue
-        rows[(c, s, compatibility_key(data))].append(summary)
+        # The build is part of the group. Two runs from different commits are
+        # not repeats of one measurement, and averaging them would report a
+        # code change as run-to-run noise on the page a reader cites.
+        rows[(c, s, compatibility_key(data), build_identity(data))].append(summary)
 
     # New per-run subdirectories (results/run_<id>/<corpus>_<strategy>.json)
     for run_dir in sorted(base.glob("run_*")):
@@ -1196,18 +1199,21 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
                 continue
             if not _first_sighting(c, s, data):
                 continue
-            rows[(c, s, compatibility_key(data))].append(summary)
+            # The build is part of the group. Two runs from different commits
+            # are not repeats of one measurement, and averaging them would
+            # report a code change as noise on the page a reader cites.
+            rows[(c, s, compatibility_key(data), build_identity(data))].append(summary)
 
     # Runs made against different question sets, qrels, judges, or top_k
     # values never share a row. A row names its key, and lists the other keys
     # seen for the same corpus and strategy, so a reader can tell two
     # incomparable rows apart instead of reading one blended number.
     keys_by_pair: dict[tuple[str, str], list[str]] = defaultdict(list)
-    for c, s, key in rows:
+    for c, s, key, _build in rows:
         keys_by_pair[(c, s)].append(key)
 
     leaderboard: list[dict] = []
-    for (c, s, key), runs in sorted(rows.items()):
+    for (c, s, key, build), runs in sorted(rows.items()):
         if not runs:
             continue
         leaderboard.append(
@@ -1215,6 +1221,9 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
                 "corpus": c,
                 "strategy": s,
                 "compatibility_key": key,
+                # Which build produced these runs. A reader comparing two rows
+                # can see whether a difference is a code change or a result.
+                "build": build,
                 "manifest": runs[0].get("manifest", {}),
                 # How much of this row rests on questions a human checked.
                 "review": _merge_reviews(runs),

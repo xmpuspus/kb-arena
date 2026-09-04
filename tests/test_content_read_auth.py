@@ -235,3 +235,48 @@ def test_a_failed_run_read_never_leaves_the_previous_run_on_screen():
 
     page = Path("web/app/retriever-lab/page.tsx").read_text()
     assert "setData(null)" in page
+
+
+def test_the_leaderboard_and_the_variance_command_agree_on_a_build():
+    """Two copies of this rule would drift, and the two surfaces would disagree."""
+    import inspect
+
+    from kb_arena.benchmark import variance
+    from kb_arena.benchmark.manifest import build_identity
+
+    assert "build_identity(run)" in inspect.getsource(variance._code_version)
+    assert build_identity({"manifest": {"code_version": "1.0", "git_sha": "abc"}}) == "1.0@abc"
+    assert build_identity({"manifest": {}}) == "unrecorded"
+
+
+def test_the_leaderboard_never_averages_two_builds_into_one_row(tmp_path, monkeypatch):
+    """The leaderboard is the surface a reader cites, and it blended commits."""
+    import asyncio
+    import json
+
+    from kb_arena.chatbot import api
+    from kb_arena.settings import settings as live
+
+    monkeypatch.setattr(live, "results_path", str(tmp_path))
+    manifest = {"question_set_fingerprint": "f1", "judge": {"model": "j"}, "top_k": 5}
+    for run_id, accuracy, sha in (("r1", 0.2, "aaa"), ("r2", 0.8, "bbb")):
+        run_dir = tmp_path / f"run_{run_id}"
+        run_dir.mkdir()
+        (run_dir / "c_bm25.json").write_text(
+            json.dumps(
+                {
+                    "corpus": "c",
+                    "strategy": "bm25",
+                    "run_id": run_id,
+                    "accuracy_by_tier": {"1": accuracy},
+                    "records": [{}],
+                    "manifest": {**manifest, "code_version": "0.11.0", "git_sha": sha},
+                }
+            )
+        )
+
+    board = asyncio.run(api.leaderboard(None, corpus="c"))["leaderboard"]
+
+    assert len(board) == 2, "two commits are two builds, not one measurement repeated"
+    assert {row["build"] for row in board} == {"0.11.0@aaa", "0.11.0@bbb"}
+    assert all(row["runs"] == 1 for row in board)

@@ -257,6 +257,9 @@ def test_leaderboard_skips_malformed_artifacts(app_client, tmp_path, monkeypatch
             "corpus": "aws-compute",
             "strategy": "naive_vector",
             "compatibility_key": "legacy",
+            # A row names the build that produced it, so a reader can tell a
+            # code change from a result.
+            "build": "unrecorded",
             "manifest": {},
             "review": {
                 "counts": {"human-reviewed": 0, "machine-assisted-draft": 0, "unspecified": 0},
