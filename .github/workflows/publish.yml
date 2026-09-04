@@ -2,15 +2,45 @@ name: Publish to PyPI
 
 # Trusted publishing on PyPI is not configured for this repo, so the
 # release-triggered workflow was failing on every tag. Until OIDC is set up,
-# this workflow runs only on manual dispatch and uses an API token from
-# repository secrets (PYPI_API_TOKEN). Manual twine upload remains the
-# documented path; this workflow is here for when the secret is added.
+# this workflow runs only on manual dispatch and uses an API token named
+# PYPI_API_TOKEN. Manual twine upload remains the documented path; this
+# workflow is here for when the token is added.
+#
+# Setup this needs once, and not from code. The declaration below changes
+# nothing until it exists:
+#
+#   1. Settings, Environments, create `pypi`.
+#   2. Add PYPI_API_TOKEN as an ENVIRONMENT secret on `pypi`, not as a
+#      repository secret. A repository secret is readable by every workflow
+#      on every branch, so the environment would protect nothing.
+#   3. Add a required reviewer. That is the control a crafted ref cannot
+#      rewrite, because it lives on the repository and not in this file.
+#
+# Do NOT add a tag-only deployment branch rule. The dry run uses the same
+# environment and runs from main, so a tag-only rule would block the very
+# path that proves the release works. The `refs/tags/v*` or `main` check
+# below is what limits a real publish.
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: >-
+          Build, check, and attest without uploading. Use this to prove the
+          release path works before a real tag, so the first real publish is
+          not the first time these steps ever ran.
+        type: boolean
+        default: true
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # The workflow FILE comes from the ref the dispatch selected, so a branch
+    # can rewrite every guard below it. An environment is the one control the
+    # ref cannot touch: it is configured on the repository, and its required
+    # reviewers gate the secret. See the setup notes at the top of this file,
+    # including why the token must be an environment secret and why a
+    # tag-only branch rule would break the dry run.
+    environment: pypi
     permissions:
       contents: read
       # attest-build-provenance (a wrapper on actions/attest as of v4) mints
@@ -22,6 +52,20 @@ jobs:
       artifact-metadata: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Refuse a real publish from anything but a tag or main
+        if: ${{ !inputs.dry_run }}
+        env:
+          # Through the environment, never interpolated into the script. A ref
+          # is attacker-influenced text and `${{ }}` pastes it in before bash
+          # ever sees it, so a crafted branch name would run as code.
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          case "$REF" in
+            refs/tags/v*|refs/heads/main) echo "Publishing from $REF" ;;
+            *) echo "Refusing to publish from $REF. Use a v* tag or main." ; exit 1 ;;
+          esac
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
@@ -36,6 +80,42 @@ jobs:
       - name: Twine check
         run: twine check dist/*
 
+      - name: Refuse to republish, and make a tag match its own version
+        if: ${{ !inputs.dry_run }}
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          # `--skip-existing` reports success when the version is already on
+          # PyPI, so a run that published nothing looked identical to one that
+          # published everything, while the attestation above described local
+          # files that differ from the released ones.
+          # Read the version off the wheel that is about to be uploaded.
+          # Importing the package would need its runtime dependencies, and this
+          # job installs only the build tools, so the import would fail here and
+          # look like a release problem.
+          wheel=$(ls dist/*.whl | head -1)
+          version=$(basename "$wheel" | cut -d- -f2)
+          # A tag says which version it releases. Without this, tag v9.9.9
+          # would happily publish whatever the tree built.
+          case "$REF" in
+            refs/tags/*)
+              tag=${REF#refs/tags/}
+              if [ "$tag" != "v$version" ]; then
+                echo "Tag $tag does not match the built version $version."
+                exit 1
+              fi
+              ;;
+          esac
+
+          code=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/kb-arena/$version/json")
+          case "$code" in
+            404) echo "kb-arena $version is not on PyPI yet." ;;
+            200) echo "kb-arena $version is already on PyPI. Bump the version." ; exit 1 ;;
+            # A 500, a redirect, or a network failure is not proof the version is free.
+            *) echo "PyPI answered $code for version $version. Refusing to guess." ; exit 1 ;;
+          esac
+
       - name: Generate SBOM
         # cyclonedx-py environment scans whatever Python it is pointed at.
         # Scanning this job's own interpreter would describe the build
@@ -45,6 +125,39 @@ jobs:
           python -m venv /tmp/sbom-venv
           /tmp/sbom-venv/bin/pip install --quiet dist/*.whl
           cyclonedx-py environment -o sbom.cdx.json /tmp/sbom-venv/bin/python
+
+      - name: Check the SBOM describes the built package
+        run: |
+          set -euo pipefail
+          # This ran only in a dry run, so a real publish could ship an SBOM
+          # the dry run would have refused. It runs either way now.
+          # Not a subshell inside an echo: that hid every failure behind a
+          # zero exit and printed an empty count as if it were a real one.
+          python - <<'PYEOF'
+          import json
+          import sys
+
+          with open("sbom.cdx.json") as handle:
+              sbom = json.load(handle)
+          components = sbom.get("components")
+          if not isinstance(components, list) or not components:
+              sys.exit("SBOM carries no components. The scan did not describe the package.")
+          print(f"SBOM components: {len(components)}")
+          import pathlib
+
+          wheel = sorted(pathlib.Path("dist").glob("*.whl"))[0]
+          built = wheel.name.split("-")[1]
+          found = {
+              str(c.get("version", ""))
+              for c in components
+              if str(c.get("name", "")).replace("_", "-") == "kb-arena"
+          }
+          if not found:
+              sys.exit("SBOM does not name kb-arena. It scanned the wrong interpreter.")
+          if built not in found:
+              sys.exit(f"SBOM describes kb-arena {sorted(found)} and the wheel is {built}.")
+          print(f"SBOM names kb-arena {built}.")
+          PYEOF
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -57,7 +170,21 @@ jobs:
           name: sbom
           path: sbom.cdx.json
 
+      - name: Report the dry run
+        if: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          echo "Dry run. Nothing was uploaded to PyPI."
+          echo "Artifacts built:"
+          ls -la dist/
+          echo
+          echo "This dry run DID persist a build attestation and upload the SBOM"
+          echo "artifact, for a build that was never published. That is deliberate:"
+          echo "the attestation step is the one most likely to be misconfigured,"
+          echo "so it is exercised here rather than first at a release."
+
       - name: Publish to PyPI
+        if: ${{ !inputs.dry_run }}
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
@@ -66,4 +193,4 @@ jobs:
             echo "PYPI_API_TOKEN secret not set. See README for manual publish steps."
             exit 1
           fi
-          twine upload --skip-existing dist/*
+          twine upload dist/*
