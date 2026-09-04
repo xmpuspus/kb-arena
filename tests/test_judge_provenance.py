@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from types import SimpleNamespace
 
 import pytest
 
 from kb_arena.benchmark import evaluator as ev
-from kb_arena.benchmark.evaluator import JUDGE_SYSTEM_PROMPT, evaluate
+from kb_arena.benchmark.evaluator import evaluate
 from kb_arena.llm import client as llm_client
 from kb_arena.llm.client import LLMClient, LLMResponse
 from kb_arena.models.benchmark import Constraints, GroundTruth
@@ -48,7 +47,8 @@ async def test_a_judged_score_carries_its_provenance():
     assert score.accuracy == 0.8
     assert score.judge_provider == "openai"
     assert score.judge_model == "gpt-4o"
-    assert score.judge_prompt_hash == hashlib.sha256(JUDGE_SYSTEM_PROMPT.encode()).hexdigest()[:16]
+    assert score.judge_prompt_hash == ev.judge_prompt_hash()
+    assert len(score.judge_prompt_hash) == 16
     assert score.judge_rationale == "Names the error."
     assert json.loads(score.judge_raw) == verdict
 
@@ -72,10 +72,47 @@ async def test_no_judge_means_empty_provenance():
     assert score.judge_prompt_hash == ""
 
 
-def test_the_prompt_hash_moves_with_the_prompt(monkeypatch):
-    before = ev._hash_text(ev.JUDGE_SYSTEM_PROMPT)
+def test_the_prompt_hash_covers_the_system_prompt_and_the_user_template(monkeypatch):
+    before = ev.judge_prompt_hash()
     monkeypatch.setattr(ev, "JUDGE_SYSTEM_PROMPT", ev.JUDGE_SYSTEM_PROMPT + " Be lenient.")
-    assert ev._hash_text(ev.JUDGE_SYSTEM_PROMPT) != before
+    after_system = ev.judge_prompt_hash()
+    assert after_system != before
+    monkeypatch.setattr(
+        llm_client,
+        "JUDGE_USER_TEMPLATE",
+        {**llm_client.JUDGE_USER_TEMPLATE, "candidate": "Answer:\n{answer}"},
+    )
+    assert ev.judge_prompt_hash() != after_system
+
+
+_SCORES = '"accuracy": 0.5, "completeness": 0.5, "faithfulness": 1.0'
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Sure. {" + _SCORES + ', "rationale": "It prints {\\"a\\": 1} and stops."}',
+        "note {not json} then {" + _SCORES + ', "rationale": "a } b"}',
+        "{" + _SCORES + ',\n "rationale": "line one\\nline two"} trailing',
+    ],
+)
+def test_a_brace_or_quote_in_the_rationale_still_parses(text):
+    parsed = ev._parse_verdict(text)
+    assert parsed["accuracy"] == 0.5
+    assert "rationale" in parsed
+
+
+def test_no_json_at_all_raises():
+    with pytest.raises(ValueError):
+        ev._parse_verdict("no verdict here")
+
+
+def test_an_unknown_judge_provider_is_rejected_at_settings():
+    from kb_arena.settings import Settings
+
+    with pytest.raises(ValueError, match="KB_ARENA_JUDGE_PROVIDER"):
+        Settings(judge_provider="openai-mini")
+    assert Settings(judge_provider="ollama").judge_provider == "ollama"
 
 
 class _FakeProvider:

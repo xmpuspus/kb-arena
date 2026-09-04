@@ -95,7 +95,36 @@ Be strict. A partially correct answer scores 0.5-0.7, not 0.9."""
 
 # The verdict text a record keeps. Enough for a reader to see the JSON and
 # its rationale, small enough that a results file stays readable.
-_JUDGE_RAW_LIMIT = 2000
+_JUDGE_RAW_LIMIT = 1200
+
+
+def judge_prompt_hash() -> str:
+    """One hash over the system prompt and the user template, so either moving shows."""
+    from kb_arena.llm.client import JUDGE_USER_TEMPLATE
+
+    template = "\n".join(JUDGE_USER_TEMPLATE[k] for k in ("question", "reference", "candidate"))
+    return _hash_text(JUDGE_SYSTEM_PROMPT + "\n" + template)
+
+
+def _parse_verdict(text: str) -> dict:
+    """The first JSON object in the judge's reply.
+
+    The rationale is prose, so a brace or a quote inside it must not end the
+    object early. A real decoder reads from each opening brace until one
+    parses, instead of a regex that stops at the first closing brace.
+    """
+    decoder = json.JSONDecoder()
+    start = text.find("{")
+    while start != -1:
+        try:
+            parsed, _ = decoder.raw_decode(text[start:])
+        except json.JSONDecodeError:
+            start = text.find("{", start + 1)
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+        start = text.find("{", start + 1)
+    raise ValueError("judge returned no JSON score")
 
 
 def _hash_text(text: str) -> str:
@@ -235,10 +264,7 @@ async def _evaluate_uncached(
                 system_prompt=JUDGE_SYSTEM_PROMPT,
                 question=question_text,
             )
-            json_match = re.search(r"\{[^}]+\}", resp.text, re.DOTALL)
-            if not json_match:
-                raise ValueError("judge returned no JSON score")
-            parsed = json.loads(json_match.group())
+            parsed = _parse_verdict(resp.text)
             required = {"accuracy", "completeness", "faithfulness"}
             missing = required - parsed.keys()
             if missing:
@@ -262,7 +288,7 @@ async def _evaluate_uncached(
             score.faithfulness = judge_scores["faithfulness"]
             score.judge_provider = resp.provider
             score.judge_model = resp.model
-            score.judge_prompt_hash = _hash_text(JUDGE_SYSTEM_PROMPT)
+            score.judge_prompt_hash = judge_prompt_hash()
             score.judge_raw = resp.text[:_JUDGE_RAW_LIMIT]
             rationale = parsed.get("rationale")
             score.judge_rationale = rationale.strip() if isinstance(rationale, str) else ""

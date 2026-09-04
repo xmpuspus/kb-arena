@@ -62,6 +62,15 @@ def _compute_cost(
     return input_cost + output_cost + cache_create_cost + cache_read_cost
 
 
+# The judge's user message, section by section. The evaluator hashes this
+# with the system prompt, so a reorder or a reword moves the prompt hash.
+JUDGE_USER_TEMPLATE = {
+    "question": "Question:\n{question}",
+    "reference": "Reference answer:\n{reference}",
+    "candidate": "Candidate answer:\n{answer}",
+}
+
+
 @dataclass
 class LLMResponse:
     """Result from an LLM call, including text and usage metrics."""
@@ -265,11 +274,11 @@ class LLMClient:
         """
         parts = []
         if question:
-            parts.append(f"Question:\n{question}")
-        parts.append(f"Reference answer:\n{reference}")
-        parts.append(f"Candidate answer:\n{answer}")
+            parts.append(JUDGE_USER_TEMPLATE["question"].format(question=question))
+        parts.append(JUDGE_USER_TEMPLATE["reference"].format(reference=reference))
+        parts.append(JUDGE_USER_TEMPLATE["candidate"].format(answer=answer))
         user_content = "\n\n".join(parts)
-        return await self._call("judge", system_prompt, user_content, max_tokens=300, **kwargs)
+        return await self._call("judge", system_prompt, user_content, max_tokens=400, **kwargs)
 
     async def _call(
         self,

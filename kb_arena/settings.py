@@ -172,5 +172,15 @@ class Settings(BaseSettings):
             raise ValueError("chunk overlap must satisfy 0 <= overlap_tokens < chunk_tokens")
         return self
 
+    @field_validator("judge_provider")
+    @classmethod
+    def _judge_provider_known(cls, value: str) -> str:
+        if value not in ("", "anthropic", "openai", "ollama"):
+            raise ValueError(
+                "KB_ARENA_JUDGE_PROVIDER must be empty, anthropic, openai, or ollama, "
+                f"not {value!r}"
+            )
+        return value
+
 
 settings = Settings()
