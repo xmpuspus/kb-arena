@@ -154,3 +154,10 @@ def test_the_doc_does_not_promise_a_grade_for_every_candidate():
     doc = _flat((ROOT / "docs" / "retriever-lab.md").read_text())
     assert "A judge that returns grades for only some of the candidates is accepted" in doc
     assert "a missing chunk means unjudged, not rejected" in doc.lower()
+
+    # The CLI help is the surface a user reads first, so it must not disagree.
+    from kb_arena import cli
+
+    help_text = _flat(inspect.getdoc(cli.label_chunks) or "").lower()
+    assert "a partial answer is accepted" in help_text
+    assert "unjudged, not rejected" in help_text
