@@ -115,8 +115,10 @@ async def test_a_match_carries_the_scope_it_was_made_in(arena):
 
     assert match.corpus == "nist-800-171-r3"
     assert match.rubric == "citations"
+    # the engine assigns a and b at random, so read which strategy sat at b
+    winner = match.strategy_b
     arena.vote(match.id, "b")
-    assert arena.state.ratings("nist-800-171-r3", "citations")["beta"] > INITIAL_ELO
+    assert arena.state.ratings("nist-800-171-r3", "citations")[winner] > INITIAL_ELO
     assert arena.state.ratings("nist-800-171-r3", "default") == {}
 
 
