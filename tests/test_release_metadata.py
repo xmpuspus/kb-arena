@@ -98,7 +98,17 @@ def test_browser_auth_covers_protected_requests() -> None:
     assert 'headers.set("Authorization", `Bearer ${token}`)' in auth
     assert "apiFetch(`${API_URL}/api/graph/build`" in api
     assert "apiFetch(`${API_URL}/chat/stream`" in api
-    assert tools.count("apiFetch(") == 3
+    # Name the routes instead of counting the calls. A count breaks every time
+    # a protected route is added, and it never says which one is missing.
+    lab = (ROOT / "web" / "app" / "retriever-lab" / "page.tsx").read_text()
+    for source, call in (
+        (tools, "apiFetch(`${API_URL}/api/tools/generate`"),
+        (tools, "apiFetch(`${API_URL}/api/tools/audit`"),
+        (tools, "apiFetch(`${API_URL}/api/tools/qa-pairs"),
+        (api, "apiFetch(`${API_URL}/api/benchmark/results"),
+        (lab, "apiFetch(`${API_URL}/api/retriever-lab/${selectedRun}`"),
+    ):
+        assert call in source, f"{call} must carry the token when one is set"
     assert "apiFetch(`${API}/api/arena/match`" in arena
     assert "apiFetch(`${API}/api/arena/vote`" in arena
     assert 'event.key !== "Tab"' in nav

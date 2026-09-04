@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { API_URL, STRATEGY_LABELS, type Strategy } from "@/lib/api";
+import { apiFetch } from "@/lib/auth";
+import { useTokenEpoch } from "@/lib/useTokenEpoch";
 
 type StrategySummary = {
   mean_recall_at_k: number;
@@ -154,6 +156,8 @@ function ChunkRow({ item }: { item: RetrievedItem }) {
 }
 
 export default function RetrieverLabPage() {
+  // A saved token must retry the read it was entered for.
+  const tokenEpoch = useTokenEpoch();
   const [runs, setRuns] = useState<RunListEntry[]>([]);
   const [selectedRun, setSelectedRun] = useState<string>("");
   const [data, setData] = useState<RunData | null>(null);
@@ -179,7 +183,8 @@ export default function RetrieverLabPage() {
     let active = true;
     setLoading(true);
     setError("");
-    fetch(`${API_URL}/api/retriever-lab/${selectedRun}`, { signal: controller.signal })
+    // Question-level records, so this read carries the API token when set.
+    apiFetch(`${API_URL}/api/retriever-lab/${selectedRun}`, { signal: controller.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`status ${r.status}`);
         return r.json();
@@ -193,6 +198,9 @@ export default function RetrieverLabPage() {
       })
       .catch((e) => {
         if (e instanceof Error && e.name !== "AbortError") {
+          // Leaving the old run on screen puts one run's numbers under
+          // another run's name. Clear it and say what happened.
+          if (active) setData(null);
           setError(`Failed to load run: ${e}`);
         }
       })
@@ -203,7 +211,7 @@ export default function RetrieverLabPage() {
       active = false;
       controller.abort();
     };
-  }, [selectedRun]);
+  }, [selectedRun, tokenEpoch]);
 
   const corpusSummary = useMemo(() => {
     if (!data || !selectedCorpus) return null;

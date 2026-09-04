@@ -10,6 +10,7 @@ import {
   streamGraphBuild,
   type CorpusInfo,
 } from "@/lib/api";
+import { useTokenEpoch } from "@/lib/useTokenEpoch";
 
 // Fallback data shown when Neo4j is not connected
 const SAMPLE_NODES: GraphNode[] = [
@@ -97,6 +98,10 @@ export default function GraphPage() {
   const [corpora, setCorpora] = useState<CorpusInfo[]>(CORPORA);
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
+  // A refused read, distinct from the graph database being unreachable.
+  const [readError, setReadError] = useState("");
+  // Entering a token is the moment a refused read should be tried again.
+  const tokenEpoch = useTokenEpoch();
   const [buildStatus, setBuildStatus] = useState<"idle" | "building" | "done" | "error">("idle");
   const [buildProgress, setBuildProgress] = useState("");
   const abortRef = useRef<AbortController | null>(null);
@@ -188,8 +193,21 @@ export default function GraphPage() {
     // lands after the build finishes and overwrites the graph it just produced.
     const fetchEpoch = buildEpochRef.current;
     setLoading(true);
-    fetchGraphData(corpus).then((data) => {
-      if (!active) return;
+    setReadError("");
+    fetchGraphData(corpus)
+      .catch((err: unknown) => {
+        // A refusal is not an outage of the graph database, so it must not
+        // set `connected: false` and show an empty graph as a real answer.
+        if (active) {
+          setReadError(err instanceof Error ? err.message : "Could not read the graph");
+        }
+        return null;
+      })
+      .then((data) => {
+      if (!active || data === null) {
+        setLoading(false);
+        return;
+      }
       if (buildEpochRef.current !== fetchEpoch) {
         setLoading(false);
         return;
@@ -207,7 +225,10 @@ export default function GraphPage() {
     return () => {
       active = false;
     };
-  }, [corpus]);
+  }, [corpus, tokenEpoch]);
+
+
+
 
   const maxDegree = Math.max(
     0,
@@ -261,7 +282,17 @@ export default function GraphPage() {
       </div>
 
       {/* Status banner */}
-      {!connected && !loading && (
+      {readError && !loading && (
+        <div
+          className="px-3 py-2 rounded-lg text-xs"
+          style={{ background: "var(--border)", color: "var(--muted)" }}
+          role="status"
+        >
+          {readError}
+        </div>
+      )}
+
+      {!readError && !connected && !loading && (
         <div
           className="px-3 py-2 rounded-lg text-xs"
           style={{ background: "var(--border)", color: "var(--muted)" }}

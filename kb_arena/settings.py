@@ -110,6 +110,10 @@ class Settings(BaseSettings):
     # Demo mode: when true, /chat, /chat/stream, /api/arena/*, /api/tools/*,
     # /api/graph/build, /api/debug/explain return 503. Used by the hosted public demo.
     demo_mode: bool = False
+    # True when the app turned demo mode on itself because no LLM key was
+    # configured. That is not the same as an operator publishing a demo, and
+    # only the operator's choice widens who may read corpus content.
+    demo_mode_auto: bool = False
     # Reverse-proxy client header, honored only when the socket peer is loopback.
     trusted_proxy_header: str = ""
 

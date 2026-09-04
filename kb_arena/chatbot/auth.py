@@ -83,6 +83,65 @@ def check_rate_limit(request: Request) -> None:
         raise HTTPException(status_code=429, detail="rate_limited")
 
 
+def require_read_auth(
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> None:
+    """Gate a route that returns corpus content, rather than an aggregate.
+
+    `require_auth` is the wrong gate here. It answers 503 in demo mode, and a
+    hosted demo exists to serve exactly these reads, so it would turn the
+    product's shop window off.
+
+    The rule this enforces:
+
+    - A token is set: the token is required, whatever else is true. Demo mode
+      says who may read WITHOUT a token; it never removes one.
+    - Demo mode an OPERATOR set, and no token: allowed. That publishes the
+      corpus on purpose. Demo mode the app turned on for itself, because no
+      LLM key was configured, is not that choice and does not widen reads.
+    - No token, not a demo, and the caller is not on the loopback address:
+      refused. A laptop that binds to every interface would otherwise serve
+      its documents to the whole network.
+
+    A route that returns only aggregates, such as a leaderboard, a health
+    check or a corpus list, does not need this. The content is what matters.
+    """
+    check_rate_limit(request)
+
+    # A token, once set, is enforced whatever else is true. Demo mode says who
+    # may read without one; it never removes one that an operator configured.
+    expected = settings.api_token
+    if expected:
+        provided = ""
+        if authorization and authorization.startswith("Bearer "):
+            provided = authorization[len("Bearer ") :].strip()
+        if not provided or not hmac.compare_digest(provided, expected):
+            raise HTTPException(status_code=401, detail="unauthorized")
+        return
+
+    if settings.demo_mode and not settings.demo_mode_auto:
+        # An operator published this corpus deliberately, and set no token.
+        # Rate limiting still applies, so a reader cannot walk the whole corpus
+        # at speed. Demo mode the app turned on for itself, because no LLM key
+        # was configured, is not that choice and does not land here.
+        return
+
+    client_host = _client_key(request)
+    if not _is_loopback_host(client_host):
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "code": "api_token_required_for_remote_access",
+                "message": (
+                    "This route returns corpus content. Set KB_ARENA_API_TOKEN to "
+                    "serve it beyond this machine, or set KB_ARENA_DEMO_MODE=true "
+                    "to publish the corpus on purpose."
+                ),
+            },
+        )
+
+
 def require_auth(
     request: Request,
     authorization: str | None = Header(default=None),

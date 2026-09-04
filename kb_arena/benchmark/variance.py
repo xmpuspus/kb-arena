@@ -17,7 +17,7 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
-from kb_arena.benchmark.manifest import LEGACY_KEY
+from kb_arena.benchmark.manifest import LEGACY_KEY, UNRECORDED_BUILD, build_identity
 
 # One run gives a point and no spread. Two give a range a reader can misread as
 # a bound. The sample standard deviation needs two, so it is reported from two
@@ -27,7 +27,7 @@ THIN_EVIDENCE_RUNS = 3
 
 # What a run written before this slice reports for its seed.
 UNRECORDED_SEED = "unrecorded"
-UNRECORDED_VERSION = "unrecorded"
+UNRECORDED_VERSION = UNRECORDED_BUILD
 
 # Files a run writes beside its results. None of them is one.
 _NON_RESULT_NAMES = frozenset(
@@ -289,19 +289,12 @@ def _is_for_corpus(path: Path, corpus: str | None) -> bool:
 
 
 def _code_version(run: dict) -> str:
-    """The build a run came from: its version, and the commit inside it.
+    """The build a run came from. One definition, shared with the leaderboard.
 
-    Several commits share one unreleased version during development, so the
-    version alone would call a code change run-to-run noise. The commit decides.
+    Two copies of this rule would drift, and the two surfaces would then
+    disagree about whether two runs are repeats of each other.
     """
-    manifest = run.get("manifest")
-    manifest = manifest if isinstance(manifest, dict) else {}
-    version = manifest.get("code_version")
-    sha = manifest.get("git_sha")
-    if not version and not sha:
-        return UNRECORDED_VERSION
-    label = str(version) if version else UNRECORDED_VERSION
-    return f"{label}@{sha}" if sha else label
+    return build_identity(run)
 
 
 def _seed_labels(group: list[dict]) -> list[str]:

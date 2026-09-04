@@ -27,9 +27,9 @@ from sse_starlette.sse import EventSourceResponse
 from kb_arena import __version__
 from kb_arena.arena.engine import ArenaEngine, scope_key
 from kb_arena.benchmark.compare import compare_result_files, resolve_result_path
-from kb_arena.benchmark.manifest import compatibility_key, manifest_summary
+from kb_arena.benchmark.manifest import build_identity, compatibility_key, manifest_summary
 from kb_arena.benchmark.review import REVIEWED, STATUSES, review_summary
-from kb_arena.chatbot.auth import require_auth
+from kb_arena.chatbot.auth import require_auth, require_read_auth
 from kb_arena.chatbot.session import SessionStore
 from kb_arena.chatbot.tools_api import router as tools_router
 from kb_arena.exceptions import ArenaError, StrategyError
@@ -249,6 +249,10 @@ async def lifespan(app: FastAPI):
                 "chat/arena/tools endpoints return 503 until a key is set."
             )
             settings.demo_mode = True
+            # Nobody asked to publish this corpus. `require_read_auth` reads
+            # this flag so a laptop with no API key does not start serving its
+            # documents to the network.
+            settings.demo_mode_auto = True
 
     # The read-only demo does not need a model client. Configured deployments
     # share one client across strategies; initialization failures stop startup.
@@ -624,7 +628,7 @@ async def retriever_lab_runs() -> dict:
     return {"runs": runs}
 
 
-@app.get("/api/retriever-lab/{run_id}")
+@app.get("/api/retriever-lab/{run_id}", dependencies=[Depends(require_read_auth)])
 async def retriever_lab_results(run_id: str) -> dict:
     """Return retriever-lab JSON for the given run."""
     if not _re.match(r"^[a-zA-Z0-9_-]+$", run_id):
@@ -638,7 +642,7 @@ async def retriever_lab_results(run_id: str) -> dict:
         raise HTTPException(status_code=500, detail="corrupt run file") from e
 
 
-@app.get("/api/benchmark/results")
+@app.get("/api/benchmark/results", dependencies=[Depends(require_read_auth)])
 async def benchmark_results(corpus: str = "all") -> dict:
     """Load benchmark results from the results directory."""
     import json
@@ -739,7 +743,7 @@ async def list_strategies(request: Request) -> dict:
     return {"strategies": loaded, "catalog": public_catalog(loaded)}
 
 
-@app.get("/graph/stats")
+@app.get("/graph/stats", dependencies=[Depends(require_read_auth)])
 async def graph_stats(request: Request, corpus: str = "all") -> dict:
     """Return graph node and edge counts, centrality hubs, and communities.
 
@@ -788,7 +792,7 @@ async def graph_stats(request: Request, corpus: str = "all") -> dict:
     }
 
 
-@app.get("/api/graph/data")
+@app.get("/api/graph/data", dependencies=[Depends(require_read_auth)])
 async def graph_data(
     request: Request,
     corpus: str = "all",
@@ -1090,7 +1094,7 @@ async def arena_leaderboard(request: Request, corpus: str = "", rubric: str = "d
     }
 
 
-@app.get("/api/compare")
+@app.get("/api/compare", dependencies=[Depends(require_read_auth)])
 async def compare_strategies(
     corpus: str, a: str, b: str, run_a: str = "", run_b: str = "", metric: str = "accuracy"
 ):
@@ -1126,7 +1130,7 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
         return {"corpora": [], "leaderboard": []}
 
     # Collect (corpus, strategy) -> list[per-run metrics]
-    rows: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
+    rows: dict[tuple[str, str, str, str], list[dict]] = defaultdict(list)
     seen_corpora: set[str] = set()
     # The runner writes each result twice, once at the top level and once
     # under its run directory. One run counts once.
@@ -1166,7 +1170,10 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
         # copy never hides the good copy under its run directory.
         if not _first_sighting(c, s, data):
             continue
-        rows[(c, s, compatibility_key(data))].append(summary)
+        # The build is part of the group. Two runs from different commits are
+        # not repeats of one measurement, and averaging them would report a
+        # code change as run-to-run noise on the page a reader cites.
+        rows[(c, s, compatibility_key(data), build_identity(data))].append(summary)
 
     # New per-run subdirectories (results/run_<id>/<corpus>_<strategy>.json)
     for run_dir in sorted(base.glob("run_*")):
@@ -1192,18 +1199,21 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
                 continue
             if not _first_sighting(c, s, data):
                 continue
-            rows[(c, s, compatibility_key(data))].append(summary)
+            # The build is part of the group. Two runs from different commits
+            # are not repeats of one measurement, and averaging them would
+            # report a code change as noise on the page a reader cites.
+            rows[(c, s, compatibility_key(data), build_identity(data))].append(summary)
 
     # Runs made against different question sets, qrels, judges, or top_k
     # values never share a row. A row names its key, and lists the other keys
     # seen for the same corpus and strategy, so a reader can tell two
     # incomparable rows apart instead of reading one blended number.
     keys_by_pair: dict[tuple[str, str], list[str]] = defaultdict(list)
-    for c, s, key in rows:
+    for c, s, key, _build in rows:
         keys_by_pair[(c, s)].append(key)
 
     leaderboard: list[dict] = []
-    for (c, s, key), runs in sorted(rows.items()):
+    for (c, s, key, build), runs in sorted(rows.items()):
         if not runs:
             continue
         leaderboard.append(
@@ -1211,6 +1221,9 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
                 "corpus": c,
                 "strategy": s,
                 "compatibility_key": key,
+                # Which build produced these runs. A reader comparing two rows
+                # can see whether a difference is a code change or a result.
+                "build": build,
                 "manifest": runs[0].get("manifest", {}),
                 # How much of this row rests on questions a human checked.
                 "review": _merge_reviews(runs),
