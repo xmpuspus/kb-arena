@@ -26,6 +26,10 @@ _SCHEMA = "CREATE TABLE IF NOT EXISTS vectors (key TEXT PRIMARY KEY, vector TEXT
 # once in one benchmark, each with its own wrapper, and they share the file.
 _FILE_LOCKS: dict[str, threading.Lock] = {}
 _FILE_LOCKS_GUARD = threading.Lock()
+# Keys a provider call is computing right now, per cache file. A second
+# caller that misses on one of them waits for that call instead of paying
+# for the same text twice.
+_INFLIGHT: dict[str, dict[str, threading.Event]] = {}
 
 
 def _lock_for(path: Path) -> threading.Lock:
@@ -112,31 +116,63 @@ class CachedEmbedding(EmbeddingFunction[Documents]):
                 [(key, json.dumps(vector)) for key, vector in pairs],
             )
 
+    def _inflight(self) -> dict[str, threading.Event]:
+        return _INFLIGHT.setdefault(str(self._path.resolve()), {})
+
     def __call__(self, input: Documents) -> Embeddings:  # type: ignore[override]
         texts = list(input)
         keys = [cache_key(self._provider, self._model, text, self._endpoint) for text in texts]
+        unique = list(dict.fromkeys(keys))
+        text_of = dict(zip(keys, texts, strict=True))
+        # Under the lock: read what is stored, claim the misses nobody is
+        # computing, and note the misses another caller is computing now.
         with self._lock:
-            found = self._read(list(dict.fromkeys(keys)))
-        missing_keys: list[str] = []
-        missing_texts: list[str] = []
-        seen: set[str] = set()
-        for key, text in zip(keys, texts, strict=True):
-            if key in found or key in seen:
-                continue
-            seen.add(key)
-            missing_keys.append(key)
-            missing_texts.append(text)
-        self.hits += len(texts) - len(missing_texts)
-        self.misses += len(missing_texts)
-        if missing_texts:
-            fresh = self._inner(missing_texts)
-            fresh = [list(map(float, vector)) for vector in fresh]
-            if len(fresh) != len(missing_texts):
-                raise RuntimeError(
-                    f"embedding provider returned {len(fresh)} vectors "
-                    f"for {len(missing_texts)} texts"
-                )
+            found = self._read(unique)
+            inflight = self._inflight()
+            mine: list[str] = []
+            waits: list[threading.Event] = []
+            for key in unique:
+                if key in found:
+                    continue
+                pending = inflight.get(key)
+                if pending is not None:
+                    waits.append(pending)
+                else:
+                    inflight[key] = threading.Event()
+                    mine.append(key)
+        self.hits += sum(1 for key in keys if key in found)
+        self.misses += sum(1 for key in keys if key not in found)
+        try:
+            if mine:
+                fresh = self._inner([text_of[key] for key in mine])
+                fresh = [list(map(float, vector)) for vector in fresh]
+                if len(fresh) != len(mine):
+                    raise RuntimeError(
+                        f"embedding provider returned {len(fresh)} vectors for {len(mine)} texts"
+                    )
+                with self._lock:
+                    self._write(list(zip(mine, fresh, strict=True)))
+                found.update(zip(mine, fresh, strict=True))
+        finally:
             with self._lock:
-                self._write(list(zip(missing_keys, fresh, strict=True)))
-            found.update(zip(missing_keys, fresh, strict=True))
+                for key in mine:
+                    self._inflight().pop(key, None).set() if key in self._inflight() else None
+        for event in waits:
+            event.wait()
+        still_missing = [key for key in unique if key not in found]
+        if still_missing:
+            with self._lock:
+                found.update(self._read(still_missing))
+            lost = [key for key in still_missing if key not in found]
+            if lost:
+                # The other caller failed. Compute the leftovers ourselves.
+                fresh = self._inner([text_of[key] for key in lost])
+                fresh = [list(map(float, vector)) for vector in fresh]
+                if len(fresh) != len(lost):
+                    raise RuntimeError(
+                        f"embedding provider returned {len(fresh)} vectors for {len(lost)} texts"
+                    )
+                with self._lock:
+                    self._write(list(zip(lost, fresh, strict=True)))
+                found.update(zip(lost, fresh, strict=True))
         return [found[key] for key in keys]

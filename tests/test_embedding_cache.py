@@ -140,3 +140,39 @@ def test_the_factory_gives_ollama_its_endpoint(tmp_path, monkeypatch):
     wrapped = embeddings.get_embedding_function()
 
     assert wrapped.identity["endpoint"] == "http://box:11434"
+
+
+def test_two_callers_that_miss_on_one_text_pay_for_it_once(tmp_path):
+    import threading
+    import time
+
+    class _Slow:
+        def __init__(self):
+            self.calls: list[list[str]] = []
+
+        def __call__(self, input):
+            self.calls.append(list(input))
+            time.sleep(0.3)
+            return [[float(len(text)), 1.0] for text in input]
+
+    provider = _Slow()
+    path = tmp_path / "c.sqlite"
+    first = CachedEmbedding(provider, provider="fake", model="m", path=path)
+    second = CachedEmbedding(provider, provider="fake", model="m", path=path)
+    results: dict[str, list] = {}
+
+    def run(name, cache):
+        results[name] = _plain(cache(["shared", name]))
+
+    threads = [
+        threading.Thread(target=run, args=("a", first)),
+        threading.Thread(target=run, args=("b", second)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    shared_calls = sum(1 for call in provider.calls if "shared" in call)
+    assert shared_calls == 1, "the second caller waited for the first instead of paying again"
+    assert results["a"][0] == [6.0, 1.0] and results["b"][0] == [6.0, 1.0]
