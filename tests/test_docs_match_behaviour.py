@@ -121,3 +121,36 @@ def test_the_cli_help_says_what_label_chunks_really_does():
     assert "BM25 + Haiku" not in help_text
     assert "KB_ARENA_GENERATE_MODEL" in help_text
     assert "seeded random sample" in help_text
+
+
+def test_the_leaderboard_shows_the_build_its_copy_names():
+    """The copy said rows are distinguished by build and the table never showed one."""
+    page = (ROOT / "web" / "app" / "leaderboard" / "page.tsx").read_text()
+    assert "build?: string;" in page, "the row type must carry what the API returns"
+    assert "row.build" in page, "and the table must render it"
+    assert "build unrecorded" in page, "a run with no version or commit says so"
+
+
+def test_the_cli_help_names_a_setting_that_exists():
+    """It named KB_ARENA_COST_CAP_USD, and the setting is benchmark_cost_cap_usd."""
+    from kb_arena import cli
+    from kb_arena.settings import Settings
+
+    help_text = inspect.getdoc(cli.label_chunks) or ""
+    named = [w.strip(".,`") for w in help_text.split() if w.startswith("KB_ARENA_")]
+    assert named, "the help has to name the cap it is capped by"
+    for var in named:
+        field = var.removeprefix("KB_ARENA_").lower()
+        assert field in Settings.model_fields, f"{var} is not a setting"
+
+
+def test_the_doc_does_not_promise_a_grade_for_every_candidate():
+    """The prompt asks. The parser accepts whatever comes back."""
+    from kb_arena.benchmark import expected_chunks
+
+    source = inspect.getsource(expected_chunks._parse_grades)
+    # Nothing here requires the judge to cover the candidate set.
+    assert "len(out) == len(valid)" not in source
+    doc = _flat((ROOT / "docs" / "retriever-lab.md").read_text())
+    assert "A judge that returns grades for only some of the candidates is accepted" in doc
+    assert "a missing chunk means unjudged, not rejected" in doc.lower()

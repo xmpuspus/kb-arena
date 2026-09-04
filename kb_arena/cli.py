@@ -1644,8 +1644,8 @@ def label_chunks(
     seeded random sample. The judge is the model KB_ARENA_GENERATE_MODEL names,
     and it grades every candidate 2, 1 or 0.
 
-    Cost-capped by KB_ARENA_COST_CAP_USD. Idempotent: skips already-labeled
-    questions unless --force.
+    Cost-capped by KB_ARENA_BENCHMARK_COST_CAP_USD. Idempotent: skips
+    already-labeled questions unless --force.
     """
     import asyncio as _asyncio
 

@@ -36,8 +36,11 @@ negatives.
 
 The judge is the model `KB_ARENA_GENERATE_MODEL` names, because labeling calls
 `LLMClient.extract`. It is not the fast model and not the judge model; those two score
-answers elsewhere. It grades every candidate: 2 answers the question, 1 supports the
-answer, 0 means the judge read the chunk and rejected it.
+answers elsewhere. The prompt asks it to grade every candidate: 2 answers the
+question, 1 supports the answer, 0 means the judge read the chunk and rejected it.
+A judge that returns grades for only some of the candidates is accepted, and the
+ones it left out are simply absent from the labels rather than recorded as 0. So a
+missing chunk means unjudged, not rejected.
 
 Output is a `{version, pool, labels}` file written to
 `datasets/{corpus}/questions/expected_chunks.yaml`, where `labels` maps a question id to a
