@@ -95,10 +95,15 @@ def embedding_identity() -> dict[str, str]:
 
 
 def git_sha() -> str | None:
-    """Best effort. A wheel install has no repository, and that is fine."""
+    """Best effort. A wheel install has no repository, and that is fine.
+
+    The whole commit, not the abbreviation. `kb-arena variance` compares this
+    value for equality when it decides whether two runs came from one build,
+    and an abbreviation is a prefix rather than an identity.
+    """
     try:
         out = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
+            ["git", "rev-parse", "HEAD"],
             capture_output=True,
             text=True,
             timeout=2,
@@ -106,7 +111,42 @@ def git_sha() -> str | None:
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    return out.stdout.strip() or None if out.returncode == 0 else None
+    if out.returncode != 0:
+        return None
+    sha = out.stdout.strip()
+    if not sha:
+        return None
+    # An uncommitted change is not the commit it sits on. Without this, a
+    # developer comparing a local edit against the last commit would see the
+    # two runs called one build and their difference reported as noise.
+    try:
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            cwd=Path(__file__).resolve().parents[2],
+        )
+    except (OSError, subprocess.SubprocessError):
+        return sha
+    if dirty.returncode == 0 and dirty.stdout.strip():
+        # Two different working trees on one commit are two different builds,
+        # so a bare "-dirty" would call them repeats of each other. The digest
+        # of the uncommitted diff tells them apart.
+        try:
+            diff = subprocess.run(
+                ["git", "diff", "HEAD"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                cwd=Path(__file__).resolve().parents[2],
+            )
+        except (OSError, subprocess.SubprocessError):
+            return f"{sha}-dirty"
+        if diff.returncode != 0:
+            return f"{sha}-dirty"
+        return f"{sha}-dirty-{_digest(diff.stdout)[:8]}"
+    return sha
 
 
 # The fields that decide whether two runs compare. The reader recomputes the
@@ -131,7 +171,15 @@ def core_of(manifest: dict) -> dict:
     return {field: manifest.get(field) for field in CORE_FIELDS}
 
 
-def build_manifest(corpus: str, questions, *, top_k: int, split: str, reference_free: bool) -> dict:
+def build_manifest(
+    corpus: str,
+    questions,
+    *,
+    top_k: int,
+    split: str,
+    reference_free: bool,
+    seed_covers_whole_run: bool = True,
+) -> dict:
     """The record a result file carries. The compatibility key covers the core."""
     core = {
         "schema_version": SCHEMA_VERSION,
@@ -154,10 +202,39 @@ def build_manifest(corpus: str, questions, *, top_k: int, split: str, reference_
     }
     return {
         **core,
+        # Deliberately outside the core: two runs that differ only by seed
+        # measured the same experiment, so they must group together and give
+        # a spread instead of splitting into two keys of one run each.
+        "seed": seed_identity(covers_whole_run=seed_covers_whole_run),
         "question_count": len(questions),
         "code_version": __version__,
         "git_sha": git_sha(),
         "compatibility_key": _digest(core_of(core)),
+    }
+
+
+def seed_identity(covers_whole_run: bool = True) -> dict:
+    """The seed a run sets, and what that seed does and does not control.
+
+    Nothing in KB Arena samples from a strategy today, and the judge runs at
+    temperature 0, so a repeat still moves through provider-side variation
+    this seed cannot reach. Saying so is the point: a reader must not read a
+    captured seed as a promise of an identical run.
+    """
+    return {
+        "value": int(settings.run_seed),
+        # A resume of a checkpoint written before seeds existed inherits
+        # records scored under an unknown seed. The reader is told, rather than
+        # left to assume the value below covers the whole run.
+        "covers_whole_run": bool(covers_whole_run),
+        # Only what code in this package actually reads. A claim here that no
+        # consumer honours is a record of work that never happened.
+        "controls": ["optimize trial order", "bootstrap resampling"],
+        "does_not_control": [
+            "provider-side model sampling",
+            "retrieval tie order",
+            "judge output",
+        ],
     }
 
 
@@ -180,18 +257,54 @@ def compatibility_key(data: dict) -> str:
         key = _digest(core_of(manifest))
         # A run the cost cap stopped scored fewer questions than its manifest
         # names. It never blends with a full run of the same experiment.
-        if _is_partial(data, manifest):
-            return f"{key}-partial"
+        scored = _scored_count(data)
+        if scored is not None:
+            # A partial run of 10 questions and one of 70 are not repeats of
+            # one experiment. Neither are two runs of 10 that scored different
+            # questions, so the suffix names which ones, not only how many.
+            return f"{key}-partial-{scored}-{_scored_fingerprint(data)}"
         return key
     return LEGACY_KEY
 
 
-def _is_partial(data: dict, manifest: dict) -> bool:
-    if data.get("stopped_by_cost_cap") is True:
-        return True
-    expected = manifest.get("question_count")
+def _scored_fingerprint(data: dict) -> str:
+    """A short digest of which questions a partial run scored."""
     records = data.get("records")
-    return isinstance(expected, int) and isinstance(records, list) and len(records) < expected
+    if not isinstance(records, list):
+        return "none"
+    ids = sorted(
+        str(r.get("question_id") or r.get("id") or "") for r in records if isinstance(r, dict)
+    )
+    return _digest(ids)[:8] if ids else "none"
+
+
+def _scored_count(data: dict) -> int | None:
+    """How many questions a partial run scored, or None when the run is whole.
+
+    A run the cost cap stopped scored fewer questions than its manifest names.
+    It never blends with a full run, and it never blends with a partial run of
+    a different size either.
+    """
+    manifest = data.get("manifest")
+    manifest = manifest if isinstance(manifest, dict) else {}
+    records = data.get("records")
+    count = len(records) if isinstance(records, list) else None
+    expected = manifest.get("question_count")
+    whole = isinstance(expected, int) and count is not None and count >= expected
+    if whole:
+        # The cap stopped the run after the last question, so nothing is
+        # missing and the run compares with every other whole run.
+        return None
+    if data.get("stopped_by_cost_cap") is True:
+        return count if count is not None else -1
+    if isinstance(expected, int) and count is not None and count < expected:
+        return count
+    return None
+
+
+def _is_partial(data: dict, manifest: dict) -> bool:
+    """Kept for readers outside this module. The key uses `_scored_count`."""
+    return _scored_count(data) is not None
 
 
 def manifest_summary(data: dict) -> dict:

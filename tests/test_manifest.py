@@ -125,10 +125,20 @@ def test_a_cost_capped_partial_run_never_blends_with_a_full_one(tmp_path, monkey
     )
     full = {"manifest": manifest, "records": [{}, {}]}
     short = {"manifest": manifest, "records": [{}]}
-    capped = {"manifest": manifest, "records": [{}, {}], "stopped_by_cost_cap": True}
+    # The cap stopped this run after the last question, so nothing is missing.
+    capped_but_whole = {"manifest": manifest, "records": [{}, {}], "stopped_by_cost_cap": True}
+    capped_early = {"manifest": manifest, "records": [{}], "stopped_by_cost_cap": True}
     assert mf.compatibility_key(full) == manifest["compatibility_key"]
-    assert mf.compatibility_key(short) == manifest["compatibility_key"] + "-partial"
-    assert mf.compatibility_key(capped) == manifest["compatibility_key"] + "-partial"
+    # The scored count rides in the suffix, so two partial runs that stopped at
+    # different points never read as repeats of one experiment.
+    assert mf.compatibility_key(short).startswith(manifest["compatibility_key"] + "-partial-1-")
+    assert mf.compatibility_key(capped_but_whole) == manifest["compatibility_key"], (
+        "a run that scored every question compares with every other whole run, "
+        "whatever stopped it afterwards"
+    )
+    assert mf.compatibility_key(capped_early).startswith(
+        manifest["compatibility_key"] + "-partial-1-"
+    )
 
 
 def test_a_v1_file_dumped_by_the_v2_model_still_summarises_empty():
@@ -273,3 +283,57 @@ def test_benchmark_runs_option_repeats_the_run(monkeypatch):
 
     assert result.exit_code == 0, result.output
     assert len(calls) == 3
+
+
+def test_two_partial_runs_of_different_sizes_never_share_a_key():
+    """A run that scored 10 questions and one that scored 70 are not repeats."""
+    manifest = {
+        "schema_version": 1,
+        "corpus": "c",
+        "question_split": "all",
+        "question_set_fingerprint": "fp",
+        "qrels_fingerprint": None,
+        "generation": {},
+        "scoring": {"reference_free": True, "ragas": False},
+        "judge": None,
+        "embedding": {},
+        "chunk": {"tokens": 512, "overlap_tokens": 64},
+        "top_k": 5,
+        "question_count": 70,
+    }
+    ten = {"manifest": manifest, "records": [{}] * 10, "stopped_by_cost_cap": True}
+    seventy = {"manifest": manifest, "records": [{}] * 70}
+
+    assert mf.compatibility_key(ten) != mf.compatibility_key(seventy)
+    assert "-partial-10-" in mf.compatibility_key(ten)
+    # A whole run carries no suffix at all.
+    assert "partial" not in mf.compatibility_key(seventy)
+
+
+def test_two_partial_runs_of_one_size_that_scored_different_questions_differ():
+    """Ten questions and ten other questions are not a repeated measurement."""
+    manifest = {
+        "schema_version": 1,
+        "corpus": "c",
+        "question_split": "all",
+        "question_set_fingerprint": "fp",
+        "qrels_fingerprint": None,
+        "generation": {},
+        "scoring": {"reference_free": True, "ragas": False},
+        "judge": None,
+        "embedding": {},
+        "chunk": {"tokens": 512, "overlap_tokens": 64},
+        "top_k": 5,
+        "question_count": 70,
+    }
+    first = {"manifest": manifest, "records": [{"question_id": f"q{i}"} for i in range(10)]}
+    second = {"manifest": manifest, "records": [{"question_id": f"z{i}"} for i in range(10)]}
+    same = {
+        "manifest": manifest,
+        "records": [{"question_id": f"q{i}"} for i in reversed(range(10))],
+    }
+
+    assert mf.compatibility_key(first) != mf.compatibility_key(second)
+    assert mf.compatibility_key(first) == mf.compatibility_key(
+        same
+    ), "the order the records were written in is not part of the experiment"

@@ -142,6 +142,12 @@ class Settings(BaseSettings):
     sqr_shots: int = 0  # 0 = exact statevector (benchmark default); >0 = sampled SWAP test
 
     # Paths
+    # The seed a run records and sets. Two runs that differ only by seed are
+    # the same experiment, so the seed stays out of the compatibility key.
+    # scipy's random_state rejects anything outside the 32-bit range, and it
+    # does so after a sweep finishes, so the bound belongs here.
+    run_seed: int = Field(default=0, ge=0, le=2**32 - 1)
+
     datasets_path: str = "./datasets"
     results_path: str = "./results"
 

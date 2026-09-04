@@ -454,6 +454,9 @@ RESUME_KEYS = (
     "question_split",
     "reference_free",
     "ragas_enabled",
+    # A resume stamps the whole run with the new seed, so records made under
+    # the old one would carry a provenance nobody produced.
+    "run_seed",
 )
 
 
@@ -493,6 +496,17 @@ def _bind_run_manifest(
     keys = run_record.setdefault("manifests", {})
     if resume_run_id:
         earlier = keys.get(corpus)
+        if earlier is None:
+            # A checkpoint written before keys were recorded cannot be checked.
+            # Recording the current key would relabel its stale records as
+            # results of this experiment, and this file is the evidence a
+            # reader cites. So the resume is refused, and the message says the
+            # real reason instead of blaming a change nobody made.
+            raise BenchmarkExecutionError(
+                f"cannot resume run {run_id} for corpus {corpus}: it recorded no "
+                f"experiment key, so there is no way to check that it measured the "
+                f"same thing. Start a fresh run instead of relabelling its records."
+            )
         if earlier != key:
             raise BenchmarkExecutionError(
                 f"cannot resume run {run_id} for corpus {corpus}: the experiment key is "
@@ -524,12 +538,27 @@ def check_resumable(results_dir: Path, run_id: str, config_snap: dict) -> dict:
     changed = [
         k for k in RESUME_KEYS if k in earlier and k in config_snap and earlier[k] != config_snap[k]
     ]
+    seed_known = "run_seed" in earlier or "run_seed" not in config_snap
+    if not seed_known:
+        # The checkpoint predates seed capture, so the records it holds were
+        # scored under an unknown seed. The finished run is stamped with the
+        # seed of this invocation, and that stamp covers only the new records.
+        logger.warning(
+            "Run %s was checkpointed before seeds were recorded. The manifest will "
+            "name seed %s, and that seed applies only to the questions this "
+            "invocation scores.",
+            run_id,
+            config_snap["run_seed"],
+        )
     if changed:
         raise BenchmarkExecutionError(
             "cannot resume run "
             f"{run_id}: these settings differ from the first run: {', '.join(changed)}"
         )
-    return json.loads(path.read_text())
+    resumed = json.loads(path.read_text())
+    if isinstance(resumed, dict):
+        resumed["_seed_covers_whole_run"] = seed_known
+    return resumed
 
 
 def question_hash(question) -> str:
@@ -596,6 +625,7 @@ def _config_snapshot(
         "generate_model": generation_identity()["model"],
         "judge_provider": judge["provider"],
         "judge_model": judge["model"],
+        "run_seed": settings.run_seed,
         "max_concurrent": settings.benchmark_max_concurrent,
         "query_timeout_s": settings.benchmark_query_timeout_s,
         "top_k": top_k,
@@ -619,7 +649,7 @@ async def run_benchmark(
     reference_free: bool = False,
     top_k: int = 5,
     resume_run_id: str | None = None,
-) -> None:
+) -> str:
     """Run benchmark questions against specified strategies.
 
     Loads questions, calls each strategy x question concurrently (bounded by semaphore),
@@ -633,6 +663,7 @@ async def run_benchmark(
     # as soon as it exists. A resumed run reads that file and skips the
     # questions it already holds.
     run_id = resume_run_id or uuid4().hex[:8]
+    seed_covers_whole_run = True
     if resume_run_id and not RUN_ID_PATTERN.match(resume_run_id):
         raise BenchmarkExecutionError(
             f"invalid run id {resume_run_id!r}: letters, digits, - and _ only"
@@ -658,6 +689,9 @@ async def run_benchmark(
     run_record: dict = {"run_id": run_id, "timestamp": timestamp, "config_snapshot": config_snap}
     if resume_run_id:
         earlier = check_resumable(results_dir, resume_run_id, config_snap)
+        # A checkpoint written before seeds existed holds records scored under
+        # an unknown seed, so this run's seed does not cover the whole run.
+        seed_covers_whole_run = bool(earlier.get("_seed_covers_whole_run", True))
         # The result describes the run that started it, not the resume.
         timestamp = earlier.get("timestamp") or timestamp
         run_record = earlier
@@ -719,7 +753,12 @@ async def run_benchmark(
         by_id = {q.id: q for q in questions}
         hashes = {q.id: question_hash(q) for q in questions}
         manifest = build_manifest(
-            corp, questions, top_k=top_k, split=split, reference_free=reference_free
+            corp,
+            questions,
+            top_k=top_k,
+            split=split,
+            reference_free=reference_free,
+            seed_covers_whole_run=seed_covers_whole_run,
         )
         # The manifest key covers the question set, the qrels, the judge, the
         # embedding, the chunking, and top_k. A resume that lands on a different
@@ -946,3 +985,4 @@ async def run_benchmark(
     if not selected_questions:
         raise BenchmarkExecutionError("No benchmark questions were selected")
     run_lock.close()
+    return run_id

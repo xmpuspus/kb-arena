@@ -169,7 +169,9 @@ def _bootstrap_ci(values: list[float]) -> tuple[float, float]:
         n_resamples=1000,
         confidence_level=0.95,
         method="percentile",
-        random_state=0,
+        # The recorded seed, so the manifest's claim about bootstrap
+        # resampling holds on this path too, not only in optimize.
+        random_state=settings.run_seed,
     )
     return (float(res.confidence_interval.low), float(res.confidence_interval.high))
 
