@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { apiFetch } from "@/lib/auth";
 import { CORPORA, fetchCorpora } from "@/lib/api";
 
@@ -100,11 +100,17 @@ export default function ArenaPage() {
 
   // The board is per corpus, so a vote on one corpus never moves the numbers
   // a reader sees next to another.
+  // Only the newest request writes the board. A quick run of corpus changes
+  // otherwise lands out of order and shows another corpus's numbers.
+  const boardRequest = useRef(0);
+
   async function fetchLeaderboard(scope: string = corpus) {
+    const ticket = ++boardRequest.current;
     try {
       const query = scope && scope !== "all" ? `?corpus=${encodeURIComponent(scope)}` : "";
       const res = await fetch(`${API}/api/arena/leaderboard${query}`);
       const data = await res.json();
+      if (ticket !== boardRequest.current) return;
       setLeaderboard(data.leaderboard || []);
       setTotalVotes(data.total_votes || 0);
     } catch {

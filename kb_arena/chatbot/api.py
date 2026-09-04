@@ -11,6 +11,7 @@ import importlib.resources as _pkg_resources
 import json
 import logging
 import math
+import re as _re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path as _Path
@@ -625,8 +626,6 @@ async def retriever_lab_runs() -> dict:
 @app.get("/api/retriever-lab/{run_id}")
 async def retriever_lab_results(run_id: str) -> dict:
     """Return retriever-lab JSON for the given run."""
-    import re as _re
-
     if not _re.match(r"^[a-zA-Z0-9_-]+$", run_id):
         raise HTTPException(status_code=400, detail="invalid run_id")
     path = _Path(settings.results_path) / f"run_{run_id}" / "retriever_lab.json"
@@ -1022,7 +1021,14 @@ async def arena_vote(body: ArenaVoteRequest, request: Request):
         return JSONResponse(
             {"error": {"code": "arena_unavailable", "message": "Arena not initialized"}}, 503
         )
-    result = arena.vote(body.match_id, body.winner, voter=body.voter or "human")
+    # A named reviewer is a claim about who judged, so only an operator with
+    # the reviewer key can make one. Everyone else votes as a human.
+    voter = body.voter or "human"
+    if voter != "human" and request.headers.get("x-kb-arena-reviewer-key") != (
+        settings.arena_reviewer_key or object()
+    ):
+        voter = "human"
+    result = arena.vote(body.match_id, body.winner, voter=voter)
     if "error" in result:
         return JSONResponse({"error": {"code": "vote_failed", "message": result["error"]}}, 400)
     return result
@@ -1031,6 +1037,11 @@ async def arena_vote(body: ArenaVoteRequest, request: Request):
 @app.get("/api/arena/leaderboard")
 async def arena_leaderboard(request: Request, corpus: str = "", rubric: str = "default"):
     """The ELO leaderboard for one corpus and rubric. Votes from other scopes never count."""
+    # The scope names must match what a match request accepts, or a typo
+    # answers for a scope the caller never asked for.
+    for name, value in (("corpus", corpus), ("rubric", rubric)):
+        if value and not _re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", value):
+            raise HTTPException(status_code=400, detail=f"invalid {name}")
     arena = request.app.state.arena
     if not arena:
         return {
@@ -1044,11 +1055,14 @@ async def arena_leaderboard(request: Request, corpus: str = "", rubric: str = "d
         "scope": {"corpus": corpus or "all", "rubric": rubric or "default"},
         "scopes": sorted(arena.state.elo_by_scope),
         # Each match sits on two rows, so count the matches, not the rows.
-        "total_votes": sum(
+        # The state keeps the last 200 matches, so this counts the votes the
+        # history still holds, not every vote the ratings were built from.
+        "votes_in_history": sum(
             1
             for m in arena.state.matches
             if m.winner and scope_key(m.corpus, m.rubric) == scope_key(corpus, rubric)
         ),
+        "total_votes": arena.state.total_votes,
     }
 
 

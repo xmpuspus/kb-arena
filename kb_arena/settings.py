@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     # LLM — OpenAI (for embeddings)
     openai_api_key: str = ""
 
+    # A named arena voter is a claim about who judged. Only a caller that
+    # sends this key in x-kb-arena-reviewer-key can make one.
+    arena_reviewer_key: str = ""
+
     # Neo4j
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"

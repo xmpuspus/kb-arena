@@ -172,3 +172,30 @@ async def test_the_leaderboard_route_counts_each_match_once(arena):
     assert body["total_votes"] == 2
     assert body["scope"] == {"corpus": "aws-compute", "rubric": "default"}
     assert "aws-compute|default" in body["scopes"]
+
+
+@pytest.mark.asyncio
+async def test_the_route_rejects_a_bad_scope_and_reports_both_vote_counts(arena, monkeypatch):
+    from types import SimpleNamespace
+
+    import pytest as _pytest
+    from fastapi import HTTPException
+
+    from kb_arena.chatbot import api
+
+    _vote_a(arena, "aws-compute")
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(arena=arena)), headers={})
+
+    with _pytest.raises(HTTPException) as bad:
+        await api.arena_leaderboard(request, corpus="../etc")
+    assert bad.value.status_code == 400
+
+    body = await api.arena_leaderboard(request, corpus="aws-compute")
+    assert body["votes_in_history"] == 1
+    assert body["total_votes"] == arena.state.total_votes
+
+
+def test_a_named_voter_needs_the_reviewer_key():
+    from kb_arena.settings import settings as live
+
+    assert live.arena_reviewer_key == "", "a named voter is refused until an operator sets a key"
