@@ -42,7 +42,27 @@ jobs:
       - run: npm run lint
       - run: npx next build
       # high/critical only: low/moderate advisories must not fail every PR.
-      - run: npm audit --audit-level=high
+      - name: npm audit, with a retry when the registry audit endpoint is down
+        run: |
+          # A vulnerability fails the job. A registry outage does not: the
+          # audit endpoint answered "Bad Request" for an hour on 2026-09-04
+          # and blocked green pull requests with no finding behind it.
+          for attempt in 1 2 3; do
+            set +e
+            out=$(npm audit --audit-level=high 2>&1)
+            code=$?
+            set -e
+            echo "$out"
+            if [ "$code" -eq 0 ]; then
+              exit 0
+            fi
+            if ! echo "$out" | grep -q "audit endpoint returned an error"; then
+              exit "$code"
+            fi
+            echo "registry audit endpoint unavailable on attempt $attempt, retrying in 30s"
+            sleep 30
+          done
+          echo "::warning::npm audit skipped: the registry audit endpoint answered an error three times"
 
   docker:
     runs-on: ubuntu-latest
