@@ -79,7 +79,10 @@ async def test_label_candidates_are_scoped_to_selected_corpus():
         "question", bm25, AsyncMock(), "alpha", extra_retrievers=[extra]
     )
 
-    assert ids == []
+    # A grade mapping, not a list. `label_one_question` returns
+    # `dict[str, int]`, and a list here writes `labels: {q1: []}`, which
+    # reloads as a permanent empty label instead of an unlabeled question.
+    assert ids == {}
     assert cost == 0.0
     bm25.query.assert_awaited_once_with("question", top_k=20, corpus="alpha")
     extra.query.assert_awaited_once_with("question", top_k=20, corpus="alpha")
@@ -126,14 +129,15 @@ async def test_label_corpus_checkpoints_success_before_later_failure(tmp_path, m
     monkeypatch.setattr(
         expected_chunks,
         "label_one_question",
-        AsyncMock(side_effect=[(["doc::section::0"], 0.1), ConnectionError("judge offline")]),
+        AsyncMock(side_effect=[({"doc::section::0": 2}, 0.1), ConnectionError("judge offline")]),
     )
 
     with pytest.raises(ConnectionError, match="judge offline"):
         await expected_chunks.label_corpus("alpha")
 
     saved = yaml.safe_load((tmp_path / "alpha" / "questions" / "expected_chunks.yaml").read_text())
-    assert saved == {"q1": ["doc::section::0"]}
+    assert saved["version"] == 2
+    assert saved["labels"] == {"q1": {"doc::section::0": 2}}
 
 
 @pytest.mark.parametrize("value", ["nan", "inf", "-inf", "-0.1", "1.1"])

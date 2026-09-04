@@ -697,6 +697,11 @@ async def _score_trial(
                         f"retrieval failed for strategy {strategy!r}, config {cfg}, "
                         f"question {getattr(q, 'id', '<unknown>')!r}: {exc}"
                     ) from exc
+                # The lab reads the graded file, so this path must too, or a
+                # sweep ranks configs on binary relevance and a proxy bpref
+                # while the report beside it uses the judge's own grades.
+                grades = {c: float(g) for c, g in (getattr(q, "expected_grades", {}) or {}).items()}
+                negatives = set(getattr(q, "judged_negatives", None) or []) or None
                 m = compute_all(
                     retrieved=trace.retrieved,
                     expected_ids=set(getattr(q, "expected_chunks", []) or []),
@@ -704,6 +709,8 @@ async def _score_trial(
                     expected_doc_ids=set(
                         getattr(getattr(q, "ground_truth", None), "source_refs", []) or []
                     ),
+                    expected_relevance=grades or None,
+                    judged_nonrelevant=negatives,
                 )
                 scores.append(getattr(m, field))
                 latencies.append(float(trace.latency_ms or 0.0))

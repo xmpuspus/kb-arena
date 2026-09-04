@@ -54,6 +54,11 @@ def qrels_fingerprint(corpus: str) -> str | None:
         parsed = yaml.safe_load(path.read_text())
     except yaml.YAMLError:
         return _digest(path.read_bytes().hex())
+    # A version 2 file wraps the labels with a record of the candidate pool.
+    # The pool describes how the labels were made, so a change to
+    # --n-candidates alone must not read as different ground truth.
+    if isinstance(parsed, dict) and "labels" in parsed and "version" in parsed:
+        return _digest(parsed["labels"])
     return _digest(parsed)
 
 
