@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import random
 import time
 from dataclasses import dataclass, field
@@ -39,20 +40,84 @@ class Match:
     timestamp: float = 0.0
     sources_a: list[str] = field(default_factory=list)
     sources_b: list[str] = field(default_factory=list)
+    # The scope a vote counts in. A rating on one corpus under one rubric
+    # says nothing about another corpus, so ratings never cross a scope.
+    corpus: str = ""
+    rubric: str = "default"
+    # Who voted: "human" from the arena page, or a named reviewer. A rating
+    # built from one source of votes is labeled with it.
+    voter: str = ""
+
+
+def scope_key(corpus: str, rubric: str = "default") -> str:
+    return f"{corpus or 'all'}|{rubric or 'default'}"
+
+
+def _scope_table(raw) -> dict:
+    """The scoped ratings from a state file, or an empty table.
+
+    A JSON array reads as a Python list, and a list has no `.items()`. That
+    error escaped the loader and took every arena route to 503.
+    """
+    if not isinstance(raw, dict):
+        if raw:
+            log.warning("Dropping arena scope table of type %s", type(raw).__name__)
+        return {}
+    return {k: v for k, v in raw.items() if isinstance(k, str) and isinstance(v, dict)}
+
+
+def _vote_count(raw) -> int:
+    """A vote total from a state file, or 0 when the file holds something else.
+
+    A JSON true reads as a Python bool and adds like a 1, so a corrupt file
+    could otherwise report a vote nobody cast.
+    """
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        log.warning("Dropping non-integer arena vote total: %r", raw)
+        return 0
+    return max(0, raw)
+
+
+def _numeric_ratings(raw) -> dict[str, float]:
+    """Ratings from a state file, with anything that is not a real number dropped.
+
+    A JSON true reads as a Python bool, and round() accepts it, so a corrupt
+    file could publish an ELO of 1.0 instead of being refused.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, float] = {}
+    for name, value in raw.items():
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            log.warning("Dropping non-numeric arena rating for %s: %r", name, value)
+            continue
+        if not math.isfinite(float(value)):
+            log.warning("Dropping non-finite arena rating for %s: %r", name, value)
+            continue
+        out[str(name)] = float(value)
+    return out
 
 
 @dataclass
 class ArenaState:
     """Persistent arena state with ELO ratings and match history."""
 
-    elo: dict[str, float] = field(default_factory=dict)
+    elo: dict[str, float] = field(default_factory=dict)  # legacy global view, kept for old readers
     matches: list[Match] = field(default_factory=list)
     total_votes: int = 0
+    # Ratings per scope: scope_key -> strategy -> ELO. The legacy global
+    # ratings load into the "all|default" scope, so an old state file keeps
+    # its numbers under the scope it was in fact built from.
+    elo_by_scope: dict[str, dict[str, float]] = field(default_factory=dict)
+
+    def ratings(self, corpus: str = "", rubric: str = "default") -> dict[str, float]:
+        return self.elo_by_scope.setdefault(scope_key(corpus, rubric), {})
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "elo": self.elo,
+            "elo_by_scope": self.elo_by_scope,
             "total_votes": self.total_votes,
             "matches": [
                 {
@@ -68,6 +133,9 @@ class ArenaState:
                     "cost_b": m.cost_b,
                     "winner": m.winner,
                     "timestamp": m.timestamp,
+                    "corpus": m.corpus,
+                    "rubric": m.rubric,
+                    "voter": m.voter,
                 }
                 for m in self.matches[-200:]  # keep last 200
             ],
@@ -82,8 +150,17 @@ class ArenaState:
             data = json.loads(path.read_text())
             state = cls(
                 elo=data.get("elo", {}),
-                total_votes=data.get("total_votes", 0),
+                total_votes=_vote_count(data.get("total_votes", 0)),
+                elo_by_scope=_scope_table(data.get("elo_by_scope")),
             )
+            state.elo = _numeric_ratings(state.elo)
+            state.elo_by_scope = {
+                key: _numeric_ratings(ratings) for key, ratings in state.elo_by_scope.items()
+            }
+            if scope_key("", "default") not in state.elo_by_scope and state.elo:
+                # An old file holds one global table. It was built from every
+                # corpus at once, so it keeps that scope, not a corpus's own.
+                state.elo_by_scope[scope_key("", "default")] = dict(state.elo)
             for m in data.get("matches", []):
                 state.matches.append(
                     Match(
@@ -99,11 +176,18 @@ class ArenaState:
                         cost_b=m.get("cost_b", 0),
                         winner=m.get("winner"),
                         timestamp=m.get("timestamp", 0),
+                        corpus=m.get("corpus", ""),
+                        rubric=m.get("rubric", "default"),
+                        # A match from before voters were recorded says so.
+                        voter=m.get("voter") or ("legacy" if m.get("winner") else ""),
                     )
                 )
             return state
-        except (json.JSONDecodeError, KeyError):
-            log.warning("Corrupt arena state, starting fresh")
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError, ValueError):
+            # A corrupt file must cost the ratings, never the service. An
+            # uncaught error here leaves `arena` as None and answers 503 on
+            # every arena route.
+            log.warning("Corrupt arena state, starting fresh", exc_info=True)
             return cls()
 
 
@@ -119,11 +203,15 @@ class ArenaEngine:
             if name not in self.state.elo:
                 self.state.elo[name] = INITIAL_ELO
 
-    async def create_match(self, question: str, corpus: str = "") -> Match:
+    async def create_match(self, question: str, corpus: str = "", rubric: str = "default") -> Match:
         """Pick two random strategies, query both, return a blind match."""
         names = list(self.strategies.keys())
         if len(names) < 2:
             raise ValueError("Need at least 2 strategies for arena mode")
+        # Every distinct rubric makes a rating table that the file keeps and
+        # every leaderboard lists. Without a cap a caller grows both without
+        # limit, one new name at a time.
+        self._check_scope_room(corpus, rubric)
         a_name, b_name = random.sample(names, 2)
         selected_corpus = corpus or "all"
 
@@ -156,12 +244,31 @@ class ArenaEngine:
             sources_a=result_a.sources,
             sources_b=result_b.sources,
             timestamp=time.time(),
+            corpus=corpus,
+            rubric=rubric or "default",
         )
         self.state.matches.append(match)
         return match
 
-    def vote(self, match_id: str, winner: str) -> dict:
-        """Record a vote and update ELO. winner: 'a', 'b', or 'tie'."""
+    def _check_scope_room(self, corpus: str, rubric: str) -> None:
+        """Refuse a scope the state file has no room for.
+
+        `ArenaState.ratings` creates the table with `setdefault`, and only
+        `_update_elo` calls it, so the table grows on the VOTE and not on the
+        match. A check in `create_match` alone lets a burst of matches on new
+        rubrics past, and every later vote then adds a table. Both paths call
+        this.
+        """
+        key = scope_key(corpus, rubric)
+        cap = settings.arena_max_scopes
+        if key not in self.state.elo_by_scope and len(self.state.elo_by_scope) >= cap:
+            raise ValueError(
+                f"The arena already holds {cap} rating scopes. Reuse one of them, "
+                f"or raise KB_ARENA_ARENA_MAX_SCOPES."
+            )
+
+    def vote(self, match_id: str, winner: str, voter: str = "human") -> dict:
+        """Record a vote and update the match's scope ratings. winner: 'a', 'b', or 'tie'."""
         if winner not in ("a", "b", "tie"):
             return {"error": f"Invalid winner: {winner}. Must be 'a', 'b', or 'tie'"}
 
@@ -171,7 +278,15 @@ class ArenaEngine:
         if match.winner is not None:
             return {"error": "Match already voted on"}
 
+        try:
+            self._check_scope_room(match.corpus, match.rubric)
+        except ValueError as exc:
+            # The scope becomes persistent here, not at match time, so this is
+            # the check that actually bounds the state file.
+            return {"error": str(exc)}
+
         match.winner = winner
+        match.voter = voter or "human"
         self.state.total_votes += 1
         self._update_elo(match)
         self.state.save(self._state_path)
@@ -181,14 +296,17 @@ class ArenaEngine:
             "strategy_a": match.strategy_a,
             "strategy_b": match.strategy_b,
             "winner": winner,
-            "elo": dict(self.state.elo),
+            "corpus": match.corpus or "all",
+            "rubric": match.rubric,
+            "elo": dict(self.state.ratings(match.corpus, match.rubric)),
             "total_votes": self.state.total_votes,
         }
 
     def _update_elo(self, match: Match) -> None:
-        """Standard ELO rating update."""
-        ea = self.state.elo.get(match.strategy_a, INITIAL_ELO)
-        eb = self.state.elo.get(match.strategy_b, INITIAL_ELO)
+        """Standard ELO rating update, inside the match's own scope."""
+        ratings = self.state.ratings(match.corpus, match.rubric)
+        ea = ratings.get(match.strategy_a, INITIAL_ELO)
+        eb = ratings.get(match.strategy_b, INITIAL_ELO)
         expected_a = 1.0 / (1.0 + 10.0 ** ((eb - ea) / 400.0))
 
         if match.winner == "a":
@@ -198,16 +316,28 @@ class ArenaEngine:
         else:  # tie
             score_a = 0.5
 
-        self.state.elo[match.strategy_a] = ea + K_FACTOR * (score_a - expected_a)
-        self.state.elo[match.strategy_b] = eb + K_FACTOR * ((1 - score_a) - (1 - expected_a))
+        ratings[match.strategy_a] = ea + K_FACTOR * (score_a - expected_a)
+        ratings[match.strategy_b] = eb + K_FACTOR * ((1 - score_a) - (1 - expected_a))
+        # The legacy global table mirrors the global scope only, for readers
+        # of the old field. A corpus vote never touches it.
+        if scope_key(match.corpus, match.rubric) == scope_key("", "default"):
+            self.state.elo[match.strategy_a] = ratings[match.strategy_a]
+            self.state.elo[match.strategy_b] = ratings[match.strategy_b]
 
-    def leaderboard(self) -> list[dict]:
-        """Return strategies sorted by ELO rating."""
+    def leaderboard(self, corpus: str = "", rubric: str = "default") -> list[dict]:
+        """Strategies sorted by ELO inside one scope. Votes from other scopes never count."""
+        key = scope_key(corpus, rubric)
+        ratings = self.state.elo_by_scope.get(key, {})
+        scoped = [m for m in self.state.matches if scope_key(m.corpus, m.rubric) == key]
+        # Every strategy the engine knows shows on the board, at the initial
+        # rating when the scope holds no vote for it yet.
+        names = list(self.strategies) + [n for n in ratings if n not in self.strategies]
         board = []
-        for name, elo in self.state.elo.items():
+        for name in names:
+            elo = ratings.get(name, INITIAL_ELO)
             wins = sum(
                 1
-                for m in self.state.matches
+                for m in scoped
                 if m.winner
                 and (
                     (m.strategy_a == name and m.winner == "a")
@@ -216,7 +346,7 @@ class ArenaEngine:
             )
             losses = sum(
                 1
-                for m in self.state.matches
+                for m in scoped
                 if m.winner
                 and (
                     (m.strategy_a == name and m.winner == "b")
@@ -225,12 +355,21 @@ class ArenaEngine:
             )
             ties = sum(
                 1
-                for m in self.state.matches
+                for m in scoped
                 if m.winner == "tie" and (m.strategy_a == name or m.strategy_b == name)
+            )
+            voters = sorted(
+                {
+                    m.voter or "legacy"
+                    for m in scoped
+                    if m.winner and name in (m.strategy_a, m.strategy_b)
+                }
             )
             board.append(
                 {
                     "strategy": name,
+                    "scope": {"corpus": corpus or "all", "rubric": rubric or "default"},
+                    "voters": voters,
                     "elo": round(elo, 1),
                     "wins": wins,
                     "losses": losses,
@@ -255,7 +394,12 @@ class ArenaEngine:
             "cost_a": match.cost_a,
             "cost_b": match.cost_b,
             "timestamp": match.timestamp,
-            "elo_snapshot": {k: round(v, 1) for k, v in self.state.elo.items()},
+            "corpus": match.corpus or "all",
+            "rubric": match.rubric,
+            "voter": match.voter,
+            "elo_snapshot": {
+                k: round(v, 1) for k, v in self.state.ratings(match.corpus, match.rubric).items()
+            },
         }
         append_jsonl(jsonl_path, record)
 
