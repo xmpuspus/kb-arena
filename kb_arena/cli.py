@@ -1634,19 +1634,54 @@ def quantum_diagnostics(
 def label_chunks(
     corpus: str = typer.Option(..., help="Corpus to label"),
     force: bool = typer.Option(False, "--force", help="Re-label even if labels exist"),
-    n_candidates: int = typer.Option(20, "--n-candidates", help="BM25 candidates per question"),
+    n_candidates: int = typer.Option(
+        20,
+        "--n-candidates",
+        min=1,
+        max=200,
+        help="Candidates per question, per retriever in the pool. Every candidate "
+        "goes in the judge prompt, so this drives the cost of each call.",
+    ),
+    allow_bm25_only: bool = typer.Option(
+        False,
+        "--allow-bm25-only",
+        help="Write labels even when only BM25 answered. The gold set then carries "
+        "BM25's bias and every strategy is scored against it.",
+    ),
 ):
-    """Generate datasets/{corpus}/questions/expected_chunks.yaml via BM25 + Haiku judge.
+    """Generate datasets/{corpus}/questions/expected_chunks.yaml with a graded judge.
 
-    Cost-capped by KB_ARENA_COST_CAP_USD. Idempotent: skips already-labeled
-    questions unless --force.
+    The candidate pool is BM25 plus every retrieval-only index that answers a
+    probe, plus a seeded random sample. The output's pool record names the
+    retrievers that answered. The judge is the model KB_ARENA_GENERATE_MODEL names.
+    The prompt asks it to grade every candidate 2, 1 or 0, and a partial answer
+    is accepted, so a chunk missing from the labels means unjudged, not rejected.
+
+    Cost-capped by KB_ARENA_BENCHMARK_COST_CAP_USD. Idempotent: skips
+    already-labeled questions unless --force.
     """
     import asyncio as _asyncio
 
     from kb_arena.benchmark.expected_chunks import label_corpus
 
-    _preflight(needs_llm=True, needs_embeddings=True)
-    result = _asyncio.run(label_corpus(corpus, force=force, n_candidates=n_candidates))
+    # A BM25-only run reaches no embedding provider, and the documented reason
+    # to ask for one is that the provider is down. Demanding it here would make
+    # the flag unusable in the case it exists for.
+    _preflight(needs_llm=True, needs_embeddings=not allow_bm25_only)
+    from kb_arena.benchmark.expected_chunks import NarrowPoolError, PoolChangedError
+
+    try:
+        result = _asyncio.run(
+            label_corpus(
+                corpus,
+                force=force,
+                n_candidates=n_candidates,
+                allow_bm25_only=allow_bm25_only,
+            )
+        )
+    except (NarrowPoolError, PoolChangedError) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from None
     note = " (halted by cost cap)" if result.get("halted_by_cost_cap") else ""
     unparsed = result.get("unparsed", 0)
     colour = "yellow" if unparsed else "green"

@@ -27,8 +27,13 @@ pip install kb-arena
 kb-arena demo
 ```
 
-Open the URL printed by the command. The dashboard exposes the benchmark table, per-tier results,
-source drill-down, run comparisons, and the Retriever Lab.
+Open the URL printed by the command. The demo ships 8 benchmark result files for the
+`aws-compute` corpus, one per strategy, so the benchmark table, the per-tier breakdown, the
+source drill-down and the strategy comparison all have real numbers behind them.
+
+The Retriever Lab and the spread across repeated runs are empty until you produce them. They
+read run directories, and the package bundles none. Run `kb-arena retriever-lab` and
+`kb-arena benchmark --runs 3` against a corpus to fill them.
 
 ## What KB Arena helps decide
 

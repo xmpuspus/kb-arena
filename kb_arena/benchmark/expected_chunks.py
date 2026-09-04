@@ -12,7 +12,7 @@ chunk. Every stored chunk id is canonical, with no strategy prefix, so a label
 is reachable for every strategy.
 
 Idempotent: skips questions that already have labels unless force=True.
-Cost-capped: stops once cumulative cost reaches KB_ARENA_COST_CAP_USD.
+Cost-capped: stops once cumulative cost reaches KB_ARENA_BENCHMARK_COST_CAP_USD.
 """
 
 from __future__ import annotations
@@ -257,8 +257,20 @@ async def label_one_question(
     return grades, cost
 
 
+class PoolChangedError(RuntimeError):
+    """The stored labels were judged with a pool this run does not match."""
+
+
+class NarrowPoolError(RuntimeError):
+    """No retriever but BM25 answered, so the labels would be BM25-shaped."""
+
+
 async def label_corpus(
-    corpus: str, force: bool = False, n_candidates: int = 20, n_random: int = 10
+    corpus: str,
+    force: bool = False,
+    n_candidates: int = 20,
+    n_random: int = 10,
+    allow_bm25_only: bool = False,
 ) -> dict:
     """Label every question in a corpus. Idempotent unless force=True. Cost-capped.
 
@@ -305,18 +317,35 @@ async def label_corpus(
                 await inst.query("kb_arena_index_probe", top_k=1, corpus=corpus)
                 extra_retrievers.append(inst)
             except Exception as exc:  # noqa: BLE001 — best-effort
-                log.info(
-                    "Skipping %s for ground-truth pool (index not ready: %s)",
+                # The probe cannot tell a missing index from an outage of the
+                # embedding or LLM provider, so this says both readings out
+                # loud. A built index that drops out here narrows the pool,
+                # and the pool record below names only the ones that answered.
+                log.warning(
+                    "Skipping %s for the ground-truth pool. Either its index is "
+                    "not built, or the provider it needs did not answer: %s. The "
+                    "labels will record the retrievers that did answer.",
                     cls.__name__,
                     exc,
                 )
     except ImportError:
         pass
 
+    if not extra_retrievers and not allow_bm25_only:
+        # A provider outage during the probe looks exactly like an index that
+        # was never built, and both produce a gold set drawn only from what
+        # BM25 ranks high. That file then scores every strategy for the rest of
+        # its life. Writing it must be a decision, not a default.
+        raise NarrowPoolError(
+            f"Only BM25 answered the index probe for {corpus!r}, so the labels would "
+            "carry BM25's bias and every strategy would be scored against it. "
+            "Run `kb-arena build-vectors` and label again, or pass --allow-bm25-only "
+            "to write a BM25-shaped gold set on purpose."
+        )
     if not extra_retrievers:
         log.warning(
-            "Ground-truth pool is BM25-only — vector indexes not built yet. "
-            "For unbiased labels run `kb-arena build-vectors` first, then re-label."
+            "Ground-truth pool is BM25-only by request. Every strategy will be "
+            "scored against a gold set drawn from what BM25 ranks high."
         )
 
     out_path = (
@@ -329,21 +358,45 @@ async def label_corpus(
     out_path = out_dir / "expected_chunks.yaml"
 
     existing: dict[str, dict[str, int]] = {}
+    earlier_pool: dict | None = None
     if out_path.exists():
         try:
             loaded = yaml.safe_load(out_path.read_text())
         except yaml.YAMLError as exc:
             raise ValueError(f"Invalid expected chunks YAML: {out_path}") from exc
         existing, _ = load_qrels(loaded, out_path)
+        if isinstance(loaded, dict):
+            stored = loaded.get("pool")
+            earlier_pool = stored if isinstance(stored, dict) else None
 
     cost_cap = settings.benchmark_cost_cap_usd
     total_cost = 0.0
     out_dict: dict[str, dict[str, int]] = dict(existing)
     pool_record = {
+        # The retrievers that answered, not the ones the run hoped for.
         "retrievers": ["bm25"] + [r.name for r in extra_retrievers],
+        "bm25_only_by_request": bool(allow_bm25_only and not extra_retrievers),
         "n_candidates": n_candidates,
         "n_random": n_random,
     }
+    # One file, one pool. The file carries a single pool record, so keeping
+    # labels judged under an earlier pool would put this run's retrievers on
+    # somebody else's judgments. That is the misattribution this record exists
+    # to prevent, so the run stops and names the difference.
+    if existing and earlier_pool is not None and not force:
+        changed = sorted(
+            k
+            for k in set(earlier_pool) | set(pool_record)
+            if earlier_pool.get(k) != pool_record.get(k)
+        )
+        if changed:
+            raise PoolChangedError(
+                f"{out_path} holds labels judged with a different pool "
+                f"({', '.join(changed)} differ). The file carries one pool record, so "
+                "adding to it would describe old labels with this run's pool. Re-label "
+                "the corpus with --force, or restore the earlier settings."
+            )
+
     skipped = 0
     labeled = 0
     unparsed = 0

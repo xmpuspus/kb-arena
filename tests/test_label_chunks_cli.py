@@ -133,7 +133,9 @@ async def test_label_corpus_checkpoints_success_before_later_failure(tmp_path, m
     )
 
     with pytest.raises(ConnectionError, match="judge offline"):
-        await expected_chunks.label_corpus("alpha")
+        # This test is about checkpointing, not pool composition. Only BM25
+        # answers here, which `label_corpus` refuses by default.
+        await expected_chunks.label_corpus("alpha", allow_bm25_only=True)
 
     saved = yaml.safe_load((tmp_path / "alpha" / "questions" / "expected_chunks.yaml").read_text())
     assert saved["version"] == 2

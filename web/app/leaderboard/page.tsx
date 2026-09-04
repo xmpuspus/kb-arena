@@ -9,6 +9,8 @@ type LeaderRow = {
   // row. The key names the experiment, and mixed_with lists the other keys
   // seen for the same corpus and strategy.
   compatibility_key: string;
+  // Which build produced these runs. The API groups by it, so the page shows it.
+  build?: string;
   manifest: {
     question_split?: string | null;
     judge_model?: string | null;
@@ -63,9 +65,10 @@ export default function LeaderboardPage() {
           KB Arena Leaderboard
         </h1>
         <p className="text-sm text-gray-600 mt-2 max-w-2xl">
-          Aggregated benchmark scores across every run in this deployment. Higher
-          accuracy + Recall@5 + NDCG@5 are better; lower cost + latency are better.
-          To submit a run, open a PR with your <code>results/run_*</code> JSON.
+          Runs stored in this deployment, grouped by corpus, strategy, experiment key
+          and build. Higher accuracy, Recall@5 and NDCG@5 are better. Lower cost and
+          latency are better. Two rows with a different key or a different build
+          measured different things, so read them side by side, not as one ranking.
         </p>
       </header>
 
@@ -135,6 +138,16 @@ export default function LeaderboardPage() {
                     >
                       {row.compatibility_key === "legacy" ? "legacy" : row.compatibility_key.slice(0, 6)}
                     </span>
+                    {row.build && row.build !== "unrecorded" && (
+                      <div style={{ color: "var(--muted)" }} title="The build that produced these runs">
+                        {row.build.length > 14 ? `${row.build.slice(0, 14)}...` : row.build}
+                      </div>
+                    )}
+                    {row.build === "unrecorded" && (
+                      <div style={{ color: "var(--muted)" }} title="These runs recorded no version or commit">
+                        build unrecorded
+                      </div>
+                    )}
                     {row.mixed_with?.length > 0 && (
                       <div style={{ color: "var(--muted)" }}>
                         {row.mixed_with.length} other experiment{row.mixed_with.length === 1 ? "" : "s"} for this pair, not comparable
