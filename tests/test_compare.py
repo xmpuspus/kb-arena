@@ -67,7 +67,7 @@ def test_only_shared_questions_pair_and_the_rest_are_counted():
     assert (result["unpaired_a"], result["unpaired_b"]) == (1, 1)
 
 
-def _write(results, run_id, corpus, strategy, scores: dict[str, float], manifest=None):
+def _write(results, run_id, corpus, strategy, scores: dict[str, float], manifest=None, errors=()):
     run_dir = results / f"run_{run_id}"
     run_dir.mkdir(parents=True, exist_ok=True)
     bench = BenchmarkResult(
@@ -80,7 +80,8 @@ def _write(results, run_id, corpus, strategy, scores: dict[str, float], manifest
                 strategy=strategy,
                 answer="a",
                 score=Score(accuracy=v),
-                latency_ms=10.0,
+                latency_ms=0.0 if q in errors else 10.0,
+                is_error=q in errors,
             )
             for q, v in scores.items()
         ],
@@ -114,6 +115,55 @@ def test_compare_result_files_on_the_same_key_is_clean(tmp_path):
     assert result["meta"]["comparable"] is True
     assert result["metric"] == "latency_ms"
     assert result["ties"] == 2
+
+
+def test_one_side_without_a_manifest_is_not_a_clean_comparison(tmp_path):
+    _write(tmp_path, "r1", "c", "bm25", {"q1": 0.2}, {"compatibility_key": "k1"})
+    _write(tmp_path, "r1", "c", "naive", {"q1": 0.6})
+
+    result = cmp.compare_result_files(tmp_path / "c_bm25.json", tmp_path / "c_naive.json")
+
+    assert result["meta"]["comparable"] is False
+    assert any("b carries a manifest" in r or "unchecked" in r for r in result["meta"]["reasons"])
+
+
+def test_an_error_record_leaves_the_pairing_instead_of_winning_on_latency(tmp_path):
+    _write(tmp_path, "r1", "c", "bm25", {"q1": 0.5, "q2": 0.5}, {"compatibility_key": "k"})
+    _write(
+        tmp_path,
+        "r1",
+        "c",
+        "naive",
+        {"q1": 0.0, "q2": 0.5},
+        {"compatibility_key": "k"},
+        errors=("q1",),
+    )
+
+    result = cmp.compare_result_files(
+        tmp_path / "c_bm25.json", tmp_path / "c_naive.json", metric="latency_ms"
+    )
+
+    assert result["n_paired"] == 1
+    assert (result["wins"], result["ties"], result["losses"]) == (0, 1, 0)
+    assert result["meta"]["b"]["error_records"] == 1
+    assert result["meta"]["comparable"] is False
+    assert any("error records in b" in r for r in result["meta"]["reasons"])
+
+
+def test_lab_rows_without_a_question_id_never_pair(tmp_path):
+    rows = [
+        {"strategy": "bm25", "ndcg_at_k": 0.5},
+        {"strategy": "naive", "ndcg_at_k": 0.9},
+        {"strategy": "bm25", "question_id": "q1", "ndcg_at_k": 0.5},
+        {"strategy": "naive", "question_id": "q1", "ndcg_at_k": 0.9},
+    ]
+    path = tmp_path / "retriever_lab.json"
+    path.write_text(json.dumps({"questions": rows}))
+
+    result = cmp.compare_lab(path, "bm25", "naive")
+
+    assert result["n_paired"] == 1
+    assert result["per_question"][0]["question_id"] == "q1"
 
 
 def test_resolve_result_path_rejects_traversal(tmp_path):

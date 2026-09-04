@@ -91,11 +91,16 @@ def benchmark_scores(path: Path, metric: str) -> tuple[dict[str, float], dict]:
     for record in data["records"]:
         if not isinstance(record, dict) or not isinstance(record.get("question_id"), str):
             continue
+        # An error record holds a zero score and a zero latency that no
+        # strategy earned. It leaves the pairing and gets counted instead,
+        # so an outage on one side never reads as a win or a loss.
+        if record.get("is_error") is True:
+            errors += 1
+            continue
         source = record if metric in RECORD_METRICS else record.get("score") or {}
         value = source.get(metric)
         if isinstance(value, bool) or not isinstance(value, int | float):
             continue
-        errors += 1 if record.get("is_error") else 0
         scores[record["question_id"]] = float(value)
     manifest = data.get("manifest") if isinstance(data.get("manifest"), dict) else {}
     meta = {
@@ -128,6 +133,16 @@ def compare_result_files(path_a: Path, path_b: Path, metric: str = "accuracy") -
     key_a, key_b = meta_a["compatibility_key"], meta_b["compatibility_key"]
     if key_a and key_b and key_a != key_b:
         reasons.append("different compatibility key: question set, judge, or top_k differ")
+    elif not key_a or not key_b:
+        missing = "neither file" if not key_a and not key_b else ("a" if not key_a else "b")
+        reasons.append(
+            f"{missing} carries a manifest, so the question set, judge, and top_k are unchecked"
+        )
+    for side, meta in (("a", meta_a), ("b", meta_b)):
+        if meta["error_records"]:
+            reasons.append(
+                f"{meta['error_records']} error records in {side} left out of the pairing"
+            )
     if result["unpaired_a"] or result["unpaired_b"]:
         reasons.append(
             f"{result['unpaired_a']} questions only in a, {result['unpaired_b']} only in b, "
@@ -147,10 +162,13 @@ def lab_scores(path: Path, strategy: str, metric: str) -> dict[str, float]:
     for row in rows:
         if not isinstance(row, dict) or row.get("strategy") != strategy:
             continue
+        question_id = row.get("question_id")
+        if not isinstance(question_id, str) or not question_id:
+            continue
         value = row.get(metric)
         if isinstance(value, bool) or not isinstance(value, int | float):
             continue
-        scores[str(row.get("question_id"))] = float(value)
+        scores[question_id] = float(value)
     return scores
 
 
