@@ -25,6 +25,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from kb_arena import __version__
 from kb_arena.arena.engine import ArenaEngine
+from kb_arena.benchmark.compare import compare_result_files, resolve_result_path
 from kb_arena.benchmark.manifest import compatibility_key, manifest_summary
 from kb_arena.chatbot.auth import require_auth
 from kb_arena.chatbot.session import SessionStore
@@ -1044,6 +1045,25 @@ async def arena_leaderboard(request: Request, corpus: str = "", rubric: str = "d
         "scopes": sorted(arena.state.elo_by_scope),
         "total_votes": sum(row["matches"] for row in board),
     }
+
+
+@app.get("/api/compare")
+async def compare_strategies(
+    corpus: str, a: str, b: str, run_a: str = "", run_b: str = "", metric: str = "accuracy"
+):
+    """Pair two strategies question by question. Delta is b minus a."""
+    results_dir = _Path(settings.results_path)
+    try:
+        path_a = resolve_result_path(results_dir, corpus, a, run_a or None)
+        path_b = resolve_result_path(results_dir, corpus, b, run_b or None)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not path_a.exists() or not path_b.exists():
+        raise HTTPException(status_code=404, detail="result not found")
+    try:
+        return compare_result_files(path_a, path_b, metric=metric)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=400, detail=f"cannot compare: {exc}") from exc
 
 
 @app.get("/api/leaderboard")
