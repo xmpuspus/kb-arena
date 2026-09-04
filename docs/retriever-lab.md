@@ -95,8 +95,23 @@ What this one run shows, and what it does not:
 
 Read every line below as an observation about run `855aac4e` on a three-document
 corpus, not as a finding about the strategies. One run has no spread, so a gap of a
-few points is not distinguishable from noise. Use `kb-arena benchmark --runs 3` and
-`kb-arena variance` before you treat any gap here as real.
+few points is not distinguishable from noise.
+
+There is no one command that reports the spread of these metrics yet.
+`kb-arena variance` reads the per-strategy files that `kb-arena benchmark` writes,
+and the Retriever Lab writes a single `retriever_lab.json` per run instead, so the
+two do not meet. Checked on 2026-09-04: `kb-arena variance --corpus aws-compute
+--metric mean_recall_at_k` after a lab run answers "No run carries the metric".
+
+Until they do meet, repeat the lab run and read the numbers side by side:
+
+```bash
+kb-arena retriever-lab --corpus aws-compute   # each run gets its own id
+# then compare results/run_<id>/retriever_lab.json across the runs
+```
+
+Two runs give a range a reader can misread as a bound. Three is the smallest number
+that says anything about spread.
 
 1. **Contextual Vector and Naive Vector are not separated by this run.** Their Recall
    and Hit are within 0.3 points and their MRR within 0.02. That is a difference this
@@ -108,9 +123,11 @@ few points is not distinguishable from noise. Use `kb-arena benchmark --runs 3` 
 3. **BM25 is 7.7 points below the embedding strategies on Recall@5 in this run**, and
    0.06 below on MRR. Whether that ordering holds on another corpus is an open
    question this run does not answer.
-4. **Hybrid's 8.0% is an outage, not a result.** Neo4j was not running, so the graph
-   leg returned empty traces and the fusion carried them. This row measures the
-   deployment, not the strategy, and it must not be read as a comparison.
+4. **Hybrid's 8.0% is not a measurement of hybrid retrieval.** Hybrid fuses a vector
+   leg and a graph leg, and the graph leg needs Neo4j. This run's stored result does
+   not record whether Neo4j answered, so the number cannot be attributed either to
+   the strategy or to the deployment. Treat the row as unusable and re-run it with
+   `kb-arena retriever-lab --strategies hybrid` against a Neo4j you can see.
 5. **QnA Pairs and Knowledge Graph score 0.0% because they are not being measured.**
    Both emit ids in their own namespace, Q and A pairs and entity names, and the
    chunk-level labels of this corpus contain neither. A zero here means unmeasured,

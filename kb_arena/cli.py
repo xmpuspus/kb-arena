@@ -1634,9 +1634,15 @@ def quantum_diagnostics(
 def label_chunks(
     corpus: str = typer.Option(..., help="Corpus to label"),
     force: bool = typer.Option(False, "--force", help="Re-label even if labels exist"),
-    n_candidates: int = typer.Option(20, "--n-candidates", help="BM25 candidates per question"),
+    n_candidates: int = typer.Option(
+        20, "--n-candidates", help="Candidates per question, per retriever in the pool"
+    ),
 ):
-    """Generate datasets/{corpus}/questions/expected_chunks.yaml via BM25 + Haiku judge.
+    """Generate datasets/{corpus}/questions/expected_chunks.yaml with a graded judge.
+
+    The candidate pool is BM25 plus every built retrieval-only index, plus a
+    seeded random sample. The judge is the model KB_ARENA_GENERATE_MODEL names,
+    and it grades every candidate 2, 1 or 0.
 
     Cost-capped by KB_ARENA_COST_CAP_USD. Idempotent: skips already-labeled
     questions unless --force.

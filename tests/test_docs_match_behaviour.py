@@ -77,6 +77,7 @@ def test_the_labeling_doc_describes_the_file_the_writer_produces():
         "Contextual Vector wins on ranking, not coverage.",
         "RAPTOR's L0 layer is doing the work.",
         "Hybrid drops to 8% because Neo4j wasn't running.",
+        "Neo4j was not running, so the graph",
     ],
 )
 def test_the_lab_doc_makes_no_causal_claim_from_one_run(claim):
@@ -85,12 +86,20 @@ def test_the_lab_doc_makes_no_causal_claim_from_one_run(claim):
     assert claim not in doc, "a single incomplete run cannot support a causal claim"
 
 
+def _flat(text: str) -> str:
+    """One line, single-spaced, so a wrapped sentence still matches."""
+    return " ".join(text.split())
+
+
 def test_the_lab_doc_says_what_the_one_run_cannot_show():
     """A reader must not take the table as a benchmark result."""
-    doc = (ROOT / "docs" / "retriever-lab.md").read_text()
+    doc = _flat((ROOT / "docs" / "retriever-lab.md").read_text())
     assert "One run has no spread" in doc
-    assert "kb-arena variance" in doc, "the doc must name the command that measures spread"
-    assert "an outage, not a result" in doc, "the hybrid row measures the deployment"
+    # The doc must not send a reader to a command that cannot read lab metrics.
+    assert "There is no one command that reports the spread of these metrics yet" in doc
+    assert "--metric mean_recall_at_k` after a lab run answers" in doc
+    # The run does not record whether Neo4j answered, so neither reading is supported.
+    assert "does not record whether Neo4j answered" in doc
     assert "A zero here means unmeasured" in doc
 
 
@@ -101,3 +110,14 @@ def test_the_leaderboard_asks_for_no_submission_it_cannot_process():
     assert "open a PR" not in page
     # It says instead what the rows mean, which is the thing a reader needs.
     assert "measured different things" in page.replace("\n", " ").replace("  ", " ")
+
+
+def test_the_cli_help_says_what_label_chunks_really_does():
+    """The help repeated the claim the doc stopped making."""
+    from kb_arena import cli
+
+    help_text = inspect.getdoc(cli.label_chunks) or ""
+    assert "Haiku judge" not in help_text
+    assert "BM25 + Haiku" not in help_text
+    assert "KB_ARENA_GENERATE_MODEL" in help_text
+    assert "seeded random sample" in help_text
