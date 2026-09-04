@@ -86,6 +86,13 @@ class Score(BaseModel):
     ragas_context_recall: float = Field(ge=0.0, le=1.0, default=0.0)
     ragas_answer_relevancy: float = Field(ge=0.0, le=1.0, default=0.0)
     evaluation_cost_usd: float = Field(ge=0.0, default=0.0)
+    # Judge provenance: who graded, with which prompt, and what it said.
+    # Empty when no LLM judge ran (structural fail or reference-free mode).
+    judge_provider: str = ""
+    judge_model: str = ""
+    judge_prompt_hash: str = ""
+    judge_raw: str = ""
+    judge_rationale: str = ""
 
 
 class AnswerRecord(BaseModel):
@@ -169,6 +176,11 @@ class BenchmarkResult(BaseModel):
     run_id: str = ""
     timestamp: str = ""
     config_snapshot: dict = Field(default_factory=dict)
+    # Version 1 files carry no manifest. Version 2 files carry the experiment
+    # manifest below, and the leaderboard groups runs by its compatibility key.
+    schema_version: int = 1
+    judge_provider: str = ""
+    manifest: dict = Field(default_factory=dict)
     total_questions: int = 0
     records: list[AnswerRecord] = Field(default_factory=list)
     stopped_by_cost_cap: bool = False

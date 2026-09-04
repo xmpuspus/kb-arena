@@ -19,6 +19,12 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeEl
 
 from kb_arena.benchmark.evaluator import evaluate
 from kb_arena.benchmark.ir_metrics import compute_all as compute_ir_metrics
+from kb_arena.benchmark.manifest import (
+    SCHEMA_VERSION,
+    build_manifest,
+    generation_identity,
+    judge_provider_of,
+)
 from kb_arena.benchmark.questions import discover_corpora, load_questions
 from kb_arena.llm.client import LLMClient
 from kb_arena.models.benchmark import (
@@ -420,6 +426,31 @@ class CostCapExceededError(Exception):
     """Raised when cumulative benchmark cost exceeds the configured cap."""
 
 
+def _config_snapshot(
+    llm, *, top_k: int, split: str, reference_free: bool, cost_cap: float, parallel: bool
+) -> dict:
+    """What a run declares about itself. Names the judge as well as the generator."""
+    judge = getattr(llm, "judge_identity", None) or {"provider": "", "model": ""}
+    return {
+        "llm_provider": settings.llm_provider,
+        # The model the configured provider answers with, not the Anthropic
+        # default whatever the provider.
+        "generate_model": generation_identity()["model"],
+        "judge_provider": judge["provider"],
+        "judge_model": judge["model"],
+        "max_concurrent": settings.benchmark_max_concurrent,
+        "query_timeout_s": settings.benchmark_query_timeout_s,
+        "top_k": top_k,
+        "question_split": split or "all",
+        "reference_free": reference_free,
+        "ragas_enabled": settings.benchmark_enable_ragas,
+        "cost_cap_usd": cost_cap,
+        "execution_mode": (
+            "cost_capped_serial" if cost_cap > 0 else "parallel" if parallel else "serial"
+        ),
+    }
+
+
 async def run_benchmark(
     corpus: str = "all",
     strategy: str = "all",
@@ -443,22 +474,15 @@ async def run_benchmark(
     cost_cap = settings.benchmark_cost_cap_usd
     if not math.isfinite(cost_cap) or cost_cap < 0:
         raise BenchmarkExecutionError("Benchmark cost cap must be finite and non-negative")
-    config_snap = {
-        "llm_provider": settings.llm_provider,
-        "generate_model": settings.generate_model,
-        "max_concurrent": settings.benchmark_max_concurrent,
-        "query_timeout_s": settings.benchmark_query_timeout_s,
-        "top_k": top_k,
-        "question_split": split or "all",
-        "reference_free": reference_free,
-        "ragas_enabled": settings.benchmark_enable_ragas,
-        "cost_cap_usd": cost_cap,
-        "execution_mode": (
-            "cost_capped_serial" if cost_cap > 0 else "parallel" if parallel else "serial"
-        ),
-    }
-
     llm = LLMClient()
+    config_snap = _config_snapshot(
+        llm,
+        top_k=top_k,
+        split=split,
+        reference_free=reference_free,
+        cost_cap=cost_cap,
+        parallel=parallel,
+    )
     semaphore = asyncio.Semaphore(settings.benchmark_max_concurrent)
     results_dir = Path(settings.results_path)
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -499,6 +523,9 @@ async def run_benchmark(
         selected_questions = True
 
         questions_map = {q.id: (q.type, q.tier) for q in questions}
+        manifest = build_manifest(
+            corp, questions, top_k=top_k, split=split, reference_free=reference_free
+        )
 
         def _write_result(bench: BenchmarkResult) -> None:
             # Latest (backward compat)
@@ -531,6 +558,9 @@ async def run_benchmark(
                         run_id=run_id,
                         timestamp=timestamp,
                         config_snapshot=config_snap,
+                        schema_version=SCHEMA_VERSION,
+                        judge_provider=judge_provider_of(manifest),
+                        manifest=manifest,
                     )
                     coros = (
                         _run_one(
@@ -607,6 +637,9 @@ async def run_benchmark(
                         run_id=run_id,
                         timestamp=timestamp,
                         config_snapshot=config_snap,
+                        schema_version=SCHEMA_VERSION,
+                        judge_provider=judge_provider_of(manifest),
+                        manifest=manifest,
                     )
 
                     async def _run_question(q):
