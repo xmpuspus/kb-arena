@@ -22,12 +22,27 @@ from kb_arena.settings import settings
 
 log = logging.getLogger(__name__)
 _SCHEMA = "CREATE TABLE IF NOT EXISTS vectors (key TEXT PRIMARY KEY, vector TEXT NOT NULL)"
+# One lock per cache file for the whole process. Four strategies build at
+# once in one benchmark, each with its own wrapper, and they share the file.
+_FILE_LOCKS: dict[str, threading.Lock] = {}
+_FILE_LOCKS_GUARD = threading.Lock()
 
 
-def cache_key(provider: str, model: str, text: str) -> str:
-    """One key per provider, model, and exact text."""
+def _lock_for(path: Path) -> threading.Lock:
+    key = str(Path(path).resolve())
+    with _FILE_LOCKS_GUARD:
+        return _FILE_LOCKS.setdefault(key, threading.Lock())
+
+
+def cache_key(provider: str, model: str, text: str, endpoint: str = "") -> str:
+    """One key per provider, model, endpoint, and exact text.
+
+    The endpoint matters for a self-hosted provider: two Ollama servers with
+    one model name can hold different weights, so their vectors never share.
+    """
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    return f"{provider}:{model}:{digest}"
+    scope = f"{provider}:{model}:{endpoint}" if endpoint else f"{provider}:{model}"
+    return f"{scope}:{digest}"
 
 
 def default_cache_path() -> Path:
@@ -46,12 +61,14 @@ class CachedEmbedding(EmbeddingFunction[Documents]):
         provider: str,
         model: str,
         path: Path | str | None = None,
+        endpoint: str = "",
     ) -> None:
         self._inner = inner
         self._provider = provider
         self._model = model
+        self._endpoint = endpoint
         self._path = Path(path) if path else default_cache_path()
-        self._lock = threading.Lock()
+        self._lock = _lock_for(self._path)
         self.hits = 0
         self.misses = 0
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -63,7 +80,12 @@ class CachedEmbedding(EmbeddingFunction[Documents]):
 
     @property
     def identity(self) -> dict[str, str]:
-        return {"provider": self._provider, "model": self._model, "path": str(self._path)}
+        return {
+            "provider": self._provider,
+            "model": self._model,
+            "endpoint": self._endpoint,
+            "path": str(self._path),
+        }
 
     def _read(self, keys: list[str]) -> dict[str, list[float]]:
         found: dict[str, list[float]] = {}
@@ -92,7 +114,7 @@ class CachedEmbedding(EmbeddingFunction[Documents]):
 
     def __call__(self, input: Documents) -> Embeddings:  # type: ignore[override]
         texts = list(input)
-        keys = [cache_key(self._provider, self._model, text) for text in texts]
+        keys = [cache_key(self._provider, self._model, text, self._endpoint) for text in texts]
         with self._lock:
             found = self._read(list(dict.fromkeys(keys)))
         missing_keys: list[str] = []

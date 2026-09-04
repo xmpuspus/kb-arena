@@ -101,3 +101,42 @@ def test_the_factory_wraps_the_provider_unless_disabled(tmp_path, monkeypatch):
 
     monkeypatch.setattr(settings, "embedding_cache_enabled", False)
     assert isinstance(embeddings.get_embedding_function(), _Provider)
+
+
+def test_the_endpoint_is_part_of_the_key_for_a_self_hosted_provider(tmp_path):
+    path = tmp_path / "c.sqlite"
+    one = _Provider()
+    CachedEmbedding(one, provider="ollama", model="m", path=path, endpoint="http://a:11434")(
+        ["alpha"]
+    )
+    two = _Provider()
+    CachedEmbedding(two, provider="ollama", model="m", path=path, endpoint="http://b:11434")(
+        ["alpha"]
+    )
+
+    assert two.calls == [["alpha"]], "another server never shares a vector"
+    assert cache_key("ollama", "m", "alpha", "http://a:11434") != cache_key(
+        "ollama", "m", "alpha", "http://b:11434"
+    )
+    assert cache_key("openai", "m", "alpha") == cache_key("openai", "m", "alpha", "")
+
+
+def test_two_wrappers_on_one_file_share_one_lock(tmp_path):
+    path = tmp_path / "c.sqlite"
+    first = CachedEmbedding(_Provider(), provider="fake", model="m", path=path)
+    second = CachedEmbedding(_Provider(), provider="fake", model="m", path=path)
+    other = CachedEmbedding(_Provider(), provider="fake", model="m", path=tmp_path / "d.sqlite")
+
+    assert first._lock is second._lock
+    assert first._lock is not other._lock
+
+
+def test_the_factory_gives_ollama_its_endpoint(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "embedding_provider", "ollama")
+    monkeypatch.setattr(settings, "embedding_cache_path", str(tmp_path / "c.sqlite"))
+    monkeypatch.setattr(settings, "ollama_base_url", "http://box:11434")
+    monkeypatch.setattr(embeddings, "_PROVIDERS", {"ollama": _Provider})
+
+    wrapped = embeddings.get_embedding_function()
+
+    assert wrapped.identity["endpoint"] == "http://box:11434"

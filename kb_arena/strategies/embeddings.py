@@ -217,4 +217,9 @@ def get_embedding_function(**kwargs: Any) -> EmbeddingFunction[Documents]:
     from kb_arena.strategies.embedding_cache import CachedEmbedding
 
     model = str(getattr(inner, "_model", "") or kwargs.get("model") or settings.embedding_model)
-    return CachedEmbedding(inner, provider=provider, model=model)
+    # A self-hosted endpoint is part of the identity: another server with the
+    # same model name can hold other weights.
+    endpoint = ""
+    if provider == "ollama":
+        endpoint = str(kwargs.get("base_url") or settings.ollama_base_url)
+    return CachedEmbedding(inner, provider=provider, model=model, endpoint=endpoint)
