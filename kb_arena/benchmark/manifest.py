@@ -58,12 +58,13 @@ def qrels_fingerprint(corpus: str) -> str | None:
 
 
 def judge_identity() -> dict[str, str]:
-    provider = settings.llm_provider
+    """The provider and model that grade answers. The judge can sit on its own provider."""
+    provider = settings.judge_provider or settings.llm_provider
     model = {
         "anthropic": settings.judge_model,
         "openai": settings.openai_judge_model,
         "ollama": settings.ollama_judge_model,
-    }.get(provider, settings.judge_model)
+    }.get(provider, "")
     return {"provider": provider, "model": model}
 
 

@@ -62,6 +62,15 @@ def _compute_cost(
     return input_cost + output_cost + cache_create_cost + cache_read_cost
 
 
+# The judge's user message, section by section. The evaluator hashes this
+# with the system prompt, so a reorder or a reword moves the prompt hash.
+JUDGE_USER_TEMPLATE = {
+    "question": "Question:\n{question}",
+    "reference": "Reference answer:\n{reference}",
+    "candidate": "Candidate answer:\n{answer}",
+}
+
+
 @dataclass
 class LLMResponse:
     """Result from an LLM call, including text and usage metrics."""
@@ -70,6 +79,10 @@ class LLMResponse:
     input_tokens: int = 0
     output_tokens: int = 0
     cost_usd: float = 0.0
+    # Which provider and model produced the text, so a judge verdict can
+    # name its judge in the result file.
+    provider: str = ""
+    model: str = ""
 
     @property
     def total_tokens(self) -> int:
@@ -132,40 +145,67 @@ def _backoff_delay(attempt: int) -> float:
     return min(float(2**attempt), _BACKOFF_CAP_S) + random.uniform(0.0, _BACKOFF_JITTER_S)
 
 
+def _provider_setup(provider_name: str, api_key: str | None = None, *, generic_key: bool = True):
+    """The provider object and its model names for one provider.
+
+    KB_ARENA_LLM_API_KEY belongs to the generation provider. A judge on a
+    second provider must not inherit it, so that path passes generic_key=False
+    and reads only its own provider's key.
+    """
+    from kb_arena.llm.providers import create_provider
+
+    shared = settings.llm_api_key if generic_key else ""
+    if provider_name == "anthropic":
+        key = api_key or shared or settings.anthropic_api_key
+        return create_provider("anthropic", api_key=key), {
+            "generate": settings.generate_model,
+            "fast": settings.fast_model,
+            "judge": settings.judge_model,
+        }
+    if provider_name == "openai":
+        key = api_key or shared or settings.openai_api_key
+        return create_provider("openai", api_key=key), {
+            "generate": settings.openai_generate_model,
+            "fast": settings.openai_fast_model,
+            "judge": settings.openai_judge_model,
+        }
+    if provider_name == "ollama":
+        return create_provider("ollama", base_url=settings.ollama_base_url), {
+            "generate": settings.ollama_generate_model,
+            "fast": settings.ollama_fast_model,
+            "judge": settings.ollama_judge_model,
+        }
+    raise ValueError(f"Unknown provider: {provider_name}")
+
+
 class LLMClient:
     def __init__(self, api_key: str | None = None):
-        from kb_arena.llm.providers import create_provider
-
         provider_name = settings.llm_provider
         self._provider_name = provider_name
+        self._provider, self._models = _provider_setup(provider_name, api_key)
 
-        if provider_name == "anthropic":
-            key = api_key or settings.llm_api_key or settings.anthropic_api_key
-            self._provider = create_provider("anthropic", api_key=key)
-            self._models = {
-                "generate": settings.generate_model,
-                "fast": settings.fast_model,
-                "judge": settings.judge_model,
-            }
-        elif provider_name == "openai":
-            key = api_key or settings.llm_api_key or settings.openai_api_key
-            self._provider = create_provider("openai", api_key=key)
-            self._models = {
-                "generate": settings.openai_generate_model,
-                "fast": settings.openai_fast_model,
-                "judge": settings.openai_judge_model,
-            }
-        elif provider_name == "ollama":
-            self._provider = create_provider("ollama", base_url=settings.ollama_base_url)
-            self._models = {
-                "generate": settings.ollama_generate_model,
-                "fast": settings.ollama_fast_model,
-                "judge": settings.ollama_judge_model,
-            }
+        # The judge can live on another provider. The api_key argument belongs
+        # to the generation provider, so the judge provider reads its own key
+        # from settings.
+        judge_name = settings.judge_provider or provider_name
+        self._judge_provider_name = judge_name
+        if judge_name == provider_name:
+            self._judge_provider = self._provider
         else:
-            raise ValueError(f"Unknown provider: {provider_name}")
+            self._judge_provider, judge_models = _provider_setup(judge_name, generic_key=False)
+            self._models["judge"] = judge_models["judge"]
 
         self._last_stream_usage: LLMResponse | None = None
+
+    @property
+    def judge_identity(self) -> dict[str, str]:
+        """The provider and model that grade answers, for a run's snapshot."""
+        return {"provider": self._judge_provider_name, "model": self._models["judge"]}
+
+    def _provider_for(self, model_key: str):
+        if model_key == "judge":
+            return self._judge_provider, self._judge_provider_name
+        return self._provider, self._provider_name
 
     async def classify(
         self,
@@ -234,11 +274,11 @@ class LLMClient:
         """
         parts = []
         if question:
-            parts.append(f"Question:\n{question}")
-        parts.append(f"Reference answer:\n{reference}")
-        parts.append(f"Candidate answer:\n{answer}")
+            parts.append(JUDGE_USER_TEMPLATE["question"].format(question=question))
+        parts.append(JUDGE_USER_TEMPLATE["reference"].format(reference=reference))
+        parts.append(JUDGE_USER_TEMPLATE["candidate"].format(answer=answer))
         user_content = "\n\n".join(parts)
-        return await self._call("judge", system_prompt, user_content, max_tokens=300, **kwargs)
+        return await self._call("judge", system_prompt, user_content, max_tokens=400, **kwargs)
 
     async def _call(
         self,
@@ -258,7 +298,7 @@ class LLMClient:
                     timeout=settings.llm_call_timeout_s,
                 )
             except Exception as exc:
-                if not _is_retryable(exc, self._provider_name):
+                if not _is_retryable(exc, self._provider_for(model_key)[1]):
                     raise
                 last_exc = exc
                 if attempt >= attempts - 1:
@@ -284,8 +324,9 @@ class LLMClient:
     ) -> LLMResponse:
         """Single API call delegated to the active provider."""
         model = self._models[model_key]
+        provider, provider_name = self._provider_for(model_key)
         temperature = kwargs.pop("temperature", 0)
-        resp = await self._provider.complete(
+        resp = await provider.complete(
             model=model,
             system=system,
             user=user,
@@ -304,6 +345,8 @@ class LLMClient:
             input_tokens=resp.input_tokens,
             output_tokens=resp.output_tokens,
             cost_usd=cost,
+            provider=provider_name,
+            model=model,
         )
 
     async def stream(

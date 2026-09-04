@@ -18,6 +18,9 @@ class Settings(BaseSettings):
 
     # LLM provider selection
     llm_provider: str = "anthropic"  # anthropic | openai | ollama
+    # The judge can run on a different provider than generation, so the
+    # model that answers never grades itself. Empty follows llm_provider.
+    judge_provider: str = ""  # "" | anthropic | openai | ollama
     llm_api_key: str = ""  # generic key, falls back to provider-specific
 
     # Ollama settings
@@ -176,6 +179,16 @@ class Settings(BaseSettings):
         ):
             raise ValueError("chunk overlap must satisfy 0 <= overlap_tokens < chunk_tokens")
         return self
+
+    @field_validator("judge_provider")
+    @classmethod
+    def _judge_provider_known(cls, value: str) -> str:
+        if value not in ("", "anthropic", "openai", "ollama"):
+            raise ValueError(
+                "KB_ARENA_JUDGE_PROVIDER must be empty, anthropic, openai, or ollama, "
+                f"not {value!r}"
+            )
+        return value
 
 
 settings = Settings()
