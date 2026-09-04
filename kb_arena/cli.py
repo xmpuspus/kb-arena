@@ -420,13 +420,15 @@ def benchmark(
         console.print("\n  Remove --dry-run to execute.")
         return
 
-    if seed >= 0:
+    if seed != -1:
         from pydantic import ValidationError
 
         from kb_arena.settings import Settings
         from kb_arena.settings import settings as _seed_settings
 
         try:
+            # Only -1 means "keep the setting". Another negative is a typo, and
+            # treating it as the default would silently ignore what was typed.
             # Assigning the attribute skips the field validator, so the bound
             # the model declares would never apply. Building the value through
             # the model keeps the CLI and the setting under one rule.
@@ -1640,7 +1642,7 @@ def variance(
     from rich.table import Table
 
     from kb_arena.benchmark.variance import (
-        MIN_RUNS_FOR_SPREAD,
+        THIN_EVIDENCE_RUNS,
         RunsUnreadableError,
         load_runs,
         spread_report,
@@ -1656,8 +1658,26 @@ def variance(
         raise typer.Exit(1)
 
     rows = spread_report(runs, metrics=(metric,))
+    if not any(metric in row["metrics"] for row in rows):
+        console.print(
+            f"[red]No run carries the metric {metric!r}. An empty table and a zero "
+            f"exit would read as 'no variance found'.[/red]"
+        )
+        raise typer.Exit(1)
     table = Table(title=f"Spread over repeats ({metric})")
-    columns = ("corpus", "strategy", "key", "runs", "seeds", "mean", "sd", "range", "comparable")
+    # "half span" and not "+/-": the value is half the distance between the
+    # lowest and highest run, which is not a symmetric interval around the mean.
+    columns = (
+        "corpus",
+        "strategy",
+        "key",
+        "runs",
+        "seeds",
+        "mean",
+        "sd",
+        "half span",
+        "comparable",
+    )
     # An incomparable row prints its values under "mean", because there is no
     # mean to print: the runs measured different things.
     for column in columns:
@@ -1682,7 +1702,7 @@ def variance(
                 "no",
             )
             continue
-        if spread["runs"] < MIN_RUNS_FOR_SPREAD:
+        if spread["runs"] < THIN_EVIDENCE_RUNS:
             thin += 1
         seeds = ", ".join(row["seeds"]) or "unrecorded"
         table.add_row(
@@ -1693,7 +1713,7 @@ def variance(
             seeds,
             f"{spread['mean']:.4f}",
             "-" if spread["sd"] is None else f"{spread['sd']:.4f}",
-            "-" if spread["half_width"] is None else f"+/-{spread['half_width']:.4f}",
+            "-" if spread["half_width"] is None else f"{spread['half_width']:.4f}",
             "yes" if row["comparable"] else "no",
         )
     console.print(table)
@@ -1710,8 +1730,9 @@ def variance(
         )
     if thin:
         console.print(
-            f"[yellow]{thin} row(s) rest on one run. One run gives a point and no "
-            f"spread. Use `kb-arena benchmark --runs 3` or more.[/yellow]"
+            f"[yellow]{thin} row(s) rest on fewer than {THIN_EVIDENCE_RUNS} runs. Two "
+            f"runs give a range a reader can misread as a bound. Use "
+            f"`kb-arena benchmark --runs 3` or more.[/yellow]"
         )
 
 
@@ -1771,15 +1792,16 @@ def optimize(
     `--dry-run` needs no API keys.
     """
 
-    if seed >= 0:
+    if seed != -1:
         from pydantic import ValidationError
 
         from kb_arena.settings import Settings
         from kb_arena.settings import settings as _seed_settings
 
         try:
-            # One seed source. The sweep and its bootstrap both read the
-            # setting, so the manifest cannot disagree with the trial order.
+            # Only -1 means "keep the setting". One seed source: the sweep and
+            # its bootstrap both read it, so the manifest cannot disagree with
+            # the trial order.
             _seed_settings.run_seed = Settings(run_seed=seed).run_seed
         except ValidationError as exc:
             console.print(f"[red]Invalid --seed {seed}: {exc.errors()[0]['msg']}[/red]")

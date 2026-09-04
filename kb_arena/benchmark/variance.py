@@ -133,7 +133,13 @@ def spread_report(runs: list[dict], metrics: tuple[str, ...] = ("accuracy_by_tie
             "compatibility_key": key,
             # A legacy group holds whatever had no manifest. A group whose runs
             # came from different code is not a repeat of one experiment either.
-            "comparable": key != LEGACY_KEY and len(versions) == 1,
+            "comparable": (
+                key != LEGACY_KEY
+                and len(versions) == 1
+                # "unrecorded" is not a build. Two runs that both fail to name
+                # one are not known to share it, so they are not repeats.
+                and versions != [UNRECORDED_VERSION]
+            ),
             "code_versions": versions,
             "runs": len(group),
             # A run written before seeds existed reports None. Sorting that
@@ -196,7 +202,11 @@ def load_runs(corpus: str | None = None) -> list[dict]:
                 unreadable.append(f"{path}: {exc}")
                 continue
             except json.JSONDecodeError as exc:
-                unreadable.append(f"{path}: malformed JSON, {exc}")
+                # Only a file shaped like a result. `results/` also holds
+                # summaries, reports and scratch, and one bad byte in any of
+                # those must not block a report about the runs.
+                if _looks_like_a_result(path):
+                    unreadable.append(f"{path}: malformed JSON, {exc}")
                 continue
             if not isinstance(data, dict) or "strategy" not in data or "corpus" not in data:
                 continue
@@ -218,6 +228,13 @@ def load_runs(corpus: str | None = None) -> list[dict]:
             f"the rest would hide lost evidence: " + "; ".join(unreadable[:5])
         )
     return runs
+
+
+# A result file is `<corpus>_<strategy>.json`, and the strategies are known.
+def _looks_like_a_result(path: Path) -> bool:
+    from kb_arena.strategies.catalog import STRATEGY_CATALOG
+
+    return any(path.name.endswith(f"_{spec.name}.json") for spec in STRATEGY_CATALOG)
 
 
 def _code_version(run: dict) -> str:

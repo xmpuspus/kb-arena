@@ -112,7 +112,9 @@ def test_two_keys_never_share_a_spread():
 
 
 def test_repeats_of_one_experiment_group_into_one_row():
-    manifest = _manifest()
+    # A build identity is required for comparability, because two runs that
+    # both fail to name one are not known to share it.
+    manifest = _manifest(code_version="0.11.0", git_sha="a" * 40)
     runs = [
         {
             "corpus": "c",
@@ -484,3 +486,74 @@ def test_the_cli_refuses_a_seed_outside_the_declared_bound():
     assert (
         "Settings(run_seed=seed).run_seed" in source
     ), "the CLI must build the value through the model, not assign it raw"
+
+
+def test_the_seed_record_names_only_consumers_that_exist():
+    """A manifest claim no code honours is a record of work that never happened.
+
+    This is the mechanical half. The claim lists what the seed controls, and
+    each entry maps to a call site that reads `settings.run_seed`. When a later
+    change adds a claim without a consumer, or drops a consumer and leaves the
+    claim, this fails.
+    """
+    import inspect
+
+    from kb_arena.benchmark import optimizer, retriever_lab
+    from kb_arena.benchmark.manifest import seed_identity
+
+    consumers = {
+        "optimize trial order": inspect.getsource(optimizer.build_trials),
+        "bootstrap resampling": (
+            inspect.getsource(optimizer._bootstrap_ci)
+            if hasattr(optimizer, "_bootstrap_ci")
+            else inspect.getsource(retriever_lab._bootstrap_ci)
+        ),
+    }
+    claimed = seed_identity()["controls"]
+
+    assert set(claimed) == set(consumers), (
+        f"the record claims {claimed} and this test knows about {sorted(consumers)}. "
+        "Add the consumer, or drop the claim."
+    )
+    for claim, source in consumers.items():
+        assert "settings.run_seed" in source, f"nothing reads the seed for {claim!r}"
+
+    # The lab has its own bootstrap, and it must read the seed too.
+    assert "settings.run_seed" in inspect.getsource(retriever_lab._bootstrap_ci)
+
+
+def test_two_runs_that_both_name_no_build_are_not_comparable():
+    """`unrecorded` is not a build. Sharing an unknown is not sharing."""
+    manifest = _manifest()
+    runs = [
+        {
+            "corpus": "c",
+            "strategy": "bm25",
+            "accuracy_by_tier": {"1": value},
+            "records": [{}],
+            "manifest": dict(manifest),
+        }
+        for value in (0.2, 0.8)
+    ]
+
+    [row] = variance.spread_report(runs)
+
+    assert row["code_versions"] == ["unrecorded"]
+    assert row["comparable"] is False
+
+
+def test_a_malformed_file_that_is_not_a_result_never_blocks_the_report(tmp_path, monkeypatch):
+    """`results/` also holds summaries and scratch, and one bad byte is not lost evidence."""
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    (tmp_path / "run_a").mkdir()
+    (tmp_path / "run_a" / "c_bm25.json").write_text(
+        json.dumps(
+            {"corpus": "c", "strategy": "bm25", "run_id": "a", "accuracy_by_tier": {"1": 0.2}}
+        )
+    )
+    (tmp_path / "run_a" / "summary.json").write_text("{truncated")
+    (tmp_path / "scratch.json").write_text("also broken")
+
+    runs = variance.load_runs("c")
+
+    assert len(runs) == 1
