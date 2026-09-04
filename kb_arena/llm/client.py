@@ -136,19 +136,25 @@ def _backoff_delay(attempt: int) -> float:
     return min(float(2**attempt), _BACKOFF_CAP_S) + random.uniform(0.0, _BACKOFF_JITTER_S)
 
 
-def _provider_setup(provider_name: str, api_key: str | None = None):
-    """The provider object and its model names for one provider."""
+def _provider_setup(provider_name: str, api_key: str | None = None, *, generic_key: bool = True):
+    """The provider object and its model names for one provider.
+
+    KB_ARENA_LLM_API_KEY belongs to the generation provider. A judge on a
+    second provider must not inherit it, so that path passes generic_key=False
+    and reads only its own provider's key.
+    """
     from kb_arena.llm.providers import create_provider
 
+    shared = settings.llm_api_key if generic_key else ""
     if provider_name == "anthropic":
-        key = api_key or settings.llm_api_key or settings.anthropic_api_key
+        key = api_key or shared or settings.anthropic_api_key
         return create_provider("anthropic", api_key=key), {
             "generate": settings.generate_model,
             "fast": settings.fast_model,
             "judge": settings.judge_model,
         }
     if provider_name == "openai":
-        key = api_key or settings.llm_api_key or settings.openai_api_key
+        key = api_key or shared or settings.openai_api_key
         return create_provider("openai", api_key=key), {
             "generate": settings.openai_generate_model,
             "fast": settings.openai_fast_model,
@@ -177,10 +183,15 @@ class LLMClient:
         if judge_name == provider_name:
             self._judge_provider = self._provider
         else:
-            self._judge_provider, judge_models = _provider_setup(judge_name)
+            self._judge_provider, judge_models = _provider_setup(judge_name, generic_key=False)
             self._models["judge"] = judge_models["judge"]
 
         self._last_stream_usage: LLMResponse | None = None
+
+    @property
+    def judge_identity(self) -> dict[str, str]:
+        """The provider and model that grade answers, for a run's snapshot."""
+        return {"provider": self._judge_provider_name, "model": self._models["judge"]}
 
     def _provider_for(self, model_key: str):
         if model_key == "judge":

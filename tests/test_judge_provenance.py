@@ -90,12 +90,42 @@ class _FakeProvider:
         )
 
 
-def _fake_factory(made: dict):
+def _fake_factory(made: dict, keys: dict | None = None):
     def create_provider(provider_name: str, **kwargs):
         made[provider_name] = _FakeProvider(provider_name)
+        if keys is not None:
+            keys[provider_name] = kwargs.get("api_key")
         return made[provider_name]
 
     return create_provider
+
+
+def test_the_judge_provider_reads_its_own_key_not_the_generic_one(monkeypatch):
+    made: dict[str, _FakeProvider] = {}
+    keys: dict[str, str | None] = {}
+    monkeypatch.setattr("kb_arena.llm.providers.create_provider", _fake_factory(made, keys))
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(settings, "judge_provider", "openai")
+    monkeypatch.setattr(settings, "llm_api_key", "generic-anthropic-key")
+    monkeypatch.setattr(settings, "openai_api_key", "openai-key")
+
+    LLMClient()
+
+    assert keys["anthropic"] == "generic-anthropic-key"
+    assert keys["openai"] == "openai-key"
+
+
+def test_a_run_snapshot_names_the_judge(monkeypatch):
+    from kb_arena.benchmark.runner import _config_snapshot
+
+    llm = SimpleNamespace(judge_identity={"provider": "openai", "model": "gpt-judge"})
+    snap = _config_snapshot(
+        llm, top_k=5, split="", reference_free=False, cost_cap=0.0, parallel=True
+    )
+
+    assert snap["judge_provider"] == "openai"
+    assert snap["judge_model"] == "gpt-judge"
+    assert snap["llm_provider"] == settings.llm_provider
 
 
 @pytest.mark.asyncio

@@ -420,6 +420,29 @@ class CostCapExceededError(Exception):
     """Raised when cumulative benchmark cost exceeds the configured cap."""
 
 
+def _config_snapshot(
+    llm, *, top_k: int, split: str, reference_free: bool, cost_cap: float, parallel: bool
+) -> dict:
+    """What a run declares about itself. Names the judge as well as the generator."""
+    judge = getattr(llm, "judge_identity", None) or {"provider": "", "model": ""}
+    return {
+        "llm_provider": settings.llm_provider,
+        "generate_model": settings.generate_model,
+        "judge_provider": judge["provider"],
+        "judge_model": judge["model"],
+        "max_concurrent": settings.benchmark_max_concurrent,
+        "query_timeout_s": settings.benchmark_query_timeout_s,
+        "top_k": top_k,
+        "question_split": split or "all",
+        "reference_free": reference_free,
+        "ragas_enabled": settings.benchmark_enable_ragas,
+        "cost_cap_usd": cost_cap,
+        "execution_mode": (
+            "cost_capped_serial" if cost_cap > 0 else "parallel" if parallel else "serial"
+        ),
+    }
+
+
 async def run_benchmark(
     corpus: str = "all",
     strategy: str = "all",
@@ -443,22 +466,15 @@ async def run_benchmark(
     cost_cap = settings.benchmark_cost_cap_usd
     if not math.isfinite(cost_cap) or cost_cap < 0:
         raise BenchmarkExecutionError("Benchmark cost cap must be finite and non-negative")
-    config_snap = {
-        "llm_provider": settings.llm_provider,
-        "generate_model": settings.generate_model,
-        "max_concurrent": settings.benchmark_max_concurrent,
-        "query_timeout_s": settings.benchmark_query_timeout_s,
-        "top_k": top_k,
-        "question_split": split or "all",
-        "reference_free": reference_free,
-        "ragas_enabled": settings.benchmark_enable_ragas,
-        "cost_cap_usd": cost_cap,
-        "execution_mode": (
-            "cost_capped_serial" if cost_cap > 0 else "parallel" if parallel else "serial"
-        ),
-    }
-
     llm = LLMClient()
+    config_snap = _config_snapshot(
+        llm,
+        top_k=top_k,
+        split=split,
+        reference_free=reference_free,
+        cost_cap=cost_cap,
+        parallel=parallel,
+    )
     semaphore = asyncio.Semaphore(settings.benchmark_max_concurrent)
     results_dir = Path(settings.results_path)
     results_dir.mkdir(parents=True, exist_ok=True)
