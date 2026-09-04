@@ -309,7 +309,9 @@ export async function fetchBenchmarkResults(
   corpus: string = "all"
 ): Promise<{ strategy: Strategy; tiers: number[]; latencyMs: number; costUsd: number }[]> {
   try {
-    const res = await fetch(`${API_URL}/api/benchmark/results?corpus=${corpus}`);
+    // This route returns per-question records, so it carries the API token
+    // when one is set. A bare fetch would get 401 on a deployment with a token.
+    const res = await apiFetch(`${API_URL}/api/benchmark/results?corpus=${corpus}`);
     if (!res.ok) return MOCK_BENCHMARK_DATA;
     const data = await res.json();
     return data.results?.length ? data.results : MOCK_BENCHMARK_DATA;

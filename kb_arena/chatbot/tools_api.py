@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field, field_validator
 from sse_starlette.sse import EventSourceResponse
 
-from kb_arena.chatbot.auth import require_auth
+from kb_arena.chatbot.auth import require_auth, require_read_auth
 from kb_arena.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -392,7 +392,7 @@ async def run_fix_stream(body: FixRequest, request: Request) -> EventSourceRespo
     return EventSourceResponse(event_generator())
 
 
-@router.get("/qa-pairs")
+@router.get("/qa-pairs", dependencies=[Depends(require_read_auth)])
 async def get_qa_pairs(corpus: str) -> dict:
     """Read stored Q&A pairs for a corpus."""
     _validate_corpus_name(corpus)

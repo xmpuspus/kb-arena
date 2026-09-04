@@ -905,7 +905,12 @@ def generate_questions(
 
 @app.command()
 def demo(
-    host: str = typer.Option("0.0.0.0", help="Host to bind to"),
+    host: str = typer.Option(
+        "127.0.0.1",
+        help="Host to bind to. The default serves this machine only. Pass 0.0.0.0 "
+        "to serve the network, and set KB_ARENA_API_TOKEN or KB_ARENA_DEMO_MODE "
+        "before you do, because the read routes carry your corpus.",
+    ),
     port: int = typer.Option(8000, help="Port to listen on"),
 ):
     """Launch the demo with pre-computed aws-compute benchmark results.

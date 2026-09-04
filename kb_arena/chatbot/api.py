@@ -29,7 +29,7 @@ from kb_arena.arena.engine import ArenaEngine, scope_key
 from kb_arena.benchmark.compare import compare_result_files, resolve_result_path
 from kb_arena.benchmark.manifest import compatibility_key, manifest_summary
 from kb_arena.benchmark.review import REVIEWED, STATUSES, review_summary
-from kb_arena.chatbot.auth import require_auth
+from kb_arena.chatbot.auth import require_auth, require_read_auth
 from kb_arena.chatbot.session import SessionStore
 from kb_arena.chatbot.tools_api import router as tools_router
 from kb_arena.exceptions import ArenaError, StrategyError
@@ -624,7 +624,7 @@ async def retriever_lab_runs() -> dict:
     return {"runs": runs}
 
 
-@app.get("/api/retriever-lab/{run_id}")
+@app.get("/api/retriever-lab/{run_id}", dependencies=[Depends(require_read_auth)])
 async def retriever_lab_results(run_id: str) -> dict:
     """Return retriever-lab JSON for the given run."""
     if not _re.match(r"^[a-zA-Z0-9_-]+$", run_id):
@@ -638,7 +638,7 @@ async def retriever_lab_results(run_id: str) -> dict:
         raise HTTPException(status_code=500, detail="corrupt run file") from e
 
 
-@app.get("/api/benchmark/results")
+@app.get("/api/benchmark/results", dependencies=[Depends(require_read_auth)])
 async def benchmark_results(corpus: str = "all") -> dict:
     """Load benchmark results from the results directory."""
     import json

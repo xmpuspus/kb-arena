@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { API_URL, STRATEGY_LABELS, type Strategy } from "@/lib/api";
+import { apiFetch } from "@/lib/auth";
 
 type StrategySummary = {
   mean_recall_at_k: number;
@@ -179,7 +180,8 @@ export default function RetrieverLabPage() {
     let active = true;
     setLoading(true);
     setError("");
-    fetch(`${API_URL}/api/retriever-lab/${selectedRun}`, { signal: controller.signal })
+    // Question-level records, so this read carries the API token when set.
+    apiFetch(`${API_URL}/api/retriever-lab/${selectedRun}`, { signal: controller.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`status ${r.status}`);
         return r.json();

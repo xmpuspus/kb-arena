@@ -204,7 +204,8 @@ export async function* streamFix(corpus: string, maxSections: number, maxFixes: 
 
 export async function fetchQaPairs(corpus: string): Promise<{ pairs: QaPair[]; total: number }> {
   try {
-    const res = await fetch(`${API_URL}/api/tools/qa-pairs?corpus=${corpus}`);
+    // Document-derived questions and answers, so it carries the API token.
+    const res = await apiFetch(`${API_URL}/api/tools/qa-pairs?corpus=${corpus}`);
     if (!res.ok) return { pairs: [], total: 0 };
     return await res.json();
   } catch {
