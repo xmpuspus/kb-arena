@@ -85,6 +85,7 @@ def _seed_run(tmp_path, run_id: str, **overrides):
         "judge_provider": "",
         "judge_model": "",
         "top_k": 5,
+        "tier": 0,
         "question_split": "all",
         "reference_free": False,
         "ragas_enabled": False,
@@ -205,6 +206,58 @@ def test_resumed_records_count_toward_the_cost_cap(tmp_path, monkeypatch):
 
     # q3 ran once, then the cap that the first attempt already spent stopped the run
     assert calls == [("x", "q3")]
+
+
+def test_a_checkpoint_record_for_a_deleted_question_is_dropped(tmp_path, monkeypatch):
+    calls = _harness(monkeypatch, tmp_path, ["x"])
+    run_id = "abc12345"
+    _seed_run(tmp_path, run_id)
+    ckpt = runner.checkpoint_path(tmp_path, run_id, "c", "x")
+    append_jsonl(ckpt, _record("q_deleted").model_dump(mode="json"))
+    append_jsonl(ckpt, _record("q1").model_dump(mode="json"))
+
+    asyncio.run(
+        runner.run_benchmark(corpus="c", strategy="any", parallel=False, resume_run_id=run_id)
+    )
+
+    result = json.loads((tmp_path / f"run_{run_id}" / "c_x.json").read_text())
+    assert sorted(r["question_id"] for r in result["records"]) == ["q1", "q2", "q3"]
+    assert sorted(q for _, q in calls) == ["q2", "q3"]
+
+
+def test_a_resume_keeps_the_first_timestamp_and_refuses_another_tier(tmp_path, monkeypatch):
+    _harness(monkeypatch, tmp_path, ["x"])
+    run_id = "abc12345"
+    _seed_run(tmp_path, run_id, tier=0)
+    path = runner.run_manifest_path(tmp_path, run_id)
+    data = json.loads(path.read_text())
+    data["timestamp"] = "2026-01-01T00:00:00+00:00"
+    path.write_text(json.dumps(data))
+
+    asyncio.run(
+        runner.run_benchmark(corpus="c", strategy="any", parallel=False, resume_run_id=run_id)
+    )
+    result = json.loads((tmp_path / f"run_{run_id}" / "c_x.json").read_text())
+    assert result["timestamp"] == "2026-01-01T00:00:00+00:00"
+
+    with pytest.raises(runner.BenchmarkExecutionError, match="tier"):
+        asyncio.run(
+            runner.run_benchmark(
+                corpus="c", strategy="any", parallel=False, tier=3, resume_run_id=run_id
+            )
+        )
+
+
+def test_an_atomic_write_keeps_the_old_mode_and_gives_a_readable_new_file(tmp_path):
+    target = tmp_path / "keep.json"
+    target.write_text("old")
+    os.chmod(target, 0o640)
+    atomic_write_text(target, "new")
+    assert oct(target.stat().st_mode & 0o777) == oct(0o640)
+
+    fresh = tmp_path / "fresh.json"
+    atomic_write_text(fresh, "x")
+    assert fresh.stat().st_mode & 0o044, "a new result file must stay readable beyond its owner"
 
 
 def test_the_cli_passes_the_resume_id(monkeypatch):

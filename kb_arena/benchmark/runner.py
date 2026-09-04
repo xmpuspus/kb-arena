@@ -433,6 +433,7 @@ RESUME_KEYS = (
     "judge_provider",
     "judge_model",
     "top_k",
+    "tier",
     "question_split",
     "reference_free",
     "ragas_enabled",
@@ -447,7 +448,7 @@ def run_manifest_path(results_dir: Path, run_id: str) -> Path:
     return Path(results_dir) / f"run_{run_id}" / "run.json"
 
 
-def check_resumable(results_dir: Path, run_id: str, config_snap: dict) -> None:
+def check_resumable(results_dir: Path, run_id: str, config_snap: dict) -> dict:
     """Refuse a resume that would score under settings the first run did not use."""
     if not RUN_ID_PATTERN.match(run_id):
         raise BenchmarkExecutionError(f"invalid run id {run_id!r}: letters, digits, - and _ only")
@@ -468,15 +469,22 @@ def check_resumable(results_dir: Path, run_id: str, config_snap: dict) -> None:
             "cannot resume run "
             f"{run_id}: these settings differ from the first run: {', '.join(changed)}"
         )
+    return json.loads(path.read_text())
 
 
-def load_checkpoint(path: Path) -> dict[str, AnswerRecord]:
-    """The records a stopped run already scored, by question id. A later line wins."""
+def load_checkpoint(path: Path, question_ids=None) -> dict[str, AnswerRecord]:
+    """The records a stopped run already scored, by question id. A later line wins.
+
+    A record for a question the current file no longer holds is dropped. It
+    would invent a tier and inflate the count for a question nobody asked.
+    """
     done: dict[str, AnswerRecord] = {}
     for row in read_jsonl(path):
         try:
             record = AnswerRecord.model_validate(row)
         except ValidationError:
+            continue
+        if question_ids is not None and record.question_id not in question_ids:
             continue
         done[record.question_id] = record
     return done
@@ -519,6 +527,7 @@ async def run_benchmark(
         "max_concurrent": settings.benchmark_max_concurrent,
         "query_timeout_s": settings.benchmark_query_timeout_s,
         "top_k": top_k,
+        "tier": tier,
         "question_split": split or "all",
         "reference_free": reference_free,
         "ragas_enabled": settings.benchmark_enable_ragas,
@@ -533,7 +542,9 @@ async def run_benchmark(
     results_dir = Path(settings.results_path)
     results_dir.mkdir(parents=True, exist_ok=True)
     if resume_run_id:
-        check_resumable(results_dir, resume_run_id, config_snap)
+        earlier = check_resumable(results_dir, resume_run_id, config_snap)
+        # The result describes the run that started it, not the resume.
+        timestamp = earlier.get("timestamp") or timestamp
     else:
         # The run directory names its settings first, so a later --resume
         # can tell whether it continues the same experiment.
@@ -616,7 +627,7 @@ async def run_benchmark(
                         config_snapshot=config_snap,
                     )
                     ckpt = checkpoint_path(results_dir, run_id, corp, strat.name)
-                    done = load_checkpoint(ckpt) if resume_run_id else {}
+                    done = load_checkpoint(ckpt, questions_map.keys()) if resume_run_id else {}
                     bench.records.extend(done.values())
                     progress.advance(task_ids[strat.name], len(done))
                     coros = (
@@ -698,7 +709,7 @@ async def run_benchmark(
                         config_snapshot=config_snap,
                     )
                     ckpt = checkpoint_path(results_dir, run_id, corp, strat.name)
-                    done = load_checkpoint(ckpt) if resume_run_id else {}
+                    done = load_checkpoint(ckpt, questions_map.keys()) if resume_run_id else {}
                     bench.records.extend(done.values())
                     # What the first attempt spent counts against this cap too,
                     # or every resume could spend a whole cap again.

@@ -18,17 +18,46 @@ def atomic_write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     try:
+        # mkstemp opens 0600. Keep the mode the old file had, or the mode a
+        # plain open would give, so a result file stays readable by the group
+        # and the web container that serves it.
+        try:
+            mode = path.stat().st_mode & 0o777
+        except FileNotFoundError:
+            mode = 0o666 & ~_umask()
+        os.chmod(temporary, mode)
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
+        _fsync_dir(path.parent)
     except BaseException:
         try:
             os.unlink(temporary)
         except FileNotFoundError:
             pass
         raise
+
+
+def _umask() -> int:
+    current = os.umask(0)
+    os.umask(current)
+    return current
+
+
+def _fsync_dir(directory: Path) -> None:
+    """Make the rename itself durable. Best effort: some filesystems refuse it."""
+    try:
+        fd = os.open(directory, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
 
 
 def append_jsonl(path: Path, record: dict) -> None:
