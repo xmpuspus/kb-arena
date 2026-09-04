@@ -200,9 +200,16 @@ def _summarize_with_tiers(
     return out
 
 
-def _negatives_of(question) -> set[str]:
-    """Chunks a judge called irrelevant, for bpref. Empty when the labels hold none."""
-    return set(getattr(question, "judged_negatives", None) or [])
+def _negatives_of(question) -> set[str] | None:
+    """Chunks a judge called irrelevant, for bpref.
+
+    None when the labels name none. `compute_all` reads None as "nobody judged
+    negatives here" and falls back to the TREC bpref-10 proxy. An empty set
+    would instead say "the judge found no negatives", which turns the proxy off
+    and scores a bad ranking as perfect.
+    """
+    named = getattr(question, "judged_negatives", None) or []
+    return set(named) or None
 
 
 def _grades_of(question) -> dict[str, float] | None:

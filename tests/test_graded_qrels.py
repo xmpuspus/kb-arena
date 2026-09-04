@@ -223,3 +223,178 @@ def test_judged_negatives_reach_bpref():
 
     assert guessed.bpref < 1.0, "with no labels the unjudged chunk counts against the run"
     assert judged.bpref == 1.0, "a chunk nobody judged no longer counts against it"
+
+
+def test_a_judged_negative_travels_from_the_file_to_bpref(tmp_path, monkeypatch):
+    """The whole path, not `compute_all` on its own.
+
+    An earlier version of this slice passed a hand-written set straight to
+    `compute_all`, so it went green while `Question` carried no field for the
+    negatives and the loader dropped every one of them.
+    """
+    from kb_arena.benchmark.questions import load_questions
+    from kb_arena.benchmark.retriever_lab import _negatives_of
+    from kb_arena.settings import settings
+
+    qdir = tmp_path / "c" / "questions"
+    qdir.mkdir(parents=True)
+    (qdir / "tier1.yaml").write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "id": "q1",
+                    "tier": 1,
+                    "type": "factoid",
+                    "hops": 1,
+                    "question": "q?",
+                    "ground_truth": {"answer": "a"},
+                }
+            ]
+        )
+    )
+    (qdir / "expected_chunks.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "version": 2,
+                "labels": {"q1": {"doc::best": 2, "doc::ok": 1, "doc::no": 0, "doc::no2": 0}},
+            }
+        )
+    )
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path))
+
+    [q] = load_questions("c")
+
+    assert q.judged_negatives == ["doc::no", "doc::no2"]
+    assert _negatives_of(q) == {"doc::no", "doc::no2"}
+
+
+def test_a_question_with_no_judged_negative_keeps_the_bpref_proxy():
+    """An empty set turns the TREC proxy off and scores a bad ranking as perfect."""
+    from kb_arena.benchmark.retriever_lab import _negatives_of
+
+    assert _negatives_of(SimpleNamespace(judged_negatives=[])) is None
+    assert _negatives_of(SimpleNamespace()) is None
+
+    ranked = [
+        RetrievedChunk(chunk_id=c, doc_id="doc", content="t", rank=i + 1, source_strategy="x")
+        for i, c in enumerate(["doc::junk1", "doc::junk2", "doc::junk3", "doc::best", "doc::ok"])
+    ]
+    expected = {"doc::best", "doc::ok"}
+    proxy_on = compute_all(ranked, expected, 5, judged_nonrelevant=None)
+    proxy_off = compute_all(ranked, expected, 5, judged_nonrelevant=set())
+    assert (
+        proxy_on.bpref < proxy_off.bpref
+    ), "three junk chunks above both relevant chunks must not score a perfect bpref"
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        '{"doc::a": "2", "doc::b": "1"}',
+        '{"doc::A": 2, "doc::B": 1}',
+        '{"doc::a": 2.5}',
+        "{}",
+    ],
+)
+def test_a_json_object_with_no_usable_grade_counts_as_unparsed(answer):
+    """A wrapper key or a string grade decodes as JSON and grades nothing."""
+    grades, parsed = labeler._parse_grades(answer, {"doc::a", "doc::b"}, report=True)
+    assert grades == {}
+    assert parsed is False, f"{answer} must not store an empty label"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"note": "graded below"} {"doc::a": 2}',
+        '{"grades": {"doc::a": 2}}',
+        'Here are the grades:\n{"doc::a": 2}',
+    ],
+)
+def test_the_search_moves_past_an_object_that_grades_nothing(text):
+    """A wrapper key or a prose opener must not lose grades the judge did give."""
+    grades, parsed = labeler._parse_grades(text, {"doc::a"}, report=True)
+    assert grades == {"doc::a": 2}
+    assert parsed is True
+
+
+def test_a_versioned_file_refuses_a_bare_list(tmp_path):
+    """A list in a version 2 file would read as every chunk at grade 1."""
+    with pytest.raises(ValueError, match="not a list"):
+        load_qrels({"version": 2, "pool": {}, "labels": {"q1": ["a", "b"]}}, tmp_path / "x.yaml")
+
+
+def test_a_strategy_prefix_never_reaches_a_stored_label():
+    """`ir_metrics` strips a prefix from a retrieved id, never from a label."""
+    from kb_arena.benchmark.ir_metrics import canonical_chunk_id
+
+    assert canonical_chunk_id("L1:doc::sec") == "doc::sec"
+    assert canonical_chunk_id("qna:doc::sec") == "doc::sec"
+    assert canonical_chunk_id("doc::sec") == "doc::sec"
+
+
+def test_a_prefixed_label_is_unreachable_for_every_other_strategy():
+    """The reason the labeler strips the prefix, stated as a measurement."""
+    ranked = [
+        RetrievedChunk(chunk_id="doc::sec", doc_id="doc", content="t", rank=1, source_strategy="x")
+    ]
+    clean = compute_all(ranked, {"doc::sec"}, 5)
+    prefixed = compute_all(ranked, {"doc::sec", "L1:doc::sec"}, 5)
+    assert clean.recall_at_k == 1.0
+    assert prefixed.recall_at_k < 1.0
+
+
+def test_a_failed_judgment_still_counts_its_cost():
+    """A corpus whose every judgment fails must not report a spend of zero."""
+    error = labeler.JudgeParseError("nothing parsed", cost_usd=0.004)
+    assert error.cost_usd == 0.004
+
+
+def test_the_judge_prompt_asks_for_every_candidate_and_shows_a_zero():
+    """A prompt that says exclude produces no judged negative at all."""
+    prompt = labeler.JUDGE_PROMPT
+    assert "grade EVERY candidate" in prompt
+    assert "exclude only chunks" not in prompt
+    assert '"s3-overview::lifecycle": 0' in prompt
+
+
+def test_the_fingerprint_tracks_the_labels_and_not_the_pool(tmp_path, monkeypatch):
+    """A change to --n-candidates alone must not read as different ground truth."""
+    from kb_arena.benchmark.manifest import qrels_fingerprint
+    from kb_arena.settings import settings
+
+    qdir = tmp_path / "c" / "questions"
+    qdir.mkdir(parents=True)
+    path = qdir / "expected_chunks.yaml"
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path))
+
+    labels = {"q1": {"doc::a": 2}}
+    path.write_text(yaml.safe_dump({"version": 2, "pool": {"n_candidates": 20}, "labels": labels}))
+    first = qrels_fingerprint("c")
+    path.write_text(yaml.safe_dump({"version": 2, "pool": {"n_candidates": 50}, "labels": labels}))
+    second = qrels_fingerprint("c")
+    other = {"q1": {"doc::b": 2}}
+    path.write_text(yaml.safe_dump({"version": 2, "pool": {"n_candidates": 50}, "labels": other}))
+    third = qrels_fingerprint("c")
+
+    assert first == second, "the pool record describes the labels, it is not the labels"
+    assert first != third, "a different label must move the fingerprint"
+
+
+def test_an_empty_candidate_pool_returns_a_mapping_not_a_list():
+    """A list here writes `labels: {q1: []}`, which reloads as a permanent empty label."""
+
+    class _EmptyBM25:
+        name = "bm25"
+        _chunk_ids: list[str] = []
+        _corpus_texts: list[str] = []
+
+        async def query(self, *a, **k):
+            return SimpleNamespace(retrieval=None, cost_usd=0.0)
+
+    grades, cost = asyncio.run(
+        labeler.label_one_question("q?", _EmptyBM25(), llm=None, corpus="c", n_random=0)
+    )
+    assert grades == {}
+    assert isinstance(grades, dict)
+    assert cost == 0.0

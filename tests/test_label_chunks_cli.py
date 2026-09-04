@@ -79,7 +79,10 @@ async def test_label_candidates_are_scoped_to_selected_corpus():
         "question", bm25, AsyncMock(), "alpha", extra_retrievers=[extra]
     )
 
-    assert ids == []
+    # A grade mapping, not a list. `label_one_question` returns
+    # `dict[str, int]`, and a list here writes `labels: {q1: []}`, which
+    # reloads as a permanent empty label instead of an unlabeled question.
+    assert ids == {}
     assert cost == 0.0
     bm25.query.assert_awaited_once_with("question", top_k=20, corpus="alpha")
     extra.query.assert_awaited_once_with("question", top_k=20, corpus="alpha")

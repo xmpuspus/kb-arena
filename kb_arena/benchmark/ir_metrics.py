@@ -21,6 +21,18 @@ from kb_arena.models.retrieval import RetrievedChunk
 _STRATEGY_NAMESPACE_PREFIXES = ("L0:", "L1:", "L2:", "qna:", "graph:", "pageindex:")
 
 
+def canonical_chunk_id(chunk_id: str) -> str:
+    """A chunk id with its strategy namespace prefix removed.
+
+    A stored label carries no prefix, so a labeler writes this form and a
+    matcher compares against it. `L1:doc::sec` and `doc::sec` name one chunk.
+    """
+    for p in _STRATEGY_NAMESPACE_PREFIXES:
+        if chunk_id.startswith(p):
+            return chunk_id[len(p) :]
+    return chunk_id
+
+
 def _candidate_ids(chunk_id: str) -> list[str]:
     """Yield matchable forms of a chunk_id.
 

@@ -38,6 +38,9 @@ class Question(BaseModel):
     # Graded relevance per expected chunk: 2 answers the question, 1 supports
     # it. Empty means every expected chunk counts as grade 1.
     expected_grades: dict[str, int] = Field(default_factory=dict)
+    # Chunks a judge read and called irrelevant. bpref counts these as real
+    # negatives instead of guessing from what a run retrieved.
+    judged_negatives: list[str] = Field(default_factory=list)
     split: Literal["development", "validation", "holdout", "unspecified"] = "unspecified"
     # Review provenance. The NIST corpus stamps every question with these. The
     # label and the drafting pass travel onto each AnswerRecord. The rationale

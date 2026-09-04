@@ -42,6 +42,14 @@ def load_qrels(raw: object, path: Path) -> tuple[dict[str, dict[str, int]], int]
         if not isinstance(question_id, str) or not question_id.strip():
             raise ValueError(f"Expected a non-empty question ID in {path}")
         if isinstance(value, list):
+            if version == QRELS_VERSION:
+                # A versioned file promises grades. A list carries none, so it
+                # would read as every chunk at grade 1 and lose every judged
+                # negative without a word.
+                raise ValueError(
+                    f"Expected a grade mapping for {question_id!r} in {path}, not a list. "
+                    f"The file declares version {version}."
+                )
             if not all(isinstance(c, str) and c.strip() for c in value):
                 raise ValueError(
                     f"Expected a list of non-empty chunk IDs for {question_id!r} in {path}"
@@ -109,6 +117,9 @@ def load_questions(
             qid: {c: g for c, g in grades.items() if g > 0} for qid, grades in graded.items()
         }
         expected_chunks_map = {qid: list(grades) for qid, grades in grades_map.items()}
+        negatives_map = {
+            qid: sorted(c for c, g in grades.items() if g == 0) for qid, grades in graded.items()
+        }
 
     questions: list[Question] = []
 
@@ -128,6 +139,7 @@ def load_questions(
                     update={
                         "expected_chunks": expected_chunks_map[q.id],
                         "expected_grades": grades_map.get(q.id, {}),
+                        "judged_negatives": negatives_map.get(q.id, []),
                     }
                 )
             if tier and q.tier != tier:

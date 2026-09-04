@@ -1,9 +1,15 @@
-"""Generate expected_chunks.yaml using BM25 + Haiku judge.
+"""Generate expected_chunks.yaml: graded ground truth from a pooled judge.
 
-For each question, BM25 retrieves the top-N candidate chunks, then a Haiku call
-classifies which of those candidates are actually relevant. Output is written to
-datasets/{corpus}/questions/expected_chunks.yaml as a `{question_id: [chunk_id]}`
-mapping.
+For each question the candidate pool is the union of BM25 and every built
+retrieval-only index, plus a seeded random sample of the rest of the corpus.
+A judge grades every candidate: 2 answers the question, 1 supports the answer,
+0 means the judge read the chunk and rejected it. A grade of 0 is what lets
+bpref count a real negative instead of guessing from what a run retrieved.
+
+Output goes to datasets/{corpus}/questions/expected_chunks.yaml in the version 2
+shape `{version, pool, labels}`, where labels maps question id to a grade per
+chunk. Every stored chunk id is canonical, with no strategy prefix, so a label
+is reachable for every strategy.
 
 Idempotent: skips questions that already have labels unless force=True.
 Cost-capped: stops once cumulative cost reaches KB_ARENA_COST_CAP_USD.
@@ -19,6 +25,7 @@ from pathlib import Path
 import yaml
 
 from kb_arena.benchmark.atomic import atomic_write_text
+from kb_arena.benchmark.ir_metrics import canonical_chunk_id
 from kb_arena.benchmark.questions import load_qrels, load_questions
 from kb_arena.llm.client import LLMClient
 from kb_arena.models.retrieval import RetrievedChunk
@@ -46,10 +53,11 @@ def _write_expected_chunks(
 
 JUDGE_PROMPT = """You are labeling retrieval ground truth for a documentation QA benchmark.
 
-Given a QUESTION and CANDIDATE chunks, identify which chunks contain information
-that helps answer the question — including partial information, supporting context,
-and related details. Err on the side of inclusion if a chunk is plausibly useful;
-exclude only chunks that are clearly off-topic.
+Given a QUESTION and CANDIDATE chunks, grade EVERY candidate you were shown.
+A chunk counts as relevant when it holds information that helps answer the
+question, including partial information, supporting context, and related
+details. Grade a plausibly useful chunk as relevant. Grade an off-topic chunk
+0. Never drop a candidate from your answer.
 
 QUESTION: {question}
 
@@ -64,8 +72,8 @@ the chunk and it is irrelevant. Grade every candidate you were shown, so a
 later reader knows which chunks a judge rejected. If nothing is relevant,
 grade every candidate 0.
 
-Example:
-{{"lambda-overview::pricing": 2, "ec2-overview::instance-types": 1}}"""
+Example, for three candidates:
+{{"lambda-overview::pricing": 2, "ec2-overview::instance-types": 1, "s3-overview::lifecycle": 0}}"""
 
 
 def _strip_fences(text: str) -> str:
@@ -80,7 +88,16 @@ def _strip_fences(text: str) -> str:
 
 
 class JudgeParseError(RuntimeError):
-    """The judge answered, and nothing in the answer parsed as grades."""
+    """The judge answered, and nothing in the answer parsed as grades.
+
+    The call still cost money, so the error carries the cost. Without it a
+    corpus whose every judgment fails reports a spend of zero and runs past
+    the cost cap.
+    """
+
+    def __init__(self, message: str, cost_usd: float = 0.0) -> None:
+        super().__init__(message)
+        self.cost_usd = cost_usd
 
 
 def _parse_grades(text: str, valid: set[str], report: bool = False):
@@ -104,6 +121,14 @@ def _parse_grades(text: str, valid: set[str], report: bool = False):
                 for cid, grade in parsed.items():
                     if str(cid) in valid and not isinstance(grade, bool) and grade in (0, 1, 2):
                         out[str(cid)] = int(grade)
+                if not out:
+                    # A wrapper key, a string grade, or a wrong chunk id all
+                    # decode as JSON and grade nothing. Storing that empty
+                    # label would skip the question on every later run, so the
+                    # search moves on and the caller learns the judge failed.
+                    log.warning("Judge returned a JSON object with no usable grade: %.120s", text)
+                    start = text.find(opener, start + 1)
+                    continue
                 return (out, True) if report else out
             if isinstance(parsed, list):
                 # The prompt asks for grades. A bare list is a model that
@@ -116,37 +141,6 @@ def _parse_grades(text: str, valid: set[str], report: bool = False):
                 return (listed, True) if report else listed
             start = text.find(opener, start + 1)
     return ({}, False) if report else {}
-
-
-def _extract_json_array(text: str) -> str | None:
-    """Extract the first balanced JSON array '[...]' from possibly noisy text."""
-    text = _strip_fences(text)
-    start = text.find("[")
-    if start < 0:
-        return None
-    depth = 0
-    in_string = False
-    escape = False
-    for i in range(start, len(text)):
-        ch = text[i]
-        if escape:
-            escape = False
-            continue
-        if ch == "\\":
-            escape = True
-            continue
-        if ch == '"':
-            in_string = not in_string
-            continue
-        if in_string:
-            continue
-        if ch == "[":
-            depth += 1
-        elif ch == "]":
-            depth -= 1
-            if depth == 0:
-                return text[start : i + 1]
-    return None
 
 
 async def label_one_question(
@@ -209,18 +203,24 @@ async def label_one_question(
                 )
             )
     if not candidates:
-        return [], cost
+        return {}, cost
 
-    # Deduplicate by chunk_id, keep the highest-ranked instance.
+    # RAPTOR emits `L1:doc::sec` and QnA emits `qna:...`. `ir_metrics` strips
+    # those prefixes from a RETRIEVED id only, because a stored label carries
+    # none. A prefixed label would be unreachable for bm25 and the vector
+    # strategies, so every candidate id is stripped before the judge sees it.
+    # Deduplicate on that canonical id, keeping the highest-ranked instance.
     by_id: dict[str, object] = {}
     for c in candidates:
-        cid = c.chunk_id
+        cid = canonical_chunk_id(c.chunk_id)
         existing = by_id.get(cid)
         if existing is None or c.rank < existing.rank:  # type: ignore[attr-defined]
             by_id[cid] = c
     deduped = list(by_id.values())
 
-    candidates_text = "\n\n".join(f"[{c.chunk_id}] {c.content[:400]}" for c in deduped)
+    candidates_text = "\n\n".join(
+        f"[{canonical_chunk_id(c.chunk_id)}] {c.content[:400]}" for c in deduped
+    )
     prompt = JUDGE_PROMPT.format(question=question_text, candidates=candidates_text)
 
     resp = await llm.extract(
@@ -231,13 +231,15 @@ async def label_one_question(
         ),
     )
     cost += float(resp.cost_usd or 0.0)
-    valid = {c.chunk_id for c in deduped}
+    valid = {canonical_chunk_id(c.chunk_id) for c in deduped}
     grades, parsed_any = _parse_grades(resp.text, valid, report=True)
     if not parsed_any:
         # A truncated reply parses as nothing. Storing an empty label would
         # make force=False skip that question forever, so the caller learns
         # the judge failed and the question stays unlabeled.
-        raise JudgeParseError(f"judge output did not parse as grades: {resp.text[:200]}")
+        raise JudgeParseError(
+            f"judge output did not parse as grades: {resp.text[:200]}", cost_usd=cost
+        )
     return grades, cost
 
 
@@ -353,8 +355,10 @@ async def label_corpus(
             )
         except JudgeParseError as exc:
             # The question stays unlabeled, so the next run tries it again
-            # without --force. A stored empty label would be permanent.
+            # without --force. A stored empty label would be permanent. The
+            # call still cost money, so the cap sees it.
             log.warning("Skipping %s: %s", q.id, exc)
+            total_cost += getattr(exc, "cost_usd", 0.0)
             unparsed += 1
             continue
         total_cost += cost
