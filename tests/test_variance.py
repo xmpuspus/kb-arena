@@ -427,3 +427,60 @@ def test_an_old_checkpoint_without_a_seed_still_resumes(tmp_path, monkeypatch):
     resumed = runner.check_resumable(tmp_path, "old", current)
 
     assert resumed is not None, "a snapshot that predates the key must still resume"
+
+
+def test_two_runs_with_an_empty_run_id_are_not_one_run(tmp_path, monkeypatch):
+    """A file may carry `run_id: ""`, and dropping one shrinks the sample."""
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    for name, accuracy in (("run_a", 0.2), ("run_b", 0.8)):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "c_bm25.json").write_text(
+            json.dumps(
+                {
+                    "corpus": "c",
+                    "strategy": "bm25",
+                    "run_id": "",
+                    "accuracy_by_tier": {"1": accuracy},
+                }
+            )
+        )
+
+    assert len(variance.load_runs("c")) == 2
+
+
+def test_a_run_missing_the_metric_is_counted_and_not_hidden():
+    """A spread over three of five runs must say it rests on three."""
+    manifest = _manifest(code_version="0.11.0", git_sha="a" * 40)
+    runs = [
+        {
+            "corpus": "c",
+            "strategy": "bm25",
+            "records": [{}],
+            "manifest": dict(manifest),
+            **extra,
+        }
+        for extra in (
+            {"accuracy_by_tier": {"1": 0.5}},
+            {"accuracy_by_tier": {"1": 0.6}},
+            {},
+        )
+    ]
+
+    [row] = variance.spread_report(runs)
+    metric = row["metrics"]["accuracy_by_tier"]
+
+    assert row["runs"] == 3
+    assert metric["runs"] == 2
+    assert metric["runs_without_this_metric"] == 1
+
+
+def test_the_cli_refuses_a_seed_outside_the_declared_bound():
+    """Assigning the attribute skips the validator, so the CLI must apply it."""
+    import inspect
+
+    from kb_arena import cli
+
+    source = inspect.getsource(cli.benchmark)
+    assert (
+        "Settings(run_seed=seed).run_seed" in source
+    ), "the CLI must build the value through the model, not assign it raw"

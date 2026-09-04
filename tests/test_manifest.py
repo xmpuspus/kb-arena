@@ -125,12 +125,18 @@ def test_a_cost_capped_partial_run_never_blends_with_a_full_one(tmp_path, monkey
     )
     full = {"manifest": manifest, "records": [{}, {}]}
     short = {"manifest": manifest, "records": [{}]}
-    capped = {"manifest": manifest, "records": [{}, {}], "stopped_by_cost_cap": True}
+    # The cap stopped this run after the last question, so nothing is missing.
+    capped_but_whole = {"manifest": manifest, "records": [{}, {}], "stopped_by_cost_cap": True}
+    capped_early = {"manifest": manifest, "records": [{}], "stopped_by_cost_cap": True}
     assert mf.compatibility_key(full) == manifest["compatibility_key"]
     # The scored count rides in the suffix, so two partial runs that stopped at
     # different points never read as repeats of one experiment.
     assert mf.compatibility_key(short) == manifest["compatibility_key"] + "-partial-1"
-    assert mf.compatibility_key(capped) == manifest["compatibility_key"] + "-partial-2"
+    assert mf.compatibility_key(capped_but_whole) == manifest["compatibility_key"], (
+        "a run that scored every question compares with every other whole run, "
+        "whatever stopped it afterwards"
+    )
+    assert mf.compatibility_key(capped_early) == manifest["compatibility_key"] + "-partial-1"
 
 
 def test_a_v1_file_dumped_by_the_v2_model_still_summarises_empty():

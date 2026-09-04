@@ -420,6 +420,21 @@ def benchmark(
         console.print("\n  Remove --dry-run to execute.")
         return
 
+    if seed >= 0:
+        from pydantic import ValidationError
+
+        from kb_arena.settings import Settings
+        from kb_arena.settings import settings as _seed_settings
+
+        try:
+            # Assigning the attribute skips the field validator, so the bound
+            # the model declares would never apply. Building the value through
+            # the model keeps the CLI and the setting under one rule.
+            _seed_settings.run_seed = Settings(run_seed=seed).run_seed
+        except ValidationError as exc:
+            console.print(f"[red]Invalid --seed {seed}: {exc.errors()[0]['msg']}[/red]")
+            raise typer.Exit(1) from None
+
     _preflight(needs_llm=True, needs_embeddings=True)
 
     if ragas or reference_free:
@@ -428,11 +443,6 @@ def benchmark(
         _settings.benchmark_enable_ragas = True
 
     from kb_arena.benchmark.runner import BenchmarkExecutionError, run_benchmark
-
-    if seed >= 0:
-        from kb_arena.settings import settings as _seed_settings
-
-        _seed_settings.run_seed = seed
 
     try:
         # Each repeat gets its own run id and result files, so a later reader
@@ -1737,7 +1747,8 @@ def optimize(
     seed: int = typer.Option(
         -1,
         "--seed",
-        help="RNG seed for --method random. Default -1 uses the recorded run seed, "
+        help="Seed for --method random AND for the bootstrap. Default -1 keeps "
+        "KB_ARENA_RUN_SEED. One value drives both, so the recorded seed and the "
         "so the manifest and the trial order cannot disagree.",
     ),
     confirm_holdout: bool = typer.Option(
@@ -1759,6 +1770,21 @@ def optimize(
     and sweep top-k only, so optimization never regenerates LLM-built artifacts.
     `--dry-run` needs no API keys.
     """
+
+    if seed >= 0:
+        from pydantic import ValidationError
+
+        from kb_arena.settings import Settings
+        from kb_arena.settings import settings as _seed_settings
+
+        try:
+            # One seed source. The sweep and its bootstrap both read the
+            # setting, so the manifest cannot disagree with the trial order.
+            _seed_settings.run_seed = Settings(run_seed=seed).run_seed
+        except ValidationError as exc:
+            console.print(f"[red]Invalid --seed {seed}: {exc.errors()[0]['msg']}[/red]")
+            raise typer.Exit(1) from None
+
     import asyncio as _asyncio
 
     from kb_arena.benchmark.optimizer import run_optimize, validate_optimize_inputs
@@ -1800,7 +1826,8 @@ def optimize(
             metric=metric,
             method=method,
             max_trials=max_trials,
-            seed=None if seed < 0 else seed,
+            # One seed source: the setting, which --seed writes above.
+            seed=None,
             dry_run=dry_run,
             split=split,
             allow_holdout=confirm_holdout,

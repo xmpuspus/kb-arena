@@ -225,9 +225,14 @@ def _scored_count(data: dict) -> int | None:
     manifest = manifest if isinstance(manifest, dict) else {}
     records = data.get("records")
     count = len(records) if isinstance(records, list) else None
+    expected = manifest.get("question_count")
+    whole = isinstance(expected, int) and count is not None and count >= expected
+    if whole:
+        # The cap stopped the run after the last question, so nothing is
+        # missing and the run compares with every other whole run.
+        return None
     if data.get("stopped_by_cost_cap") is True:
         return count if count is not None else -1
-    expected = manifest.get("question_count")
     if isinstance(expected, int) and count is not None and count < expected:
         return count
     return None

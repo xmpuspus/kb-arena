@@ -147,8 +147,11 @@ def spread_report(runs: list[dict], metrics: tuple[str, ...] = ("accuracy_by_tie
             spread = summarize(values)
             if not spread:
                 continue
+            # A run in this group whose metric was missing or the wrong type is
+            # not in the spread. Saying how many keeps the count honest.
+            missing = len(group) - len(values)
             if row["comparable"]:
-                row["metrics"][name] = spread.as_dict()
+                row["metrics"][name] = {**spread.as_dict(), "runs_without_this_metric": missing}
             else:
                 # The runs measured different things, so a mean and a standard
                 # deviation over them describe that difference. Report the
@@ -157,6 +160,7 @@ def spread_report(runs: list[dict], metrics: tuple[str, ...] = ("accuracy_by_tie
                     "runs": spread.runs,
                     "values": [round(v, 6) for v in sorted(values)],
                     "comparable": False,
+                    "runs_without_this_metric": missing,
                 }
         rows.append(row)
     return rows
@@ -198,11 +202,12 @@ def load_runs(corpus: str | None = None) -> list[dict]:
                 continue
             if corpus and data.get("corpus") != corpus:
                 continue
-            identity = (
-                str(data.get("run_id", path.stem)),
-                str(data.get("corpus")),
-                str(data.get("strategy")),
-            )
+            # A file may carry `run_id: ""`. Falling back on the key's absence
+            # alone would give two different runs one identity and drop one of
+            # them, which silently shrinks the sample.
+            run_id = data.get("run_id")
+            run_id = str(run_id) if isinstance(run_id, str) and run_id.strip() else str(path)
+            identity = (run_id, str(data.get("corpus")), str(data.get("strategy")))
             if identity in seen:
                 continue
             seen.add(identity)
