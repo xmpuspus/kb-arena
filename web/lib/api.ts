@@ -165,6 +165,23 @@ export async function fetchCorpora(): Promise<CorpusInfo[]> {
   }
 }
 
+export interface ServerStatus {
+  demoMode: boolean;
+}
+
+// null means the server did not answer, which is not the same as live mode.
+// The demo page shows its read-only banner only on a definite demoMode: true.
+export async function fetchServerStatus(): Promise<ServerStatus | null> {
+  try {
+    const res = await fetch(`${API_URL}/health`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return { demoMode: Boolean(data.demo_mode) };
+  } catch {
+    return null;
+  }
+}
+
 export interface GraphData {
   nodes: { id: string; name: string; type: string; description?: string }[];
   edges: { source: string; target: string; type: string }[];
