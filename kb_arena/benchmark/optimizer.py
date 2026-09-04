@@ -26,6 +26,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from kb_arena.benchmark.atomic import atomic_write_text
 from kb_arena.benchmark.holdout import LEDGER_NAME, record_holdout_use, touches_holdout
 from kb_arena.benchmark.ir_metrics import compute_all
 from kb_arena.benchmark.questions import load_questions
@@ -926,7 +927,7 @@ async def run_optimize(
         ),
         "strategies": {name: strategy_report(r) for name, r in results.items()},
     }
-    (out / "optimize.json").write_text(json.dumps(report, indent=2))
+    atomic_write_text(out / "optimize.json", json.dumps(report, indent=2))
 
     table = Table(title=f"optimize: {corpus} (metric={metric})")
     table.add_column("Strategy", style="bold")

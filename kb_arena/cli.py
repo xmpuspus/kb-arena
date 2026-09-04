@@ -335,6 +335,11 @@ def benchmark(
     ragas: bool = typer.Option(
         False, "--ragas", help="Enable RAGAS metrics (faithfulness, precision, recall, relevancy)"
     ),
+    resume: str = typer.Option(
+        "",
+        "--resume",
+        help="Run id to resume. Questions already checkpointed under results/run_<id> are skipped",
+    ),
     runs: int = typer.Option(
         1,
         "--runs",
@@ -419,7 +424,7 @@ def benchmark(
     try:
         # Each repeat gets its own run id and result files, so a later reader
         # can see the spread across runs instead of one point.
-        for _ in range(runs):
+        for repeat in range(runs):
             asyncio.run(
                 run_benchmark(
                     corpus=corpus,
@@ -429,6 +434,8 @@ def benchmark(
                     parallel=parallel,
                     reference_free=reference_free,
                     top_k=top_k,
+                    # only the first repeat resumes; the rest are fresh runs
+                    resume_run_id=(resume or None) if repeat == 0 else None,
                 )
             )
     except BenchmarkExecutionError as exc:
