@@ -448,6 +448,9 @@ RESUME_KEYS = (
     "question_split",
     "reference_free",
     "ragas_enabled",
+    # A resume stamps the whole run with the new seed, so records made under
+    # the old one would carry a provenance nobody produced.
+    "run_seed",
 )
 
 
@@ -590,6 +593,7 @@ def _config_snapshot(
         "generate_model": generation_identity()["model"],
         "judge_provider": judge["provider"],
         "judge_model": judge["model"],
+        "run_seed": settings.run_seed,
         "max_concurrent": settings.benchmark_max_concurrent,
         "query_timeout_s": settings.benchmark_query_timeout_s,
         "top_k": top_k,

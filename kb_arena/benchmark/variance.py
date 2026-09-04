@@ -30,6 +30,10 @@ UNRECORDED_SEED = "unrecorded"
 UNRECORDED_VERSION = "unrecorded"
 
 
+class RunsUnreadableError(RuntimeError):
+    """A stored result exists and cannot be read, so the sample is incomplete."""
+
+
 @dataclass(frozen=True)
 class Spread:
     """What N repeats of one experiment say about a single metric."""
@@ -132,9 +136,21 @@ def spread_report(runs: list[dict], metrics: tuple[str, ...] = ("accuracy_by_tie
             "metrics": {},
         }
         for name in metrics:
-            spread = summarize([v for run in group if (v := _metric(run, name)) is not None])
-            if spread:
+            values = [v for run in group if (v := _metric(run, name)) is not None]
+            spread = summarize(values)
+            if not spread:
+                continue
+            if row["comparable"]:
                 row["metrics"][name] = spread.as_dict()
+            else:
+                # The runs measured different things, so a mean and a standard
+                # deviation over them describe that difference. Report the
+                # values instead, and let the reader see there is no spread.
+                row["metrics"][name] = {
+                    "runs": spread.runs,
+                    "values": [round(v, 6) for v in sorted(values)],
+                    "comparable": False,
+                }
         rows.append(row)
     return rows
 
@@ -154,6 +170,7 @@ def load_runs(corpus: str | None = None) -> list[dict]:
     if not root.is_dir():
         return []
     runs: list[dict] = []
+    unreadable: list[str] = []
     seen: set[tuple[str, str, str]] = set()
     directories = sorted(root.glob("run_*")) + [root]
     for directory in directories:
@@ -162,7 +179,12 @@ def load_runs(corpus: str | None = None) -> list[dict]:
         for path in sorted(directory.glob("*.json")):
             try:
                 data = json.loads(path.read_text())
-            except (json.JSONDecodeError, OSError):
+            except OSError as exc:
+                # A run that exists and cannot be read is lost evidence. Silently
+                # shrinking the sample would report a spread over what survived.
+                unreadable.append(f"{path}: {exc}")
+                continue
+            except json.JSONDecodeError:
                 continue
             if not isinstance(data, dict) or "strategy" not in data or "corpus" not in data:
                 continue
@@ -177,14 +199,28 @@ def load_runs(corpus: str | None = None) -> list[dict]:
                 continue
             seen.add(identity)
             runs.append(data)
+    if unreadable:
+        raise RunsUnreadableError(
+            f"{len(unreadable)} result file(s) could not be read, so a spread over "
+            f"the rest would hide lost evidence: " + "; ".join(unreadable[:5])
+        )
     return runs
 
 
 def _code_version(run: dict) -> str:
-    """The package version a run recorded, or a name for one that recorded none."""
+    """The build a run came from: its version, and the commit inside it.
+
+    Several commits share one unreleased version during development, so the
+    version alone would call a code change run-to-run noise. The commit decides.
+    """
     manifest = run.get("manifest")
-    version = manifest.get("code_version") if isinstance(manifest, dict) else None
-    return str(version) if version else UNRECORDED_VERSION
+    manifest = manifest if isinstance(manifest, dict) else {}
+    version = manifest.get("code_version")
+    sha = manifest.get("git_sha")
+    if not version and not sha:
+        return UNRECORDED_VERSION
+    label = str(version) if version else UNRECORDED_VERSION
+    return f"{label}@{str(sha)[:7]}" if sha else label
 
 
 def _seed_labels(group: list[dict]) -> list[str]:

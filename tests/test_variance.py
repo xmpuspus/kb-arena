@@ -245,3 +245,107 @@ def test_one_code_version_is_comparable():
 
     assert row["comparable"] is True
     assert row["code_versions"] == ["0.11.0"]
+
+
+def test_two_commits_on_one_version_are_not_repeats():
+    """Several commits share one unreleased version during development."""
+    manifest = _manifest(code_version="0.11.0")
+    runs = [
+        {
+            "corpus": "c",
+            "strategy": "bm25",
+            "accuracy_by_tier": {"1": value},
+            "records": [{}],
+            "manifest": {**manifest, "git_sha": sha},
+        }
+        for sha, value in (("aaaaaaa", 0.2), ("bbbbbbb", 0.8))
+    ]
+
+    [row] = variance.spread_report(runs)
+
+    assert row["comparable"] is False, "the version matched and the code did not"
+    assert len(row["code_versions"]) == 2
+
+
+def test_an_incomparable_group_reports_values_and_no_mean():
+    """A warning cannot turn a mean across experiments into a valid statistic."""
+    manifest = _manifest(code_version="0.11.0")
+    runs = [
+        {
+            "corpus": "c",
+            "strategy": "bm25",
+            "accuracy_by_tier": {"1": value},
+            "records": [{}],
+            "manifest": {**manifest, "git_sha": sha},
+        }
+        for sha, value in (("aaaaaaa", 0.2), ("bbbbbbb", 0.8))
+    ]
+
+    [row] = variance.spread_report(runs)
+    metric = row["metrics"]["accuracy_by_tier"]
+
+    assert metric["values"] == [0.2, 0.8]
+    assert "mean" not in metric, "0.5 is the midpoint of a code change, not a mean"
+    assert "sd" not in metric
+
+
+def test_an_unreadable_result_stops_the_command(tmp_path, monkeypatch):
+    """A run that exists and cannot be read is lost evidence, not a missing run."""
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    record = {"corpus": "c", "strategy": "bm25", "run_id": "a", "accuracy_by_tier": {"1": 0.2}}
+    (tmp_path / "run_a").mkdir()
+    (tmp_path / "run_a" / "c_bm25.json").write_text(json.dumps(record))
+    blocked = tmp_path / "run_b"
+    blocked.mkdir()
+    unreadable = blocked / "c_bm25.json"
+    unreadable.write_text(json.dumps(record))
+    unreadable.chmod(0o000)
+
+    try:
+        with pytest.raises(variance.RunsUnreadableError, match="could not be read"):
+            variance.load_runs("c")
+    finally:
+        unreadable.chmod(0o644)
+
+
+def test_the_seed_reaches_the_trial_order_it_claims_to_control():
+    """A manifest claim no code honours is a record of work that never happened."""
+    from kb_arena.benchmark.optimizer import TrialConfig, build_trials
+
+    baseline = TrialConfig(
+        strategy="bm25",
+        top_k=5,
+        chunk_tokens=512,
+        embedding_provider="bge",
+        reranker_backend="bge",
+    )
+    kwargs = dict(
+        strategy="bm25",
+        top_ks=[3, 5, 10, 20],
+        chunk_sizes=[256, 512],
+        embedding_providers=["bge"],
+        reranker_backends=["bge"],
+        baseline=baseline,
+        method="random",
+        max_trials=3,
+    )
+    original = settings.run_seed
+    try:
+        settings.run_seed = 7
+        first = [(t.top_k, t.chunk_tokens) for t in build_trials(**kwargs)]
+        settings.run_seed = 8
+        other = [(t.top_k, t.chunk_tokens) for t in build_trials(**kwargs)]
+        settings.run_seed = 7
+        again = [(t.top_k, t.chunk_tokens) for t in build_trials(**kwargs)]
+    finally:
+        settings.run_seed = original
+
+    assert first == again, "one seed must give one trial order"
+    assert first != other, "a different seed must give a different order"
+
+
+def test_a_resume_refuses_a_different_seed():
+    """A resume stamps the whole run with the new seed."""
+    from kb_arena.benchmark.runner import RESUME_KEYS
+
+    assert "run_seed" in RESUME_KEYS

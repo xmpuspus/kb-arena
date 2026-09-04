@@ -170,8 +170,14 @@ def seed_identity() -> dict:
     """
     return {
         "value": int(settings.run_seed),
-        "controls": ["candidate sampling", "trial order", "bootstrap resampling"],
-        "does_not_control": ["provider-side model sampling", "retrieval tie order"],
+        # Only what code in this package actually reads. A claim here that no
+        # consumer honours is a record of work that never happened.
+        "controls": ["optimize trial order", "bootstrap resampling"],
+        "does_not_control": [
+            "provider-side model sampling",
+            "retrieval tie order",
+            "judge output",
+        ],
     }
 
 

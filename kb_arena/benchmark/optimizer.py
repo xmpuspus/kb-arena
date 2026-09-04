@@ -174,7 +174,7 @@ def build_trials(
     baseline: TrialConfig,
     method: str = "grid",
     max_trials: int = 0,
-    seed: int = 0,
+    seed: int | None = None,
 ) -> list[TrialConfig]:
     """Enumerate trial configs for one strategy.
 
@@ -229,7 +229,10 @@ def build_trials(
         for coordinate, axis in zip(baseline_coords, axes, strict=True):
             baseline_index = baseline_index * len(axis) + coordinate
 
-        rng = random.Random(seed)
+        # None means "use the seed the run records", so the manifest's claim
+        # about trial order holds. An explicit seed still wins, for a caller
+        # that wants one sweep to differ.
+        rng = random.Random(settings.run_seed if seed is None else seed)
         sampled = rng.sample(range(total_combinations - 1), max_trials - 1)
         for compressed_index in sampled:
             flat_index = (
@@ -315,7 +318,9 @@ def _bootstrap_ci(
             n_resamples=n_resamples,
             confidence_level=ci,
             method="percentile",
-            random_state=0,
+            # The recorded seed, so a repeat resamples the same way and the
+            # manifest's claim about what the seed controls is true.
+            random_state=settings.run_seed,
         )
         return (float(res.confidence_interval.low), float(res.confidence_interval.high))
     except ImportError:  # optional scientific stack is unavailable
@@ -592,7 +597,7 @@ def plan_optimize(
     reranker_backends,
     method: str = "grid",
     max_trials: int = 0,
-    seed: int = 0,
+    seed: int | None = None,
 ) -> list[dict]:
     """Cost preview: trial + rebuild counts per strategy. No execution."""
     plan: list[dict] = []
@@ -762,7 +767,7 @@ async def run_optimize(
     metric: str = "ndcg",
     method: str = "grid",
     max_trials: int = 0,
-    seed: int = 0,
+    seed: int | None = None,
     dry_run: bool = False,
     out_dir: str | None = None,
     split: str = "auto",

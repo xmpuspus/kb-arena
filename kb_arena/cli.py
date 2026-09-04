@@ -1620,11 +1620,16 @@ def variance(
 
     from kb_arena.benchmark.variance import (
         MIN_RUNS_FOR_SPREAD,
+        RunsUnreadableError,
         load_runs,
         spread_report,
     )
 
-    runs = load_runs(corpus or None)
+    try:
+        runs = load_runs(corpus or None)
+    except RunsUnreadableError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from None
     if not runs:
         console.print("[yellow]No results found. Run `kb-arena benchmark` first.[/yellow]")
         raise typer.Exit(1)
@@ -1632,6 +1637,8 @@ def variance(
     rows = spread_report(runs, metrics=(metric,))
     table = Table(title=f"Spread over repeats ({metric})")
     columns = ("corpus", "strategy", "key", "runs", "seeds", "mean", "sd", "range", "comparable")
+    # An incomparable row prints its values under "mean", because there is no
+    # mean to print: the runs measured different things.
     for column in columns:
         table.add_column(column)
     thin = 0
@@ -1640,10 +1647,22 @@ def variance(
         spread = row["metrics"].get(metric)
         if not spread:
             continue
-        if spread["runs"] < MIN_RUNS_FOR_SPREAD:
-            thin += 1
         if not row["comparable"]:
             incomparable += 1
+            table.add_row(
+                row["corpus"],
+                row["strategy"],
+                row["compatibility_key"][:12],
+                str(spread["runs"]),
+                ", ".join(row["seeds"]) or "unrecorded",
+                ", ".join(f"{v:.4f}" for v in spread["values"]),
+                "-",
+                "-",
+                "no",
+            )
+            continue
+        if spread["runs"] < MIN_RUNS_FOR_SPREAD:
+            thin += 1
         seeds = ", ".join(row["seeds"]) or "unrecorded"
         table.add_row(
             row["corpus"],
@@ -1664,8 +1683,9 @@ def variance(
     if incomparable:
         console.print(
             f"[yellow]{incomparable} row(s) are not comparable: the runs carry no "
-            f"manifest, or they came from different code versions. Read those means "
-            f"as a list of separate results, never as a spread.[/yellow]"
+            f"manifest, or they came from different commits. Those rows list every "
+            f"value and no mean, because the gap between them is a change, not "
+            f"noise.[/yellow]"
         )
     if thin:
         console.print(
