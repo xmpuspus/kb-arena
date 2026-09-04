@@ -470,6 +470,12 @@ def report(
     corpus: str = typer.Option("all", help="Corpus to generate report for"),
     output: str | None = typer.Option(None, help="Output file path"),  # noqa: UP045
     format: str = typer.Option("rich", help="Output format: rich, json, csv, html, markdown"),
+    profile: str = typer.Option(
+        "accuracy-first",
+        "--profile",
+        help="Decision profile for the ranking: accuracy-first, balanced, latency-bound, "
+        "cost-bound",
+    ),
 ):
     """Generate benchmark report from results JSON."""
     if format not in _REPORT_FORMATS:
@@ -481,7 +487,7 @@ def report(
     if format == "markdown":
         from kb_arena.benchmark.reporter import generate_report
 
-        generate_report(corpus=corpus, output=output)
+        generate_report(corpus=corpus, output=output, profile=profile)
         _next_step("report")
         return
 
@@ -532,7 +538,7 @@ def report(
 
     from kb_arena.benchmark.reporter import generate_report
 
-    generate_report(corpus=corpus, output=output)
+    generate_report(corpus=corpus, output=output, profile=profile)
 
     _next_step("report")
 
