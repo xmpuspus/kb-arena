@@ -692,3 +692,28 @@ def test_the_recorded_commit_is_the_whole_one():
     sha = manifest.git_sha()
     if sha:
         assert len(sha) == 40
+
+
+def test_a_checkpoint_without_an_experiment_key_still_resumes(tmp_path, monkeypatch):
+    """Refusing it blamed the question set for a change nobody made."""
+    from kb_arena.benchmark import runner
+
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    run_dir = tmp_path / "run_old"
+    run_dir.mkdir()
+    record: dict = {"run_id": "old"}
+
+    runner._bind_run_manifest(record, "c", "key123", "old", tmp_path, "old")
+
+    assert record["manifests"]["c"] == "key123", "the key is recorded, not refused"
+
+
+def test_a_checkpoint_with_a_different_key_is_still_refused(tmp_path, monkeypatch):
+    """The permissive path must not swallow a real mismatch."""
+    from kb_arena.benchmark import runner
+
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    record: dict = {"run_id": "old", "manifests": {"c": "other"}}
+
+    with pytest.raises(runner.BenchmarkExecutionError, match="experiment key"):
+        runner._bind_run_manifest(record, "c", "key123", "old", tmp_path, "old")
