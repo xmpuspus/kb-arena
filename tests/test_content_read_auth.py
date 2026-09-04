@@ -295,6 +295,7 @@ def test_every_protected_page_retries_when_a_token_is_saved():
         "web/app/graph/page.tsx",
         "web/app/benchmark/page.tsx",
         "web/app/retriever-lab/page.tsx",
+        "web/components/tools/GenerateTab.tsx",
     ):
         page = Path(name).read_text()
         assert "useTokenEpoch()" in page, f"{name} must retry on a token change"

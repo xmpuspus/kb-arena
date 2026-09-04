@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { streamGenerate, fetchQaPairs, type QaPair } from "@/lib/tools-api";
 import ProgressBar from "@/components/tools/ProgressBar";
 import EmptyState from "@/components/tools/EmptyState";
+import { useTokenEpoch } from "@/lib/useTokenEpoch";
 
 interface Props {
   corpus: string;
@@ -18,6 +19,9 @@ export default function GenerateTab({ corpus }: Props) {
   const [pairs, setPairs] = useState<QaPair[]>([]);
   const [progress, setProgress] = useState({ current: 0, total: 0, label: "" });
   const [error, setError] = useState("");
+  // A saved token must retry the read it was entered for, the same as the
+  // graph, benchmark and retriever-lab pages.
+  const tokenEpoch = useTokenEpoch();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -39,7 +43,7 @@ export default function GenerateTab({ corpus }: Props) {
         setError(err instanceof Error ? err.message : "Could not read the Q&A pairs");
         setState("error");
       });
-  }, [corpus]);
+  }, [corpus, tokenEpoch]);
 
   const handleGenerate = async () => {
     abortRef.current?.abort();
