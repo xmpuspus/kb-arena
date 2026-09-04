@@ -1640,8 +1640,9 @@ def label_chunks(
 ):
     """Generate datasets/{corpus}/questions/expected_chunks.yaml with a graded judge.
 
-    The candidate pool is BM25 plus every built retrieval-only index, plus a
-    seeded random sample. The judge is the model KB_ARENA_GENERATE_MODEL names.
+    The candidate pool is BM25 plus every retrieval-only index that answers a
+    probe, plus a seeded random sample. The output's pool record names the
+    retrievers that answered. The judge is the model KB_ARENA_GENERATE_MODEL names.
     The prompt asks it to grade every candidate 2, 1 or 0, and a partial answer
     is accepted, so a chunk missing from the labels means unjudged, not rejected.
 

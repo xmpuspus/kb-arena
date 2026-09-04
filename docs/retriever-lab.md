@@ -28,9 +28,12 @@ For each query and strategy, we compute:
 
 ## Generating chunk-level ground truth (`label-chunks`)
 
-The candidate pool is the union of BM25 and every retrieval-only index that is built,
-which is naive vector, contextual vector, Q and A pairs and RAPTOR, plus a seeded random
-sample of the rest of the corpus. A pool made only of what one retriever ranks high never
+The candidate pool is the union of BM25 and every retrieval-only index that answers a
+probe query, which can be naive vector, contextual vector, Q and A pairs and RAPTOR,
+plus a seeded random sample of the rest of the corpus. A probe cannot tell a missing
+index from a provider that did not answer, so an index you built can still drop out.
+The `pool` record in the output names the retrievers that actually answered, and that
+record, not this sentence, is what a reader should trust for a given file. A pool made only of what one retriever ranks high never
 shows the judge a chunk it missed, and the random sample is what gives the labels their
 negatives.
 

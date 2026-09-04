@@ -305,8 +305,14 @@ async def label_corpus(
                 await inst.query("kb_arena_index_probe", top_k=1, corpus=corpus)
                 extra_retrievers.append(inst)
             except Exception as exc:  # noqa: BLE001 — best-effort
-                log.info(
-                    "Skipping %s for ground-truth pool (index not ready: %s)",
+                # The probe cannot tell a missing index from an outage of the
+                # embedding or LLM provider, so this says both readings out
+                # loud. A built index that drops out here narrows the pool,
+                # and the pool record below names only the ones that answered.
+                log.warning(
+                    "Skipping %s for the ground-truth pool. Either its index is "
+                    "not built, or the provider it needs did not answer: %s. The "
+                    "labels will record the retrievers that did answer.",
                     cls.__name__,
                     exc,
                 )

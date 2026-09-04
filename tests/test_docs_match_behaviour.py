@@ -56,9 +56,13 @@ def test_the_labeling_doc_names_the_pool_the_labeler_builds():
     ):
         assert name in source, f"{name} is in the pool, so the doc must name it"
 
-    doc = (ROOT / "docs" / "retriever-lab.md").read_text()
-    assert "union of BM25 and every retrieval-only index" in doc
+    doc = _flat((ROOT / "docs" / "retriever-lab.md").read_text())
+    assert "union of BM25 and every retrieval-only index that answers a probe" in doc
     assert "seeded random" in doc
+    # A probe cannot tell a missing index from a provider outage, so the doc
+    # must point at the pool record rather than promise which retrievers ran.
+    assert "an index you built can still drop out" in doc
+    assert "names the retrievers that actually answered" in doc
 
 
 def test_the_labeling_doc_describes_the_file_the_writer_produces():
