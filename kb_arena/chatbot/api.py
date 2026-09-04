@@ -11,6 +11,7 @@ import importlib.resources as _pkg_resources
 import json
 import logging
 import math
+import re as _re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path as _Path
@@ -24,7 +25,7 @@ from pydantic import BaseModel, field_validator
 from sse_starlette.sse import EventSourceResponse
 
 from kb_arena import __version__
-from kb_arena.arena.engine import ArenaEngine
+from kb_arena.arena.engine import ArenaEngine, scope_key
 from kb_arena.benchmark.compare import compare_result_files, resolve_result_path
 from kb_arena.benchmark.manifest import compatibility_key, manifest_summary
 from kb_arena.benchmark.review import REVIEWED, STATUSES, review_summary
@@ -626,8 +627,6 @@ async def retriever_lab_runs() -> dict:
 @app.get("/api/retriever-lab/{run_id}")
 async def retriever_lab_results(run_id: str) -> dict:
     """Return retriever-lab JSON for the given run."""
-    import re as _re
-
     if not _re.match(r"^[a-zA-Z0-9_-]+$", run_id):
         raise HTTPException(status_code=400, detail="invalid run_id")
     path = _Path(settings.results_path) / f"run_{run_id}" / "retriever_lab.json"
@@ -1004,7 +1003,7 @@ async def arena_create_match(body: ArenaMatchRequest, request: Request):
             {"error": {"code": "arena_unavailable", "message": "Arena not initialized"}}, 503
         )
     try:
-        match = await arena.create_match(body.question, corpus=body.corpus)
+        match = await arena.create_match(body.question, corpus=body.corpus, rubric=body.rubric)
         return {
             "match_id": match.id,
             "question": match.question,
@@ -1041,20 +1040,52 @@ async def arena_vote(body: ArenaVoteRequest, request: Request):
         return JSONResponse(
             {"error": {"code": "arena_unavailable", "message": "Arena not initialized"}}, 503
         )
-    result = arena.vote(body.match_id, body.winner)
+    # A named reviewer is a claim about who judged, so only an operator with
+    # the reviewer key can make one. A caller that asks for a name without
+    # the key is refused, rather than silently recorded as a human vote that
+    # consumes the match the real reviewer meant to judge.
+    voter = body.voter or "human"
+    if voter != "human" and request.headers.get("x-kb-arena-reviewer-key") != (
+        settings.arena_reviewer_key or object()
+    ):
+        raise HTTPException(status_code=403, detail="a named voter needs the reviewer key")
+    result = arena.vote(body.match_id, body.winner, voter=voter)
     if "error" in result:
         return JSONResponse({"error": {"code": "vote_failed", "message": result["error"]}}, 400)
     return result
 
 
 @app.get("/api/arena/leaderboard")
-async def arena_leaderboard(request: Request):
-    """Get current ELO leaderboard."""
+async def arena_leaderboard(request: Request, corpus: str = "", rubric: str = "default"):
+    """The ELO leaderboard for one corpus and rubric. Votes from other scopes never count."""
+    # The scope names must match what a match request accepts, or a typo
+    # answers for a scope the caller never asked for.
+    for name, value in (("corpus", corpus), ("rubric", rubric)):
+        if value and not _re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", value):
+            raise HTTPException(status_code=400, detail=f"invalid {name}")
     arena = request.app.state.arena
     if not arena:
-        return {"leaderboard": [], "total_votes": 0}
+        # An empty board reads as a real result: nobody voted yet. The match
+        # and vote routes answer 503 for the same outage, so this one does too.
+        return JSONResponse(
+            {"error": {"code": "arena_unavailable", "message": "Arena not initialized"}}, 503
+        )
+    board = arena.leaderboard(corpus=corpus, rubric=rubric)
     return {
-        "leaderboard": arena.leaderboard(),
+        "leaderboard": board,
+        "scope": {"corpus": corpus or "all", "rubric": rubric or "default"},
+        "scopes": sorted(arena.state.elo_by_scope),
+        # Each match sits on two rows, so count the matches, not the rows.
+        # The state keeps the last 200 matches, so this counts the votes the
+        # history still holds, not every vote the ratings were built from.
+        "votes_in_history": sum(
+            1
+            for m in arena.state.matches
+            # The rows below count a, b and tie only, so a stored winner of
+            # anything else must not raise this number past them.
+            if m.winner in ("a", "b", "tie")
+            and scope_key(m.corpus, m.rubric) == scope_key(corpus, rubric)
+        ),
         "total_votes": arena.state.total_votes,
     }
 
