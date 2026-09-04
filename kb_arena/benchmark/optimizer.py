@@ -27,6 +27,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from kb_arena.benchmark.atomic import atomic_write_text
+from kb_arena.benchmark.holdout import LEDGER_NAME, record_holdout_use, touches_holdout
 from kb_arena.benchmark.ir_metrics import compute_all
 from kb_arena.benchmark.questions import load_questions
 from kb_arena.settings import settings
@@ -765,6 +766,7 @@ async def run_optimize(
     dry_run: bool = False,
     out_dir: str | None = None,
     split: str = "auto",
+    allow_holdout: bool = False,
 ) -> int:
     """Sweep, score, report. Returns 0 on success, 1 on hard failure."""
     from rich.console import Console
@@ -839,10 +841,36 @@ async def run_optimize(
         else [q for q in all_questions if getattr(q, "split", "unspecified") == effective_split]
     )
     if not questions:
+        if touches_holdout(all_questions) and not allow_holdout:
+            console.print(
+                f"[red]No questions for {corpus} outside the sealed holdout split. optimize tunes "
+                "on the development split. To confirm one lead on the holdout, pass "
+                "--confirm-holdout.[/red]"
+            )
+            return 1
         console.print(f"[red]No questions for {corpus}.[/red]")
+        return 1
+    # The optimizer searches. A search that reads holdout questions fits to
+    # them, and the split then proves nothing. "all" reads them too. One
+    # explicit confirmation run is the only reason to open the seal, and it
+    # is written to the holdout ledger before anything is scored.
+    if touches_holdout(questions) and not allow_holdout:
+        console.print(
+            "[red]The holdout split is sealed. optimize tunes on the development split. "
+            "To confirm one lead on the holdout, pass --confirm-holdout. Every holdout "
+            f"run is written to {LEDGER_NAME}.[/red]"
+        )
         return 1
 
     run_id = uuid4().hex[:8]
+    if touches_holdout(questions):
+        record_holdout_use(
+            settings.results_path,
+            tool="optimize",
+            corpus=corpus,
+            run_id=run_id,
+            strategies=list(strategies),
+        )
     results: dict[str, OptimizeResult] = {}
     for s in strategies:
         try:
