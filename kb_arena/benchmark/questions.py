@@ -13,23 +13,64 @@ EXPECTED_CHUNKS_FILE = "expected_chunks.yaml"
 QUESTION_SPLITS = frozenset({"development", "validation", "holdout", "unspecified"})
 
 
-def validate_expected_chunks(raw: object, path: Path) -> dict[str, list[str]]:
-    """Validate qrels without turning malformed labels into valid empty evidence."""
+QRELS_VERSION = 2
+GRADES = (0, 1, 2)
+
+
+def load_qrels(raw: object, path: Path) -> tuple[dict[str, dict[str, int]], int]:
+    """Graded labels per question, and the file version they came from.
+
+    Version 1 is a question-to-list mapping, every listed chunk grade 1.
+    Version 2 wraps a labels mapping of question to chunk-to-grade, with
+    grades 0, 1, or 2. A grade 0 records a judged negative and never counts
+    as expected. Malformed labels raise, so a broken file never reads as
+    valid empty evidence.
+    """
     if not isinstance(raw, dict):
         raise ValueError(f"Expected a question-to-chunks mapping in {path}")
-
-    validated: dict[str, list[str]] = {}
-    for question_id, chunk_ids in raw.items():
+    version = 1
+    labels = raw
+    if "labels" in raw and isinstance(raw.get("version"), int):
+        version = int(raw["version"])
+        labels = raw["labels"]
+        if version != QRELS_VERSION:
+            raise ValueError(f"Unknown qrels version {version} in {path}")
+        if not isinstance(labels, dict):
+            raise ValueError(f"Expected a labels mapping in {path}")
+    graded: dict[str, dict[str, int]] = {}
+    for question_id, value in labels.items():
         if not isinstance(question_id, str) or not question_id.strip():
             raise ValueError(f"Expected a non-empty question ID in {path}")
-        if not isinstance(chunk_ids, list) or not all(
-            isinstance(chunk_id, str) and chunk_id.strip() for chunk_id in chunk_ids
-        ):
+        if isinstance(value, list):
+            if not all(isinstance(c, str) and c.strip() for c in value):
+                raise ValueError(
+                    f"Expected a list of non-empty chunk IDs for {question_id!r} in {path}"
+                )
+            graded[question_id] = {c: 1 for c in value}
+        elif isinstance(value, dict) and version == QRELS_VERSION:
+            grades: dict[str, int] = {}
+            for chunk_id, grade in value.items():
+                if not isinstance(chunk_id, str) or not chunk_id.strip():
+                    raise ValueError(f"Expected a non-empty chunk ID for {question_id!r} in {path}")
+                if isinstance(grade, bool) or grade not in GRADES:
+                    raise ValueError(
+                        f"Expected a grade of 0, 1, or 2 for {chunk_id!r} under {question_id!r} "
+                        f"in {path}"
+                    )
+                grades[chunk_id] = int(grade)
+            graded[question_id] = grades
+        else:
             raise ValueError(
-                f"Expected a list of non-empty chunk IDs for {question_id!r} in {path}"
+                f"Expected a list of chunk IDs or a chunk-to-grade mapping for "
+                f"{question_id!r} in {path}"
             )
-        validated[question_id] = chunk_ids
-    return validated
+    return graded, version
+
+
+def validate_expected_chunks(raw: object, path: Path) -> dict[str, list[str]]:
+    """The expected chunk ids per question, from either file version. Grade 0 never counts."""
+    graded, _ = load_qrels(raw, path)
+    return {qid: [c for c, g in grades.items() if g > 0] for qid, grades in graded.items()}
 
 
 def load_questions(
@@ -56,13 +97,18 @@ def load_questions(
         raise FileNotFoundError(f"Questions directory not found: {questions_dir}")
 
     expected_chunks_map: dict[str, list[str]] = {}
+    grades_map: dict[str, dict[str, int]] = {}
     expected_path = questions_dir / EXPECTED_CHUNKS_FILE
     if expected_path.exists():
         try:
             loaded = yaml.safe_load(expected_path.read_text())
         except yaml.YAMLError as exc:
             raise ValueError(f"Invalid expected chunks YAML: {expected_path}") from exc
-        expected_chunks_map = validate_expected_chunks(loaded, expected_path)
+        graded, _ = load_qrels(loaded, expected_path)
+        grades_map = {
+            qid: {c: g for c, g in grades.items() if g > 0} for qid, grades in graded.items()
+        }
+        expected_chunks_map = {qid: list(grades) for qid, grades in grades_map.items()}
 
     questions: list[Question] = []
 
@@ -78,7 +124,12 @@ def load_questions(
         for entry in raw:
             q = Question.model_validate(entry)
             if q.id in expected_chunks_map:
-                q = q.model_copy(update={"expected_chunks": expected_chunks_map[q.id]})
+                q = q.model_copy(
+                    update={
+                        "expected_chunks": expected_chunks_map[q.id],
+                        "expected_grades": grades_map.get(q.id, {}),
+                    }
+                )
             if tier and q.tier != tier:
                 continue
             if question_type and q.type != question_type:

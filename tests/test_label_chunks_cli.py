@@ -126,14 +126,15 @@ async def test_label_corpus_checkpoints_success_before_later_failure(tmp_path, m
     monkeypatch.setattr(
         expected_chunks,
         "label_one_question",
-        AsyncMock(side_effect=[(["doc::section::0"], 0.1), ConnectionError("judge offline")]),
+        AsyncMock(side_effect=[({"doc::section::0": 2}, 0.1), ConnectionError("judge offline")]),
     )
 
     with pytest.raises(ConnectionError, match="judge offline"):
         await expected_chunks.label_corpus("alpha")
 
     saved = yaml.safe_load((tmp_path / "alpha" / "questions" / "expected_chunks.yaml").read_text())
-    assert saved == {"q1": ["doc::section::0"]}
+    assert saved["version"] == 2
+    assert saved["labels"] == {"q1": {"doc::section::0": 2}}
 
 
 @pytest.mark.parametrize("value", ["nan", "inf", "-inf", "-0.1", "1.1"])

@@ -194,6 +194,12 @@ def _summarize_with_tiers(
     return out
 
 
+def _grades_of(question) -> dict[str, float] | None:
+    """Graded relevance for the IR metrics, or None when the labels carry no grades."""
+    grades = getattr(question, "expected_grades", None) or {}
+    return {c: float(g) for c, g in grades.items()} if grades else None
+
+
 def _summarize(records: list[RetrievalMetrics]) -> dict[str, float | int]:
     """Back-compat shim used by the live Rich table during the run."""
     return _aggregate_means(records)
@@ -283,14 +289,20 @@ async def _retrieval_ceiling(
         retrieved = trace.retrieved
         expected = set(q.expected_chunks or [])
         doc_ids = set(q.ground_truth.source_refs)
+        grades = _grades_of(q)
         m_top = compute_all(
-            retrieved=retrieved[:top_k], expected_ids=expected, k=top_k, expected_doc_ids=doc_ids
+            retrieved=retrieved[:top_k],
+            expected_ids=expected,
+            k=top_k,
+            expected_doc_ids=doc_ids,
+            expected_relevance=grades,
         )
         m_ceil = compute_all(
             retrieved=retrieved[:ceiling_k],
             expected_ids=expected,
             k=ceiling_k,
             expected_doc_ids=doc_ids,
+            expected_relevance=grades,
         )
         top_recalls.append(m_top.recall_at_k)
         ceiling_recalls.append(m_ceil.recall_at_k)
@@ -564,6 +576,7 @@ async def _run_corpora_loop(
                         metrics = compute_all(
                             retrieved=trace.retrieved,
                             expected_ids=set(q.expected_chunks or []),
+                            expected_relevance=_grades_of(q),
                             k=top_k,
                             expected_doc_ids=set(q.ground_truth.source_refs),
                         )

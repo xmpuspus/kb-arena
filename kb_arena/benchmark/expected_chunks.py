@@ -13,22 +13,35 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 from pathlib import Path
 
 import yaml
 
 from kb_arena.benchmark.atomic import atomic_write_text
-from kb_arena.benchmark.questions import load_questions, validate_expected_chunks
+from kb_arena.benchmark.questions import load_qrels, load_questions
 from kb_arena.llm.client import LLMClient
+from kb_arena.models.retrieval import RetrievedChunk
 from kb_arena.settings import settings
 from kb_arena.strategies.bm25 import BM25Strategy
 
 log = logging.getLogger(__name__)
 
 
-def _write_expected_chunks(path: Path, labels: dict[str, list[str]]) -> None:
-    """Atomically checkpoint labels so a later provider failure cannot erase progress."""
-    atomic_write_text(path, yaml.safe_dump(labels, sort_keys=True, default_flow_style=False))
+QRELS_VERSION = 2
+
+
+def _write_expected_chunks(
+    path: Path, labels: dict[str, dict[str, int]], pool: dict | None = None
+) -> None:
+    """Atomically checkpoint graded labels so a later provider failure cannot erase progress.
+
+    The file carries a version, the labels as chunk-to-grade per question,
+    and a record of the pool the judge saw, so a reader knows which
+    retrievers and how many random chunks fed the labels.
+    """
+    payload = {"version": QRELS_VERSION, "pool": pool or {}, "labels": labels}
+    atomic_write_text(path, yaml.safe_dump(payload, sort_keys=True, default_flow_style=False))
 
 
 JUDGE_PROMPT = """You are labeling retrieval ground truth for a documentation QA benchmark.
@@ -44,11 +57,13 @@ CANDIDATES:
 {candidates}
 
 OUTPUT FORMAT — strict:
-Return ONLY a single JSON array literal of chunk_id strings. No prose, no reasoning,
-no code fences. If nothing is relevant, return [].
+Return ONLY a single JSON object literal that maps chunk_id to a grade. No prose,
+no reasoning, no code fences. Grade 2: the chunk answers the question on its own.
+Grade 1: the chunk supports the answer but does not give it. Leave out every
+chunk that is irrelevant. If nothing is relevant, return {{}}.
 
 Example:
-["lambda-overview::pricing", "ec2-overview::instance-types"]"""
+{{"lambda-overview::pricing": 2, "ec2-overview::instance-types": 1}}"""
 
 
 def _strip_fences(text: str) -> str:
@@ -60,6 +75,30 @@ def _strip_fences(text: str) -> str:
         if text.endswith("```"):
             text = text[: -len("```")]
     return text.strip()
+
+
+def _parse_grades(text: str, valid: set[str]) -> dict[str, int]:
+    """The judge's grades. An object maps chunk to grade. A bare array is grade 1 each."""
+    text = _strip_fences(text)
+    decoder = json.JSONDecoder()
+    for opener in ("{", "["):
+        start = text.find(opener)
+        while start != -1:
+            try:
+                parsed, _ = decoder.raw_decode(text[start:])
+            except json.JSONDecodeError:
+                start = text.find(opener, start + 1)
+                continue
+            if isinstance(parsed, dict):
+                out: dict[str, int] = {}
+                for cid, grade in parsed.items():
+                    if str(cid) in valid and not isinstance(grade, bool) and grade in (1, 2):
+                        out[str(cid)] = int(grade)
+                return out
+            if isinstance(parsed, list):
+                return {str(c): 1 for c in parsed if str(c) in valid}
+            start = text.find(opener, start + 1)
+    return {}
 
 
 def _extract_json_array(text: str) -> str | None:
@@ -99,8 +138,9 @@ async def label_one_question(
     llm: LLMClient,
     corpus: str,
     n_candidates: int = 20,
+    n_random: int = 10,
     extra_retrievers: list | None = None,
-) -> tuple[list[str], float]:
+) -> tuple[dict[str, int], float]:
     """Returns (relevant_chunk_ids, cost_usd) for a single question.
 
     Builds the candidate pool from the UNION of every retriever in
@@ -128,6 +168,27 @@ async def label_one_question(
                 candidates.extend(extra_result.retrieval.retrieved)
             cost += float(getattr(extra_result, "cost_usd", 0.0) or 0.0)
 
+    # A pool made only of what the retrievers rank high never shows the judge
+    # a chunk they all missed. A random sample of the rest gives the labels
+    # negatives and the odd hit outside every retriever's top-N.
+    if n_random > 0:
+        seen = {c.chunk_id for c in candidates}
+        rest = [
+            (cid, text)
+            for cid, text in zip(bm25._chunk_ids, bm25._corpus_texts, strict=False)
+            if cid not in seen
+        ]
+        rng = random.Random(f"{corpus}:{question_text}")
+        for cid, text in rng.sample(rest, min(n_random, len(rest))):
+            candidates.append(
+                RetrievedChunk(
+                    chunk_id=cid,
+                    content=text,
+                    doc_id=cid.split("::", 1)[0],
+                    rank=len(candidates) + 1,
+                    source_strategy="random",
+                )
+            )
     if not candidates:
         return [], cost
 
@@ -149,21 +210,15 @@ async def label_one_question(
     )
     cost += float(resp.cost_usd or 0.0)
     valid = {c.chunk_id for c in deduped}
-    array_text = _extract_json_array(resp.text)
-    if array_text is None:
-        log.warning("No JSON array in judge output: %.200s", resp.text)
-        return [], cost
-    try:
-        ids = json.loads(array_text)
-    except json.JSONDecodeError:
-        log.warning("Failed to parse judge output: %.200s", array_text)
-        return [], cost
-    if not isinstance(ids, list):
-        return [], cost
-    return [str(x) for x in ids if str(x) in valid], cost
+    grades = _parse_grades(resp.text, valid)
+    if not grades and "{" not in resp.text and "[" not in resp.text:
+        log.warning("No JSON in judge output: %.200s", resp.text)
+    return grades, cost
 
 
-async def label_corpus(corpus: str, force: bool = False, n_candidates: int = 20) -> dict:
+async def label_corpus(
+    corpus: str, force: bool = False, n_candidates: int = 20, n_random: int = 10
+) -> dict:
     """Label every question in a corpus. Idempotent unless force=True. Cost-capped.
 
     Candidate pool is the union of BM25 + naive_vector + contextual_vector top-N
@@ -189,7 +244,17 @@ async def label_corpus(corpus: str, force: bool = False, n_candidates: int = 20)
         from kb_arena.strategies.naive_vector import NaiveVectorStrategy
 
         chroma = chromadb.PersistentClient(path=settings.chroma_path)
-        for cls in (NaiveVectorStrategy, ContextualVectorStrategy):
+        from kb_arena.strategies import get_strategy
+        from kb_arena.strategies.catalog import default_strategy_names
+
+        # Every default strategy joins the pool when its index answers, so
+        # the labels never lean on the two retrievers that were built first.
+        pool_makers = [NaiveVectorStrategy, ContextualVectorStrategy] + [
+            (lambda chroma_client=None, _n=name: get_strategy(_n))
+            for name in default_strategy_names()
+            if name not in ("bm25", "naive_vector", "contextual_vector")
+        ]
+        for cls in pool_makers:
             try:
                 inst = cls(chroma_client=chroma)
                 # Probe — query a trivial string; failure means no index built.
@@ -219,17 +284,22 @@ async def label_corpus(corpus: str, force: bool = False, n_candidates: int = 20)
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "expected_chunks.yaml"
 
-    existing: dict[str, list[str]] = {}
+    existing: dict[str, dict[str, int]] = {}
     if out_path.exists():
         try:
             loaded = yaml.safe_load(out_path.read_text())
         except yaml.YAMLError as exc:
             raise ValueError(f"Invalid expected chunks YAML: {out_path}") from exc
-        existing = validate_expected_chunks(loaded, out_path)
+        existing, _ = load_qrels(loaded, out_path)
 
     cost_cap = settings.benchmark_cost_cap_usd
     total_cost = 0.0
-    out_dict: dict[str, list[str]] = dict(existing)
+    out_dict: dict[str, dict[str, int]] = dict(existing)
+    pool_record = {
+        "retrievers": ["bm25"] + [r.name for r in extra_retrievers],
+        "n_candidates": n_candidates,
+        "n_random": n_random,
+    }
     skipped = 0
     labeled = 0
     halted = False
@@ -242,21 +312,22 @@ async def label_corpus(corpus: str, force: bool = False, n_candidates: int = 20)
             log.warning("Cost cap reached at $%.2f", total_cost)
             halted = True
             break
-        ids, cost = await label_one_question(
+        grades, cost = await label_one_question(
             q.question,
             bm25,
             llm,
             corpus,
             n_candidates,
+            n_random,
             extra_retrievers=extra_retrievers,
         )
         total_cost += cost
-        out_dict[q.id] = ids
+        out_dict[q.id] = grades
         labeled += 1
-        _write_expected_chunks(out_path, out_dict)
+        _write_expected_chunks(out_path, out_dict, pool_record)
 
     if not out_path.exists():
-        _write_expected_chunks(out_path, out_dict)
+        _write_expected_chunks(out_path, out_dict, pool_record)
     return {
         "labeled": labeled,
         "skipped": skipped,
