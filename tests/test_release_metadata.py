@@ -154,3 +154,127 @@ def test_publish_workflow_grants_attest_build_provenance_its_required_permission
         assert (
             permissions.get(key) == "write"
         ), f"publish job permissions must grant '{key}: write', got {permissions}"
+
+
+def test_the_publish_workflow_can_run_without_uploading() -> None:
+    """The first real publish must not be the first time these steps ever ran.
+
+    Every step before the upload, which is the build, the twine check, the
+    SBOM and the attestation, is exercised by a dry run against main. Without
+    a dry run the only way to learn that one of them is broken is a release.
+    """
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "publish.yml").read_text())
+    # PyYAML reads the bare key `on` as the boolean True.
+    triggers = workflow.get("on") or workflow.get(True)
+    inputs = triggers["workflow_dispatch"]["inputs"]
+
+    assert "dry_run" in inputs, "the workflow must offer a run that uploads nothing"
+    assert inputs["dry_run"]["default"] is True, "a dispatch must not publish by accident"
+
+    steps = workflow["jobs"]["publish"]["steps"]
+    upload = next(s for s in steps if s.get("name") == "Publish to PyPI")
+    assert upload["if"] == "${{ !inputs.dry_run }}", "the upload must be the only guarded step"
+
+    # The steps that prove the path must run either way.
+    always = {"Build package", "Twine check", "Generate SBOM"}
+    for step in steps:
+        if step.get("name") in always:
+            assert "if" not in step, f"{step['name']} must run in a dry run too"
+
+
+def test_the_job_sits_behind_an_environment() -> None:
+    """The workflow file comes from the selected ref, so it can rewrite its own guards.
+
+    An environment is configured on the repository, not in the file, so a
+    branch cannot remove it. It is the only control here that a crafted ref
+    cannot reach.
+    """
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "publish.yml").read_text())
+
+    assert workflow["jobs"]["publish"]["environment"] == "pypi"
+
+    # The setup notes must say the two things that make the declaration real.
+    text = (ROOT / ".github" / "workflows" / "publish.yml").read_text()
+    assert "ENVIRONMENT secret" in text, (
+        "a repository secret is readable from every branch, so the environment "
+        "would protect nothing"
+    )
+    assert (
+        "Do NOT add a tag-only deployment branch rule" in text
+    ), "the dry run uses the same environment and runs from main"
+
+
+def test_the_sbom_check_runs_on_a_real_publish_too() -> None:
+    """It ran only in a dry run, so a release could ship an SBOM the dry run refused."""
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "publish.yml").read_text())
+    steps = workflow["jobs"]["publish"]["steps"]
+    check = next(s for s in steps if "Check the SBOM" in (s.get("name") or ""))
+
+    assert "if" not in check, "the SBOM check must not be a dry-run-only step"
+    names = [s.get("name") or s.get("uses", "") for s in steps]
+    # A bad SBOM must not be attested or uploaded.
+    assert names.index(check["name"]) < names.index("Attest build provenance")
+    assert names.index(check["name"]) < names.index("Upload SBOM")
+
+
+def test_a_dispatch_cannot_publish_an_arbitrary_branch() -> None:
+    """`workflow_dispatch` builds whatever ref the caller selected."""
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "publish.yml").read_text())
+    steps = workflow["jobs"]["publish"]["steps"]
+    guard = next(s for s in steps if "Refuse a real publish" in (s.get("name") or ""))
+
+    assert guard["if"] == "${{ !inputs.dry_run }}"
+    # The ref rides in the environment. A `${{ }}` paste happens before bash
+    # runs, so a crafted branch name would execute as code.
+    assert "${{ github.ref }}" not in guard["run"], "never interpolate a ref into a script"
+    assert guard["env"]["REF"] == "${{ github.ref }}"
+    assert "refs/tags/v*" in guard["run"]
+    assert "refs/heads/main" in guard["run"]
+    # The guard must sit before the build, or it protects nothing.
+    names = [s.get("name") or s.get("uses", "") for s in steps]
+    assert names.index(guard["name"]) < names.index("Build package")
+
+
+def test_the_workflow_never_reports_success_for_a_version_already_on_pypi() -> None:
+    """`--skip-existing` made a run that published nothing look like a release."""
+    text = (ROOT / ".github" / "workflows" / "publish.yml").read_text()
+    workflow = yaml.safe_load(text)
+    steps = workflow["jobs"]["publish"]["steps"]
+    upload = next(s for s in steps if s.get("name") == "Publish to PyPI")
+
+    assert (
+        "--skip-existing" not in upload["run"]
+    ), "a version already on PyPI must fail the run, not pass it in silence"
+    check = next(s for s in steps if "Refuse to republish" in (s.get("name") or ""))
+    names = [s.get("name") or s.get("uses", "") for s in steps]
+    # A duplicate must be caught before anything permanent happens. An
+    # attestation and an SBOM artifact both outlive the run.
+    assert names.index(check["name"]) < names.index("Attest build provenance")
+    assert names.index(check["name"]) < names.index("Upload SBOM")
+    # Only 404 proves the version is free. A 500 or a redirect proves nothing.
+    assert "404)" in check["run"]
+    assert "Refusing to guess" in check["run"]
+    # A tag must name the version it releases.
+    assert 'tag != "v$version"' in check["run"] or "v$version" in check["run"]
+    assert "pypi.org/pypi/kb-arena" in check["run"]
+    # The job installs build tools only, so importing the package would fail
+    # for a missing runtime dependency and read as a release problem.
+    assert (
+        "import kb_arena" not in check["run"]
+    ), "read the version off the built wheel, not by importing the package"
+    assert "dist/*.whl" in check["run"]
+
+
+def test_an_empty_or_wrong_sbom_fails_the_run() -> None:
+    """A count printed inside an echo hides every failure behind a zero exit."""
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "publish.yml").read_text())
+    steps = workflow["jobs"]["publish"]["steps"]
+    check = next(s for s in steps if "Check the SBOM" in (s.get("name") or ""))
+
+    assert "set -euo pipefail" in check["run"]
+    assert "sys.exit" in check["run"], "an empty or wrong SBOM must fail the step"
+
+    report = next(s for s in steps if s.get("name") == "Report the dry run")
+    # The dry run persists an attestation, and it says so rather than implying
+    # that nothing outward happened.
+    assert "DID persist a build attestation" in report["run"]
