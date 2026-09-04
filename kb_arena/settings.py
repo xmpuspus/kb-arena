@@ -2,7 +2,7 @@
 
 import math
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -38,6 +38,14 @@ class Settings(BaseSettings):
 
     # LLM — OpenAI (for embeddings)
     openai_api_key: str = ""
+
+    # Graph analysis budgets. Exact betweenness is O(n*m) and loads the whole
+    # graph into one process. Above these the analyzer loads a bounded slice
+    # and samples the centrality instead of hanging the API.
+    graph_node_budget: int = Field(default=5000, ge=1)
+    graph_edge_budget: int = Field(default=50000, ge=1)
+    graph_centrality_exact_max_nodes: int = Field(default=1000, ge=1)
+    graph_centrality_samples: int = Field(default=200, ge=1)
 
     # Neo4j
     neo4j_uri: str = "bolt://localhost:7687"
