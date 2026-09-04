@@ -288,3 +288,29 @@ def test_an_empty_or_wrong_sbom_fails_the_run() -> None:
     # The dry run persists an attestation, and it says so rather than implying
     # that nothing outward happened.
     assert "DID persist a build attestation" in report["run"]
+
+
+def test_the_npm_audit_step_cannot_hang_the_job() -> None:
+    """A retry catches an endpoint that answers an error, not one that never answers.
+
+    The frontend job was cancelled twice on 2026-09-04 with `npm audit` still
+    running as an orphan process after ten minutes. A cancelled check is not a
+    pass, and it reads like flakiness rather than a hang.
+    """
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text())
+    steps = workflow["jobs"]["frontend"]["steps"]
+    audit = next(s for s in steps if "audit" in (s.get("name") or ""))
+
+    assert audit.get("timeout-minutes"), "the step needs a deadline of its own"
+    assert "timeout 90s npm audit" in audit["run"], "so does each attempt"
+    # 124 is what `timeout` returns when it kills the command, and it must be
+    # retried rather than failing the job for a registry that went quiet.
+    assert "-eq 124" in audit["run"]
+
+
+def test_every_ci_job_has_a_timeout() -> None:
+    """A job with no timeout waits for the runner limit before anyone learns."""
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text())
+
+    missing = [name for name, job in workflow["jobs"].items() if not job.get("timeout-minutes")]
+    assert not missing, f"these jobs have no timeout: {sorted(missing)}"

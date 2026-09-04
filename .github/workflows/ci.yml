@@ -42,19 +42,34 @@ jobs:
       - run: npm run lint
       - run: npx next build
       # high/critical only: low/moderate advisories must not fail every PR.
-      - name: npm audit, with a retry when the registry audit endpoint is down
+      - name: npm audit, with a retry and a deadline for the registry
+        timeout-minutes: 6
         run: |
           # A vulnerability fails the job. A registry outage does not: the
           # audit endpoint answered "Bad Request" for an hour on 2026-09-04
           # and blocked green pull requests with no finding behind it.
+          #
+          # The retry below catches an endpoint that ANSWERS an error. It does
+          # nothing for one that never answers at all, and that is what
+          # happened next: the frontend job was cancelled twice on
+          # 2026-09-04 with `npm audit` still running as an orphan process
+          # after ten minutes. A cancelled check is not a pass, and it read
+          # like flakiness rather than a hang. Each attempt now has a
+          # deadline, and the step has one too.
           for attempt in 1 2 3; do
             set +e
-            out=$(npm audit --audit-level=high 2>&1)
+            out=$(timeout 90s npm audit --audit-level=high 2>&1)
             code=$?
             set -e
             echo "$out"
             if [ "$code" -eq 0 ]; then
               exit 0
+            fi
+            # 124 is what `timeout` returns when it kills the command.
+            if [ "$code" -eq 124 ]; then
+              echo "registry did not answer within 90s on attempt $attempt, retrying in 30s"
+              sleep 30
+              continue
             fi
             if ! echo "$out" | grep -q "audit endpoint returned an error"; then
               exit "$code"
@@ -62,7 +77,7 @@ jobs:
             echo "registry audit endpoint unavailable on attempt $attempt, retrying in 30s"
             sleep 30
           done
-          echo "::warning::npm audit skipped: the registry audit endpoint answered an error three times"
+          echo "::warning::npm audit skipped: the registry did not answer or errored three times"
 
   docker:
     runs-on: ubuntu-latest
