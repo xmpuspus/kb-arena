@@ -18,12 +18,13 @@ from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy, validate_top_k
 from kb_arena.strategies.chroma_index import (
+    INIT_LOCK,
     index_build_lock,
-    index_read_lock,
-    index_where,
     new_generation,
     parse_query_result,
     publish_collection_build,
+    query_in_thread,
+    run_to_completion,
 )
 from kb_arena.strategies.embeddings import get_embedding_function
 
@@ -57,7 +58,9 @@ class QnAPairStrategy(Strategy):
         return self._client
 
     def _get_collection(self):
-        if self._collection is None:
+        with INIT_LOCK:
+            if self._collection is not None:
+                return self._collection
             ef = get_embedding_function()
             self._collection = self._get_client().get_or_create_collection(
                 name=COLLECTION_NAME,
@@ -79,7 +82,7 @@ class QnAPairStrategy(Strategy):
 
     async def build_index(self, documents: list[Document]) -> None:
         """Generate QnA pairs for every section, embed questions, store answers as metadata."""
-        collection = self._get_collection()
+        collection = await asyncio.to_thread(self._get_collection)
         ids, questions, metadatas = [], [], []
         pair_counter = 0
 
@@ -124,7 +127,10 @@ class QnAPairStrategy(Strategy):
             return
         generation = new_generation()
         async with index_build_lock():
-            publish_collection_build(
+            # Embedding and upsert run on the calling thread inside Chroma,
+            # so they go to a worker thread to keep the loop free.
+            await run_to_completion(
+                publish_collection_build,
                 collection,
                 COLLECTION_NAME,
                 corpora,
@@ -141,7 +147,7 @@ class QnAPairStrategy(Strategy):
         """
         validate_top_k(top_k)
         start = self._start_timer()
-        collection = self._get_collection()
+        collection = await asyncio.to_thread(self._get_collection)
 
         retrieval_start = time.perf_counter()
         query_kwargs = {
@@ -149,9 +155,7 @@ class QnAPairStrategy(Strategy):
             "n_results": top_k,
             "include": ["documents", "metadatas", "distances"],
         }
-        with index_read_lock():
-            query_kwargs["where"] = index_where(COLLECTION_NAME, corpus)
-            results = collection.query(**query_kwargs)
+        results = await query_in_thread(collection, COLLECTION_NAME, corpus, query_kwargs)
         ids, matched_questions, metas, distances = parse_query_result(results)
         retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 

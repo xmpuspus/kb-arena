@@ -1,8 +1,22 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import ChatPanel, { type DemoResult } from "@/components/ChatPanel";
-import { STRATEGY_LABELS, CORPORA, fetchCorpora, type Strategy, type Message } from "@/lib/api";
+import { useCallback, useState, useRef, useEffect } from "react";
+import ChatPanel, { type DemoResult, type PanelOutcome } from "@/components/ChatPanel";
+import {
+  STRATEGY_LABELS,
+  CORPORA,
+  fetchCorpora,
+  fetchServerStatus,
+  type ServerStatus,
+  type Strategy,
+  type Message,
+} from "@/lib/api";
+
+// The default provider is anthropic. Another provider needs KB_ARENA_LLM_PROVIDER
+// and its own key or host, so naming one OpenAI key alone would mislead.
+const KEY_HINT =
+  "Set KB_ARENA_ANTHROPIC_API_KEY on the server, or set KB_ARENA_LLM_PROVIDER to openai " +
+  "or ollama with that provider's key or host, to enable live queries.";
 
 const DEMO_QUESTION = "How do I set up a Lambda function behind API Gateway with VPC access to an RDS database?";
 
@@ -67,27 +81,77 @@ export default function DemoPage() {
   const [selectedStrategies, setSelectedStrategies] = useState<Strategy[]>([...DEMO_STRATEGIES]);
   const [trigger, setTrigger] = useState(0);
   const [history, setHistory] = useState<Message[]>([]);
+  // undefined until /health answers. null means it never did, which reads as live.
+  const [serverStatus, setServerStatus] = useState<ServerStatus | null | undefined>(undefined);
+  const [outcomes, setOutcomes] = useState<
+    Partial<Record<Strategy, { outcome: PanelOutcome; message?: string }>>
+  >({});
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { fetchCorpora().then(setCorpora); }, []);
+  useEffect(() => { fetchServerStatus().then(setServerStatus); }, []);
+
+  const checking = serverStatus === undefined;
+  const readOnly = serverStatus?.demoMode === true;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const q = query.trim();
     if (!q) return;
+    setOutcomes({});
     setHistory((prev) => [...prev, { role: "user", content: q }]);
     setTrigger((t) => t + 1);
+  }
+
+  const handleOutcome = useCallback(
+    (strategy: Strategy, outcome: PanelOutcome, message?: string) => {
+      setOutcomes((prev) => ({ ...prev, [strategy]: { outcome, message } }));
+    },
+    []
+  );
+
+  // Panels that failed the same way say less as seven copies of "HTTP 503"
+  // than as one line that names the cause. Those panels go quiet and the
+  // page speaks. Panels that failed for different reasons keep their own
+  // message, because one line could not name every cause.
+  const failed = selectedStrategies.filter((s) => outcomes[s]?.outcome === "error");
+  const sameMessage = failed.every((s) => outcomes[s]?.message === outcomes[failed[0]]?.message);
+  const consolidated =
+    trigger > 0 && failed.length > 0 && sameMessage &&
+    (failed.length > 1 || selectedStrategies.length === 1);
+  const allFailed = consolidated && failed.length === selectedStrategies.length;
+  const failureMessage = consolidated ? outcomes[failed[0]]?.message ?? "request failed" : "";
+  const failureHint =
+    consolidated && readOnly
+      ? "The server runs in read-only demo mode with no model key, so live questions cannot run. " +
+        KEY_HINT
+      : consolidated && failureMessage.includes("503")
+      ? "The server answered 503 for these strategies, so it is not ready to serve live questions."
+      : "";
+
+  function handleBackToSample() {
+    setOutcomes({});
+    setHistory([]);
+    setTrigger(0);
   }
 
   function toggleStrategy(s: Strategy) {
     setSelectedStrategies((prev) =>
       prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
     );
+    // A panel that comes back on remounts and asks again. Its old outcome
+    // must not keep the alert alive over the answer it streams now.
+    setOutcomes((prev) => {
+      const next = { ...prev };
+      delete next[s];
+      return next;
+    });
   }
 
   function handleClear() {
     setQuery("");
     setHistory([]);
+    setOutcomes({});
     setTrigger(0);
     inputRef.current?.focus();
   }
@@ -157,7 +221,14 @@ export default function DemoPage() {
           />
           <button
             type="submit"
-            disabled={!query.trim() || selectedStrategies.length === 0}
+            disabled={!query.trim() || selectedStrategies.length === 0 || readOnly || checking}
+            title={
+              readOnly
+                ? "Live questions are off: the server runs in read-only demo mode"
+                : checking
+                ? "Checking whether the server accepts live questions"
+                : undefined
+            }
             className="px-4 py-2 rounded-lg text-sm font-medium transition-opacity disabled:opacity-30"
             style={{ background: "var(--accent)", color: "#fff" }}
           >
@@ -194,13 +265,58 @@ export default function DemoPage() {
         </div>
       </div>
 
-      {/* Pre-computed example note */}
-      {trigger === 0 && selectedStrategies.length > 0 && (
+      {/* One banner before submit: read-only demo, or precomputed sample */}
+      {trigger === 0 && selectedStrategies.length > 0 && readOnly && (
+        <div
+          role="status"
+          className="px-3 py-2 rounded-lg text-xs border"
+          style={{ borderColor: "var(--accent)", background: "var(--card)", color: "var(--foreground)" }}
+        >
+          <span className="font-semibold">Read-only demo.</span> The server has no model key, so live
+          questions are off and the panels below show precomputed sample output. {KEY_HINT}
+        </div>
+      )}
+      {trigger === 0 && selectedStrategies.length > 0 && checking && (
+        <div
+          role="status"
+          className="px-3 py-2 rounded-lg text-xs"
+          style={{ background: "var(--border)", color: "var(--muted)" }}
+        >
+          Showing precomputed sample output. Checking whether the server accepts live questions.
+        </div>
+      )}
+      {trigger === 0 && selectedStrategies.length > 0 && !readOnly && !checking && (
         <div
           className="px-3 py-2 rounded-lg text-xs"
           style={{ background: "var(--border)", color: "var(--muted)" }}
         >
-          Showing precomputed sample output. Live queries use your configured API; no-key demo mode stays read-only.
+          Showing precomputed sample output. Live queries use your configured API.
+        </div>
+      )}
+
+      {/* One consolidated failure after submit */}
+      {consolidated && (
+        <div
+          role="alert"
+          className="px-3 py-2 rounded-lg text-xs border space-y-2"
+          style={{ borderColor: "var(--danger)", background: "var(--card)", color: "var(--foreground)" }}
+        >
+          <p>
+            <span className="font-semibold" style={{ color: "var(--danger)" }}>
+              {allFailed
+                ? `All ${selectedStrategies.length} strategies failed`
+                : `${failed.length} of ${selectedStrategies.length} strategies failed`}
+              : {failureMessage}.
+            </span>{" "}
+            {failureHint}
+          </p>
+          <button
+            onClick={handleBackToSample}
+            className="text-xs px-2 py-1 rounded border transition-colors hover:opacity-70"
+            style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+          >
+            Back to sample output
+          </button>
         </div>
       )}
 
@@ -222,6 +338,8 @@ export default function DemoPage() {
               history={history}
               trigger={trigger}
               demoResult={trigger === 0 ? DEMO_RESULTS[s] : undefined}
+              onOutcome={handleOutcome}
+              muted={consolidated && outcomes[s]?.outcome === "error"}
             />
           ))}
         </div>
