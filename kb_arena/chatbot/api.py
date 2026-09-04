@@ -741,8 +741,13 @@ async def list_strategies(request: Request) -> dict:
 
 
 @app.get("/graph/stats")
-async def graph_stats(request: Request) -> dict:
-    """Return graph node and edge counts, centrality hubs, and communities."""
+async def graph_stats(request: Request, corpus: str = "all") -> dict:
+    """Return graph node and edge counts, centrality hubs, and communities.
+
+    With a corpus, only that corpus's entities count. Without one, a store
+    over the budget loads a slice ordered by entity id, and the load names
+    the corpora that slice holds.
+    """
     if request.app.state.neo4j is None:
         return {"error": "Neo4j not connected", "stats": None}
 
@@ -752,22 +757,35 @@ async def graph_stats(request: Request) -> dict:
     store = Neo4jStore(request.app.state.neo4j)
     analyzer = GraphAnalyzer(store)
 
-    centrality = await analyzer.calculate_centrality()
+    scope = None if corpus in ("", "all") else corpus
+    centrality = await analyzer.calculate_centrality(scope)
     top_hubs = sorted(centrality.items(), key=lambda x: x[1], reverse=True)[:10]
+    # An exact score keeps four decimals. A sampled one keeps two significant
+    # digits, so a hub at 0.0031 still reads as 0.0031 and not as zero.
+    exact = analyzer.last_centrality.get("method") == "exact"
 
-    communities = await analyzer.analyze_communities()
+    def _shown(score: float) -> float:
+        return round(score, 4) if exact else float(f"{score:.2g}")
+
+    communities = await analyzer.analyze_communities(corpus=scope)
 
     return {
+        "corpus": corpus or "all",
+        # node_count is the slice the numbers come from. load.nodes_total is
+        # what the store holds, and load.truncated says when they differ.
         "node_count": sum(1 for _ in centrality),
         "top_hubs": [
             {
                 "entity_id": entity_id,
                 "fqn": entity_id.split("::", 1)[-1],
-                "centrality": round(centrality_score, 4),
+                "centrality": _shown(centrality_score),
             }
             for entity_id, centrality_score in top_hubs
         ],
         "community_count": len(communities),
+        # A reader must see when the numbers come from a slice or a sample.
+        "centrality": analyzer.last_centrality,
+        "load": analyzer.last_load,
     }
 
 

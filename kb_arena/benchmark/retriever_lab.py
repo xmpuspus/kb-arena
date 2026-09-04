@@ -29,7 +29,8 @@ logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICA
 
 
 from kb_arena.benchmark.atomic import atomic_write_text  # noqa: E402
-from kb_arena.benchmark.ir_metrics import (  # noqa: E402
+from kb_arena.benchmark.holdout import record_holdout_use, touches_holdout  # noqa: E402
+from kb_arena.benchmark.ir_metrics import (  # noqa: E402  # noqa: E402
     MATCH_CLASSES,
     _match_expected,
     compute_all,
@@ -474,6 +475,14 @@ async def _run_corpora_loop(
         except FileNotFoundError:
             console.print(f"[yellow]No questions for {corp}; skipping[/yellow]")
             continue
+        if touches_holdout(questions):
+            record_holdout_use(
+                settings.results_path,
+                tool="retriever-lab",
+                corpus=corp,
+                run_id=str(overall.get("run_id", "")),
+                strategies=[s.name for s in strategies],
+            )
         if not questions:
             continue
 

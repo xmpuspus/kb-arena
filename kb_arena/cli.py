@@ -470,6 +470,12 @@ def report(
     corpus: str = typer.Option("all", help="Corpus to generate report for"),
     output: str | None = typer.Option(None, help="Output file path"),  # noqa: UP045
     format: str = typer.Option("rich", help="Output format: rich, json, csv, html, markdown"),
+    profile: str = typer.Option(
+        "accuracy-first",
+        "--profile",
+        help="Decision profile for the ranking: accuracy-first, balanced, latency-bound, "
+        "cost-bound",
+    ),
 ):
     """Generate benchmark report from results JSON."""
     if format not in _REPORT_FORMATS:
@@ -481,7 +487,7 @@ def report(
     if format == "markdown":
         from kb_arena.benchmark.reporter import generate_report
 
-        generate_report(corpus=corpus, output=output)
+        generate_report(corpus=corpus, output=output, profile=profile)
         _next_step("report")
         return
 
@@ -532,7 +538,7 @@ def report(
 
     from kb_arena.benchmark.reporter import generate_report
 
-    generate_report(corpus=corpus, output=output)
+    generate_report(corpus=corpus, output=output, profile=profile)
 
     _next_step("report")
 
@@ -1319,6 +1325,42 @@ def eval(
         console.print("[green]All thresholds passed.[/green]")
 
 
+@app.command("holdout-uses")
+def holdout_uses_command(
+    corpus: str = typer.Option("", "--corpus", help="Only this corpus. Default: every corpus"),
+):
+    """List every run that opened the sealed holdout split, oldest first."""
+    from rich.table import Table
+
+    from kb_arena.benchmark.holdout import holdout_uses, read_ledger
+    from kb_arena.settings import settings
+
+    uses = holdout_uses(settings.results_path, corpus or None)
+    _, corrupt = read_ledger(settings.results_path)
+    if corrupt:
+        console.print(
+            f"[yellow]{corrupt} ledger line(s) did not parse. The count below is a floor.[/yellow]"
+        )
+    if not uses:
+        console.print("[green]The holdout split has not been opened.[/green]")
+        return
+    table = Table(title=f"holdout uses: {len(uses)}")
+    for col in ("when", "tool", "corpus", "run", "strategies"):
+        table.add_column(col)
+    for use in uses:
+        table.add_row(
+            str(use.get("timestamp", ""))[:19],
+            str(use.get("tool", "")),
+            str(use.get("corpus", "")),
+            str(use.get("run_id", "")),
+            ", ".join(use.get("strategies") or []),
+        )
+    console.print(table)
+    console.print(
+        "[dim]A number published from the holdout means more when this list is short.[/dim]"
+    )
+
+
 @app.command()
 def compare(
     a: str = typer.Option(..., "--a", help="Strategy A, the baseline"),
@@ -1578,6 +1620,12 @@ def optimize(
     method: str = typer.Option("grid", "--method", help="Search method: grid|random"),
     max_trials: int = typer.Option(0, "--max-trials", help="Cap trials per strategy (0 = no cap)"),
     seed: int = typer.Option(0, "--seed", help="RNG seed for --method random"),
+    confirm_holdout: bool = typer.Option(
+        False,
+        "--confirm-holdout",
+        help="Open the sealed holdout split for one confirmation run. The run is written "
+        "to results/holdout_uses.jsonl",
+    ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Print the trial plan and cost preview, then exit"
     ),
@@ -1635,6 +1683,7 @@ def optimize(
             seed=seed,
             dry_run=dry_run,
             split=split,
+            allow_holdout=confirm_holdout,
         )
     )
     if exit_code:
