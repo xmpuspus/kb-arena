@@ -85,7 +85,7 @@ def test_the_baseline_as_winner_has_no_p_value():
     assert result.inference_failed is False
 
 
-def test_a_no_op_trial_is_not_a_hypothesis():
+def test_a_no_op_trial_is_still_a_hypothesis():
     base = [0.5] * 20
     trials = [
         _trial(5, base),
@@ -96,9 +96,10 @@ def test_a_no_op_trial_is_not_a_hypothesis():
 
     result = summarize_optimization("bm25", trials, BASE)
 
-    assert result.trial_in_family == [False, False, False, True]
-    assert result.n_comparisons == 1
-    assert result.p_value == result.p_value_raw
+    # dropping a trial after seeing its scores would shrink the correction
+    assert result.trial_in_family == [False, True, True, True]
+    assert result.n_comparisons == 3
+    assert result.p_value == pytest.approx(min(1.0, 3 * result.p_value_raw))
 
 
 def test_a_failed_test_still_counts_in_the_family(monkeypatch):
@@ -118,6 +119,8 @@ def test_a_failed_test_still_counts_in_the_family(monkeypatch):
     assert result.n_comparisons == 2, "the failed test is still a hypothesis"
     assert result.p_value == pytest.approx(min(1.0, 2 * result.p_value_raw))
     assert result.inference_failed is False
+    assert result.tests_failed == 1
+    assert strategy_report(result)["tests_failed"] == 1
 
 
 def test_a_winner_whose_test_failed_is_flagged(monkeypatch):

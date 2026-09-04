@@ -112,14 +112,17 @@ class OptimizeResult(BaseModel):
     # over n_comparisons, and p_value_raw is what one test alone would say.
     p_value_raw: float | None = None
     trial_p_values: list[float | None] = Field(default_factory=list)
-    # Which trials are hypotheses: not the baseline, and not a no-op trial
-    # whose scores equal the baseline on every question.
+    # Which trials are hypotheses: every trial but the baseline.
     trial_in_family: list[bool] = Field(default_factory=list)
     n_comparisons: int = 1
     correction: str = "none"
     exploratory: bool = False
     publishable: bool = False
+    # The winner's own test failed to run, so it has no p-value.
     inference_failed: bool = False
+    # Tests among the family that failed to run. They still count as
+    # hypotheses, so the correction never shrinks because a test failed.
+    tests_failed: int = 0
     win_rate_vs_baseline: float = 0.0
     best_metric_per_ms: float = 0.0
     baseline_metric_per_ms: float = 0.0
@@ -352,8 +355,12 @@ def holm_adjust(p_values: list[float | None], family_size: int | None = None) ->
 
 
 def _family_members(result: OptimizeResult) -> list[int]:
-    """Trial indexes that count as hypotheses: every trial but the baseline
-    and the no-op trials whose scores equal the baseline on every question."""
+    """Trial indexes that count as hypotheses: every trial but the baseline.
+
+    A trial whose scores happen to equal the baseline stays in. Dropping a
+    hypothesis after seeing its result would shrink the correction on the
+    strength of the data it is meant to guard against.
+    """
     return [i for i, member in enumerate(result.trial_in_family) if member]
 
 
@@ -365,6 +372,9 @@ def _apply_family(
     result.n_comparisons = n_comparisons
     result.correction = "holm" if n_comparisons > 1 and adjusted_best is not None else "none"
     result.inference_failed = result.best_trial_index is not None and adjusted_best is None
+    result.tests_failed = sum(
+        1 for i in _family_members(result) if result.trial_p_values[i] is None
+    )
     result.significant = (
         adjusted_best is not None
         and adjusted_best < 0.05
@@ -439,10 +449,7 @@ def summarize_optimization(
         else _wilcoxon(baseline_trial.per_question_scores, t.per_question_scores)
         for t in trials
     ]
-    trial_in_family = [
-        t is not baseline_trial and t.per_question_scores != baseline_trial.per_question_scores
-        for t in trials
-    ]
+    trial_in_family = [t is not baseline_trial for t in trials]
     best_index = None if same else next(i for i, t in enumerate(trials) if t is best_trial)
     p_value_raw = None if same else trial_p_values[best_index]
     win_rate = (
@@ -496,6 +503,7 @@ def strategy_report(r: OptimizeResult) -> dict:
         "exploratory": r.exploratory,
         "publishable": r.publishable,
         "inference_failed": r.inference_failed,
+        "tests_failed": r.tests_failed,
         "significant": r.significant,
         "win_rate_vs_baseline": r.win_rate_vs_baseline,
         "best_metric_per_ms": r.best_metric_per_ms,
