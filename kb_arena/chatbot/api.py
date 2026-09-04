@@ -27,6 +27,7 @@ from kb_arena import __version__
 from kb_arena.arena.engine import ArenaEngine
 from kb_arena.benchmark.compare import compare_result_files, resolve_result_path
 from kb_arena.benchmark.manifest import compatibility_key, manifest_summary
+from kb_arena.benchmark.review import REVIEWED, STATUSES, review_summary
 from kb_arena.chatbot.auth import require_auth
 from kb_arena.chatbot.session import SessionStore
 from kb_arena.chatbot.tools_api import router as tools_router
@@ -740,8 +741,13 @@ async def list_strategies(request: Request) -> dict:
 
 
 @app.get("/graph/stats")
-async def graph_stats(request: Request) -> dict:
-    """Return graph node and edge counts, centrality hubs, and communities."""
+async def graph_stats(request: Request, corpus: str = "all") -> dict:
+    """Return graph node and edge counts, centrality hubs, and communities.
+
+    With a corpus, only that corpus's entities count. Without one, a store
+    over the budget loads a slice ordered by entity id, and the load names
+    the corpora that slice holds.
+    """
     if request.app.state.neo4j is None:
         return {"error": "Neo4j not connected", "stats": None}
 
@@ -751,22 +757,35 @@ async def graph_stats(request: Request) -> dict:
     store = Neo4jStore(request.app.state.neo4j)
     analyzer = GraphAnalyzer(store)
 
-    centrality = await analyzer.calculate_centrality()
+    scope = None if corpus in ("", "all") else corpus
+    centrality = await analyzer.calculate_centrality(scope)
     top_hubs = sorted(centrality.items(), key=lambda x: x[1], reverse=True)[:10]
+    # An exact score keeps four decimals. A sampled one keeps two significant
+    # digits, so a hub at 0.0031 still reads as 0.0031 and not as zero.
+    exact = analyzer.last_centrality.get("method") == "exact"
 
-    communities = await analyzer.analyze_communities()
+    def _shown(score: float) -> float:
+        return round(score, 4) if exact else float(f"{score:.2g}")
+
+    communities = await analyzer.analyze_communities(corpus=scope)
 
     return {
+        "corpus": corpus or "all",
+        # node_count is the slice the numbers come from. load.nodes_total is
+        # what the store holds, and load.truncated says when they differ.
         "node_count": sum(1 for _ in centrality),
         "top_hubs": [
             {
                 "entity_id": entity_id,
                 "fqn": entity_id.split("::", 1)[-1],
-                "centrality": round(centrality_score, 4),
+                "centrality": _shown(centrality_score),
             }
             for entity_id, centrality_score in top_hubs
         ],
         "community_count": len(communities),
+        # A reader must see when the numbers come from a slice or a sample.
+        "centrality": analyzer.last_centrality,
+        "load": analyzer.last_load,
     }
 
 
@@ -1162,6 +1181,8 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
                 "strategy": s,
                 "compatibility_key": key,
                 "manifest": runs[0].get("manifest", {}),
+                # How much of this row rests on questions a human checked.
+                "review": _merge_reviews(runs),
                 "mixed_with": sorted(k for k in keys_by_pair[(c, s)] if k != key),
                 "runs": len(runs),
                 "mean_accuracy": _avg(runs, "overall_accuracy"),
@@ -1197,6 +1218,7 @@ def _summarise_run(data: dict) -> dict:
     records = data.get("records", [])
     if not isinstance(records, list) or not all(isinstance(record, dict) for record in records):
         raise ValueError("records must be a list of objects")
+    review = review_summary(records)
 
     overall = data.get("overall_accuracy")
     if overall is None:
@@ -1231,11 +1253,27 @@ def _summarise_run(data: dict) -> dict:
     mean_latency = sum(latencies) / len(latencies) if latencies else 0.0
     return {
         "manifest": manifest_summary(data),
+        "review": review,
         "overall_accuracy": overall,
         "mean_recall_at_k": _finite_number(data.get("mean_recall_at_k", 0.0), "mean_recall_at_k"),
         "mean_ndcg_at_k": _finite_number(data.get("mean_ndcg_at_k", 0.0), "mean_ndcg_at_k"),
         "total_cost_usd": cost,
         "mean_latency_ms": mean_latency,
+    }
+
+
+def _merge_reviews(runs: list[dict]) -> dict:
+    """One review summary across the runs on a leaderboard row."""
+    counts = dict.fromkeys(STATUSES, 0)
+    for run in runs:
+        for status, n in ((run.get("review") or {}).get("counts") or {}).items():
+            counts[status] = counts.get(status, 0) + n
+    total = sum(counts.values())
+    return {
+        "counts": counts,
+        "questions": total,
+        "reviewed_share": round(counts[REVIEWED] / total, 4) if total else None,
+        "publishable": bool(total) and counts[REVIEWED] == total,
     }
 
 

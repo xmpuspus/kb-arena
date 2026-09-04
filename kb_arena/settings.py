@@ -2,7 +2,7 @@
 
 import math
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -39,6 +39,14 @@ class Settings(BaseSettings):
     # LLM — OpenAI (for embeddings)
     openai_api_key: str = ""
 
+    # Graph analysis budgets. Exact betweenness is O(n*m) and loads the whole
+    # graph into one process. Above these the analyzer loads a bounded slice
+    # and samples the centrality instead of hanging the API.
+    graph_node_budget: int = Field(default=5000, ge=1)
+    graph_edge_budget: int = Field(default=50000, ge=1)
+    graph_centrality_exact_max_nodes: int = Field(default=1000, ge=1)
+    graph_centrality_samples: int = Field(default=200, ge=1)
+
     # Neo4j
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
@@ -51,6 +59,13 @@ class Settings(BaseSettings):
     # Embeddings — provider-agnostic. Pick via KB_ARENA_EMBEDDING_PROVIDER:
     # openai (default), voyage, cohere, bge (local), ollama (local), gemini.
     embedding_provider: str = "openai"
+    # One SQLite file in front of every embedding provider. Empty path means
+    # <chroma_path>/embedding_cache.sqlite.
+    embedding_cache_enabled: bool = True
+    embedding_cache_path: str = ""
+    # Part of every cache key. Change it when a model changed under the same
+    # tag, so vectors from the old revision are never read again.
+    embedding_cache_salt: str = ""
     embedding_model: str = "text-embedding-3-large"
     embedding_dimensions: int = 3072
     ollama_embedding_model: str = "nomic-embed-text"

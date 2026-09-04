@@ -25,6 +25,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeEl
 
 from kb_arena.benchmark.atomic import append_jsonl, atomic_write_text, read_jsonl
 from kb_arena.benchmark.evaluator import evaluate
+from kb_arena.benchmark.holdout import record_holdout_use, touches_holdout
 from kb_arena.benchmark.ir_metrics import compute_all as compute_ir_metrics
 from kb_arena.benchmark.manifest import (
     SCHEMA_VERSION,
@@ -706,6 +707,15 @@ async def run_benchmark(
         selected_questions = True
 
         questions_map = {q.id: (q.type, q.tier) for q in questions}
+        # The default split and "all" read the holdout questions too.
+        if touches_holdout(questions):
+            record_holdout_use(
+                results_dir,
+                tool="benchmark",
+                corpus=corp,
+                run_id=run_id,
+                strategies=[s.name for s in strategies],
+            )
         by_id = {q.id: q for q in questions}
         hashes = {q.id: question_hash(q) for q in questions}
         manifest = build_manifest(
