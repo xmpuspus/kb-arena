@@ -106,7 +106,7 @@ class GraphAnalyzer:
             "MATCH (a:KBArenaEntity)-[r]->(b:KBArenaEntity) "
             "WHERE a.entity_id IN $ids AND b.entity_id IN $ids "
             "RETURN a.entity_id AS src, b.entity_id AS dst, type(r) AS rel "
-            "ORDER BY a.entity_id LIMIT $limit",
+            "ORDER BY a.entity_id, b.entity_id LIMIT $limit",
             settings.graph_edge_budget,
             corpus,
             ids=[row["entity_id"] for row in nodes],
@@ -157,7 +157,8 @@ class GraphAnalyzer:
         """Directed graph for path finding, loaded under the same budgets."""
         cached = self._cache_get(("directed", corpus))
         if cached is not None:
-            return cached
+            graph, self.last_load = cached
+            return graph
 
         nodes, nodes_truncated = await self._load_rows(
             "MATCH (n:KBArenaEntity) WHERE $prefix = '' OR n.entity_id STARTS WITH $prefix "
@@ -171,7 +172,7 @@ class GraphAnalyzer:
             "MATCH (a:KBArenaEntity)-[r]->(b:KBArenaEntity) "
             "WHERE a.entity_id IN $ids AND b.entity_id IN $ids "
             "RETURN a.entity_id AS src, b.entity_id AS dst, type(r) AS rel "
-            "ORDER BY a.entity_id LIMIT $limit",
+            "ORDER BY a.entity_id, b.entity_id LIMIT $limit",
             settings.graph_edge_budget,
             corpus,
             ids=[row["entity_id"] for row in nodes],
@@ -184,13 +185,31 @@ class GraphAnalyzer:
             if row["src"] not in graph or row["dst"] not in graph:
                 continue
             graph.add_edge(row["src"], row["dst"], rel=row["rel"])
-        if nodes_truncated or edges_truncated:
+        # The same record the undirected load keeps, so a caller of
+        # find_dependency_chains can tell an absent entity from one the
+        # budget left out.
+        self.last_load = {
+            "corpus": corpus or "all",
+            "corpora_in_slice": sorted(
+                {str(n).split("::", 1)[0] for n in graph.nodes if "::" in str(n)}
+            ),
+            "nodes_loaded": graph.number_of_nodes(),
+            "nodes_total": (
+                await self._count_nodes(corpus) if nodes_truncated else graph.number_of_nodes()
+            ),
+            "edges_loaded": graph.number_of_edges(),
+            "node_budget": settings.graph_node_budget,
+            "edge_budget": settings.graph_edge_budget,
+            "truncated": nodes_truncated or edges_truncated,
+            "edges_dropped_outside_slice": 0,
+        }
+        if self.last_load["truncated"]:
             logger.warning(
                 "Directed graph load truncated at the budget: %d nodes, %d edges loaded.",
                 graph.number_of_nodes(),
                 graph.number_of_edges(),
             )
-        self._cache_set(("directed", corpus), graph)
+        self._cache_set(("directed", corpus), (graph, dict(self.last_load)))
         return graph
 
     async def analyze_communities(
@@ -211,12 +230,14 @@ class GraphAnalyzer:
         )
         return [set(c) for c in communities]
 
-    async def find_dependency_chains(self, start_fqn: str, max_depth: int = 4) -> list[list[str]]:
+    async def find_dependency_chains(
+        self, start_fqn: str, max_depth: int = 4, corpus: str | None = None
+    ) -> list[list[str]]:
         """Find paths from an entity ID or FQN up to max_depth hops.
 
         Caps at 100 paths to avoid combinatorial explosion (climate-money-ph lesson).
         """
-        graph = await self._build_directed_graph()
+        graph = await self._build_directed_graph(corpus)
         start_nodes = (
             [start_fqn]
             if start_fqn in graph

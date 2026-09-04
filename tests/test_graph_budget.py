@@ -250,3 +250,18 @@ async def test_an_edge_that_leaves_the_slice_never_spends_the_edge_budget(monkey
 
     assert graph.number_of_nodes() == 3
     assert graph.number_of_edges() == 2, "the budget went to edges inside the slice"
+
+
+@pytest.mark.asyncio
+async def test_dependency_chains_report_their_load_so_a_missing_entity_is_explained(monkeypatch):
+    monkeypatch.setattr(settings, "graph_node_budget", 3)
+    nodes, edges = _chain(6)
+    analyzer = GraphAnalyzer(_store(nodes, edges))
+
+    chains = await analyzer.find_dependency_chains("c::n5", max_depth=4)
+
+    assert chains == []
+    assert analyzer.last_load["truncated"] is True, "the entity sits past the budget, not absent"
+    assert analyzer.last_load["nodes_total"] == 6
+    again = await analyzer.find_dependency_chains("c::n0", max_depth=4)
+    assert again and analyzer.last_load["nodes_loaded"] == 3
