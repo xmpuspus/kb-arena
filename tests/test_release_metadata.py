@@ -301,8 +301,21 @@ def test_the_npm_audit_step_cannot_hang_the_job() -> None:
     steps = workflow["jobs"]["frontend"]["steps"]
     audit = next(s for s in steps if "audit" in (s.get("name") or ""))
 
-    assert audit.get("timeout-minutes"), "the step needs a deadline of its own"
-    assert "timeout 90s npm audit" in audit["run"], "so does each attempt"
+    assert "timeout 90s npm audit" in audit["run"], "each attempt needs a deadline"
+
+    # The step deadline must sit above the worst healthy path, or it fires on a
+    # run that is behaving. The first version used 330s of work against a 360s
+    # ceiling and killed the step in the same second the warning printed.
+    ceiling = audit.get("timeout-minutes")
+    assert ceiling, "the step needs a deadline of its own"
+    attempts = audit["run"].count("for attempt in 1 2 3") and 3
+    per_attempt = 90
+    between = 15 * (attempts - 1)
+    worst = attempts * per_attempt + between
+    assert (
+        worst < ceiling * 60
+    ), f"three attempts take {worst}s and the step is killed at {ceiling * 60}s"
+    assert f"sleep {15}" in audit["run"], "the gap between attempts is part of the budget"
     # 124 is what `timeout` returns when it kills the command, and it must be
     # retried rather than failing the job for a registry that went quiet.
     assert "-eq 124" in audit["run"]

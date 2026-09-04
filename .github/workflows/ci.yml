@@ -43,7 +43,12 @@ jobs:
       - run: npx next build
       # high/critical only: low/moderate advisories must not fail every PR.
       - name: npm audit, with a retry and a deadline for the registry
-        timeout-minutes: 6
+        # Three attempts of 90s with 15s between them is 300s of work, so the
+        # step deadline has to sit well above that or it fires on the healthy
+        # path. The first version used 90s attempts, 30s sleeps and a 6 minute
+        # step, which is 330s against a 360s ceiling, and it killed the step in
+        # the same second the warning printed.
+        timeout-minutes: 9
         run: |
           # A vulnerability fails the job. A registry outage does not: the
           # audit endpoint answered "Bad Request" for an hour on 2026-09-04
@@ -67,15 +72,15 @@ jobs:
             fi
             # 124 is what `timeout` returns when it kills the command.
             if [ "$code" -eq 124 ]; then
-              echo "registry did not answer within 90s on attempt $attempt, retrying in 30s"
-              sleep 30
+              echo "registry did not answer within 90s on attempt $attempt, retrying in 15s"
+              sleep 15
               continue
             fi
             if ! echo "$out" | grep -q "audit endpoint returned an error"; then
               exit "$code"
             fi
-            echo "registry audit endpoint unavailable on attempt $attempt, retrying in 30s"
-            sleep 30
+            echo "registry audit endpoint unavailable on attempt $attempt, retrying in 15s"
+            sleep 15
           done
           echo "::warning::npm audit skipped: the registry did not answer or errored three times"
 
