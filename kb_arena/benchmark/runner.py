@@ -19,7 +19,12 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeEl
 
 from kb_arena.benchmark.evaluator import evaluate
 from kb_arena.benchmark.ir_metrics import compute_all as compute_ir_metrics
-from kb_arena.benchmark.manifest import SCHEMA_VERSION, build_manifest, judge_provider_of
+from kb_arena.benchmark.manifest import (
+    SCHEMA_VERSION,
+    build_manifest,
+    generation_identity,
+    judge_provider_of,
+)
 from kb_arena.benchmark.questions import discover_corpora, load_questions
 from kb_arena.llm.client import LLMClient
 from kb_arena.models.benchmark import (
@@ -428,7 +433,9 @@ def _config_snapshot(
     judge = getattr(llm, "judge_identity", None) or {"provider": "", "model": ""}
     return {
         "llm_provider": settings.llm_provider,
-        "generate_model": settings.generate_model,
+        # The model the configured provider answers with, not the Anthropic
+        # default whatever the provider.
+        "generate_model": generation_identity()["model"],
         "judge_provider": judge["provider"],
         "judge_model": judge["model"],
         "max_concurrent": settings.benchmark_max_concurrent,

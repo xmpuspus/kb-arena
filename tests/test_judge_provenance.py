@@ -152,6 +152,30 @@ def test_the_judge_provider_reads_its_own_key_not_the_generic_one(monkeypatch):
     assert keys["openai"] == "openai-key"
 
 
+def test_the_manifest_judge_follows_the_judge_provider(monkeypatch):
+    from kb_arena.benchmark.manifest import judge_identity
+
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(settings, "judge_provider", "openai")
+    monkeypatch.setattr(settings, "openai_judge_model", "gpt-judge")
+    assert judge_identity() == {"provider": "openai", "model": "gpt-judge"}
+
+    monkeypatch.setattr(settings, "judge_provider", "")
+    assert judge_identity() == {"provider": "anthropic", "model": settings.judge_model}
+
+
+def test_the_snapshot_generate_model_matches_the_provider(monkeypatch):
+    from kb_arena.benchmark.runner import _config_snapshot
+
+    monkeypatch.setattr(settings, "llm_provider", "openai")
+    monkeypatch.setattr(settings, "openai_generate_model", "gpt-gen")
+    llm = SimpleNamespace(judge_identity={"provider": "openai", "model": "gpt-judge"})
+    snap = _config_snapshot(
+        llm, top_k=5, split="", reference_free=False, cost_cap=0.0, parallel=True
+    )
+    assert snap["generate_model"] == "gpt-gen"
+
+
 def test_a_run_snapshot_names_the_judge(monkeypatch):
     from kb_arena.benchmark.runner import _config_snapshot
 
