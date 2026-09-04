@@ -167,15 +167,8 @@ async def label_one_question(
                     question_text, top_k=n_candidates, corpus=corpus
                 )
             except Exception as exc:
-                # One retriever's failure narrows the pool. It must not throw
-                # away the labels the other retrievers can still support.
-                log.warning(
-                    "Retriever %s failed while building the label pool: %s", retriever.name, exc
-                )
-                continue
-            else:
-                pass
-            if False:
+                # A retriever that fails would silently narrow the pool and
+                # bias every label after it, so the run stops instead.
                 raise RuntimeError(
                     f"Extra retriever {retriever.name} failed while building the label pool"
                 ) from exc

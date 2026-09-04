@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -100,6 +101,7 @@ def test_the_judge_output_parses_as_grades_or_as_a_bare_list():
     assert labeler._parse_grades('Sure: {"a": 2, "b": 1, "zzz": 2, "c": 0}', valid) == {
         "a": 2,
         "b": 1,
+        "c": 0,
     }
     assert labeler._parse_grades('```json\n["a", "zzz"]\n```', valid) == {"a": 1}
     assert labeler._parse_grades("no json here", valid) == {}
@@ -153,3 +155,52 @@ async def test_the_pool_adds_random_chunks_the_retrievers_missed():
     shown = [line for line in seen_prompt["text"].splitlines() if line.startswith("[doc::")]
     assert len(shown) == 8, "three retrieved plus five random chunks reached the judge"
     assert len({line for line in shown}) == 8
+
+
+def test_a_truncated_judge_object_is_reported_not_stored_as_empty(caplog):
+    import logging
+
+    grades, parsed = labeler._parse_grades('{"a": 2, "b":', {"a", "b"}, report=True)
+    assert (grades, parsed) == ({}, False)
+
+    class _BM25:
+        name = "bm25"
+        _chunk_ids: list[str] = []
+        _corpus_texts: list[str] = []
+
+        async def query(self, question, top_k, corpus=""):
+            from kb_arena.models.retrieval import RetrievedChunk
+
+            return SimpleNamespace(
+                retrieval=SimpleNamespace(
+                    retrieved=[
+                        RetrievedChunk(
+                            chunk_id="doc::a",
+                            doc_id="doc",
+                            content="t",
+                            rank=1,
+                            source_strategy="bm25",
+                        )
+                    ]
+                )
+            )
+
+    class _Truncated:
+        async def extract(self, text, system_prompt=""):
+            return SimpleNamespace(text='{"doc::a": 2, "doc::b":', cost_usd=0.0)
+
+    with caplog.at_level(logging.WARNING, logger="kb_arena.benchmark.expected_chunks"):
+        grades, _ = asyncio.run(
+            labeler.label_one_question("q?", _BM25(), _Truncated(), "c", n_candidates=1, n_random=0)
+        )
+
+    assert grades == {}
+    assert "did not parse as grades" in caplog.text
+
+
+def test_the_system_prompt_asks_for_grades():
+    import inspect
+
+    source = inspect.getsource(labeler.label_one_question)
+    assert "JSON object literal mapping chunk_id to a grade" in source
+    assert "JSON array literal" not in source
