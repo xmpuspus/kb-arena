@@ -2,9 +2,24 @@ name: Publish to PyPI
 
 # Trusted publishing on PyPI is not configured for this repo, so the
 # release-triggered workflow was failing on every tag. Until OIDC is set up,
-# this workflow runs only on manual dispatch and uses an API token from
-# repository secrets (PYPI_API_TOKEN). Manual twine upload remains the
-# documented path; this workflow is here for when the secret is added.
+# this workflow runs only on manual dispatch and uses an API token named
+# PYPI_API_TOKEN. Manual twine upload remains the documented path; this
+# workflow is here for when the token is added.
+#
+# Setup this needs once, and not from code. The declaration below changes
+# nothing until it exists:
+#
+#   1. Settings, Environments, create `pypi`.
+#   2. Add PYPI_API_TOKEN as an ENVIRONMENT secret on `pypi`, not as a
+#      repository secret. A repository secret is readable by every workflow
+#      on every branch, so the environment would protect nothing.
+#   3. Add a required reviewer. That is the control a crafted ref cannot
+#      rewrite, because it lives on the repository and not in this file.
+#
+# Do NOT add a tag-only deployment branch rule. The dry run uses the same
+# environment and runs from main, so a tag-only rule would block the very
+# path that proves the release works. The `refs/tags/v*` or `main` check
+# below is what limits a real publish.
 on:
   workflow_dispatch:
     inputs:
@@ -22,8 +37,9 @@ jobs:
     # The workflow FILE comes from the ref the dispatch selected, so a branch
     # can rewrite every guard below it. An environment is the one control the
     # ref cannot touch: it is configured on the repository, and its required
-    # reviewers and branch rules gate the secret itself. Configure `pypi` in
-    # Settings, Environments, with a required reviewer and a tag rule.
+    # reviewers gate the secret. See the setup notes at the top of this file,
+    # including why the token must be an environment secret and why a
+    # tag-only branch rule would break the dry run.
     environment: pypi
     permissions:
       contents: read

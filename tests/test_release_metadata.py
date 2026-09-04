@@ -193,6 +193,16 @@ def test_the_job_sits_behind_an_environment() -> None:
 
     assert workflow["jobs"]["publish"]["environment"] == "pypi"
 
+    # The setup notes must say the two things that make the declaration real.
+    text = (ROOT / ".github" / "workflows" / "publish.yml").read_text()
+    assert "ENVIRONMENT secret" in text, (
+        "a repository secret is readable from every branch, so the environment "
+        "would protect nothing"
+    )
+    assert (
+        "Do NOT add a tag-only deployment branch rule" in text
+    ), "the dry run uses the same environment and runs from main"
+
 
 def test_the_sbom_check_runs_on_a_real_publish_too() -> None:
     """It ran only in a dry run, so a release could ship an SBOM the dry run refused."""
