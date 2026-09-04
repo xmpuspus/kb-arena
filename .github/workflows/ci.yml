@@ -29,7 +29,11 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # npm ci, lint and next build ran in six minutes on 2026-09-04 and in eight
+    # on the next branch, and the audit needs up to 155s after them. A ten
+    # minute job budget was never sized for that work, so the job was killed
+    # mid-audit and reported as "cancelled", which reads like flakiness.
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: web

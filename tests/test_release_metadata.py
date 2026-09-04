@@ -324,7 +324,9 @@ def test_the_npm_audit_step_cannot_hang_the_job() -> None:
     assert job_ceiling, "the job needs a deadline too"
     # npm ci, lint and next build took about six minutes on 2026-09-04, so the
     # audit has to fit in what is left rather than in the job as a whole.
-    build_budget_seconds = 6 * 60
+    # The build took six minutes on one branch and eight on the next, so the
+    # budget assumes the slower of the two measurements rather than the faster.
+    build_budget_seconds = 9 * 60
     assert worst + build_budget_seconds < job_ceiling * 60, (
         f"the audit takes {worst}s, the build takes about {build_budget_seconds}s, "
         f"and the job is killed at {job_ceiling * 60}s"

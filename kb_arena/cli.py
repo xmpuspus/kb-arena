@@ -309,13 +309,30 @@ def build_vectors(
     _next_step("build_vectors", corpus)
 
 
+def _strategy_option_help() -> str:
+    """The strategy list, read from the catalog rather than typed again.
+
+    A hand-written list here drifted to seven of eleven: it omitted bm25,
+    rerank_vector, qiss and sqr, so `--help` told a user four strategies did
+    not exist.
+    """
+    from kb_arena.strategies.catalog import STRATEGY_CATALOG, default_strategy_names
+
+    default = set(default_strategy_names())
+    names = [s.name for s in STRATEGY_CATALOG]
+    outside = [n for n in names if n not in default]
+    text = "Strategy name or 'all'. Options: " + ", ".join(names)
+    if outside:
+        text += f". Not in 'all': {', '.join(outside)}"
+    return text
+
+
 @app.command()
 def benchmark(
     corpus: str = typer.Option("all", help="Corpus name, or 'all' to run all discovered corpora"),
     strategy: str = typer.Option(
         "all",
-        help="Strategy name or 'all'. Options: naive_vector, contextual_vector, "
-        "qna_pairs, knowledge_graph, hybrid, raptor, pageindex",
+        help=_strategy_option_help(),
     ),
     tier: int = typer.Option(0, help="Tier filter (0 = all tiers)"),
     split: str = typer.Option(
