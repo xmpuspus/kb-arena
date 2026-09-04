@@ -5,6 +5,16 @@ import { useState, useEffect, useMemo } from "react";
 type LeaderRow = {
   corpus: string;
   strategy: string;
+  // Runs that differ in question set, qrels, judge, or top_k never share a
+  // row. The key names the experiment, and mixed_with lists the other keys
+  // seen for the same corpus and strategy.
+  compatibility_key: string;
+  manifest: {
+    question_split?: string | null;
+    judge_model?: string | null;
+    top_k?: number | null;
+  };
+  mixed_with: string[];
   runs: number;
   mean_accuracy: number | null;
   mean_recall_at_5: number | null;
@@ -98,6 +108,7 @@ export default function LeaderboardPage() {
               <tr>
                 <th className="px-3 py-2 font-medium">Corpus</th>
                 <th className="px-3 py-2 font-medium">Strategy</th>
+                <th className="px-3 py-2 font-medium">Experiment</th>
                 <th className="px-3 py-2 font-medium text-right">Accuracy</th>
                 <th className="px-3 py-2 font-medium text-right">Recall@5</th>
                 <th className="px-3 py-2 font-medium text-right">NDCG@5</th>
@@ -108,9 +119,28 @@ export default function LeaderboardPage() {
             </thead>
             <tbody>
               {data.leaderboard.map((row, i) => (
-                <tr key={`${row.corpus}-${row.strategy}-${i}`} className="border-t">
+                <tr key={`${row.corpus}-${row.strategy}-${row.compatibility_key}-${i}`} className="border-t">
                   <td className="px-3 py-2 font-mono">{row.corpus}</td>
                   <td className="px-3 py-2 font-mono">{row.strategy}</td>
+                  <td className="px-3 py-2 text-xs">
+                    <span
+                      className="font-mono"
+                      title={
+                        row.compatibility_key === "legacy"
+                          ? "Result file without a manifest"
+                          : `judge ${row.manifest?.judge_model ?? "?"}, split ${
+                              row.manifest?.question_split ?? "?"
+                            }, top_k ${row.manifest?.top_k ?? "?"}`
+                      }
+                    >
+                      {row.compatibility_key === "legacy" ? "legacy" : row.compatibility_key.slice(0, 6)}
+                    </span>
+                    {row.mixed_with?.length > 0 && (
+                      <div style={{ color: "var(--muted)" }}>
+                        {row.mixed_with.length} other experiment{row.mixed_with.length === 1 ? "" : "s"} for this pair, not comparable
+                      </div>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-right">
                     {row.mean_accuracy != null ? (row.mean_accuracy * 100).toFixed(1) + "%" : "n/a"}
                   </td>
