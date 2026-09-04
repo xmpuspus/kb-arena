@@ -114,7 +114,12 @@ jobs:
           # PyPI, so a run that published nothing looked identical to one that
           # published everything, while the attestation above described local
           # files that differ from the released ones.
-          version=$(python -c "import kb_arena; print(kb_arena.__version__)")
+          # Read the version off the wheel that is about to be uploaded.
+          # Importing the package would need its runtime dependencies, and this
+          # job installs only the build tools, so the import would fail here and
+          # look like a release problem.
+          wheel=$(ls dist/*.whl | head -1)
+          version=$(basename "$wheel" | cut -d- -f2)
           code=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/kb-arena/$version/json")
           if [ "$code" = "200" ]; then
             echo "kb-arena $version is already on PyPI. Bump the version before publishing."

@@ -208,6 +208,12 @@ def test_the_workflow_never_reports_success_for_a_version_already_on_pypi() -> N
     ), "a version already on PyPI must fail the run, not pass it in silence"
     check = next(s for s in steps if "Refuse to republish" in (s.get("name") or ""))
     assert "pypi.org/pypi/kb-arena" in check["run"]
+    # The job installs build tools only, so importing the package would fail
+    # for a missing runtime dependency and read as a release problem.
+    assert "import kb_arena" not in check["run"], (
+        "read the version off the built wheel, not by importing the package"
+    )
+    assert "dist/*.whl" in check["run"]
 
 
 def test_the_dry_run_summary_fails_on_an_empty_sbom() -> None:
