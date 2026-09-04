@@ -19,7 +19,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeEl
 
 from kb_arena.benchmark.evaluator import evaluate
 from kb_arena.benchmark.ir_metrics import compute_all as compute_ir_metrics
-from kb_arena.benchmark.manifest import SCHEMA_VERSION, build_manifest
+from kb_arena.benchmark.manifest import SCHEMA_VERSION, build_manifest, judge_provider_of
 from kb_arena.benchmark.questions import discover_corpora, load_questions
 from kb_arena.llm.client import LLMClient
 from kb_arena.models.benchmark import (
@@ -536,7 +536,7 @@ async def run_benchmark(
                         timestamp=timestamp,
                         config_snapshot=config_snap,
                         schema_version=SCHEMA_VERSION,
-                        judge_provider=manifest["judge"]["provider"],
+                        judge_provider=judge_provider_of(manifest),
                         manifest=manifest,
                     )
                     coros = (
@@ -615,7 +615,7 @@ async def run_benchmark(
                         timestamp=timestamp,
                         config_snapshot=config_snap,
                         schema_version=SCHEMA_VERSION,
-                        judge_provider=manifest["judge"]["provider"],
+                        judge_provider=judge_provider_of(manifest),
                         manifest=manifest,
                     )
 

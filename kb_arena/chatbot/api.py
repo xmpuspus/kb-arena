@@ -1088,12 +1088,15 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
         seen_corpora.add(c)
         if corpus != "all" and c != corpus:
             continue
-        if not _first_sighting(c, s, data):
-            continue
         try:
-            rows[(c, s, compatibility_key(data))].append(_summarise_run(data))
+            summary = _summarise_run(data)
         except ValueError:
             continue
+        # A run counts as seen only once it summarised, so a bad top-level
+        # copy never hides the good copy under its run directory.
+        if not _first_sighting(c, s, data):
+            continue
+        rows[(c, s, compatibility_key(data))].append(summary)
 
     # New per-run subdirectories (results/run_<id>/<corpus>_<strategy>.json)
     for run_dir in sorted(base.glob("run_*")):
@@ -1113,12 +1116,13 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
             seen_corpora.add(c)
             if corpus != "all" and c != corpus:
                 continue
-            if not _first_sighting(c, s, data):
-                continue
             try:
-                rows[(c, s, compatibility_key(data))].append(_summarise_run(data))
+                summary = _summarise_run(data)
             except ValueError:
                 continue
+            if not _first_sighting(c, s, data):
+                continue
+            rows[(c, s, compatibility_key(data))].append(summary)
 
     # Runs made against different question sets, qrels, judges, or top_k
     # values never share a row. A row names its key, and lists the other keys

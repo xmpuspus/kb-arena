@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -133,6 +134,36 @@ def test_a_cost_capped_partial_run_never_blends_with_a_full_one(tmp_path, monkey
 def test_a_v1_file_dumped_by_the_v2_model_still_summarises_empty():
     assert mf.manifest_summary({"manifest": {}, "schema_version": 1}) == {}
     assert mf.manifest_summary({"manifest": {"compatibility_key": "x"}}) == {}
+
+
+def test_a_reference_free_manifest_has_no_judge_provider(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path))
+    free = mf.build_manifest("c", [_q("q1", "one")], top_k=5, split="", reference_free=True)
+    judged = mf.build_manifest("c", [_q("q1", "one")], top_k=5, split="", reference_free=False)
+    assert mf.judge_provider_of(free) == ""
+    assert mf.judge_provider_of(judged) == settings.llm_provider
+    assert mf.judge_provider_of({}) == ""
+
+
+def test_an_empty_fingerprint_is_not_a_stamped_manifest():
+    blank = {"manifest": {"question_set_fingerprint": "", "top_k": 5}}
+    assert mf.compatibility_key(blank) == mf.LEGACY_KEY
+    assert mf.manifest_summary(blank) == {}
+
+
+def test_a_bad_top_level_copy_does_not_hide_the_run_directory_copy(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    key = {"question_set_fingerprint": "f1", "judge": {"model": "j"}, "top_k": 5}
+    _write_run(tmp_path, "r1", "c", "bm25", 1.0, key)
+    good = json.loads((tmp_path / "run_r1" / "c_bm25.json").read_text())
+    good["total_cost_usd"] = "not a number"  # the top-level copy is corrupt
+    (tmp_path / "c_bm25.json").write_text(json.dumps(good))
+
+    board = asyncio.run(api.leaderboard(None, corpus="c"))["leaderboard"]
+
+    assert len(board) == 1
+    assert board[0]["runs"] == 1
+    assert board[0]["mean_accuracy"] == 1.0
 
 
 def test_a_result_file_without_a_manifest_is_legacy():

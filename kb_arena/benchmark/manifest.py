@@ -155,6 +155,12 @@ def build_manifest(corpus: str, questions, *, top_k: int, split: str, reference_
     }
 
 
+def judge_provider_of(manifest: dict) -> str:
+    """The judge provider a manifest names, or empty when the run never judged."""
+    judge = manifest.get("judge") if isinstance(manifest, dict) else None
+    return str(judge.get("provider", "")) if isinstance(judge, dict) else ""
+
+
 def compatibility_key(data: dict) -> str:
     """The key a stored result groups under. A file without a manifest is legacy."""
     manifest = data.get("manifest")
@@ -163,7 +169,8 @@ def compatibility_key(data: dict) -> str:
     # A stamped manifest names its question set. Recompute the key from the
     # core fields instead of trusting the stored one, so a stale, edited, or
     # blank key can never group runs that differ.
-    if isinstance(manifest.get("question_set_fingerprint"), str):
+    fingerprint = manifest.get("question_set_fingerprint")
+    if isinstance(fingerprint, str) and fingerprint:
         key = _digest(core_of(manifest))
         # A run the cost cap stopped scored fewer questions than its manifest
         # names. It never blends with a full run of the same experiment.
@@ -186,7 +193,8 @@ def manifest_summary(data: dict) -> dict:
     manifest = data.get("manifest") if isinstance(data.get("manifest"), dict) else {}
     # A v1 file dumped through the v2 model carries an empty manifest. That
     # is still a legacy file, and a summary of nulls would say otherwise.
-    if not isinstance(manifest.get("question_set_fingerprint"), str):
+    fingerprint = manifest.get("question_set_fingerprint")
+    if not isinstance(fingerprint, str) or not fingerprint:
         return {}
     judge = manifest.get("judge") if isinstance(manifest.get("judge"), dict) else {}
     return {
