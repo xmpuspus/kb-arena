@@ -28,7 +28,20 @@ For each query and strategy, we compute:
 
 ## Generating chunk-level ground truth (`label-chunks`)
 
-Run BM25 over the corpus to retrieve top-N candidates per question, then ask Claude Haiku to mark which are actually relevant. Output is a `{question_id: [chunk_id, ...]}` map written to `datasets/{corpus}/questions/expected_chunks.yaml`.
+The candidate pool is the union of BM25 and every retrieval-only index that is built,
+which is naive vector, contextual vector, Q and A pairs and RAPTOR, plus a seeded random
+sample of the rest of the corpus. A pool made only of what one retriever ranks high never
+shows the judge a chunk it missed, and the random sample is what gives the labels their
+negatives.
+
+The judge is the model `KB_ARENA_GENERATE_MODEL` names, because labeling calls
+`LLMClient.extract`. It is not the fast model and not the judge model; those two score
+answers elsewhere. It grades every candidate: 2 answers the question, 1 supports the
+answer, 0 means the judge read the chunk and rejected it.
+
+Output is a `{version, pool, labels}` file written to
+`datasets/{corpus}/questions/expected_chunks.yaml`, where `labels` maps a question id to a
+grade per chunk and `pool` records which retrievers and how many random chunks fed the judge.
 
 ```bash
 # Build BM25 first (label-chunks needs it)
@@ -78,15 +91,35 @@ From run `855aac4e` (top-5):
 | qna_pairs | 0.0% | 0.0% | 0.0% | 0.000 | 0.000 |
 | knowledge_graph | 0.0% | 0.0% | 0.0% | 0.000 | 0.000 |
 
-Five things this tells us:
+What this one run shows, and what it does not:
 
-1. **Contextual Vector wins on ranking, not coverage.** Contextual and Naive have nearly identical Recall and Hit; the win shows up in MRR and NDCG. The heading-path prefix nudges the *first* relevant chunk into a higher rank, which matters for downstream answer quality.
-2. **RAPTOR's L0 layer is doing the work.** RAPTOR's numbers track naive_vector exactly because L0 chunks share identity with naive_vector chunks. The L1/L2 cluster summaries don't have section-level labels (they're synthetic content), so they don't contribute to chunk-level recall — but they would help on tier 4/5 multi-hop questions where the answer requires synthesis across sections.
-3. **BM25 trails the embeddings by ~8 points on Recall@5** but the gap on MRR is much smaller — when BM25 hits, it tends to hit at rank 1 because exact keyword matches dominate. For "look up exact term" questions BM25 is fine; for synonyms/paraphrasing it loses.
-4. **Hybrid drops to 8% because Neo4j wasn't running.** The graph leg returns empty traces, dragging down the fused result. With Neo4j connected and a graph built, hybrid usually beats vector on relational questions. This is itself a useful diagnostic — IR metrics expose infrastructure gaps fast.
-5. **QnA and Knowledge Graph score 0% chunk-level.** Both operate on different identity spaces (Q-A pairs and entity FQNs respectively). They need doc-level ground truth, or labels in their own identity space. The doc-level fallback path will rescue them when `ground_truth.source_refs` matches the doc IDs in your corpus (it doesn't for aws-compute — the source_refs use AWS docs URL paths but doc IDs are short slugs).
+Read every line below as an observation about run `855aac4e` on a three-document
+corpus, not as a finding about the strategies. One run has no spread, so a gap of a
+few points is not distinguishable from noise. Use `kb-arena benchmark --runs 3` and
+`kb-arena variance` before you treat any gap here as real.
 
-The 40 questions out of 75 with empty `expected_chunks` reference EC2, EKS, Batch, etc. — services not in the 3-doc demo corpus. They contribute 0 to every metric, which pulls means down. Filtering to labeled questions only would roughly double these percentages — but the unfiltered numbers are the honest signal: *this corpus is incomplete for this question set*.
+1. **Contextual Vector and Naive Vector are not separated by this run.** Their Recall
+   and Hit are within 0.3 points and their MRR within 0.02. That is a difference this
+   run cannot resolve, so it is not evidence that either ranks better.
+2. **RAPTOR reports the same numbers as Naive Vector.** RAPTOR's L0 chunks share
+   identity with naive vector's chunks, so at top-5 the two retrieve the same set.
+   This says nothing about RAPTOR's higher layers, which chunk-level labels on a
+   three-document corpus do not reach.
+3. **BM25 is 7.7 points below the embedding strategies on Recall@5 in this run**, and
+   0.06 below on MRR. Whether that ordering holds on another corpus is an open
+   question this run does not answer.
+4. **Hybrid's 8.0% is an outage, not a result.** Neo4j was not running, so the graph
+   leg returned empty traces and the fusion carried them. This row measures the
+   deployment, not the strategy, and it must not be read as a comparison.
+5. **QnA Pairs and Knowledge Graph score 0.0% because they are not being measured.**
+   Both emit ids in their own namespace, Q and A pairs and entity names, and the
+   chunk-level labels of this corpus contain neither. A zero here means unmeasured,
+   not bad.
+
+Forty of the 75 questions have empty `expected_chunks`. They ask about EC2, EKS and
+Batch, which the three-document demo corpus does not cover, so no chunk in the corpus
+could be correct for them. Those questions contribute nothing to the numbers above,
+which is why the table is a demonstration of the metrics and not a benchmark result.
 
 ## Roadmap
 

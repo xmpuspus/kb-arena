@@ -63,9 +63,10 @@ export default function LeaderboardPage() {
           KB Arena Leaderboard
         </h1>
         <p className="text-sm text-gray-600 mt-2 max-w-2xl">
-          Aggregated benchmark scores across every run in this deployment. Higher
-          accuracy + Recall@5 + NDCG@5 are better; lower cost + latency are better.
-          To submit a run, open a PR with your <code>results/run_*</code> JSON.
+          Runs stored in this deployment, grouped by corpus, strategy, experiment key
+          and build. Higher accuracy, Recall@5 and NDCG@5 are better. Lower cost and
+          latency are better. Two rows with a different key or a different build
+          measured different things, so read them side by side, not as one ranking.
         </p>
       </header>
 
