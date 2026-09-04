@@ -49,6 +49,8 @@ class ArenaMatchRequest(BaseModel):
 
     question: str = Field(min_length=1, max_length=MAX_QUERY_LEN)
     corpus: str = Field(default="aws-compute", max_length=64)
+    # The rubric the voter judges by. Ratings never cross a rubric.
+    rubric: str = Field(default="default", max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
 
     @field_validator("corpus")
     @classmethod
@@ -65,6 +67,8 @@ class ArenaVoteRequest(BaseModel):
 
     match_id: str = Field(min_length=1, max_length=64)
     winner: Literal["a", "b", "tie"]
+    # Who voted. "human" is the arena page. A named reviewer names itself.
+    voter: str = Field(default="human", min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_.-]+$")
 
 
 class ChatResponse(BaseModel):

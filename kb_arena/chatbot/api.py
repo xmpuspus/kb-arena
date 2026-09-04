@@ -984,7 +984,7 @@ async def arena_create_match(body: ArenaMatchRequest, request: Request):
             {"error": {"code": "arena_unavailable", "message": "Arena not initialized"}}, 503
         )
     try:
-        match = await arena.create_match(body.question, corpus=body.corpus)
+        match = await arena.create_match(body.question, corpus=body.corpus, rubric=body.rubric)
         return {
             "match_id": match.id,
             "question": match.question,
@@ -1021,21 +1021,28 @@ async def arena_vote(body: ArenaVoteRequest, request: Request):
         return JSONResponse(
             {"error": {"code": "arena_unavailable", "message": "Arena not initialized"}}, 503
         )
-    result = arena.vote(body.match_id, body.winner)
+    result = arena.vote(body.match_id, body.winner, voter=body.voter or "human")
     if "error" in result:
         return JSONResponse({"error": {"code": "vote_failed", "message": result["error"]}}, 400)
     return result
 
 
 @app.get("/api/arena/leaderboard")
-async def arena_leaderboard(request: Request):
-    """Get current ELO leaderboard."""
+async def arena_leaderboard(request: Request, corpus: str = "", rubric: str = "default"):
+    """The ELO leaderboard for one corpus and rubric. Votes from other scopes never count."""
     arena = request.app.state.arena
     if not arena:
-        return {"leaderboard": [], "total_votes": 0}
+        return {
+            "leaderboard": [],
+            "total_votes": 0,
+            "scope": {"corpus": corpus or "all", "rubric": rubric},
+        }
+    board = arena.leaderboard(corpus=corpus, rubric=rubric)
     return {
-        "leaderboard": arena.leaderboard(),
-        "total_votes": arena.state.total_votes,
+        "leaderboard": board,
+        "scope": {"corpus": corpus or "all", "rubric": rubric or "default"},
+        "scopes": sorted(arena.state.elo_by_scope),
+        "total_votes": sum(row["matches"] for row in board),
     }
 
 

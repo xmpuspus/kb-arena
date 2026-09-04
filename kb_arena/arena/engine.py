@@ -39,20 +39,39 @@ class Match:
     timestamp: float = 0.0
     sources_a: list[str] = field(default_factory=list)
     sources_b: list[str] = field(default_factory=list)
+    # The scope a vote counts in. A rating on one corpus under one rubric
+    # says nothing about another corpus, so ratings never cross a scope.
+    corpus: str = ""
+    rubric: str = "default"
+    # Who voted: "human" from the arena page, or a named reviewer. A rating
+    # built from one source of votes is labeled with it.
+    voter: str = ""
+
+
+def scope_key(corpus: str, rubric: str = "default") -> str:
+    return f"{corpus or 'all'}|{rubric or 'default'}"
 
 
 @dataclass
 class ArenaState:
     """Persistent arena state with ELO ratings and match history."""
 
-    elo: dict[str, float] = field(default_factory=dict)
+    elo: dict[str, float] = field(default_factory=dict)  # legacy global view, kept for old readers
     matches: list[Match] = field(default_factory=list)
     total_votes: int = 0
+    # Ratings per scope: scope_key -> strategy -> ELO. The legacy global
+    # ratings load into the "all|default" scope, so an old state file keeps
+    # its numbers under the scope it was in fact built from.
+    elo_by_scope: dict[str, dict[str, float]] = field(default_factory=dict)
+
+    def ratings(self, corpus: str = "", rubric: str = "default") -> dict[str, float]:
+        return self.elo_by_scope.setdefault(scope_key(corpus, rubric), {})
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "elo": self.elo,
+            "elo_by_scope": self.elo_by_scope,
             "total_votes": self.total_votes,
             "matches": [
                 {
@@ -68,6 +87,9 @@ class ArenaState:
                     "cost_b": m.cost_b,
                     "winner": m.winner,
                     "timestamp": m.timestamp,
+                    "corpus": m.corpus,
+                    "rubric": m.rubric,
+                    "voter": m.voter,
                 }
                 for m in self.matches[-200:]  # keep last 200
             ],
@@ -83,7 +105,12 @@ class ArenaState:
             state = cls(
                 elo=data.get("elo", {}),
                 total_votes=data.get("total_votes", 0),
+                elo_by_scope=data.get("elo_by_scope") or {},
             )
+            if not state.elo_by_scope and state.elo:
+                # An old file holds one global table. It was built from every
+                # corpus at once, so it keeps that scope, not a corpus's own.
+                state.elo_by_scope[scope_key("", "default")] = dict(state.elo)
             for m in data.get("matches", []):
                 state.matches.append(
                     Match(
@@ -99,6 +126,9 @@ class ArenaState:
                         cost_b=m.get("cost_b", 0),
                         winner=m.get("winner"),
                         timestamp=m.get("timestamp", 0),
+                        corpus=m.get("corpus", ""),
+                        rubric=m.get("rubric", "default"),
+                        voter=m.get("voter", ""),
                     )
                 )
             return state
@@ -119,7 +149,7 @@ class ArenaEngine:
             if name not in self.state.elo:
                 self.state.elo[name] = INITIAL_ELO
 
-    async def create_match(self, question: str, corpus: str = "") -> Match:
+    async def create_match(self, question: str, corpus: str = "", rubric: str = "default") -> Match:
         """Pick two random strategies, query both, return a blind match."""
         names = list(self.strategies.keys())
         if len(names) < 2:
@@ -156,12 +186,14 @@ class ArenaEngine:
             sources_a=result_a.sources,
             sources_b=result_b.sources,
             timestamp=time.time(),
+            corpus=corpus,
+            rubric=rubric or "default",
         )
         self.state.matches.append(match)
         return match
 
-    def vote(self, match_id: str, winner: str) -> dict:
-        """Record a vote and update ELO. winner: 'a', 'b', or 'tie'."""
+    def vote(self, match_id: str, winner: str, voter: str = "human") -> dict:
+        """Record a vote and update the match's scope ratings. winner: 'a', 'b', or 'tie'."""
         if winner not in ("a", "b", "tie"):
             return {"error": f"Invalid winner: {winner}. Must be 'a', 'b', or 'tie'"}
 
@@ -172,6 +204,7 @@ class ArenaEngine:
             return {"error": "Match already voted on"}
 
         match.winner = winner
+        match.voter = voter or "human"
         self.state.total_votes += 1
         self._update_elo(match)
         self.state.save(self._state_path)
@@ -181,14 +214,17 @@ class ArenaEngine:
             "strategy_a": match.strategy_a,
             "strategy_b": match.strategy_b,
             "winner": winner,
-            "elo": dict(self.state.elo),
+            "corpus": match.corpus or "all",
+            "rubric": match.rubric,
+            "elo": dict(self.state.ratings(match.corpus, match.rubric)),
             "total_votes": self.state.total_votes,
         }
 
     def _update_elo(self, match: Match) -> None:
-        """Standard ELO rating update."""
-        ea = self.state.elo.get(match.strategy_a, INITIAL_ELO)
-        eb = self.state.elo.get(match.strategy_b, INITIAL_ELO)
+        """Standard ELO rating update, inside the match's own scope."""
+        ratings = self.state.ratings(match.corpus, match.rubric)
+        ea = ratings.get(match.strategy_a, INITIAL_ELO)
+        eb = ratings.get(match.strategy_b, INITIAL_ELO)
         expected_a = 1.0 / (1.0 + 10.0 ** ((eb - ea) / 400.0))
 
         if match.winner == "a":
@@ -198,16 +234,28 @@ class ArenaEngine:
         else:  # tie
             score_a = 0.5
 
-        self.state.elo[match.strategy_a] = ea + K_FACTOR * (score_a - expected_a)
-        self.state.elo[match.strategy_b] = eb + K_FACTOR * ((1 - score_a) - (1 - expected_a))
+        ratings[match.strategy_a] = ea + K_FACTOR * (score_a - expected_a)
+        ratings[match.strategy_b] = eb + K_FACTOR * ((1 - score_a) - (1 - expected_a))
+        # The legacy global table mirrors the global scope only, for readers
+        # of the old field. A corpus vote never touches it.
+        if scope_key(match.corpus, match.rubric) == scope_key("", "default"):
+            self.state.elo[match.strategy_a] = ratings[match.strategy_a]
+            self.state.elo[match.strategy_b] = ratings[match.strategy_b]
 
-    def leaderboard(self) -> list[dict]:
-        """Return strategies sorted by ELO rating."""
+    def leaderboard(self, corpus: str = "", rubric: str = "default") -> list[dict]:
+        """Strategies sorted by ELO inside one scope. Votes from other scopes never count."""
+        key = scope_key(corpus, rubric)
+        ratings = self.state.elo_by_scope.get(key, {})
+        scoped = [m for m in self.state.matches if scope_key(m.corpus, m.rubric) == key]
+        # Every strategy the engine knows shows on the board, at the initial
+        # rating when the scope holds no vote for it yet.
+        names = list(self.strategies) + [n for n in ratings if n not in self.strategies]
         board = []
-        for name, elo in self.state.elo.items():
+        for name in names:
+            elo = ratings.get(name, INITIAL_ELO)
             wins = sum(
                 1
-                for m in self.state.matches
+                for m in scoped
                 if m.winner
                 and (
                     (m.strategy_a == name and m.winner == "a")
@@ -216,7 +264,7 @@ class ArenaEngine:
             )
             losses = sum(
                 1
-                for m in self.state.matches
+                for m in scoped
                 if m.winner
                 and (
                     (m.strategy_a == name and m.winner == "b")
@@ -225,12 +273,17 @@ class ArenaEngine:
             )
             ties = sum(
                 1
-                for m in self.state.matches
+                for m in scoped
                 if m.winner == "tie" and (m.strategy_a == name or m.strategy_b == name)
+            )
+            voters = sorted(
+                {m.voter for m in scoped if m.winner and name in (m.strategy_a, m.strategy_b)}
             )
             board.append(
                 {
                     "strategy": name,
+                    "scope": {"corpus": corpus or "all", "rubric": rubric or "default"},
+                    "voters": voters,
                     "elo": round(elo, 1),
                     "wins": wins,
                     "losses": losses,
@@ -255,7 +308,12 @@ class ArenaEngine:
             "cost_a": match.cost_a,
             "cost_b": match.cost_b,
             "timestamp": match.timestamp,
-            "elo_snapshot": {k: round(v, 1) for k, v in self.state.elo.items()},
+            "corpus": match.corpus or "all",
+            "rubric": match.rubric,
+            "voter": match.voter,
+            "elo_snapshot": {
+                k: round(v, 1) for k, v in self.state.ratings(match.corpus, match.rubric).items()
+            },
         }
         append_jsonl(jsonl_path, record)
 

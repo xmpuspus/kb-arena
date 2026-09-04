@@ -273,7 +273,9 @@ def test_arena_match_passes_selected_corpus(app_client):
     )
 
     assert response.status_code == 200
-    arena.create_match.assert_awaited_once_with("What is the control?", corpus="nist")
+    arena.create_match.assert_awaited_once_with(
+        "What is the control?", corpus="nist", rubric="default"
+    )
 
 
 def test_arena_startup_failure_is_logged_not_silently_swallowed(monkeypatch, caplog):
