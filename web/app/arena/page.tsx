@@ -75,6 +75,21 @@ function isMatchResult(data: unknown): data is MatchResult {
   );
 }
 
+interface LeaderboardResponse {
+  leaderboard: LeaderboardEntry[];
+  votes_in_history?: number;
+  total_votes?: number;
+}
+
+function isLeaderboardResponse(data: unknown): data is LeaderboardResponse {
+  if (!data || typeof data !== "object") return false;
+  const board = data as Record<string, unknown>;
+  if (!Array.isArray(board.leaderboard)) return false;
+  const counted = (v: unknown) => v === undefined || typeof v === "number";
+  // A count that arrives as a string renders as a real number of votes.
+  return counted(board.votes_in_history) && counted(board.total_votes);
+}
+
 function isVoteResult(data: unknown): data is VoteResult {
   if (!data || typeof data !== "object") return false;
   const vote = data as Record<string, unknown>;
@@ -115,7 +130,10 @@ export default function ArenaPage() {
       const data = await res.json();
       if (ticket !== boardRequest.current) return;
       if (!res.ok) throw new Error(errorMessage(data, "Leaderboard unavailable"));
-      setLeaderboard(data.leaderboard || []);
+      if (!isLeaderboardResponse(data)) {
+        throw new Error("Server returned an invalid leaderboard response");
+      }
+      setLeaderboard(data.leaderboard);
       // The board is scoped, so the count next to it is the scope's own.
       setTotalVotes(data.votes_in_history ?? data.total_votes ?? 0);
       setBoardError("");

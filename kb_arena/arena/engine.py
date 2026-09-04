@@ -53,6 +53,19 @@ def scope_key(corpus: str, rubric: str = "default") -> str:
     return f"{corpus or 'all'}|{rubric or 'default'}"
 
 
+def _scope_table(raw) -> dict:
+    """The scoped ratings from a state file, or an empty table.
+
+    A JSON array reads as a Python list, and a list has no `.items()`. That
+    error escaped the loader and took every arena route to 503.
+    """
+    if not isinstance(raw, dict):
+        if raw:
+            log.warning("Dropping arena scope table of type %s", type(raw).__name__)
+        return {}
+    return {k: v for k, v in raw.items() if isinstance(k, str) and isinstance(v, dict)}
+
+
 def _vote_count(raw) -> int:
     """A vote total from a state file, or 0 when the file holds something else.
 
@@ -138,7 +151,7 @@ class ArenaState:
             state = cls(
                 elo=data.get("elo", {}),
                 total_votes=_vote_count(data.get("total_votes", 0)),
-                elo_by_scope=data.get("elo_by_scope") or {},
+                elo_by_scope=_scope_table(data.get("elo_by_scope")),
             )
             state.elo = _numeric_ratings(state.elo)
             state.elo_by_scope = {
@@ -170,8 +183,11 @@ class ArenaState:
                     )
                 )
             return state
-        except (json.JSONDecodeError, KeyError):
-            log.warning("Corrupt arena state, starting fresh")
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError, ValueError):
+            # A corrupt file must cost the ratings, never the service. An
+            # uncaught error here leaves `arena` as None and answers 503 on
+            # every arena route.
+            log.warning("Corrupt arena state, starting fresh", exc_info=True)
             return cls()
 
 
@@ -192,6 +208,16 @@ class ArenaEngine:
         names = list(self.strategies.keys())
         if len(names) < 2:
             raise ValueError("Need at least 2 strategies for arena mode")
+        # Every distinct rubric makes a rating table that the file keeps and
+        # every leaderboard lists. Without a cap a caller grows both without
+        # limit, one new name at a time.
+        key = scope_key(corpus, rubric)
+        cap = settings.arena_max_scopes
+        if key not in self.state.elo_by_scope and len(self.state.elo_by_scope) >= cap:
+            raise ValueError(
+                f"The arena already holds {cap} rating scopes. Reuse one of them, "
+                f"or raise KB_ARENA_ARENA_MAX_SCOPES."
+            )
         a_name, b_name = random.sample(names, 2)
         selected_corpus = corpus or "all"
 

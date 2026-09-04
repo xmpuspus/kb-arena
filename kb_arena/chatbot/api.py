@@ -1081,7 +1081,10 @@ async def arena_leaderboard(request: Request, corpus: str = "", rubric: str = "d
         "votes_in_history": sum(
             1
             for m in arena.state.matches
-            if m.winner and scope_key(m.corpus, m.rubric) == scope_key(corpus, rubric)
+            # The rows below count a, b and tie only, so a stored winner of
+            # anything else must not raise this number past them.
+            if m.winner in ("a", "b", "tie")
+            and scope_key(m.corpus, m.rubric) == scope_key(corpus, rubric)
         ),
         "total_votes": arena.state.total_votes,
     }

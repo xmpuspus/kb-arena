@@ -337,3 +337,67 @@ def test_the_packaged_bundle_matches_its_sources():
         f"{stamp['digest'][:12]}, and the tree now holds {count} files with digest "
         f"{digest[:12]}. Run `npx next build` in web/, then scripts/sync_frontend_bundle.py."
     )
+
+
+def test_a_scope_table_of_the_wrong_type_never_takes_the_arena_down(tmp_path):
+    """An uncaught load error leaves `arena` as None and answers 503 everywhere."""
+    path = tmp_path / "arena.json"
+    path.write_text(json.dumps({"elo": {"alpha": 1200.0}, "elo_by_scope": ["broken"]}))
+
+    state = ArenaState.load(path)
+
+    assert state.elo_by_scope == {"all|default": {"alpha": 1200.0}}
+
+
+def test_a_scope_entry_of_the_wrong_type_is_dropped_not_kept(tmp_path):
+    path = tmp_path / "arena.json"
+    path.write_text(
+        json.dumps({"elo_by_scope": {"aws|default": {"alpha": 1200.0}, "bad|default": "nope"}})
+    )
+
+    state = ArenaState.load(path)
+
+    assert set(state.elo_by_scope) == {"aws|default"}
+
+
+@pytest.mark.asyncio
+async def test_a_new_rubric_stops_at_the_scope_cap(arena, monkeypatch):
+    """Every distinct rubric makes a rating table the file keeps forever."""
+    monkeypatch.setattr(settings, "arena_max_scopes", 2)
+    arena.state.elo_by_scope = {"a|default": {}, "b|default": {}}
+
+    with pytest.raises(ValueError, match="rating scopes"):
+        await arena.create_match("q?", corpus="c", rubric="brand-new")
+
+    # An existing scope still works, so the cap never blocks ordinary use.
+    match = await arena.create_match("q?", corpus="a", rubric="default")
+    assert match.rubric == "default"
+
+
+@pytest.mark.asyncio
+async def test_the_two_vote_counts_agree_about_what_a_vote_is(arena):
+    """`votes_in_history` counted a stored winner the leaderboard rows ignore."""
+    from types import SimpleNamespace
+
+    from kb_arena.chatbot import api
+
+    _vote_a(arena, "aws-compute")
+    arena.state.matches[-1].winner = "invalid"
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(arena=arena)))
+
+    body = await api.arena_leaderboard(request, corpus="aws-compute")
+
+    assert body["votes_in_history"] == 0
+    assert sum(row["matches"] for row in body["leaderboard"]) == 0
+
+
+def test_the_page_refuses_a_leaderboard_reply_of_the_wrong_shape():
+    """A vote count that arrives as a string renders as a real number of votes."""
+    from pathlib import Path
+
+    page = Path("web/app/arena/page.tsx").read_text()
+    assert "isLeaderboardResponse" in page
+    assert (
+        'typeof board.votes_in_history === "number"' in page
+        or "counted(board.votes_in_history)" in page
+    )
