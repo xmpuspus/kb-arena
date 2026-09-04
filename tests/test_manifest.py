@@ -83,10 +83,33 @@ def test_compatibility_key_changes_with_judge_split_top_k_and_qrels(tmp_path, mo
 
 def test_a_result_file_without_a_manifest_is_legacy():
     assert mf.compatibility_key({"corpus": "c", "strategy": "s"}) == mf.LEGACY_KEY
-    assert mf.compatibility_key({"manifest": {"compatibility_key": "abc123"}}) == "abc123"
+    assert mf.compatibility_key({"manifest": {"compatibility_key": "abc123"}}) == mf.LEGACY_KEY
     assert mf.compatibility_key({"manifest": {"compatibility_key": ""}}) == mf.LEGACY_KEY
-    assert mf.compatibility_key({"manifest": {"compatibility_key": "  "}}) == mf.LEGACY_KEY
-    assert mf.compatibility_key({"manifest": {"compatibility_key": 7}}) == mf.LEGACY_KEY
+    assert mf.compatibility_key({"manifest": 7}) == mf.LEGACY_KEY
+
+
+def test_the_reader_recomputes_the_key_and_ignores_a_stored_one(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path))
+    manifest = mf.build_manifest(
+        "c", [_q("q1", "one")], top_k=5, split="development", reference_free=False
+    )
+    assert mf.compatibility_key({"manifest": manifest}) == manifest["compatibility_key"]
+
+    edited = {**manifest, "compatibility_key": "tampered"}
+    assert mf.compatibility_key({"manifest": edited}) == manifest["compatibility_key"]
+
+    other_k = {**manifest, "top_k": 10}
+    assert mf.compatibility_key({"manifest": other_k}) != manifest["compatibility_key"]
+
+
+def test_ragas_changes_the_key(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path))
+    questions = [_q("q1", "one")]
+    monkeypatch.setattr(settings, "benchmark_enable_ragas", False)
+    plain = mf.build_manifest("c", questions, top_k=5, split="development", reference_free=False)
+    monkeypatch.setattr(settings, "benchmark_enable_ragas", True)
+    ragas = mf.build_manifest("c", questions, top_k=5, split="development", reference_free=False)
+    assert plain["compatibility_key"] != ragas["compatibility_key"]
 
 
 def _write_run(
@@ -112,8 +135,9 @@ def _write_run(
 
 def test_leaderboard_groups_only_runs_that_share_a_compatibility_key(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "results_path", str(tmp_path))
-    key_a = {"compatibility_key": "aaaaaaaaaaaa", "judge": {"model": "judge-a"}, "top_k": 5}
-    key_b = {"compatibility_key": "bbbbbbbbbbbb", "judge": {"model": "judge-b"}, "top_k": 5}
+    key_a = {"question_set_fingerprint": "f1", "judge": {"model": "judge-a"}, "top_k": 5}
+    key_b = {"question_set_fingerprint": "f1", "judge": {"model": "judge-b"}, "top_k": 5}
+    ka, kb = mf._digest(mf.core_of(key_a)), mf._digest(mf.core_of(key_b))
     _write_run(tmp_path, "r1", "c", "naive_vector", 0.9, key_a)
     _write_run(tmp_path, "r2", "c", "naive_vector", 0.7, key_a)
     _write_run(tmp_path, "r3", "c", "naive_vector", 0.1, key_b)
@@ -122,18 +146,18 @@ def test_leaderboard_groups_only_runs_that_share_a_compatibility_key(tmp_path, m
     board = asyncio.run(api.leaderboard(None, corpus="c"))["leaderboard"]
 
     rows = {row["compatibility_key"]: row for row in board}
-    assert set(rows) == {"aaaaaaaaaaaa", "bbbbbbbbbbbb", mf.LEGACY_KEY}
-    assert rows["aaaaaaaaaaaa"]["runs"] == 2
-    assert rows["aaaaaaaaaaaa"]["mean_accuracy"] == 0.8
-    assert rows["bbbbbbbbbbbb"]["runs"] == 1
-    assert rows["bbbbbbbbbbbb"]["mean_accuracy"] == 0.1
-    assert rows["aaaaaaaaaaaa"]["mixed_with"] == ["bbbbbbbbbbbb", mf.LEGACY_KEY]
-    assert rows["aaaaaaaaaaaa"]["manifest"]["judge_model"] == "judge-a"
+    assert set(rows) == {ka, kb, mf.LEGACY_KEY}
+    assert rows[ka]["runs"] == 2
+    assert rows[ka]["mean_accuracy"] == 0.8
+    assert rows[kb]["runs"] == 1
+    assert rows[kb]["mean_accuracy"] == 0.1
+    assert rows[ka]["mixed_with"] == sorted([kb, mf.LEGACY_KEY])
+    assert rows[ka]["manifest"]["judge_model"] == "judge-a"
 
 
 def test_a_run_written_twice_counts_once(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "results_path", str(tmp_path))
-    key = {"compatibility_key": "aaaaaaaaaaaa", "judge": {"model": "j"}, "top_k": 5}
+    key = {"question_set_fingerprint": "f1", "judge": {"model": "j"}, "top_k": 5}
     _write_run(tmp_path, "r1", "c", "bm25", 0.0, key)
     _write_run(tmp_path, "r2", "c", "bm25", 1.0, key)
     # the runner also leaves the newest run at the top level

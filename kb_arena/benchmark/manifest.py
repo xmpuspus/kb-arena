@@ -85,6 +85,26 @@ def git_sha() -> str | None:
     return out.stdout.strip() or None if out.returncode == 0 else None
 
 
+# The fields that decide whether two runs compare. The reader recomputes the
+# key from these, so a stale or edited stored key can never group two runs
+# that differ in one of them.
+CORE_FIELDS = (
+    "schema_version",
+    "corpus",
+    "question_split",
+    "question_set_fingerprint",
+    "qrels_fingerprint",
+    "judge",
+    "embedding",
+    "chunk",
+    "top_k",
+)
+
+
+def core_of(manifest: dict) -> dict:
+    return {field: manifest.get(field) for field in CORE_FIELDS}
+
+
 def build_manifest(corpus: str, questions, *, top_k: int, split: str, reference_free: bool) -> dict:
     """The record a result file carries. The compatibility key covers the core."""
     core = {
@@ -93,7 +113,12 @@ def build_manifest(corpus: str, questions, *, top_k: int, split: str, reference_
         "question_split": split or "all",
         "question_set_fingerprint": question_set_fingerprint(questions),
         "qrels_fingerprint": qrels_fingerprint(corpus),
-        "judge": {**judge_identity(), "reference_free": reference_free},
+        "judge": {
+            **judge_identity(),
+            "reference_free": reference_free,
+            # RAGAS adds judge calls and changes the recorded scores and cost.
+            "ragas": bool(settings.benchmark_enable_ragas),
+        },
         "embedding": embedding_identity(),
         "chunk": {"tokens": settings.chunk_tokens, "overlap_tokens": settings.chunk_overlap_tokens},
         "top_k": top_k,
@@ -103,18 +128,20 @@ def build_manifest(corpus: str, questions, *, top_k: int, split: str, reference_
         "question_count": len(questions),
         "code_version": __version__,
         "git_sha": git_sha(),
-        "compatibility_key": _digest(core),
+        "compatibility_key": _digest(core_of(core)),
     }
 
 
 def compatibility_key(data: dict) -> str:
     """The key a stored result groups under. A file without a manifest is legacy."""
     manifest = data.get("manifest")
-    key = manifest.get("compatibility_key") if isinstance(manifest, dict) else None
-    # An empty or non-string key is not a digest. Treat it as unstamped, so
-    # two files with a blank key never group as if they matched.
-    if isinstance(key, str) and key.strip():
-        return key
+    if not isinstance(manifest, dict):
+        return LEGACY_KEY
+    # A stamped manifest names its question set. Recompute the key from the
+    # core fields instead of trusting the stored one, so a stale, edited, or
+    # blank key can never group runs that differ.
+    if isinstance(manifest.get("question_set_fingerprint"), str):
+        return _digest(core_of(manifest))
     return LEGACY_KEY
 
 

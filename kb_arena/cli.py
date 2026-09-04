@@ -336,7 +336,11 @@ def benchmark(
         False, "--ragas", help="Enable RAGAS metrics (faithfulness, precision, recall, relevancy)"
     ),
     runs: int = typer.Option(
-        1, "--runs", min=1, help="Repeat the whole benchmark N times, one run id each, for spread"
+        1,
+        "--runs",
+        min=1,
+        help="Repeat the whole benchmark N times, one run id each, for spread. "
+        "The cost cap applies to each run, so N runs can spend N times the cap.",
     ),
     strategy_module: str = typer.Option(
         "",
@@ -389,10 +393,10 @@ def benchmark(
         # Cost/time estimates
         est_cost_per_query = 0.003  # ~$0.003 per query (Haiku eval + Sonnet gen avg)
         est_judge_cost = 0.005  # ~$0.005 per LLM judge call (Opus)
-        est_cost = total_queries * (est_cost_per_query + est_judge_cost)
+        est_cost = total_queries * (est_cost_per_query + est_judge_cost) * runs
         avg_seconds_per_query = 4.5
         est_parallel = settings.benchmark_max_concurrent
-        est_time_s = (total_queries / est_parallel) * avg_seconds_per_query
+        est_time_s = (total_queries / est_parallel) * avg_seconds_per_query * runs
         est_minutes = est_time_s / 60
 
         console.print(f"\n  [bold]Estimated cost:[/bold] ~${est_cost:.2f}")
