@@ -35,6 +35,52 @@ def test_paired_compare_reports_deltas_wins_and_a_ci():
     }
 
 
+def test_effect_size_uses_the_sample_sd_and_is_none_for_a_uniform_shift():
+    deltas = [0.4, 0.1, 0.0, 0.3, 0.0, 0.3, -0.1, 0.3, 0.1, 0.2]
+    a = {f"q{i}": 0.5 for i in range(10)}
+    b = {f"q{i}": 0.5 + d for i, d in enumerate(deltas)}
+    result = cmp.paired_compare(a, b, metric="accuracy", label_a="x", label_b="y")
+    import statistics
+
+    assert result["effect_size_d"] == pytest.approx(
+        statistics.fmean(deltas) / statistics.stdev(deltas)
+    )
+
+    uniform = cmp.paired_compare(
+        {f"q{i}": 0.2 for i in range(6)},
+        {f"q{i}": 0.6 for i in range(6)},
+        metric="accuracy",
+        label_a="x",
+        label_b="y",
+    )
+    assert uniform["effect_size_d"] is None
+    assert uniform["mean_delta"] == pytest.approx(0.4)
+
+
+def test_too_few_pairs_never_fire_a_flag():
+    result = cmp.paired_compare(
+        {"q1": 0.2}, {"q1": 0.9}, metric="accuracy", label_a="x", label_b="y"
+    )
+    assert result["n_paired"] == 1
+    assert result["ci_excludes_zero"] is False
+    assert result["significant"] is False
+    assert result["enough_pairs_for_inference"] is False
+
+
+def test_no_shared_questions_raises():
+    with pytest.raises(ValueError, match="no shared questions"):
+        cmp.paired_compare({"q1": 0.2}, {"q2": 0.9}, metric="accuracy", label_a="x", label_b="y")
+
+
+def test_significant_needs_b_to_be_better_in_the_metric_direction():
+    a = {f"q{i}": 100.0 for i in range(10)}
+    b = {f"q{i}": 100.0 + 50.0 + i for i in range(10)}  # b is slower on every question
+    result = cmp.paired_compare(a, b, metric="latency_ms", label_a="x", label_b="y")
+    assert result["wilcoxon_p"] < 0.05
+    assert result["significant"] is False
+    assert result["losses"] == 10
+
+
 def test_identical_scores_give_no_difference():
     a = {"q1": 0.3, "q2": 0.7}
 
@@ -166,11 +212,58 @@ def test_lab_rows_without_a_question_id_never_pair(tmp_path):
     assert result["per_question"][0]["question_id"] == "q1"
 
 
+def test_non_finite_and_duplicate_records_are_handled(tmp_path):
+    _write(
+        tmp_path, "r1", "c", "bm25", {"q1": 0.2, "q2": 0.4, "q3": 0.5}, {"compatibility_key": "k"}
+    )
+    _write(
+        tmp_path, "r1", "c", "naive", {"q1": 0.6, "q2": 0.4, "q3": 0.5}, {"compatibility_key": "k"}
+    )
+    path = tmp_path / "c_naive.json"
+    data = json.loads(path.read_text())
+    data["records"][2]["score"]["accuracy"] = float("nan")
+    data["records"].append(dict(data["records"][0]))  # q1 twice
+    path.write_text(json.dumps(data))
+
+    result = cmp.compare_result_files(tmp_path / "c_bm25.json", path)
+
+    assert result["n_paired"] == 2  # the NaN row left the pairing
+    assert result["meta"]["b"]["duplicate_records"] == 1
+    assert result["meta"]["comparable"] is False
+    assert any("duplicate" in r for r in result["meta"]["reasons"])
+    assert "path" not in result["meta"]["a"]
+    assert result["meta"]["a"]["file"] == "c_bm25.json"
+
+
+def test_a_file_without_a_corpus_is_not_a_clean_comparison(tmp_path):
+    _write(tmp_path, "r1", "c", "bm25", {"q1": 0.2}, {"compatibility_key": "k"})
+    _write(tmp_path, "r1", "c", "naive", {"q1": 0.6}, {"compatibility_key": "k"})
+    for name in ("c_bm25.json", "c_naive.json"):
+        data = json.loads((tmp_path / name).read_text())
+        data["corpus"] = ""
+        (tmp_path / name).write_text(json.dumps(data))
+
+    result = cmp.compare_result_files(tmp_path / "c_bm25.json", tmp_path / "c_naive.json")
+
+    assert result["meta"]["comparable"] is False
+    assert any("names no corpus" in r for r in result["meta"]["reasons"])
+
+
+def test_a_bad_metric_name_is_rejected(tmp_path):
+    _write(tmp_path, "r1", "c", "bm25", {"q1": 0.2}, {"compatibility_key": "k"})
+    with pytest.raises(ValueError, match="invalid metric"):
+        cmp.benchmark_scores(tmp_path / "c_bm25.json", "../../tmp/pwned")
+
+
 def test_resolve_result_path_rejects_traversal(tmp_path):
     with pytest.raises(ValueError):
         cmp.resolve_result_path(tmp_path, "../etc", "bm25", None)
     with pytest.raises(ValueError):
         cmp.resolve_result_path(tmp_path, "c", "bm25", "r1/../../x")
+    with pytest.raises(ValueError):
+        cmp.resolve_result_path(tmp_path, "c", "bm25\n", "r1")
+    with pytest.raises(ValueError):
+        cmp.resolve_result_path(tmp_path, "c", "..", "r1")
     assert (
         cmp.resolve_result_path(tmp_path, "c", "bm25", "r1") == tmp_path / "run_r1" / "c_bm25.json"
     )
@@ -191,6 +284,8 @@ def test_compare_lab_pairs_two_strategies_inside_one_run(tmp_path):
     assert result["n_paired"] == 3
     assert (result["wins"], result["ties"], result["losses"]) == (1, 1, 1)
     assert result["unpaired_b"] == 0  # the error row carried no metric, so it never paired
+    assert result["meta"]["comparable"] is True
+    assert result["meta"]["file"] == "retriever_lab.json"
 
 
 def test_the_api_route_validates_ids_and_finds_files(tmp_path, monkeypatch):
@@ -206,6 +301,10 @@ def test_the_api_route_validates_ids_and_finds_files(tmp_path, monkeypatch):
     with pytest.raises(HTTPException) as missing:
         asyncio.run(api.compare_strategies(corpus="c", a="bm25", b="nope"))
     assert missing.value.status_code == 404
+    (tmp_path / "c_dir.json").mkdir()
+    with pytest.raises(HTTPException) as directory:
+        asyncio.run(api.compare_strategies(corpus="c", a="bm25", b="dir"))
+    assert directory.value.status_code == 400
 
     result = asyncio.run(
         api.compare_strategies(corpus="c", a="bm25", b="naive", run_a="r1", run_b="r1")
@@ -226,6 +325,28 @@ def test_the_cli_writes_the_artifact(tmp_path, monkeypatch):
     result = CliRunner().invoke(app, ["compare", "--corpus", "c", "--a", "bm25", "--b", "naive"])
 
     assert result.exit_code == 0, result.output
-    artifact = json.loads((tmp_path / "compare_c_bm25_vs_naive_accuracy.json").read_text())
+    artifact = json.loads(
+        (tmp_path / "compare_c_bm25@latest_vs_naive@latest_accuracy.json").read_text()
+    )
     assert artifact["n_paired"] == 2
     assert "Comparable" in result.output
+
+    bad = CliRunner().invoke(
+        app, ["compare", "--corpus", "c", "--a", "bm25", "--b", "naive", "--metric", "../x"]
+    )
+    assert bad.exit_code == 1
+    lab_with_run = CliRunner().invoke(
+        app,
+        [
+            "compare",
+            "--lab",
+            str(tmp_path / "x.json"),
+            "--a",
+            "bm25",
+            "--b",
+            "naive",
+            "--run-a",
+            "r1",
+        ],
+    )
+    assert lab_with_run.exit_code == 1

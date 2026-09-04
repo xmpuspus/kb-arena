@@ -1323,10 +1323,28 @@ def compare(
 
     from rich.table import Table
 
-    from kb_arena.benchmark.compare import compare_lab, compare_result_files, resolve_result_path
+    from kb_arena.benchmark.compare import (
+        METRIC_NAME,
+        SAFE_ID,
+        compare_lab,
+        compare_result_files,
+        resolve_result_path,
+    )
     from kb_arena.settings import settings
 
     results_dir = _Path(settings.results_path)
+    for name, value in (("--a", a), ("--b", b), ("--corpus", corpus)):
+        if not SAFE_ID.fullmatch(value):
+            console.print(f"[red]{name} must be letters, digits, dot, dash, or underscore[/red]")
+            raise typer.Exit(1)
+    if not METRIC_NAME.fullmatch(metric):
+        console.print("[red]--metric must be a metric name, letters, digits, and underscores[/red]")
+        raise typer.Exit(1)
+    if lab and (run_a or run_b):
+        console.print(
+            "[red]--lab compares two strategies inside one file. Drop --run-a and --run-b.[/red]"
+        )
+        raise typer.Exit(1)
     try:
         if lab:
             result = compare_lab(_Path(lab), a, b, metric=metric)
@@ -1379,7 +1397,13 @@ def compare(
     else:
         console.print("[dim]No significant difference at this sample size.[/dim]")
 
-    out_path = _Path(out) if out else results_dir / f"compare_{corpus}_{a}_vs_{b}_{metric}.json"
+    if out:
+        out_path = _Path(out)
+    elif lab:
+        out_path = _Path(lab).parent / f"compare_lab_{a}_vs_{b}_{metric}.json"
+    else:
+        tag_a, tag_b = run_a or "latest", run_b or "latest"
+        out_path = results_dir / f"compare_{corpus}_{a}@{tag_a}_vs_{b}@{tag_b}_{metric}.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(_json.dumps(result, indent=2))
     console.print(f"[dim]Wrote {out_path}[/dim]")

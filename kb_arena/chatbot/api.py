@@ -1054,7 +1054,7 @@ async def compare_strategies(
         raise HTTPException(status_code=404, detail="result not found")
     try:
         return compare_result_files(path_a, path_b, metric=metric)
-    except (ValueError, json.JSONDecodeError) as exc:
+    except (ValueError, OSError) as exc:
         raise HTTPException(status_code=400, detail=f"cannot compare: {exc}") from exc
 
 
