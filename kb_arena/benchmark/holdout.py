@@ -15,6 +15,15 @@ HOLDOUT_SPLIT = "holdout"
 LEDGER_NAME = "holdout_uses.jsonl"
 
 
+def touches_holdout(questions) -> bool:
+    """True when any selected question belongs to the holdout split.
+
+    A run on "all" or on the unfiltered default reads the holdout questions
+    too, so the split name alone never decides whether the seal was opened.
+    """
+    return any(getattr(q, "split", "unspecified") == HOLDOUT_SPLIT for q in questions)
+
+
 def ledger_path(results_dir: Path | str) -> Path:
     return Path(results_dir) / LEDGER_NAME
 
