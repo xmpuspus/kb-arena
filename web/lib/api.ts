@@ -1,5 +1,9 @@
 import { apiFetch } from "./auth";
 
+// A refusal to read is not a benchmark result.
+export const BENCHMARK_UNAUTHORIZED =
+  "The benchmark results need an API token. Enter one to read them.";
+
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 // Known built-in names. Runtime availability comes from GET /strategies.
@@ -190,7 +194,9 @@ export interface GraphData {
 
 export async function fetchGraphData(corpus: string = "all"): Promise<GraphData> {
   try {
-    const res = await fetch(`${API_URL}/api/graph/data?corpus=${corpus}`);
+    // The route returns entities extracted from the documents, so it carries
+    // the API token when one is set.
+    const res = await apiFetch(`${API_URL}/api/graph/data?corpus=${corpus}`);
     if (!res.ok) return { nodes: [], edges: [], connected: false };
     return await res.json();
   } catch {
@@ -312,10 +318,16 @@ export async function fetchBenchmarkResults(
     // This route returns per-question records, so it carries the API token
     // when one is set. A bare fetch would get 401 on a deployment with a token.
     const res = await apiFetch(`${API_URL}/api/benchmark/results?corpus=${corpus}`);
+    if (res.status === 401) {
+      // Sample numbers in place of a refused read would put invented results
+      // on screen under a real corpus name. Say the read was refused.
+      throw new Error(BENCHMARK_UNAUTHORIZED);
+    }
     if (!res.ok) return MOCK_BENCHMARK_DATA;
     const data = await res.json();
     return data.results?.length ? data.results : MOCK_BENCHMARK_DATA;
-  } catch {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === BENCHMARK_UNAUTHORIZED) throw err;
     return MOCK_BENCHMARK_DATA;
   }
 }

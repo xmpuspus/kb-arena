@@ -130,3 +130,49 @@ def test_a_refused_read_is_never_reported_as_an_empty_corpus():
     client = Path("web/lib/tools-api.ts").read_text()
     assert "QA_PAIRS_UNAUTHORIZED" in client
     assert "res.status === 401" in client
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/api/graph/data", "/graph/stats", "/api/compare"],
+)
+def test_every_document_derived_route_carries_the_read_gate(path):
+    """Entity names and per-question records are both corpus content."""
+    import inspect
+
+    from kb_arena.chatbot import api
+
+    source = inspect.getsource(api)
+    assert f'"{path}", dependencies=[Depends(require_read_auth)]' in source
+
+
+def test_every_gated_route_has_a_client_that_carries_the_token():
+    """Gating a route without updating its client breaks the page."""
+    from pathlib import Path
+
+    api_ts = Path("web/lib/api.ts").read_text()
+    for call in (
+        "apiFetch(`${API_URL}/api/graph/data",
+        "apiFetch(`${API_URL}/api/benchmark/results",
+    ):
+        assert call in api_ts, f"{call} must carry the token"
+    assert "fetch(`${API_URL}/api/graph/data" not in api_ts.replace("apiFetch(", "")
+
+
+def test_a_refused_benchmark_read_is_never_shown_as_sample_numbers():
+    """Sample rows under a real corpus name read as that corpus's results."""
+    from pathlib import Path
+
+    assert "BENCHMARK_UNAUTHORIZED" in Path("web/lib/api.ts").read_text()
+    page = Path("web/app/benchmark/page.tsx").read_text()
+    assert '"refused"' in page
+    assert "setRows([])" in page
+
+
+def test_the_generate_tab_handles_a_refused_read():
+    """The client now rejects, and an unhandled rejection breaks the page."""
+    from pathlib import Path
+
+    tab = Path("web/components/tools/GenerateTab.tsx").read_text()
+    assert ".catch(" in tab
+    assert 'setState("error")' in tab

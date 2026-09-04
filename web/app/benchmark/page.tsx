@@ -17,7 +17,7 @@ export default function BenchmarkPage() {
   const [corpus, setCorpus] = useState("all");
   const [view, setView] = useState<ViewMode>("both");
   const [rows, setRows] = useState(MOCK_BENCHMARK_DATA);
-  const [source, setSource] = useState<"mock" | "file">("mock");
+  const [source, setSource] = useState<"mock" | "file" | "refused">("mock");
   const [corpora, setCorpora] = useState(CORPORA);
 
   useEffect(() => {
@@ -26,11 +26,20 @@ export default function BenchmarkPage() {
 
   useEffect(() => {
     let active = true;
-    fetchBenchmarkResults(corpus).then((data) => {
-      if (!active) return;
-      setRows(data);
-      setSource(data === MOCK_BENCHMARK_DATA ? "mock" : "file");
-    });
+    fetchBenchmarkResults(corpus)
+      .then((data) => {
+        if (!active) return;
+        setRows(data);
+        setSource(data === MOCK_BENCHMARK_DATA ? "mock" : "file");
+      })
+      .catch(() => {
+        // The read was refused. Sample rows under a real corpus name would
+        // read as that corpus's results, so the table goes and the reason
+        // takes its place.
+        if (!active) return;
+        setRows([]);
+        setSource("refused");
+      });
     return () => {
       active = false;
     };
@@ -81,6 +90,15 @@ export default function BenchmarkPage() {
           ))}
         </div>
 
+        {source === "refused" && (
+          <span
+            className="text-xs px-2 py-1 rounded border"
+            style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+            role="status"
+          >
+            The benchmark results need an API token. Enter one with the key button to read them.
+          </span>
+        )}
         {source === "mock" && (
           <span className="text-xs px-2 py-1 rounded border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
             Checked sample run. Use <code className="mono">kb-arena benchmark</code> to evaluate your corpus.

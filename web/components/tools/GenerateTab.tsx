@@ -27,12 +27,18 @@ export default function GenerateTab({ corpus }: Props) {
     setState("idle");
     setPairs([]);
     setProgress({ current: 0, total: 0, label: "" });
-    fetchQaPairs(corpus).then(({ pairs: existing }) => {
-      if (existing.length > 0) {
-        setPairs(existing);
-        setState("complete");
-      }
-    });
+    fetchQaPairs(corpus)
+      .then(({ pairs: existing }) => {
+        if (existing.length > 0) {
+          setPairs(existing);
+          setState("complete");
+        }
+      })
+      .catch((err: unknown) => {
+        // A refused read now rejects instead of reporting an empty corpus.
+        setError(err instanceof Error ? err.message : "Could not read the Q&A pairs");
+        setState("error");
+      });
   }, [corpus]);
 
   const handleGenerate = async () => {

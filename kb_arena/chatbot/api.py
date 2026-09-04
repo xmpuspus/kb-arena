@@ -739,7 +739,7 @@ async def list_strategies(request: Request) -> dict:
     return {"strategies": loaded, "catalog": public_catalog(loaded)}
 
 
-@app.get("/graph/stats")
+@app.get("/graph/stats", dependencies=[Depends(require_read_auth)])
 async def graph_stats(request: Request, corpus: str = "all") -> dict:
     """Return graph node and edge counts, centrality hubs, and communities.
 
@@ -1090,7 +1090,7 @@ async def arena_leaderboard(request: Request, corpus: str = "", rubric: str = "d
     }
 
 
-@app.get("/api/compare")
+@app.get("/api/compare", dependencies=[Depends(require_read_auth)])
 async def compare_strategies(
     corpus: str, a: str, b: str, run_a: str = "", run_b: str = "", metric: str = "accuracy"
 ):
