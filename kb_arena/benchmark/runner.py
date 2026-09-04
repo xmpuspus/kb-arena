@@ -14,10 +14,9 @@ from collections.abc import AsyncIterator, Awaitable, Iterable
 from pathlib import Path
 from typing import TypeVar
 
+from pydantic import ValidationError
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
-
-from pydantic import ValidationError
 
 from kb_arena.benchmark.atomic import append_jsonl, atomic_write_text, read_jsonl
 from kb_arena.benchmark.evaluator import evaluate
