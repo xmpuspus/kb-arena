@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
 
+from kb_arena.benchmark.atomic import append_jsonl, atomic_write_text
 from kb_arena.exceptions import ArenaError
 from kb_arena.settings import settings
 
@@ -71,7 +72,7 @@ class ArenaState:
                 for m in self.matches[-200:]  # keep last 200
             ],
         }
-        path.write_text(json.dumps(data, indent=2))
+        atomic_write_text(path, json.dumps(data, indent=2))
 
     @classmethod
     def load(cls, path: Path) -> ArenaState:
@@ -256,8 +257,7 @@ class ArenaEngine:
             "timestamp": match.timestamp,
             "elo_snapshot": {k: round(v, 1) for k, v in self.state.elo.items()},
         }
-        with open(jsonl_path, "a") as f:
-            f.write(json.dumps(record) + "\n")
+        append_jsonl(jsonl_path, record)
 
     def get_pending_match(self, match_id: str) -> Match | None:
         """Get a match by ID."""

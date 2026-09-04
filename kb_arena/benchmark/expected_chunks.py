@@ -13,12 +13,11 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import tempfile
 from pathlib import Path
 
 import yaml
 
+from kb_arena.benchmark.atomic import atomic_write_text
 from kb_arena.benchmark.questions import load_questions, validate_expected_chunks
 from kb_arena.llm.client import LLMClient
 from kb_arena.settings import settings
@@ -29,19 +28,7 @@ log = logging.getLogger(__name__)
 
 def _write_expected_chunks(path: Path, labels: dict[str, list[str]]) -> None:
     """Atomically checkpoint labels so a later provider failure cannot erase progress."""
-    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            yaml.safe_dump(labels, handle, sort_keys=True, default_flow_style=False)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary_name, path)
-    except Exception:
-        try:
-            os.unlink(temporary_name)
-        except FileNotFoundError:
-            pass
-        raise
+    atomic_write_text(path, yaml.safe_dump(labels, sort_keys=True, default_flow_style=False))
 
 
 JUDGE_PROMPT = """You are labeling retrieval ground truth for a documentation QA benchmark.
