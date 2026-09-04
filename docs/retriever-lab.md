@@ -39,7 +39,13 @@ If nothing but BM25 answers, `label-chunks` refuses to write. Labels drawn only 
 what BM25 ranks high carry BM25's bias, and every strategy is then scored against
 them for as long as that file lives. Build the indexes and label again, or pass
 `--allow-bm25-only` to write a BM25-shaped gold set deliberately. The pool record
-says which of the two happened. A pool made only of what one retriever ranks high never
+says which of the two happened. That flag also skips the embedding preflight, because
+the reason to reach for it is usually that the provider is not answering.
+
+The file carries one pool record, so it describes one pool. Labeling a corpus whose
+stored labels were judged with a different pool stops and names what changed. Re-label
+with `--force`, which regenerates every label under the current pool, or restore the
+settings the earlier run used. A pool made only of what one retriever ranks high never
 shows the judge a chunk it missed, and the random sample is what gives the labels their
 negatives.
 

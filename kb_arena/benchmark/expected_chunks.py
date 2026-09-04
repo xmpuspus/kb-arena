@@ -257,6 +257,10 @@ async def label_one_question(
     return grades, cost
 
 
+class PoolChangedError(RuntimeError):
+    """The stored labels were judged with a pool this run does not match."""
+
+
 class NarrowPoolError(RuntimeError):
     """No retriever but BM25 answered, so the labels would be BM25-shaped."""
 
@@ -354,12 +358,16 @@ async def label_corpus(
     out_path = out_dir / "expected_chunks.yaml"
 
     existing: dict[str, dict[str, int]] = {}
+    earlier_pool: dict | None = None
     if out_path.exists():
         try:
             loaded = yaml.safe_load(out_path.read_text())
         except yaml.YAMLError as exc:
             raise ValueError(f"Invalid expected chunks YAML: {out_path}") from exc
         existing, _ = load_qrels(loaded, out_path)
+        if isinstance(loaded, dict):
+            stored = loaded.get("pool")
+            earlier_pool = stored if isinstance(stored, dict) else None
 
     cost_cap = settings.benchmark_cost_cap_usd
     total_cost = 0.0
@@ -371,6 +379,24 @@ async def label_corpus(
         "n_candidates": n_candidates,
         "n_random": n_random,
     }
+    # One file, one pool. The file carries a single pool record, so keeping
+    # labels judged under an earlier pool would put this run's retrievers on
+    # somebody else's judgments. That is the misattribution this record exists
+    # to prevent, so the run stops and names the difference.
+    if existing and earlier_pool is not None and not force:
+        changed = sorted(
+            k
+            for k in set(earlier_pool) | set(pool_record)
+            if earlier_pool.get(k) != pool_record.get(k)
+        )
+        if changed:
+            raise PoolChangedError(
+                f"{out_path} holds labels judged with a different pool "
+                f"({', '.join(changed)} differ). The file carries one pool record, so "
+                "adding to it would describe old labels with this run's pool. Re-label "
+                "the corpus with --force, or restore the earlier settings."
+            )
+
     skipped = 0
     labeled = 0
     unparsed = 0

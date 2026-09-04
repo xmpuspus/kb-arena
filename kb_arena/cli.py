@@ -1664,8 +1664,11 @@ def label_chunks(
 
     from kb_arena.benchmark.expected_chunks import label_corpus
 
-    _preflight(needs_llm=True, needs_embeddings=True)
-    from kb_arena.benchmark.expected_chunks import NarrowPoolError
+    # A BM25-only run reaches no embedding provider, and the documented reason
+    # to ask for one is that the provider is down. Demanding it here would make
+    # the flag unusable in the case it exists for.
+    _preflight(needs_llm=True, needs_embeddings=not allow_bm25_only)
+    from kb_arena.benchmark.expected_chunks import NarrowPoolError, PoolChangedError
 
     try:
         result = _asyncio.run(
@@ -1676,7 +1679,7 @@ def label_chunks(
                 allow_bm25_only=allow_bm25_only,
             )
         )
-    except NarrowPoolError as exc:
+    except (NarrowPoolError, PoolChangedError) as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(1) from None
     note = " (halted by cost cap)" if result.get("halted_by_cost_cap") else ""

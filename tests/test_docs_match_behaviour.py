@@ -65,6 +65,7 @@ def test_the_labeling_doc_names_the_pool_the_labeler_builds():
     assert "names the retrievers that actually answered" in doc
     assert "refuses to write" in doc, "the doc must state the refusal the code makes"
     assert "--allow-bm25-only" in doc
+    assert "The file carries one pool record, so it describes one pool" in doc
 
 
 def test_the_labeling_doc_describes_the_file_the_writer_produces():
@@ -222,3 +223,29 @@ def test_the_candidate_count_is_bounded():
             break
     else:  # pragma: no cover - the parameter exists
         raise AssertionError("label-chunks must take --n-candidates")
+
+
+def test_labels_judged_with_another_pool_are_never_relabelled_by_description():
+    """The file carries one pool record, so it must describe one pool.
+
+    Adding to a file whose labels were judged with a different pool puts this
+    run's retrievers on somebody else's judgments. That is the misattribution
+    the record exists to prevent.
+    """
+    from kb_arena.benchmark.expected_chunks import PoolChangedError, label_corpus
+
+    source = inspect.getsource(label_corpus)
+    assert "earlier_pool" in source
+    assert "PoolChangedError(" in source
+    assert "not force" in source, "--force relabels everything, so it is allowed"
+    assert issubclass(PoolChangedError, RuntimeError)
+
+
+def test_a_bm25_only_run_does_not_demand_the_provider_it_avoids():
+    """The documented reason to pass the flag is that the provider is down."""
+    from kb_arena import cli
+
+    source = inspect.getsource(cli.label_chunks)
+    assert (
+        "needs_embeddings=not allow_bm25_only" in source
+    ), "demanding embeddings would make the flag unusable in the case it exists for"
