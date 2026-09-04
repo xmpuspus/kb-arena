@@ -79,6 +79,14 @@ def _questions(n: int) -> list[Question]:
     return [_question(f"q{i}") for i in range(1, n + 1)]
 
 
+def _manifest_key(corpus: str = "c") -> str:
+    from kb_arena.benchmark.manifest import build_manifest
+
+    return build_manifest(corpus, _questions(3), top_k=5, split="", reference_free=False)[
+        "compatibility_key"
+    ]
+
+
 def _seed_run(tmp_path, run_id: str, **overrides):
     snap = {
         "llm_provider": settings.llm_provider,
@@ -91,10 +99,13 @@ def _seed_run(tmp_path, run_id: str, **overrides):
         "reference_free": False,
         "ragas_enabled": False,
     }
+    manifests = overrides.pop("manifests", None)
     snap.update(overrides)
+    if manifests is None:
+        manifests = {"c": _manifest_key()}
     path = runner.run_manifest_path(tmp_path, run_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"run_id": run_id, "config_snapshot": snap}))
+    path.write_text(json.dumps({"run_id": run_id, "config_snapshot": snap, "manifests": manifests}))
 
 
 def _harness(monkeypatch, tmp_path, strategies: list[str]):
@@ -322,6 +333,28 @@ def test_a_corrupt_checkpoint_line_is_reported(tmp_path, caplog):
 
     assert sorted(done) == ["q1", "q2"]
     assert "1 of 3 lines did not parse" in caplog.text
+
+
+def test_a_resume_on_a_different_experiment_key_is_refused(tmp_path, monkeypatch):
+    _harness(monkeypatch, tmp_path, ["x"])
+    _seed_run(tmp_path, "abc12345", manifests={"c": "000000000000"})
+
+    with pytest.raises(runner.BenchmarkExecutionError, match="experiment key"):
+        asyncio.run(
+            runner.run_benchmark(
+                corpus="c", strategy="any", parallel=False, resume_run_id="abc12345"
+            )
+        )
+
+
+def test_a_fresh_run_records_its_experiment_key(tmp_path, monkeypatch):
+    _harness(monkeypatch, tmp_path, ["x"])
+
+    asyncio.run(runner.run_benchmark(corpus="c", strategy="any", parallel=False))
+
+    run_dir = next(p for p in tmp_path.iterdir() if p.name.startswith("run_"))
+    record = json.loads((run_dir / "run.json").read_text())
+    assert record["manifests"]["c"] == _manifest_key()
 
 
 def test_the_cli_passes_the_resume_id(monkeypatch):

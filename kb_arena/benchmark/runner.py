@@ -469,6 +469,29 @@ def _hold_run_lock(results_dir: Path, run_id: str):
     return handle
 
 
+def _bind_run_manifest(
+    run_record: dict,
+    corpus: str,
+    key: str,
+    resume_run_id: str | None,
+    results_dir: Path,
+    run_id: str,
+) -> None:
+    """Record a corpus's compatibility key on a fresh run, or check it on a resume."""
+    keys = run_record.setdefault("manifests", {})
+    if resume_run_id:
+        earlier = keys.get(corpus)
+        if earlier != key:
+            raise BenchmarkExecutionError(
+                f"cannot resume run {run_id} for corpus {corpus}: the experiment key is "
+                f"{key}, the first run recorded {earlier or 'none'}. The question set, the "
+                "qrels, the judge, the embedding, the chunking, or top_k changed."
+            )
+        return
+    keys[corpus] = key
+    atomic_write_text(run_manifest_path(results_dir, run_id), json.dumps(run_record, indent=2))
+
+
 def check_resumable(results_dir: Path, run_id: str, config_snap: dict) -> dict:
     """Refuse a resume that would score under settings the first run did not use."""
     if not RUN_ID_PATTERN.match(run_id):
@@ -594,19 +617,17 @@ async def run_benchmark(
     results_dir = Path(settings.results_path)
     results_dir.mkdir(parents=True, exist_ok=True)
     run_lock = _hold_run_lock(results_dir, run_id)
+    run_record: dict = {"run_id": run_id, "timestamp": timestamp, "config_snapshot": config_snap}
     if resume_run_id:
         earlier = check_resumable(results_dir, resume_run_id, config_snap)
         # The result describes the run that started it, not the resume.
         timestamp = earlier.get("timestamp") or timestamp
+        run_record = earlier
     else:
         # The run directory names its settings first, so a later --resume
         # can tell whether it continues the same experiment.
-        atomic_write_text(
-            run_manifest_path(results_dir, run_id),
-            json.dumps(
-                {"run_id": run_id, "timestamp": timestamp, "config_snapshot": config_snap}, indent=2
-            ),
-        )
+        run_record["manifests"] = {}
+        atomic_write_text(run_manifest_path(results_dir, run_id), json.dumps(run_record, indent=2))
 
     corpora = discover_corpora() if corpus == "all" else [corpus]
     strategies = _load_strategies(strategy)
@@ -652,6 +673,12 @@ async def run_benchmark(
         hashes = {q.id: question_hash(q) for q in questions}
         manifest = build_manifest(
             corp, questions, top_k=top_k, split=split, reference_free=reference_free
+        )
+        # The manifest key covers the question set, the qrels, the judge, the
+        # embedding, the chunking, and top_k. A resume that lands on a different
+        # key would mix records scored against different material.
+        _bind_run_manifest(
+            run_record, corp, manifest["compatibility_key"], resume_run_id, results_dir, run_id
         )
 
         def _write_result(bench: BenchmarkResult) -> None:
