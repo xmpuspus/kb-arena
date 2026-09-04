@@ -1639,7 +1639,7 @@ def variance(
             continue
         if spread["runs"] < MIN_RUNS_FOR_SPREAD:
             thin += 1
-        seeds = ", ".join(str(s) for s in row["seeds"] if s is not None) or "unrecorded"
+        seeds = ", ".join(row["seeds"]) or "unrecorded"
         table.add_row(
             row["corpus"],
             row["strategy"],

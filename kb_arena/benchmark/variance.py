@@ -23,6 +23,9 @@ from pathlib import Path
 MIN_RUNS_FOR_SPREAD = 2
 THIN_EVIDENCE_RUNS = 3
 
+# What a run written before this slice reports for its seed.
+UNRECORDED_SEED = "unrecorded"
+
 
 @dataclass(frozen=True)
 class Spread:
@@ -108,7 +111,10 @@ def spread_report(runs: list[dict], metrics: tuple[str, ...] = ("accuracy_by_tie
             "strategy": strategy,
             "compatibility_key": key,
             "runs": len(group),
-            "seeds": sorted({seed_of(run) for run in group}),
+            # A run written before seeds existed reports None. Sorting that
+            # beside an int raises, and every result already on disk is one of
+            # them, so the first mixed group would crash the command.
+            "seeds": _seed_labels(group),
             "metrics": {},
         }
         for name in metrics:
@@ -158,6 +164,19 @@ def load_runs(corpus: str | None = None) -> list[dict]:
             seen.add(identity)
             runs.append(data)
     return runs
+
+
+def _seed_labels(group: list[dict]) -> list[str]:
+    """The seeds a group used, with an unseeded run named and not hidden.
+
+    Dropping the unseeded runs would print `0` for a group where only one run
+    recorded a seed, which claims a provenance the files do not carry.
+    """
+    seeds = {seed_of(run) for run in group}
+    labels = sorted(str(s) for s in seeds if s is not None)
+    if None in seeds:
+        labels.append(UNRECORDED_SEED)
+    return labels
 
 
 def seed_of(run: dict) -> int | None:

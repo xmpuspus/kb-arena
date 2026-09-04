@@ -127,9 +127,41 @@ def test_repeats_of_one_experiment_group_into_one_row():
     [row] = variance.spread_report(runs)
 
     assert row["runs"] == 3
-    assert row["seeds"] == [0, 1, 2]
+    assert row["seeds"] == ["0", "1", "2"]
     assert row["metrics"]["accuracy_by_tier"]["mean"] == pytest.approx(0.55)
     assert row["metrics"]["accuracy_by_tier"]["thin_evidence"] is False
+
+
+def test_a_group_that_mixes_seeded_and_unseeded_runs_never_crashes():
+    """Every result already on disk carries no seed, so the first upgrade hits this.
+
+    Sorting a None beside an int raises, and a user who upgrades, runs
+    `benchmark --runs 3` and then `variance` builds exactly that group.
+    """
+    manifest = _manifest()
+    runs = [
+        {
+            "corpus": "c",
+            "strategy": "bm25",
+            "accuracy_by_tier": {"1": 0.50},
+            "records": [{}],
+            "manifest": dict(manifest),
+        },
+        {
+            "corpus": "c",
+            "strategy": "bm25",
+            "accuracy_by_tier": {"1": 0.60},
+            "records": [{}],
+            "manifest": {**manifest, "seed": {"value": 0}},
+        },
+    ]
+
+    [row] = variance.spread_report(runs)
+
+    assert row["runs"] == 2
+    # The unseeded run is named, not dropped. Dropping it would print "0" and
+    # claim both runs used seed 0, a provenance the files do not carry.
+    assert row["seeds"] == ["0", "unrecorded"]
 
 
 def test_a_run_written_before_seeds_reports_an_unrecorded_seed():
