@@ -1,0 +1,5203 @@
+{
+  "run_id": "59b5b60d",
+  "timestamp": "2026-09-04T23:36:22.583694+00:00",
+  "top_k": 5,
+  "ceiling_k": 20,
+  "question_split": "all",
+  "corpora": {
+    "aws-compute": {
+      "bm25": {
+        "mean_recall_at_k": 0.2745820105820106,
+        "mean_precision_at_k": 0.1706666666666667,
+        "mean_hit_at_k": 0.44,
+        "mean_mrr": 0.3522222222222222,
+        "mean_ndcg_at_k": 0.2784657961941871,
+        "mean_average_precision": 0.20751507936507937,
+        "mean_r_precision": 0.20124867724867723,
+        "mean_bpref": 0.18258068783068784,
+        "questions": 75,
+        "ci_ndcg_at_k": [
+          0.19926118751219363,
+          0.3614695831414357
+        ],
+        "ci_recall_at_k": [
+          0.19492552910052907,
+          0.3591111111111111
+        ],
+        "ci_average_precision": [
+          0.1442488293650794,
+          0.2787043452380952
+        ],
+        "by_tier": {
+          "1": {
+            "mean_recall_at_k": 0.2926190476190476,
+            "mean_precision_at_k": 0.15,
+            "mean_hit_at_k": 0.45,
+            "mean_mrr": 0.3875,
+            "mean_ndcg_at_k": 0.28634843614054384,
+            "mean_average_precision": 0.22345238095238096,
+            "mean_r_precision": 0.2092857142857143,
+            "mean_bpref": 0.2003968253968254,
+            "questions": 20
+          },
+          "2": {
+            "mean_recall_at_k": 0.23511904761904762,
+            "mean_precision_at_k": 0.12000000000000002,
+            "mean_hit_at_k": 0.4,
+            "mean_mrr": 0.26666666666666666,
+            "mean_ndcg_at_k": 0.21317161231318513,
+            "mean_average_precision": 0.1598611111111111,
+            "mean_r_precision": 0.17261904761904762,
+            "mean_bpref": 0.14702380952380953,
+            "questions": 20
+          },
+          "3": {
+            "mean_recall_at_k": 0.2907407407407407,
+            "mean_precision_at_k": 0.18666666666666665,
+            "mean_hit_at_k": 0.4,
+            "mean_mrr": 0.31666666666666665,
+            "mean_ndcg_at_k": 0.2906032646184923,
+            "mean_average_precision": 0.21888888888888888,
+            "mean_r_precision": 0.20185185185185184,
+            "mean_bpref": 0.1814814814814815,
+            "questions": 15
+          },
+          "4": {
+            "mean_recall_at_k": 0.2798611111111111,
+            "mean_precision_at_k": 0.19999999999999998,
+            "mean_hit_at_k": 0.5,
+            "mean_mrr": 0.4375,
+            "mean_ndcg_at_k": 0.3101030590362089,
+            "mean_average_precision": 0.24677083333333336,
+            "mean_r_precision": 0.2590277777777778,
+            "mean_bpref": 0.22528935185185184,
+            "questions": 12
+          },
+          "5": {
+            "mean_recall_at_k": 0.2899305555555556,
+            "mean_precision_at_k": 0.275,
+            "mean_hit_at_k": 0.5,
+            "mean_mrr": 0.4166666666666667,
+            "mean_ndcg_at_k": 0.35178100847219523,
+            "mean_average_precision": 0.2065972222222222,
+            "mean_r_precision": 0.16493055555555555,
+            "mean_bpref": 0.16493055555555555,
+            "questions": 8
+          }
+        },
+        "empty_retrieval": 0,
+        "execution_errors": 0,
+        "match_classes": {
+          "strict": 64,
+          "parent": 0,
+          "doc": 0,
+          "unmapped": 311
+        },
+        "strict_share_of_hits": 1.0
+      }
+    }
+  },
+  "retrieval_ceiling": {
+    "aws-compute": {
+      "status": "skipped",
+      "reason": "no strategy in this run ranks over the naive_vector pool; pass --ceiling-k to force the diagnostic",
+      "top_k": 5,
+      "ceiling_k": 20,
+      "questions": 0
+    }
+  },
+  "manifests": {
+    "aws-compute": {
+      "schema_version": 2,
+      "corpus": "aws-compute",
+      "question_split": "all",
+      "question_set_fingerprint": "3aecce3d26b1",
+      "qrels_fingerprint": "f5611e2a779c",
+      "generation": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      },
+      "scoring": {
+        "reference_free": true,
+        "ragas": false
+      },
+      "judge": null,
+      "embedding": {
+        "provider": "bge",
+        "model": "BAAI/bge-large-en-v1.5"
+      },
+      "chunk": {
+        "tokens": 512,
+        "overlap_tokens": 50
+      },
+      "top_k": 5,
+      "seed": {
+        "value": 0,
+        "covers_whole_run": true,
+        "controls": [
+          "optimize trial order",
+          "bootstrap resampling"
+        ],
+        "does_not_control": [
+          "provider-side model sampling",
+          "retrieval tie order",
+          "judge output"
+        ]
+      },
+      "question_count": 75,
+      "code_version": "0.10.0",
+      "git_sha": "91aafef4fe6d696ffff123e41228cd31bbbf7bd5-dirty-8e5b35c1",
+      "compatibility_key": "4810cd3ae8d8"
+    }
+  },
+  "status": "complete",
+  "questions": [
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-001",
+      "question": "What is AWS Lambda and how does it execute code?",
+      "recall_at_k": 0.2857142857142857,
+      "precision_at_k": 0.4,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 0.5531464700081437,
+      "fallback_doc_level": false,
+      "hits": [
+        "lambda-overview::provisioned-concurrency",
+        "lambda-overview::aws-lambda"
+      ],
+      "match_classes": {
+        "strict": 2,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 3
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 4.746605521600746,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 4.352783898311722,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 3,
+          "score": 4.217567110341988,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 4,
+          "score": 3.3055625016641432,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-definitions",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 2.7522826251348143,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-002",
+      "question": "What are EC2 instance types and how are they categorized?",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 7.04888849583937,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 6.946025479136507,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 3,
+          "score": 3.02419199654978,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 4,
+          "score": 0.9708719094122962,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 0.9186058622331784,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-003",
+      "question": "What is Amazon ECS and what launch types does it support?",
+      "recall_at_k": 0.3333333333333333,
+      "precision_at_k": 0.2,
+      "hit_at_k": 1,
+      "mrr": 0.5,
+      "ndcg_at_k": 0.2960819109658652,
+      "fallback_doc_level": false,
+      "hits": [
+        "ecs-fargate::amazon-ecs-and-aws-fargate"
+      ],
+      "match_classes": {
+        "strict": 1,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 4
+      },
+      "retrieved": [
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 1,
+          "score": 5.966740857978447,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 5.503501818947797,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.352783898311722,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-execution-role",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 3.770554256365295,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 3.1276104113929524,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-004",
+      "question": "What is AWS Fargate and what does it eliminate compared to running containers on EC2?",
+      "recall_at_k": 0.6666666666666666,
+      "precision_at_k": 0.4,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 0.6508205185601091,
+      "fallback_doc_level": false,
+      "hits": [
+        "ecs-fargate::amazon-ecs-and-aws-fargate",
+        "ecs-fargate::fargate-launch-type"
+      ],
+      "match_classes": {
+        "strict": 2,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 3
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 10.141468033254316,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 4.91528144621055,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.746605521600746,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-role",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 4.1887865587176965,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 3.983323319707611,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-005",
+      "question": "What is Amazon EKS and how does it differ from self-managed Kubernetes?",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 1,
+          "score": 5.966740857978447,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 5.503501818947797,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.352783898311722,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-execution-role",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 3.3759416921983925,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 3.1276104113929524,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-006",
+      "question": "What is EC2 Auto Scaling and what are its core scaling policies?",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 5.48328274282999,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 5.008098653316362,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 3.874656606149967,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 4,
+          "score": 3.3055625016641432,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 3.1276104113929524,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-007",
+      "question": "What is AWS Elastic Beanstalk and what does it manage automatically?",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 7.085709032908389,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 4.352783898311722,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.336516103832613,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 3.9767082556616513,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 5,
+          "score": 3.3055625016641432,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-008",
+      "question": "What is AWS Batch and what problem does it solve for batch computing workloads?",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 7.211076325889885,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 5.123479243807862,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 3,
+          "score": 4.988262455838127,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 4.336516103832613,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 5,
+          "score": 4.1347249960497265,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-009",
+      "question": "What is AWS Step Functions and what types of state machines does it support?",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 6.5228472873407295,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 5.418132884177858,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.336516103832613,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 4.217567110341988,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::environment-variables",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 3.6865735109450535,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-010",
+      "question": "What is AWS App Runner and what type of applications is it designed for?",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 7.247539570890286,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 6.545520652992387,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 6.5228472873407295,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 4,
+          "score": 5.64025309391599,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-definitions",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 5.5045652502696285,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-011",
+      "question": "What is Amazon Lightsail and who is its target audience?",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 8.533474279496094,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 2,
+          "score": 8.301431450230293,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-definitions",
+          "doc_id": "ecs-fargate",
+          "rank": 3,
+          "score": 5.5045652502696285,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 5.336614960552726,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::stream-based-polling",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 3.0685604242573414,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-012",
+      "question": "What is an Application Load Balancer (ALB) and what Layer does it operate at?",
+      "recall_at_k": 1.0,
+      "precision_at_k": 0.4,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 1.0,
+      "fallback_doc_level": false,
+      "hits": [
+        "ecs-fargate::services",
+        "lambda-overview::synchronous-invocation"
+      ],
+      "match_classes": {
+        "strict": 2,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 3
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::synchronous-invocation",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 10.273260755872958,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 5.25056867179602,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.352783898311722,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::execution-role",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 3.986332516583631,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-role",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 3.4819537864575407,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-013",
+      "question": "What is the difference between EC2 On-Demand, Reserved, and Spot pricing models?",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 5.84610521008482,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 2,
+          "score": 3.3055625016641432,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 3.3017190596921457,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 3.1613750037885766,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 3.029972460548298,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-014",
+      "question": "What is Lambda's execution model and what happens during a cold start?",
+      "recall_at_k": 0.5,
+      "precision_at_k": 0.4,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 0.6366824387328317,
+      "fallback_doc_level": false,
+      "hits": [
+        "lambda-overview::provisioned-concurrency",
+        "lambda-overview::cold-starts"
+      ],
+      "match_classes": {
+        "strict": 2,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 3
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 6.335188891851625,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::cold-starts",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 4.1800802077966726,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 3,
+          "score": 3.99869279461383,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 3.929520223399255,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-definitions",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 3.807696872260874,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-015",
+      "question": "What is ECS task definition and what key parameters does it specify?",
+      "recall_at_k": 0.4,
+      "precision_at_k": 0.4,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 0.5087403079104241,
+      "fallback_doc_level": false,
+      "hits": [
+        "ecs-fargate::task-execution-role",
+        "ecs-fargate::task-definitions"
+      ],
+      "match_classes": {
+        "strict": 2,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 3
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::task-definitions",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 14.25674986872637,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 4.352783898311722,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-execution-role",
+          "doc_id": "ecs-fargate",
+          "rank": 3,
+          "score": 3.770554256365295,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 4,
+          "score": 3.3055625016641432,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::lambda-non-proxy-integration",
+          "doc_id": "api-gateway",
+          "rank": 5,
+          "score": 3.170883914067008,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-016",
+      "question": "What is Lambda Layers and what purpose do they serve?",
+      "recall_at_k": 1.0,
+      "precision_at_k": 0.2,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 1.0,
+      "fallback_doc_level": false,
+      "hits": [
+        "lambda-overview::layers"
+      ],
+      "match_classes": {
+        "strict": 1,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 4
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 5.597400517694521,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 3.537699829161085,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 3,
+          "score": 3.3055625016641432,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 3.029972460548298,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-definitions",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 2.7522826251348143,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-017",
+      "question": "What is AWS CloudWatch and what does it monitor for EC2 instances?",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 5.123479243807862,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 4.988262455838127,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.336516103832613,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 4,
+          "score": 4.1347249960497265,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 3.9767082556616513,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-018",
+      "question": "What is an EKS managed node group and how does it differ from self-managed nodes?",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 1,
+          "score": 6.391289857700101,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 4.352783898311722,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::execution-role",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 3.986332516583631,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-execution-role",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 3.3759416921983925,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::iam-requirements",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 3.3390361714088086,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-019",
+      "question": "What is Lambda concurrency and what is the difference between reserved and provisioned concurrency?",
+      "recall_at_k": 0.6666666666666666,
+      "precision_at_k": 0.4,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 0.6508205185601091,
+      "fallback_doc_level": false,
+      "hits": [
+        "lambda-overview::provisioned-concurrency",
+        "lambda-overview::mitigation"
+      ],
+      "match_classes": {
+        "strict": 2,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 3
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 7.146495948563688,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 6.83941888885323,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 3,
+          "score": 6.6111250033282865,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 6.059944921096596,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::mitigation",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 5.512710676756697,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t1-020",
+      "question": "What is Network Load Balancer (NLB) and when should you choose it over ALB?",
+      "recall_at_k": 1.0,
+      "precision_at_k": 0.2,
+      "hit_at_k": 1,
+      "mrr": 0.25,
+      "ndcg_at_k": 0.43067655807339306,
+      "fallback_doc_level": false,
+      "hits": [
+        "ecs-fargate::services"
+      ],
+      "match_classes": {
+        "strict": 1,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 4
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::synchronous-invocation",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 7.06587258885429,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 5.710834781510897,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.352783898311722,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 3.725663626830693,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 3.356381410053269,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-001",
+      "question": "How do you configure an EC2 Auto Scaling group with a target tracking policy to maintain 50% CPU utilization?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 7.109870773572892,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 4.536671627990733,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::cors",
+          "doc_id": "api-gateway",
+          "rank": 3,
+          "score": 4.19768911274859,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::lambda-authorizer-custom",
+          "doc_id": "api-gateway",
+          "rank": 4,
+          "score": 4.098871542100747,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::websocket-api",
+          "doc_id": "api-gateway",
+          "rank": 5,
+          "score": 3.7592058657818783,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-002",
+      "question": "How do you deploy a containerized application on ECS Fargate with a load balancer and service auto scaling?\n",
+      "recall_at_k": 0.2857142857142857,
+      "precision_at_k": 0.4,
+      "hit_at_k": 1,
+      "mrr": 0.5,
+      "ndcg_at_k": 0.38356636737133565,
+      "fallback_doc_level": false,
+      "hits": [
+        "ecs-fargate::amazon-ecs-and-aws-fargate",
+        "ecs-fargate::services"
+      ],
+      "match_classes": {
+        "strict": 2,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 3
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::synchronous-invocation",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 10.273260755872958,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 9.090225860011056,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 3,
+          "score": 8.716501458081474,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 4.503356734836324,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 5,
+          "score": 4.423197342146514,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-003",
+      "question": "How do you configure a Lambda function to access resources inside a VPC?",
+      "recall_at_k": 0.6666666666666666,
+      "precision_at_k": 0.4,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 0.7653606369886217,
+      "fallback_doc_level": false,
+      "hits": [
+        "lambda-overview::vpc-configuration",
+        "lambda-overview::vpc-and-internet-access"
+      ],
+      "match_classes": {
+        "strict": 2,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 3
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::vpc-configuration",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 9.0480622820749,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 6.8207720732264345,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 6.769662796474934,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-role",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 6.52014687881578,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::execution-role",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 5.186734138670296,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-004",
+      "question": "How do you set up a Step Functions state machine to orchestrate a Lambda function with retry logic and error handling?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 10.644319402624904,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 6.490914238865021,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-configuration",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 5.3608688229645045,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 4.247231624576032,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::execution-role",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 4.150499963142728,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-005",
+      "question": "How do you configure EKS Cluster Autoscaler with managed node groups to automatically scale worker nodes?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 4.9971412924817535,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::cors",
+          "doc_id": "api-gateway",
+          "rank": 2,
+          "score": 4.19768911274859,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 3.9223769024718753,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::networking-awsvpc",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 3.8699071343596865,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::iam-requirements",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 3.3390361714088086,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-006",
+      "question": "How do you configure EC2 Spot Instance interruption handling in an Auto Scaling group to minimize downtime?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 12.396146143082095,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::cors",
+          "doc_id": "api-gateway",
+          "rank": 2,
+          "score": 5.834135182106924,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.268332815950958,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 4.2325736774766956,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 4.205414706100497,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-007",
+      "question": "How do you configure Lambda to process SQS messages with batch processing and partial batch failure handling?\n",
+      "recall_at_k": 1.0,
+      "precision_at_k": 0.2,
+      "hit_at_k": 1,
+      "mrr": 0.3333333333333333,
+      "ndcg_at_k": 0.5,
+      "fallback_doc_level": false,
+      "hits": [
+        "lambda-overview::stream-based-polling"
+      ],
+      "match_classes": {
+        "strict": 1,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 4
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 6.581676121700026,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::cors",
+          "doc_id": "api-gateway",
+          "rank": 2,
+          "score": 4.687804996404366,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::stream-based-polling",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.280391334711194,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 4.232872667610045,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::websocket-api",
+          "doc_id": "api-gateway",
+          "rank": 5,
+          "score": 4.135530132695301,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-008",
+      "question": "How do you deploy a Blue/Green deployment on ECS using CodeDeploy to achieve zero-downtime releases?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": false,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 3.6444641747315876,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 3.592975844685455,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-execution-role",
+          "doc_id": "ecs-fargate",
+          "rank": 3,
+          "score": 3.430639470465229,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::lambda-non-proxy-integration",
+          "doc_id": "api-gateway",
+          "rank": 4,
+          "score": 3.254668658581065,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::websocket-api",
+          "doc_id": "api-gateway",
+          "rank": 5,
+          "score": 3.2153270241060787,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-009",
+      "question": "How do you configure CloudWatch Container Insights to monitor ECS tasks and set alarms on memory usage?\n",
+      "recall_at_k": 0.6666666666666666,
+      "precision_at_k": 0.4,
+      "hit_at_k": 1,
+      "mrr": 0.5,
+      "ndcg_at_k": 0.5307212739772434,
+      "fallback_doc_level": false,
+      "hits": [
+        "ecs-fargate::task-execution-role",
+        "ecs-fargate::integration-with-other-services"
+      ],
+      "match_classes": {
+        "strict": 2,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 3
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 6.0241990870941615,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::integration-with-other-services",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 5.931862315317979,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-execution-role",
+          "doc_id": "ecs-fargate",
+          "rank": 3,
+          "score": 4.333051804264122,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "api-gateway::cors",
+          "doc_id": "api-gateway",
+          "rank": 4,
+          "score": 4.19768911274859,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 3.8742642455034875,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-010",
+      "question": "How do you set up Lambda function URLs with IAM authentication to expose a function as an HTTPS endpoint?\n",
+      "recall_at_k": 0.3333333333333333,
+      "precision_at_k": 0.2,
+      "hit_at_k": 1,
+      "mrr": 0.5,
+      "ndcg_at_k": 0.2960819109658652,
+      "fallback_doc_level": false,
+      "hits": [
+        "lambda-overview::execution-role"
+      ],
+      "match_classes": {
+        "strict": 1,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 4
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 11.46064654431521,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::execution-role",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 11.229252148249095,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "api-gateway::lambda-authorizer-custom",
+          "doc_id": "api-gateway",
+          "rank": 3,
+          "score": 6.881458580970271,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::lambda-proxy-integration-recommended",
+          "doc_id": "api-gateway",
+          "rank": 4,
+          "score": 6.714043227902142,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-configuration",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 6.096900369037958,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-011",
+      "question": "How do you deploy an application to AWS Elastic Beanstalk using a Dockerfile with environment variable configuration?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 6.8756637201092055,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::execution-role",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 4.686721764558246,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.437966727001278,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-configuration",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 4.055724244895373,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::networking-awsvpc",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 3.9145998314623176,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-012",
+      "question": "How do you configure EC2 Instance Connect and Session Manager to provide secure shell access without opening port 22?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 9.317224309834737,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 7.2864300823927675,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::cors",
+          "doc_id": "api-gateway",
+          "rank": 3,
+          "score": 4.19768911274859,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 3.874264245503488,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 3.3473080514717926,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-013",
+      "question": "How do you build an event-driven pipeline using S3 event notifications and Lambda to process uploaded files?\n",
+      "recall_at_k": 0.5,
+      "precision_at_k": 0.4,
+      "hit_at_k": 1,
+      "mrr": 0.5,
+      "ndcg_at_k": 0.3973220069685352,
+      "fallback_doc_level": false,
+      "hits": [
+        "lambda-overview::asynchronous-invocation",
+        "lambda-overview::execution-role"
+      ],
+      "match_classes": {
+        "strict": 2,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 3
+      },
+      "retrieved": [
+        {
+          "chunk_id": "api-gateway::lambda-proxy-integration-recommended",
+          "doc_id": "api-gateway",
+          "rank": 1,
+          "score": 7.0718611792559525,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::execution-role",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 4.806511352119897,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.232872667610044,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::lambda-non-proxy-integration",
+          "doc_id": "api-gateway",
+          "rank": 4,
+          "score": 3.873521169398601,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::asynchronous-invocation",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 3.7121266006178018,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-014",
+      "question": "How do you configure EC2 Image Builder to create a hardened Amazon Linux AMI with CIS benchmarks applied?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 5.293456506148613,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 4.536671627990733,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::cors",
+          "doc_id": "api-gateway",
+          "rank": 3,
+          "score": 4.19768911274859,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 3.6444641747315876,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 3.592975844685455,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-015",
+      "question": "How do you enable AWS Compute Optimizer and use its recommendations to right-size EC2 instances?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 6.966609513869696,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 6.592171667840735,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 3,
+          "score": 6.2837309673502455,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 5.805959142952143,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 4.055736572360091,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-016",
+      "question": "How do you configure a Lambda function to use AWS Secrets Manager for database credentials with caching?\n",
+      "recall_at_k": 0.25,
+      "precision_at_k": 0.2,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 0.3903800499921017,
+      "fallback_doc_level": false,
+      "hits": [
+        "lambda-overview::layers"
+      ],
+      "match_classes": {
+        "strict": 1,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 4
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 8.127870031532062,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "ecs-fargate::integration-with-other-services",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 6.425463254720737,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::cors",
+          "doc_id": "api-gateway",
+          "rank": 3,
+          "score": 5.801345999649131,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 4.778217143038942,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 4.724607629691521,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-017",
+      "question": "How do you configure ALB to perform HTTPS termination and redirect HTTP traffic to HTTPS?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 5.068996136275308,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::lambda-non-proxy-integration",
+          "doc_id": "api-gateway",
+          "rank": 2,
+          "score": 4.40858893570208,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.392147080953706,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::cors",
+          "doc_id": "api-gateway",
+          "rank": 4,
+          "score": 4.19768911274859,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 2.98202930302451,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-018",
+      "question": "How do you configure EC2 user data scripts to automatically bootstrap an instance with software on launch?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 8.603530820805593,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::cognito-user-pools",
+          "doc_id": "api-gateway",
+          "rank": 2,
+          "score": 5.6706436439759385,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::cors",
+          "doc_id": "api-gateway",
+          "rank": 3,
+          "score": 4.19768911274859,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 3.9223769024718753,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::stream-based-polling",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 3.5581008023431617,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-019",
+      "question": "How do you configure AWS Batch to process a large job array using Spot compute environments with automatic retry?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 6.875663720109205,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 6.329382030407395,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 3,
+          "score": 4.9971412924817535,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 4.657124362999831,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 4.437966727001278,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t2-020",
+      "question": "How do you configure CloudWatch alarms and Auto Scaling to scale an ECS service based on SQS queue depth?\n",
+      "recall_at_k": 1.0,
+      "precision_at_k": 0.2,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 1.0,
+      "fallback_doc_level": false,
+      "hits": [
+        "ecs-fargate::services"
+      ],
+      "match_classes": {
+        "strict": 1,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 4
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 8.952100059365073,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "api-gateway::websocket-api",
+          "doc_id": "api-gateway",
+          "rank": 2,
+          "score": 6.4384265619187255,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::execution-role",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.396421934351764,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-execution-role",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 4.333051804264123,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::stream-based-polling",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 4.280391334711194,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t3-001",
+      "question": "How do Lambda, ECS Fargate, and EKS Fargate compare for running containerized microservices?",
+      "recall_at_k": 0.16666666666666666,
+      "precision_at_k": 0.4,
+      "hit_at_k": 1,
+      "mrr": 0.5,
+      "ndcg_at_k": 0.36005461457723403,
+      "fallback_doc_level": false,
+      "hits": [
+        "ecs-fargate::amazon-ecs-and-aws-fargate",
+        "ecs-fargate::services"
+      ],
+      "match_classes": {
+        "strict": 2,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 3
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::task-role",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 5.12441863303788,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 4.221066910008968,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-execution-role",
+          "doc_id": "ecs-fargate",
+          "rank": 3,
+          "score": 3.770554256365295,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 3.1911392373767757,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 2.454989598615667,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t3-002",
+      "question": "What are the differences between EC2 Reserved Instances, Savings Plans, and Spot Instances for cost optimization?",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 15.293839192275767,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 5.461782651431211,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.026908346713001,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::rest-api",
+          "doc_id": "api-gateway",
+          "rank": 4,
+          "score": 2.4754055337542527,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::http-api",
+          "doc_id": "api-gateway",
+          "rank": 5,
+          "score": 2.367351259166273,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t3-003",
+      "question": "How do ALB, NLB, and Gateway Load Balancer (GWLB) differ in use case and architecture?",
+      "recall_at_k": 1.0,
+      "precision_at_k": 0.2,
+      "hit_at_k": 1,
+      "mrr": 0.25,
+      "ndcg_at_k": 0.43067655807339306,
+      "fallback_doc_level": false,
+      "hits": [
+        "ecs-fargate::services"
+      ],
+      "match_classes": {
+        "strict": 1,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 4
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::synchronous-invocation",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 8.393936934970961,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 4.763764685726079,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.735626667386409,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 4.359789398181824,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 4.20744121869822,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t3-004",
+      "question": "How do ECS and EKS compare for container orchestration in a greenfield microservices project?",
+      "recall_at_k": 0.4444444444444444,
+      "precision_at_k": 0.8,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 0.830419897363192,
+      "fallback_doc_level": false,
+      "hits": [
+        "ecs-fargate::task-execution-role",
+        "ecs-fargate::task-role",
+        "ecs-fargate::amazon-ecs-and-aws-fargate",
+        "ecs-fargate::integration-with-other-services"
+      ],
+      "match_classes": {
+        "strict": 4,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 1
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 8.574304493258074,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "ecs-fargate::integration-with-other-services",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 6.577383313696113,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.770119146789801,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-role",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 3.938522150166363,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-execution-role",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 3.770554256365295,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t3-005",
+      "question": "How does Lambda Standard Workflow in Step Functions compare to Express Workflow?",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::environment-variables",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 3.999883455247402,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 3.797018158284852,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::websocket-api",
+          "doc_id": "api-gateway",
+          "rank": 3,
+          "score": 3.223031404899791,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 2.707668632511368,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-configuration",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 2.547731080431933,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t3-006",
+      "question": "How do EC2 Auto Scaling target tracking, step scaling, and predictive scaling policies compare in their approach to scaling?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 15.464686832559648,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 4.426159024591989,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.205414706100497,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 4.0458391468146235,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::iam-authorization",
+          "doc_id": "api-gateway",
+          "rank": 5,
+          "score": 3.390600783106037,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t3-007",
+      "question": "How do Lambda container images compare to ZIP deployment packages in terms of size limits and cold start behavior?",
+      "recall_at_k": 0.75,
+      "precision_at_k": 0.6,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 0.8318724637288826,
+      "fallback_doc_level": false,
+      "hits": [
+        "lambda-overview::provisioned-concurrency",
+        "lambda-overview::cold-starts",
+        "lambda-overview::mitigation"
+      ],
+      "match_classes": {
+        "strict": 3,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 2
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 6.503115193293128,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::mitigation",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 5.9239009229123285,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::cold-starts",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 5.481519222107986,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-execution-role",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 4.9152814462105505,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 4.49205560879074,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t3-008",
+      "question": "How do Elastic Beanstalk, App Runner, and Lightsail compare for deploying a web application with minimal operational overhead?",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 6.458764415811654,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-role",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 4.417585860777725,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-configuration",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.241572204121259,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 3.3063349419952126,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::synchronous-invocation",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 3.2073881670186672,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t3-009",
+      "question": "How do EC2 instance store (ephemeral storage) and EBS volumes differ for EC2 data persistence?",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 9.9267463980249,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 5.324599644192414,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::stream-based-polling",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 3.5581008023431617,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::rest-api",
+          "doc_id": "api-gateway",
+          "rank": 4,
+          "score": 2.4754055337542527,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 2.454989598615667,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t3-010",
+      "question": "How do Lambda@Edge and CloudFront Functions compare for executing logic at CloudFront edge locations?\n",
+      "recall_at_k": 1.0,
+      "precision_at_k": 0.2,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 1.0,
+      "fallback_doc_level": false,
+      "hits": [
+        "lambda-overview::synchronous-invocation"
+      ],
+      "match_classes": {
+        "strict": 1,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 4
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::synchronous-invocation",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 7.716968843671247,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 2,
+          "score": 4.885761759833836,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.214941746725446,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::networking-awsvpc",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 2.621972688194286,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::websocket-api",
+          "doc_id": "api-gateway",
+          "rank": 5,
+          "score": 2.3106008100171365,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t3-011",
+      "question": "How do ECS rolling deployments and AWS CodeDeploy Blue/Green deployments for ECS differ in risk and rollback capabilities?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::task-execution-role",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 7.54110851273059,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 6.675233904341407,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.763764685726079,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 4.415363422129215,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 3.4789359300463585,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t3-012",
+      "question": "How do AWS Batch and Step Functions compare for orchestrating complex multi-step data processing pipelines?",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 5.0599326290412705,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 4.443688466954451,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 3,
+          "score": 4.434795991746645,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::stream-based-polling",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 3.5581008023431617,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::rest-api",
+          "doc_id": "api-gateway",
+          "rank": 5,
+          "score": 2.4754055337542527,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t3-013",
+      "question": "How do EC2 placement groups (Cluster, Spread, and Partition) differ in their hardware distribution and use case suitability?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 6.475777032693586,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 4.826827318577122,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.735626667386408,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 3.974888056626793,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 3.9187738034102555,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t3-014",
+      "question": "How do Lambda Provisioned Concurrency and Lambda SnapStart differ as strategies for eliminating cold start latency?\n",
+      "recall_at_k": 1.0,
+      "precision_at_k": 0.6,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 0.9060254355346823,
+      "fallback_doc_level": false,
+      "hits": [
+        "lambda-overview::provisioned-concurrency",
+        "lambda-overview::cold-starts",
+        "lambda-overview::mitigation"
+      ],
+      "match_classes": {
+        "strict": 3,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 2
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 9.882920882827335,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::pricing",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 6.417824267586917,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::cold-starts",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 6.3714263144043315,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::mitigation",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 6.11236662646204,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "api-gateway::lambda-proxy-integration-recommended",
+          "doc_id": "api-gateway",
+          "rank": 5,
+          "score": 3.8444216627783074,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t3-015",
+      "question": "How do EC2 Classic Load Balancer, ALB, and NLB differ and when was Classic Load Balancer deprecated?",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::synchronous-invocation",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 10.273260755872958,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 7.451327253661386,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 3,
+          "score": 3.7479763454569257,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 3.6957227920536537,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::cold-starts",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 2.6547806139728465,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t4-001",
+      "question": "How do IAM roles, VPC security groups, and EC2 instance profiles work together to grant an EC2 instance secure access to S3 and RDS?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 14.09777699167874,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::execution-role",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 10.197873379729629,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-configuration",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 6.799665964706154,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 6.694616102943584,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 6.6621130795163435,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t4-002",
+      "question": "How do ECS task roles, ECR image pulls, and Secrets Manager integrate to give containers the correct permissions without hardcoding credentials?\n",
+      "recall_at_k": 0.75,
+      "precision_at_k": 0.6,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 0.787702056960637,
+      "fallback_doc_level": false,
+      "hits": [
+        "ecs-fargate::task-execution-role",
+        "ecs-fargate::task-role",
+        "ecs-fargate::integration-with-other-services"
+      ],
+      "match_classes": {
+        "strict": 3,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 2
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::integration-with-other-services",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 8.669913384513904,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-execution-role",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 7.783423368776953,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 5.196620099921576,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 4.90850031829131,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-role",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 4.461117491496535,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t4-003",
+      "question": "How do ALB target groups, ECS services, and CloudMap service discovery work together in a microservices architecture?\n",
+      "recall_at_k": 0.3333333333333333,
+      "precision_at_k": 0.4,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 0.48522855511632257,
+      "fallback_doc_level": false,
+      "hits": [
+        "ecs-fargate::services",
+        "ecs-fargate::integration-with-other-services"
+      ],
+      "match_classes": {
+        "strict": 2,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 3
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 10.021401963724005,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 4.89850813001696,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.770119146789801,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::integration-with-other-services",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 4.498447454191174,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-execution-role",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 3.770554256365295,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t4-004",
+      "question": "How do Lambda execution role, resource-based policies, and VPC endpoints work together to allow Lambda to call DynamoDB without internet access?\n",
+      "recall_at_k": 0.75,
+      "precision_at_k": 0.6,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 0.8318724637288826,
+      "fallback_doc_level": false,
+      "hits": [
+        "lambda-overview::execution-role",
+        "lambda-overview::vpc-configuration",
+        "lambda-overview::vpc-and-internet-access"
+      ],
+      "match_classes": {
+        "strict": 3,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 2
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 10.869197766530393,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-configuration",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 6.694078892719178,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::execution-role",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.513803571066457,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::cold-starts",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 4.387136218548209,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::stream-based-polling",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 4.280391334711194,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t4-005",
+      "question": "How do EKS OIDC provider, IRSA (IAM Roles for Service Accounts), and Kubernetes service accounts work together to give pods AWS permissions?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 6.447281047962466,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 6.433218246870587,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 3,
+          "score": 5.932164097467568,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 5.799048765086142,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::integration-with-other-services",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 3.8624736504178796,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t4-006",
+      "question": "How do Step Functions, SQS, and Lambda work together to implement a distributed saga pattern for compensating transactions?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 6.3346063459913635,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 4.336081166753379,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::integration-with-other-services",
+          "doc_id": "ecs-fargate",
+          "rank": 3,
+          "score": 3.5354921265494355,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 2.879860477782034,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 5,
+          "score": 2.4931646967475665,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t4-007",
+      "question": "How do EC2 Auto Scaling lifecycle hooks, EventBridge, and Lambda work together to implement custom instance initialization and termination logic?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 7.762581984868514,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::cold-starts",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 4.60401408677006,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::lambda-authorizer-custom",
+          "doc_id": "api-gateway",
+          "rank": 3,
+          "score": 4.1294787981276,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 4.071092400378938,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 3.9759201752136293,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t4-008",
+      "question": "How do ECS cluster capacity providers, Auto Scaling groups, and managed scaling work together to reduce cluster costs with Spot instances?\n",
+      "recall_at_k": 1.0,
+      "precision_at_k": 0.2,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 1.0,
+      "fallback_doc_level": false,
+      "hits": [
+        "ecs-fargate::ec2-launch-type"
+      ],
+      "match_classes": {
+        "strict": 1,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 4
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 11.628915402974693,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 7.78181820309346,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-execution-role",
+          "doc_id": "ecs-fargate",
+          "rank": 3,
+          "score": 4.333051804264123,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 4,
+          "score": 4.056599265448253,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::iam-requirements",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 3.3390361714088086,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t4-009",
+      "question": "How do Lambda function destinations, SQS dead-letter queues, and CloudWatch alarms work together to ensure reliable asynchronous Lambda processing?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": false,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::execution-role",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 4.560589380910861,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::environment-variables",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 4.41463038362337,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::stream-based-polling",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.280391334711194,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::layers",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 4.231489950072023,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-configuration",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 3.6307747106767945,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t4-010",
+      "question": "How do EKS network policies, VPC CNI security groups for pods, and namespace RBAC work together to implement pod-level security isolation?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::networking-awsvpc",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 9.577490427834988,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-configuration",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 6.093078867267096,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.28566219435491,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::cold-starts",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 2.8695627781861734,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 2.23560522719386,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t4-011",
+      "question": "How do CloudWatch Application Signals, X-Ray distributed tracing, and Lambda Powertools work together to achieve full observability for a Lambda-based API?\n",
+      "recall_at_k": 0.125,
+      "precision_at_k": 0.2,
+      "hit_at_k": 1,
+      "mrr": 0.25,
+      "ndcg_at_k": 0.14606834984270645,
+      "fallback_doc_level": false,
+      "hits": [
+        "ecs-fargate::integration-with-other-services"
+      ],
+      "match_classes": {
+        "strict": 1,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 4
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::task-role",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 4.417585860777725,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 3.8796167473756973,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 3,
+          "score": 3.5915513912146744,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::integration-with-other-services",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 3.5354921265494355,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::synchronous-invocation",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 3.2073881670186672,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t4-012",
+      "question": "How do ECS task networking with awsvpc mode, Application Load Balancer, and AWS PrivateLink work together to expose an internal microservice securely?\n",
+      "recall_at_k": 0.4,
+      "precision_at_k": 0.4,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 0.4703652827859579,
+      "fallback_doc_level": false,
+      "hits": [
+        "ecs-fargate::networking-awsvpc",
+        "ecs-fargate::services"
+      ],
+      "match_classes": {
+        "strict": 2,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 3
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 8.38362771418146,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::synchronous-invocation",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 6.4147763340373345,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::execution-role",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 5.605327626791425,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-execution-role",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 4.333051804264123,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::networking-awsvpc",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 3.768127602821743,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t5-001",
+      "question": "How would you architect a globally distributed, highly available serverless API using Lambda, API Gateway, DynamoDB Global Tables, CloudFront, and Route 53 — covering traffic routing, data consistency, and failover behavior?\n",
+      "recall_at_k": 0.4444444444444444,
+      "precision_at_k": 0.8,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 0.8687949224876582,
+      "fallback_doc_level": false,
+      "hits": [
+        "api-gateway::stages-and-deployment",
+        "api-gateway::amazon-api-gateway",
+        "api-gateway::rest-api",
+        "lambda-overview::stream-based-polling"
+      ],
+      "match_classes": {
+        "strict": 4,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 1
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::stream-based-polling",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 7.838492137054356,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "api-gateway::stages-and-deployment",
+          "doc_id": "api-gateway",
+          "rank": 2,
+          "score": 6.770696691793987,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "api-gateway::rest-api",
+          "doc_id": "api-gateway",
+          "rank": 3,
+          "score": 5.4610868426350105,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 4,
+          "score": 5.190252051699419,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 5.171985605037646,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t5-002",
+      "question": "How do EKS Pod Identity (IRSA), Karpenter node autoscaling, EBS CSI driver, and Kubernetes PersistentVolumeClaims work together to automatically provision right-sized storage-attached nodes for stateful workloads?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 4.840982764705053,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 2,
+          "score": 2.7416305013059095,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 2.2356052271938602,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::amazon-api-gateway",
+          "doc_id": "api-gateway",
+          "rank": 4,
+          "score": 1.8000344037978793,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-execution-role",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 1.464909881697721,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t5-003",
+      "question": "How do Lambda, Step Functions, ECS Fargate, and SQS work together in a cost-optimized image processing pipeline that handles bursty traffic, large files, and partial failures?\n",
+      "recall_at_k": 0.375,
+      "precision_at_k": 0.6,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 0.7227265726449519,
+      "fallback_doc_level": false,
+      "hits": [
+        "lambda-overview::aws-lambda",
+        "lambda-overview::vpc-and-internet-access",
+        "ecs-fargate::services"
+      ],
+      "match_classes": {
+        "strict": 3,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 2
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 6.380190082105199,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 6.160993952289989,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 4.770119146789801,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "ecs-fargate::task-execution-role",
+          "doc_id": "ecs-fargate",
+          "rank": 4,
+          "score": 4.672966590164188,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::execution-role",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 4.355127852082164,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t5-004",
+      "question": "How do EC2 Auto Scaling, ALB, CloudFront, and Route 53 work together to implement a multi-region active-passive failover for a stateful web application, including data replication considerations?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 6.204273336174779,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 4.788799777110146,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::websocket-api",
+          "doc_id": "api-gateway",
+          "rank": 3,
+          "score": 3.8277561751102347,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "api-gateway::stages-and-deployment",
+          "doc_id": "api-gateway",
+          "rank": 4,
+          "score": 3.7466954800611285,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 5,
+          "score": 3.5915513912146744,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t5-005",
+      "question": "How do ECS Fargate, AWS App Mesh, AWS Cloud Map, and X-Ray work together to implement a service mesh with distributed tracing for microservices?\n",
+      "recall_at_k": 0.5,
+      "precision_at_k": 0.6,
+      "hit_at_k": 1,
+      "mrr": 1.0,
+      "ndcg_at_k": 0.7227265726449519,
+      "fallback_doc_level": false,
+      "hits": [
+        "ecs-fargate::amazon-ecs-and-aws-fargate",
+        "ecs-fargate::services",
+        "ecs-fargate::integration-with-other-services"
+      ],
+      "match_classes": {
+        "strict": 3,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 2
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::integration-with-other-services",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 10.923910708911912,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 10.090528941534568,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 3,
+          "score": 7.8861911777307885,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 6.35716292744122,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 5.282957609317101,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t5-006",
+      "question": "How do AWS Batch, Step Functions, S3, Lambda, and EC2 Spot instances work together in a genomics secondary analysis pipeline — covering job submission, data staging, cost optimization, fault tolerance, and result aggregation?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 1,
+          "score": 13.59774452984455,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::fargate-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 9.8202614757884,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 3,
+          "score": 5.615110029105624,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::execution-role",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 5.255121966065792,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 5.071179646929053,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t5-007",
+      "question": "How do EKS, Karpenter, Graviton instances, and Spot interruption handling work together to minimize compute costs for a mixed CPU-architecture Kubernetes workload?\n",
+      "recall_at_k": 1.0,
+      "precision_at_k": 0.2,
+      "hit_at_k": 1,
+      "mrr": 0.3333333333333333,
+      "ndcg_at_k": 0.5,
+      "fallback_doc_level": false,
+      "hits": [
+        "ecs-fargate::ec2-launch-type"
+      ],
+      "match_classes": {
+        "strict": 1,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 4
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::aws-lambda",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 6.0390822002009115,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 4.538385030913497,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::ec2-launch-type",
+          "doc_id": "ecs-fargate",
+          "rank": 3,
+          "score": 4.052021055705695,
+          "source_strategy": "bm25",
+          "is_hit": true,
+          "match": "strict"
+        },
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 3.592975844685455,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::provisioned-concurrency",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 2.879860477782034,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    },
+    {
+      "corpus": "aws-compute",
+      "strategy": "bm25",
+      "question_id": "compute-t5-008",
+      "question": "How do Lambda, EventBridge, SNS, SQS, and Step Functions work together to implement an event-driven orchestration system with fan-out, aggregation, and at-least-once processing guarantees?\n",
+      "recall_at_k": 0.0,
+      "precision_at_k": 0.0,
+      "hit_at_k": 0,
+      "mrr": 0.0,
+      "ndcg_at_k": 0.0,
+      "fallback_doc_level": true,
+      "hits": [],
+      "match_classes": {
+        "strict": 0,
+        "parent": 0,
+        "doc": 0,
+        "unmapped": 5
+      },
+      "retrieved": [
+        {
+          "chunk_id": "lambda-overview::vpc-and-internet-access",
+          "doc_id": "lambda-overview",
+          "rank": 1,
+          "score": 6.956572248031356,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::services",
+          "doc_id": "ecs-fargate",
+          "rank": 2,
+          "score": 5.500825220178957,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "ecs-fargate::amazon-ecs-and-aws-fargate",
+          "doc_id": "ecs-fargate",
+          "rank": 3,
+          "score": 5.370750949410986,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::execution-role",
+          "doc_id": "lambda-overview",
+          "rank": 4,
+          "score": 5.315027796584943,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        },
+        {
+          "chunk_id": "lambda-overview::environment-variables",
+          "doc_id": "lambda-overview",
+          "rank": 5,
+          "score": 3.7451885415781616,
+          "source_strategy": "bm25",
+          "is_hit": false,
+          "match": "unmapped"
+        }
+      ]
+    }
+  ]
+}

@@ -1647,6 +1647,66 @@ def quantum_diagnostics(
     console.print(f"[green]Written {out_path}[/green]")
 
 
+@app.command(name="evidence")
+def evidence_command(
+    corpus: str = typer.Option(..., "--corpus", help="Corpus the run scored"),
+    run_id: str = typer.Option(..., "--run-id", help="Run to bundle, from results/run_<id>"),
+    check: str = typer.Option("", "--check", help="Check an existing evidence.json instead"),
+):
+    """Write, or check, the record that travels with a committed run.
+
+    A benchmark result on its own says a number. A bundle says which corpus,
+    which questions, which code, which seed, which command, and what the result
+    may not be used for. That last part is the one a reader needs most.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    from kb_arena.benchmark.evidence import build_bundle, check_bundle, write_bundle
+    from kb_arena.benchmark.questions import load_questions
+    from kb_arena.benchmark.review import review_summary
+    from kb_arena.settings import settings as _settings
+
+    root = _Path.cwd()
+    if check:
+        path = _Path(check)
+        problems = check_bundle(_json.loads(path.read_text()), root)
+        for problem in problems:
+            console.print(f"[red]{path}: {problem}[/red]")
+        if problems:
+            raise typer.Exit(1)
+        console.print(f"[green]{path}: complete[/green]")
+        return
+
+    run_dir = _Path(_settings.results_path) / f"run_{run_id}"
+    if not run_dir.is_dir():
+        console.print(f"[red]No run at {run_dir}.[/red]")
+        raise typer.Exit(1)
+
+    # `results_path` may be relative or absolute, so normalise either shape to a
+    # path a reader can follow from the repository root.
+    results = []
+    for found in sorted(run_dir.glob("*.json")):
+        resolved = found.resolve()
+        results.append(resolved.relative_to(root) if root in resolved.parents else found)
+    questions = load_questions(corpus)
+    review = review_summary(questions)
+
+    bundle = build_bundle(
+        command=["kb-arena", "retriever-lab", "--corpus", corpus],
+        result_paths=list(results),
+        review=review,
+        corpus=corpus,
+        seed=_settings.run_seed,
+    )
+    path = write_bundle(run_dir, bundle)
+    console.print(f"[green]{path}[/green]")
+    if bundle["citable"]:
+        console.print("Every scored question is human-reviewed, so this run is citable.")
+    else:
+        console.print(f"[yellow]Not citable evidence: {bundle['why_not_citable']}[/yellow]")
+
+
 @app.command(name="datasets")
 def datasets_command(
     name: str = typer.Option("", "--name", help="Adapter to fetch, or empty to list them"),
