@@ -154,3 +154,29 @@ def test_publish_workflow_grants_attest_build_provenance_its_required_permission
         assert (
             permissions.get(key) == "write"
         ), f"publish job permissions must grant '{key}: write', got {permissions}"
+
+
+def test_the_publish_workflow_can_run_without_uploading() -> None:
+    """The first real publish must not be the first time these steps ever ran.
+
+    Every step before the upload, which is the build, the twine check, the
+    SBOM and the attestation, is exercised by a dry run against main. Without
+    a dry run the only way to learn that one of them is broken is a release.
+    """
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "publish.yml").read_text())
+    # PyYAML reads the bare key `on` as the boolean True.
+    triggers = workflow.get("on") or workflow.get(True)
+    inputs = triggers["workflow_dispatch"]["inputs"]
+
+    assert "dry_run" in inputs, "the workflow must offer a run that uploads nothing"
+    assert inputs["dry_run"]["default"] is True, "a dispatch must not publish by accident"
+
+    steps = workflow["jobs"]["publish"]["steps"]
+    upload = next(s for s in steps if s.get("name") == "Publish to PyPI")
+    assert upload["if"] == "${{ !inputs.dry_run }}", "the upload must be the only guarded step"
+
+    # The steps that prove the path must run either way.
+    always = {"Build package", "Twine check"}
+    for step in steps:
+        if step.get("name") in always:
+            assert "if" not in step, f"{step['name']} must run in a dry run too"

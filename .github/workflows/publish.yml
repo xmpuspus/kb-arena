@@ -7,6 +7,14 @@ name: Publish to PyPI
 # documented path; this workflow is here for when the secret is added.
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: >-
+          Build, check, and attest without uploading. Use this to prove the
+          release path works before a real tag, so the first real publish is
+          not the first time these steps ever ran.
+        type: boolean
+        default: true
 
 jobs:
   publish:
@@ -57,7 +65,16 @@ jobs:
           name: sbom
           path: sbom.cdx.json
 
+      - name: Report the dry run
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "Dry run. Every step above ran for real and nothing was uploaded."
+          echo "Artifacts built:"
+          ls -la dist/
+          echo "SBOM components: $(python -c "import json;print(len(json.load(open('sbom.cdx.json')).get('components',[])))")"
+
       - name: Publish to PyPI
+        if: ${{ !inputs.dry_run }}
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
