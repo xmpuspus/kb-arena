@@ -78,6 +78,23 @@ def _questions(n: int) -> list[Question]:
     ]
 
 
+def _seed_run(tmp_path, run_id: str, **overrides):
+    snap = {
+        "llm_provider": settings.llm_provider,
+        "generate_model": settings.generate_model,
+        "judge_provider": "",
+        "judge_model": "",
+        "top_k": 5,
+        "question_split": "all",
+        "reference_free": False,
+        "ragas_enabled": False,
+    }
+    snap.update(overrides)
+    path = runner.run_manifest_path(tmp_path, run_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"run_id": run_id, "config_snapshot": snap}))
+
+
 def _harness(monkeypatch, tmp_path, strategies: list[str]):
     calls: list[tuple[str, str]] = []
 
@@ -100,6 +117,7 @@ def _harness(monkeypatch, tmp_path, strategies: list[str]):
 def test_a_resumed_run_skips_checkpointed_questions(tmp_path, monkeypatch, parallel, strategies):
     calls = _harness(monkeypatch, tmp_path, strategies)
     run_id = "abc12345"
+    _seed_run(tmp_path, run_id)
     for name in strategies:
         ckpt = runner.checkpoint_path(tmp_path, run_id, "c", name)
         append_jsonl(ckpt, _record("q1", strategy=name).model_dump(mode="json"))
@@ -129,6 +147,64 @@ def test_a_fresh_run_writes_a_checkpoint_line_per_record(tmp_path, monkeypatch):
     rows = read_jsonl(run_dirs[0] / "c_x.records.jsonl")
     assert sorted(row["question_id"] for row in rows) == ["q1", "q2", "q3"]
     assert not list(tmp_path.glob("**/*.tmp"))
+
+
+def test_a_resume_under_different_settings_is_refused(tmp_path, monkeypatch):
+    _harness(monkeypatch, tmp_path, ["x"])
+    _seed_run(tmp_path, "abc12345", top_k=10, reference_free=True)
+
+    with pytest.raises(runner.BenchmarkExecutionError, match="top_k, reference_free"):
+        asyncio.run(
+            runner.run_benchmark(
+                corpus="c", strategy="any", parallel=False, resume_run_id="abc12345"
+            )
+        )
+
+
+def test_a_resume_of_an_unknown_or_unsafe_run_id_is_refused(tmp_path, monkeypatch):
+    _harness(monkeypatch, tmp_path, ["x"])
+
+    with pytest.raises(runner.BenchmarkExecutionError, match="no run to resume"):
+        asyncio.run(
+            runner.run_benchmark(
+                corpus="c", strategy="any", parallel=False, resume_run_id="nothere1"
+            )
+        )
+    with pytest.raises(runner.BenchmarkExecutionError, match="invalid run id"):
+        asyncio.run(
+            runner.run_benchmark(corpus="c", strategy="any", parallel=False, resume_run_id="../etc")
+        )
+
+
+def test_a_fresh_run_writes_its_settings_first(tmp_path, monkeypatch):
+    _harness(monkeypatch, tmp_path, ["x"])
+
+    asyncio.run(runner.run_benchmark(corpus="c", strategy="any", parallel=False, top_k=7))
+
+    run_dir = next(p for p in tmp_path.iterdir() if p.name.startswith("run_"))
+    manifest = json.loads((run_dir / "run.json").read_text())
+    assert manifest["config_snapshot"]["top_k"] == 7
+    assert manifest["run_id"] == run_dir.name.removeprefix("run_")
+
+
+def test_resumed_records_count_toward_the_cost_cap(tmp_path, monkeypatch):
+    calls = _harness(monkeypatch, tmp_path, ["x"])
+    monkeypatch.setattr(settings, "benchmark_cost_cap_usd", 0.05)
+    run_id = "abc12345"
+    _seed_run(tmp_path, run_id)
+    ckpt = runner.checkpoint_path(tmp_path, run_id, "c", "x")
+    for qid in ("q1", "q2"):
+        rec = _record(qid)
+        rec.cost_usd = 0.03
+        append_jsonl(ckpt, rec.model_dump(mode="json"))
+
+    with pytest.raises(runner.BenchmarkIncompleteError):
+        asyncio.run(
+            runner.run_benchmark(corpus="c", strategy="any", parallel=False, resume_run_id=run_id)
+        )
+
+    # q3 ran once, then the cap that the first attempt already spent stopped the run
+    assert calls == [("x", "q3")]
 
 
 def test_the_cli_passes_the_resume_id(monkeypatch):

@@ -7,8 +7,10 @@ and reliability tracking.
 from __future__ import annotations
 
 import asyncio
+import json
 import math
 import random
+import re
 import time
 from collections.abc import AsyncIterator, Awaitable, Iterable
 from pathlib import Path
@@ -422,8 +424,46 @@ class CostCapExceededError(Exception):
     """Raised when cumulative benchmark cost exceeds the configured cap."""
 
 
+RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+# The settings a resumed run must share with the run it continues. A record
+# scored at top_k 5 says nothing about top_k 10, and the snapshot would lie.
+RESUME_KEYS = (
+    "llm_provider",
+    "generate_model",
+    "judge_provider",
+    "judge_model",
+    "top_k",
+    "question_split",
+    "reference_free",
+    "ragas_enabled",
+)
+
+
 def checkpoint_path(results_dir: Path, run_id: str, corpus: str, strategy: str) -> Path:
     return Path(results_dir) / f"run_{run_id}" / f"{corpus}_{strategy}.records.jsonl"
+
+
+def run_manifest_path(results_dir: Path, run_id: str) -> Path:
+    return Path(results_dir) / f"run_{run_id}" / "run.json"
+
+
+def check_resumable(results_dir: Path, run_id: str, config_snap: dict) -> None:
+    """Refuse a resume that would score under settings the first run did not use."""
+    if not RUN_ID_PATTERN.match(run_id):
+        raise BenchmarkExecutionError(f"invalid run id {run_id!r}: letters, digits, - and _ only")
+    path = run_manifest_path(results_dir, run_id)
+    if not path.exists():
+        raise BenchmarkExecutionError(f"no run to resume at {path.parent}")
+    try:
+        earlier = json.loads(path.read_text()).get("config_snapshot") or {}
+    except (json.JSONDecodeError, OSError) as exc:
+        raise BenchmarkExecutionError(f"cannot read {path}: {exc}") from exc
+    changed = [k for k in RESUME_KEYS if k in earlier and earlier.get(k) != config_snap.get(k)]
+    if changed:
+        raise BenchmarkExecutionError(
+            "cannot resume run "
+            f"{run_id}: these settings differ from the first run: {', '.join(changed)}"
+        )
 
 
 def load_checkpoint(path: Path) -> dict[str, AnswerRecord]:
@@ -461,6 +501,10 @@ async def run_benchmark(
     # as soon as it exists. A resumed run reads that file and skips the
     # questions it already holds.
     run_id = resume_run_id or uuid4().hex[:8]
+    if resume_run_id and not RUN_ID_PATTERN.match(resume_run_id):
+        raise BenchmarkExecutionError(
+            f"invalid run id {resume_run_id!r}: letters, digits, - and _ only"
+        )
     timestamp = datetime.now(UTC).isoformat()
     cost_cap = settings.benchmark_cost_cap_usd
     if not math.isfinite(cost_cap) or cost_cap < 0:
@@ -484,6 +528,17 @@ async def run_benchmark(
     semaphore = asyncio.Semaphore(settings.benchmark_max_concurrent)
     results_dir = Path(settings.results_path)
     results_dir.mkdir(parents=True, exist_ok=True)
+    if resume_run_id:
+        check_resumable(results_dir, resume_run_id, config_snap)
+    else:
+        # The run directory names its settings first, so a later --resume
+        # can tell whether it continues the same experiment.
+        atomic_write_text(
+            run_manifest_path(results_dir, run_id),
+            json.dumps(
+                {"run_id": run_id, "timestamp": timestamp, "config_snapshot": config_snap}, indent=2
+            ),
+        )
 
     corpora = discover_corpora() if corpus == "all" else [corpus]
     strategies = _load_strategies(strategy)
@@ -641,6 +696,11 @@ async def run_benchmark(
                     ckpt = checkpoint_path(results_dir, run_id, corp, strat.name)
                     done = load_checkpoint(ckpt) if resume_run_id else {}
                     bench.records.extend(done.values())
+                    # What the first attempt spent counts against this cap too,
+                    # or every resume could spend a whole cap again.
+                    resumed_cost = sum(r.cost_usd for r in done.values())
+                    cumulative_cost += resumed_cost
+                    cumulative_total_cost += resumed_cost
                     progress.advance(task, len(done))
                     pending = [q for q in questions if q.id not in done]
 
