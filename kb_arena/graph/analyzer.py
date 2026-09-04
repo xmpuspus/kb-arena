@@ -34,14 +34,22 @@ class GraphAnalyzer:
         self.last_centrality: dict[str, Any] = {}
 
     async def _load_rows(
-        self, cypher: str, budget: int, corpus: str | None = None
+        self,
+        cypher: str,
+        budget: int,
+        corpus: str | None = None,
+        ids: list[str] | None = None,
     ) -> tuple[list[dict], bool]:
         """Rows up to the budget, and whether more existed beyond it.
 
         One extra row tells truncation apart from a graph that fits. An entity
-        id starts with its corpus, so a corpus filter is a prefix match.
+        id starts with its corpus, so a corpus filter is a prefix match. An
+        edge query gets the loaded node ids, so an edge that leaves the slice
+        never spends the edge budget.
         """
-        params = {"limit": budget + 1, "prefix": f"{corpus}::" if corpus else ""}
+        params: dict[str, Any] = {"limit": budget + 1, "prefix": f"{corpus}::" if corpus else ""}
+        if ids is not None:
+            params["ids"] = ids
         rows = await self._store.execute_query(cypher, params)
         rows = list(rows)
         truncated = len(rows) > budget
@@ -96,11 +104,12 @@ class GraphAnalyzer:
         )
         edges, edges_truncated = await self._load_rows(
             "MATCH (a:KBArenaEntity)-[r]->(b:KBArenaEntity) "
-            "WHERE $prefix = '' OR a.entity_id STARTS WITH $prefix "
+            "WHERE a.entity_id IN $ids AND b.entity_id IN $ids "
             "RETURN a.entity_id AS src, b.entity_id AS dst, type(r) AS rel "
             "ORDER BY a.entity_id LIMIT $limit",
             settings.graph_edge_budget,
             corpus,
+            ids=[row["entity_id"] for row in nodes],
         )
 
         graph: nx.Graph = nx.Graph()
@@ -160,11 +169,12 @@ class GraphAnalyzer:
         )
         edges, edges_truncated = await self._load_rows(
             "MATCH (a:KBArenaEntity)-[r]->(b:KBArenaEntity) "
-            "WHERE $prefix = '' OR a.entity_id STARTS WITH $prefix "
+            "WHERE a.entity_id IN $ids AND b.entity_id IN $ids "
             "RETURN a.entity_id AS src, b.entity_id AS dst, type(r) AS rel "
             "ORDER BY a.entity_id LIMIT $limit",
             settings.graph_edge_budget,
             corpus,
+            ids=[row["entity_id"] for row in nodes],
         )
 
         graph: nx.DiGraph = nx.DiGraph()
@@ -247,7 +257,10 @@ class GraphAnalyzer:
         graph = await self._build_networkx_graph(corpus)
         node_count = graph.number_of_nodes()
         samples = min(settings.graph_centrality_samples, node_count)
-        # k pivots equal to every node is the exact computation, so say so.
+        # k pivots equal to every node is the exact computation at the same
+        # cost, so it is labeled exact. The ceiling still bounds the cost:
+        # above it the run never visits more than graph_centrality_samples
+        # pivots.
         exact = node_count <= settings.graph_centrality_exact_max_nodes or samples >= node_count
         if exact:
             centrality: dict[str, float] = await asyncio.to_thread(

@@ -29,7 +29,8 @@ def _store(nodes, edges):
         if "MATCH (n:KBArenaEntity)" in cypher:
             rows = [n for n in nodes if n["entity_id"].startswith(prefix)]
         else:
-            rows = [e for e in edges if e["src"].startswith(prefix)]
+            ids = set(params.get("ids") or [])
+            rows = [e for e in edges if e["src"] in ids and e["dst"] in ids]
         return rows[:limit] if limit else rows
 
     store.execute_query.side_effect = execute_query
@@ -64,7 +65,10 @@ async def test_a_graph_over_the_node_budget_loads_a_slice_and_drops_edges_outsid
     assert graph.number_of_nodes() == 3
     assert graph.number_of_edges() == 2
     assert analyzer.last_load["truncated"] is True
-    assert analyzer.last_load["edges_dropped_outside_slice"] == 3
+    # the store only returns edges among the loaded nodes, so none are dropped here
+    assert analyzer.last_load["edges_dropped_outside_slice"] == 0
+    edge_call = next(c for c in analyzer._store.execute_query.await_args_list if "ids" in c.args[1])
+    assert sorted(edge_call.args[1]["ids"]) == ["c::n0", "c::n1", "c::n2"]
     # the store was asked for one row past the budget, never the whole graph
     calls = analyzer._store.execute_query.await_args_list
     limits = [c.args[1]["limit"] for c in calls if "limit" in c.args[1]]
@@ -231,3 +235,18 @@ async def test_communities_are_seeded():
     second = await analyzer.analyze_communities()
 
     assert [sorted(c) for c in first] == [sorted(c) for c in second]
+
+
+@pytest.mark.asyncio
+async def test_an_edge_that_leaves_the_slice_never_spends_the_edge_budget(monkeypatch):
+    monkeypatch.setattr(settings, "graph_node_budget", 3)
+    monkeypatch.setattr(settings, "graph_edge_budget", 2)
+    nodes, edges = _chain(6)
+    # three edges from the slice into the rest of the graph, listed first
+    edges = [{"src": "c::n0", "dst": f"c::n{i}", "rel": "X"} for i in (3, 4, 5)] + edges
+    analyzer = GraphAnalyzer(_store(nodes, edges))
+
+    graph = await analyzer._build_networkx_graph()
+
+    assert graph.number_of_nodes() == 3
+    assert graph.number_of_edges() == 2, "the budget went to edges inside the slice"
