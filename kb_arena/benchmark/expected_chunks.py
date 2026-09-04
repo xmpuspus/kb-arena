@@ -31,6 +31,26 @@ def _write_expected_chunks(path: Path, labels: dict[str, list[str]]) -> None:
     atomic_write_text(path, yaml.safe_dump(labels, sort_keys=True, default_flow_style=False))
 
 
+JUDGE_PROMPT = """You are labeling retrieval ground truth for a documentation QA benchmark.
+
+Given a QUESTION and CANDIDATE chunks, identify which chunks contain information
+that helps answer the question — including partial information, supporting context,
+and related details. Err on the side of inclusion if a chunk is plausibly useful;
+exclude only chunks that are clearly off-topic.
+
+QUESTION: {question}
+
+CANDIDATES:
+{candidates}
+
+OUTPUT FORMAT — strict:
+Return ONLY a single JSON array literal of chunk_id strings. No prose, no reasoning,
+no code fences. If nothing is relevant, return [].
+
+Example:
+["lambda-overview::pricing", "ec2-overview::instance-types"]"""
+
+
 def _strip_fences(text: str) -> str:
     text = text.strip()
     if text.startswith("```"):
