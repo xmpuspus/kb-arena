@@ -26,6 +26,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from kb_arena.benchmark.holdout import HOLDOUT_SPLIT, LEDGER_NAME, record_holdout_use
 from kb_arena.benchmark.ir_metrics import compute_all
 from kb_arena.benchmark.questions import load_questions
 from kb_arena.settings import settings
@@ -628,6 +629,7 @@ async def run_optimize(
     dry_run: bool = False,
     out_dir: str | None = None,
     split: str = "auto",
+    allow_holdout: bool = False,
 ) -> int:
     """Sweep, score, report. Returns 0 on success, 1 on hard failure."""
     from rich.console import Console
@@ -696,6 +698,16 @@ async def run_optimize(
     if split == "auto":
         labeled = {getattr(q, "split", "unspecified") for q in all_questions} - {"unspecified"}
         effective_split = "development" if labeled else "all"
+    # The optimizer searches. A search on the holdout split fits to it, and
+    # the split then proves nothing. One explicit confirmation run is the
+    # only reason to open it, and that run is written to the holdout ledger.
+    if effective_split == HOLDOUT_SPLIT and not allow_holdout:
+        console.print(
+            "[red]The holdout split is sealed. optimize tunes on the development split. "
+            "To confirm one lead on the holdout, pass --confirm-holdout. Every holdout "
+            f"run is written to {LEDGER_NAME}.[/red]"
+        )
+        return 1
     questions = (
         all_questions
         if effective_split == "all"
@@ -740,6 +752,14 @@ async def run_optimize(
         results[s] = summarize_optimization(s, trial_results, base, metric=metric)
 
     pareto_optimal_strategies(list(results.values()))  # marks pareto_optimal in-place
+    if effective_split == HOLDOUT_SPLIT:
+        record_holdout_use(
+            settings.results_path,
+            tool="optimize",
+            corpus=corpus,
+            run_id=run_id,
+            strategies=list(results),
+        )
 
     out = Path(out_dir) if out_dir else Path(settings.results_path) / f"run_{run_id}"
     out.mkdir(parents=True, exist_ok=True)

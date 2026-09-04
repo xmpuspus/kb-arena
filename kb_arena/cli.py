@@ -1312,6 +1312,37 @@ def eval(
         console.print("[green]All thresholds passed.[/green]")
 
 
+@app.command("holdout-uses")
+def holdout_uses_command(
+    corpus: str = typer.Option("", "--corpus", help="Only this corpus. Default: every corpus"),
+):
+    """List every run that opened the sealed holdout split, oldest first."""
+    from rich.table import Table
+
+    from kb_arena.benchmark.holdout import holdout_uses
+    from kb_arena.settings import settings
+
+    uses = holdout_uses(settings.results_path, corpus or None)
+    if not uses:
+        console.print("[green]The holdout split has not been opened.[/green]")
+        return
+    table = Table(title=f"holdout uses: {len(uses)}")
+    for col in ("when", "tool", "corpus", "run", "strategies"):
+        table.add_column(col)
+    for use in uses:
+        table.add_row(
+            str(use.get("timestamp", ""))[:19],
+            str(use.get("tool", "")),
+            str(use.get("corpus", "")),
+            str(use.get("run_id", "")),
+            ", ".join(use.get("strategies") or []),
+        )
+    console.print(table)
+    console.print(
+        "[dim]A number published from the holdout means more when this list is short.[/dim]"
+    )
+
+
 @app.command(name="retriever-lab")
 def retriever_lab(
     corpus: str = typer.Option("all", help="Corpus to evaluate"),
@@ -1464,6 +1495,12 @@ def optimize(
     method: str = typer.Option("grid", "--method", help="Search method: grid|random"),
     max_trials: int = typer.Option(0, "--max-trials", help="Cap trials per strategy (0 = no cap)"),
     seed: int = typer.Option(0, "--seed", help="RNG seed for --method random"),
+    confirm_holdout: bool = typer.Option(
+        False,
+        "--confirm-holdout",
+        help="Open the sealed holdout split for one confirmation run. The run is written "
+        "to results/holdout_uses.jsonl",
+    ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Print the trial plan and cost preview, then exit"
     ),
@@ -1521,6 +1558,7 @@ def optimize(
             seed=seed,
             dry_run=dry_run,
             split=split,
+            allow_holdout=confirm_holdout,
         )
     )
     if exit_code:
