@@ -28,6 +28,14 @@ def test_uses_are_appended_and_read_back(tmp_path):
     assert holdout.holdout_uses(tmp_path / "none") == []
 
 
+def test_touches_holdout_reads_the_questions_not_the_split_name():
+    assert holdout.touches_holdout(
+        [SimpleNamespace(split="development"), SimpleNamespace(split="holdout")]
+    )
+    assert not holdout.touches_holdout([SimpleNamespace(split="development")])
+    assert not holdout.touches_holdout([])
+
+
 def _holdout_questions(n: int = 3):
     from kb_arena.models.benchmark import GroundTruth, Question
 
@@ -55,18 +63,19 @@ def _optimize_harness(monkeypatch, tmp_path):
     monkeypatch.setattr(optimizer, "load_questions", lambda corpus: _holdout_questions())
 
 
-def test_the_optimizer_refuses_the_holdout_split_without_confirmation(tmp_path, monkeypatch):
+@pytest.mark.parametrize("split", ["holdout", "all"])
+def test_the_optimizer_refuses_holdout_questions_without_confirmation(tmp_path, monkeypatch, split):
     from kb_arena.benchmark import optimizer
 
     _optimize_harness(monkeypatch, tmp_path)
 
-    code = asyncio.run(optimizer.run_optimize("c", strategies_filter="bm25", split="holdout"))
+    code = asyncio.run(optimizer.run_optimize("c", strategies_filter="bm25", split=split))
 
     assert code == 1
     assert holdout.holdout_uses(tmp_path) == []
 
 
-def test_a_confirmed_holdout_run_passes_the_gate(tmp_path, monkeypatch):
+def test_a_confirmed_holdout_run_passes_the_gate_and_is_written_first(tmp_path, monkeypatch):
     from kb_arena.benchmark import optimizer
 
     _optimize_harness(monkeypatch, tmp_path)
@@ -83,6 +92,9 @@ def test_a_confirmed_holdout_run_passes_the_gate(tmp_path, monkeypatch):
                 "c", strategies_filter="bm25", split="holdout", allow_holdout=True
             )
         )
+    # the ledger line lands before scoring, so a crash never hides a use
+    uses = holdout.holdout_uses(tmp_path)
+    assert len(uses) == 1 and uses[0]["tool"] == "optimize"
 
 
 def test_a_holdout_benchmark_run_is_written_down(tmp_path, monkeypatch):
@@ -107,14 +119,56 @@ def test_a_holdout_benchmark_run_is_written_down(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "benchmark_cost_cap_usd", 0.0)
 
     asyncio.run(runner.run_benchmark(corpus="c", strategy="any", parallel=False, split="holdout"))
-    asyncio.run(
-        runner.run_benchmark(corpus="c", strategy="any", parallel=False, split="development")
-    )
+    # the default split reads every question, holdout ones included
+    asyncio.run(runner.run_benchmark(corpus="c", strategy="any", parallel=False))
 
     uses = holdout.holdout_uses(tmp_path)
-    assert len(uses) == 1
-    assert uses[0]["tool"] == "benchmark"
+    assert len(uses) == 2
+    assert {u["tool"] for u in uses} == {"benchmark"}
     assert uses[0]["strategies"] == ["x"]
+
+
+def test_a_development_benchmark_run_is_not_written_down(tmp_path, monkeypatch):
+    from kb_arena.benchmark import runner
+    from kb_arena.models.benchmark import AnswerRecord, Score
+
+    async def fake_run_one(strat, qid, *args, **kwargs):
+        return AnswerRecord(
+            question_id=qid, strategy=strat.name, answer="a", score=Score(accuracy=1.0)
+        )
+
+    class _Strategy:
+        name = "x"
+
+    dev = _holdout_questions(1)
+    dev[0].split = "development"
+    monkeypatch.setattr(runner, "_run_one", fake_run_one)
+    monkeypatch.setattr(runner, "load_questions", lambda corpus, tier=0, split="": dev)
+    monkeypatch.setattr(runner, "_load_strategies", lambda names: [_Strategy()])
+    monkeypatch.setattr(runner, "LLMClient", lambda: object())
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    monkeypatch.setattr(settings, "benchmark_cost_cap_usd", 0.0)
+
+    asyncio.run(runner.run_benchmark(corpus="c", strategy="any", parallel=False))
+
+    assert holdout.holdout_uses(tmp_path) == []
+
+
+def test_a_retriever_lab_run_on_holdout_questions_is_written_down(tmp_path, monkeypatch):
+    from kb_arena.benchmark import retriever_lab
+
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    monkeypatch.setattr(
+        retriever_lab, "load_questions", lambda corpus, tier=0, split="": _holdout_questions(1)
+    )
+
+    # bm25 has no index here, so every query fails and the run reports it.
+    # The ledger line lands right after the questions load, before any query.
+    asyncio.run(retriever_lab.run_retriever_lab(corpus="c", strategies_filter="bm25"))
+
+    uses = holdout.holdout_uses(tmp_path)
+    assert len(uses) == 1 and uses[0]["tool"] == "retriever-lab"
+    assert uses[0]["strategies"] == ["bm25"]
 
 
 def test_the_cli_lists_uses(tmp_path, monkeypatch):

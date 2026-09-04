@@ -18,7 +18,7 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from kb_arena.benchmark.evaluator import evaluate
-from kb_arena.benchmark.holdout import HOLDOUT_SPLIT, record_holdout_use
+from kb_arena.benchmark.holdout import record_holdout_use, touches_holdout
 from kb_arena.benchmark.ir_metrics import compute_all as compute_ir_metrics
 from kb_arena.benchmark.manifest import (
     SCHEMA_VERSION,
@@ -524,7 +524,8 @@ async def run_benchmark(
         selected_questions = True
 
         questions_map = {q.id: (q.type, q.tier) for q in questions}
-        if split == HOLDOUT_SPLIT:
+        # The default split and "all" read the holdout questions too.
+        if touches_holdout(questions):
             record_holdout_use(
                 results_dir,
                 tool="benchmark",
