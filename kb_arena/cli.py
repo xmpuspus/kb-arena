@@ -1325,6 +1325,113 @@ def eval(
         console.print("[green]All thresholds passed.[/green]")
 
 
+@app.command()
+def compare(
+    a: str = typer.Option(..., "--a", help="Strategy A, the baseline"),
+    b: str = typer.Option(..., "--b", help="Strategy B, the candidate"),
+    corpus: str = typer.Option("aws-compute", "--corpus", help="Corpus both results belong to"),
+    run_a: str = typer.Option("", "--run-a", help="Run id for A. Default: the latest result file"),
+    run_b: str = typer.Option("", "--run-b", help="Run id for B. Default: the latest result file"),
+    metric: str = typer.Option(
+        "accuracy", "--metric", help="Score field, or latency_ms, or cost_usd"
+    ),
+    lab: str = typer.Option(
+        "", "--lab", help="A retriever-lab JSON. Compare two strategies inside it"
+    ),
+    out: str = typer.Option("", "--out", help="Where to write the JSON artifact"),
+):
+    """Pair two strategies question by question: deltas, CI, effect size, win/tie/loss."""
+    import json as _json
+    from pathlib import Path as _Path
+
+    from rich.table import Table
+
+    from kb_arena.benchmark.compare import (
+        METRIC_NAME,
+        SAFE_ID,
+        compare_lab,
+        compare_result_files,
+        resolve_result_path,
+    )
+    from kb_arena.settings import settings
+
+    results_dir = _Path(settings.results_path)
+    for name, value in (("--a", a), ("--b", b), ("--corpus", corpus)):
+        if not SAFE_ID.fullmatch(value):
+            console.print(f"[red]{name} must be letters, digits, dot, dash, or underscore[/red]")
+            raise typer.Exit(1)
+    if not METRIC_NAME.fullmatch(metric):
+        console.print("[red]--metric must be a metric name, letters, digits, and underscores[/red]")
+        raise typer.Exit(1)
+    if lab and (run_a or run_b):
+        console.print(
+            "[red]--lab compares two strategies inside one file. Drop --run-a and --run-b.[/red]"
+        )
+        raise typer.Exit(1)
+    try:
+        if lab:
+            result = compare_lab(_Path(lab), a, b, metric=metric)
+        else:
+            path_a = resolve_result_path(results_dir, corpus, a, run_a or None)
+            path_b = resolve_result_path(results_dir, corpus, b, run_b or None)
+            for path in (path_a, path_b):
+                if not path.exists():
+                    console.print(
+                        f"[red]No result file at {path}. Run kb-arena benchmark first.[/red]"
+                    )
+                    raise typer.Exit(1)
+            result = compare_result_files(path_a, path_b, metric=metric)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from exc
+
+    meta = result["meta"]
+    if meta["comparable"]:
+        console.print(f"[green]Comparable:[/green] {result['n_paired']} paired questions")
+    else:
+        console.print("[yellow]Not a clean comparison:[/yellow] " + "; ".join(meta["reasons"]))
+    low, high = result["delta_ci_95"]
+    p_value = result["wilcoxon_p"]
+    table = Table(title=f"{result['b']} minus {result['a']} on {result['metric']}")
+    for col in (
+        "n",
+        f"mean {result['a']}",
+        f"mean {result['b']}",
+        "delta",
+        "95% CI",
+        "p",
+        "d",
+        "W/T/L",
+    ):
+        table.add_column(col, justify="right")
+    table.add_row(
+        str(result["n_paired"]),
+        f"{result['mean_a']:.4f}",
+        f"{result['mean_b']:.4f}",
+        f"{result['mean_delta']:+.4f}",
+        f"[{low:+.4f}, {high:+.4f}]",
+        "n/a" if p_value is None else f"{p_value:.3f}",
+        f"{result['effect_size_d']:+.2f}",
+        f"{result['wins']}/{result['ties']}/{result['losses']}",
+    )
+    console.print(table)
+    if result["ci_excludes_zero"] and result["significant"]:
+        console.print("[green]The CI excludes zero and p < 0.05.[/green]")
+    else:
+        console.print("[dim]No significant difference at this sample size.[/dim]")
+
+    if out:
+        out_path = _Path(out)
+    elif lab:
+        out_path = _Path(lab).parent / f"compare_lab_{a}_vs_{b}_{metric}.json"
+    else:
+        tag_a, tag_b = run_a or "latest", run_b or "latest"
+        out_path = results_dir / f"compare_{corpus}_{a}@{tag_a}_vs_{b}@{tag_b}_{metric}.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(_json.dumps(result, indent=2))
+    console.print(f"[dim]Wrote {out_path}[/dim]")
+
+
 @app.command(name="retriever-lab")
 def retriever_lab(
     corpus: str = typer.Option("all", help="Corpus to evaluate"),
