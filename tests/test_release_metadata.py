@@ -189,6 +189,10 @@ def test_a_dispatch_cannot_publish_an_arbitrary_branch() -> None:
     guard = next(s for s in steps if "Refuse a real publish" in (s.get("name") or ""))
 
     assert guard["if"] == "${{ !inputs.dry_run }}"
+    # The ref rides in the environment. A `${{ }}` paste happens before bash
+    # runs, so a crafted branch name would execute as code.
+    assert "${{ github.ref }}" not in guard["run"], "never interpolate a ref into a script"
+    assert guard["env"]["REF"] == "${{ github.ref }}"
     assert "refs/tags/v*" in guard["run"]
     assert "refs/heads/main" in guard["run"]
     # The guard must sit before the build, or it protects nothing.
@@ -207,12 +211,22 @@ def test_the_workflow_never_reports_success_for_a_version_already_on_pypi() -> N
         "--skip-existing" not in upload["run"]
     ), "a version already on PyPI must fail the run, not pass it in silence"
     check = next(s for s in steps if "Refuse to republish" in (s.get("name") or ""))
+    names = [s.get("name") or s.get("uses", "") for s in steps]
+    # A duplicate must be caught before anything permanent happens. An
+    # attestation and an SBOM artifact both outlive the run.
+    assert names.index(check["name"]) < names.index("Attest build provenance")
+    assert names.index(check["name"]) < names.index("Upload SBOM")
+    # Only 404 proves the version is free. A 500 or a redirect proves nothing.
+    assert "404)" in check["run"]
+    assert "Refusing to guess" in check["run"]
+    # A tag must name the version it releases.
+    assert 'tag != "v$version"' in check["run"] or "v$version" in check["run"]
     assert "pypi.org/pypi/kb-arena" in check["run"]
     # The job installs build tools only, so importing the package would fail
     # for a missing runtime dependency and read as a release problem.
-    assert "import kb_arena" not in check["run"], (
-        "read the version off the built wheel, not by importing the package"
-    )
+    assert (
+        "import kb_arena" not in check["run"]
+    ), "read the version off the built wheel, not by importing the package"
     assert "dist/*.whl" in check["run"]
 
 
