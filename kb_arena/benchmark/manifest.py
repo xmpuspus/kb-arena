@@ -149,10 +149,29 @@ def build_manifest(corpus: str, questions, *, top_k: int, split: str, reference_
     }
     return {
         **core,
+        # Deliberately outside the core: two runs that differ only by seed
+        # measured the same experiment, so they must group together and give
+        # a spread instead of splitting into two keys of one run each.
+        "seed": seed_identity(),
         "question_count": len(questions),
         "code_version": __version__,
         "git_sha": git_sha(),
         "compatibility_key": _digest(core_of(core)),
+    }
+
+
+def seed_identity() -> dict:
+    """The seed a run sets, and what that seed does and does not control.
+
+    Nothing in KB Arena samples from a strategy today, and the judge runs at
+    temperature 0, so a repeat still moves through provider-side variation
+    this seed cannot reach. Saying so is the point: a reader must not read a
+    captured seed as a promise of an identical run.
+    """
+    return {
+        "value": int(settings.run_seed),
+        "controls": ["candidate sampling", "trial order", "bootstrap resampling"],
+        "does_not_control": ["provider-side model sampling", "retrieval tie order"],
     }
 
 

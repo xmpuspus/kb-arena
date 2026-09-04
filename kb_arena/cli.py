@@ -345,7 +345,14 @@ def benchmark(
         "--runs",
         min=1,
         help="Repeat the whole benchmark N times, one run id each, for spread. "
-        "The cost cap applies to each run, so N runs can spend N times the cap.",
+        "The cost cap applies to each run, so N runs can spend N times the cap. "
+        "Read the spread with `kb-arena variance`.",
+    ),
+    seed: int = typer.Option(
+        -1,
+        "--seed",
+        help="Seed recorded in every run manifest. Default -1 keeps KB_ARENA_RUN_SEED. "
+        "It does not control provider-side model sampling.",
     ),
     strategy_module: str = typer.Option(
         "",
@@ -420,6 +427,11 @@ def benchmark(
         _settings.benchmark_enable_ragas = True
 
     from kb_arena.benchmark.runner import BenchmarkExecutionError, run_benchmark
+
+    if seed >= 0:
+        from kb_arena.settings import settings as _seed_settings
+
+        _seed_settings.run_seed = seed
 
     try:
         # Each repeat gets its own run id and result files, so a later reader
@@ -1588,6 +1600,66 @@ def label_chunks(
         f"of {result['total_questions']} (cost ${result['cost_usd']:.4f}{note})[/green]"
     )
     console.print(f"Saved to {result['path']}")
+
+
+@app.command(name="variance")
+def variance(
+    corpus: str = typer.Option("", help="Corpus to read, or every corpus when empty"),
+    metric: str = typer.Option(
+        "accuracy_by_tier", help="Result field to spread, averaged over its tiers"
+    ),
+):
+    """Stage 4b: the spread across repeats of one experiment.
+
+    `kb-arena benchmark --runs N` writes N results that share a compatibility
+    key. This reads them and says how far the number moved when nothing about
+    the experiment changed.
+    """
+    from rich.table import Table
+
+    from kb_arena.benchmark.variance import (
+        MIN_RUNS_FOR_SPREAD,
+        load_runs,
+        spread_report,
+    )
+
+    runs = load_runs(corpus or None)
+    if not runs:
+        console.print("[yellow]No results found. Run `kb-arena benchmark` first.[/yellow]")
+        raise typer.Exit(1)
+
+    rows = spread_report(runs, metrics=(metric,))
+    table = Table(title=f"Spread over repeats ({metric})")
+    for column in ("corpus", "strategy", "key", "runs", "seeds", "mean", "sd", "range"):
+        table.add_column(column)
+    thin = 0
+    for row in rows:
+        spread = row["metrics"].get(metric)
+        if not spread:
+            continue
+        if spread["runs"] < MIN_RUNS_FOR_SPREAD:
+            thin += 1
+        seeds = ", ".join(str(s) for s in row["seeds"] if s is not None) or "unrecorded"
+        table.add_row(
+            row["corpus"],
+            row["strategy"],
+            row["compatibility_key"][:12],
+            str(spread["runs"]),
+            seeds,
+            f"{spread['mean']:.4f}",
+            "-" if spread["sd"] is None else f"{spread['sd']:.4f}",
+            "-" if spread["half_width"] is None else f"+/-{spread['half_width']:.4f}",
+        )
+    console.print(table)
+    console.print(
+        "A row groups by compatibility key, so two runs that measured different "
+        "things never share a spread."
+    )
+    if thin:
+        console.print(
+            f"[yellow]{thin} row(s) rest on one run. One run gives a point and no "
+            f"spread. Use `kb-arena benchmark --runs 3` or more.[/yellow]"
+        )
 
 
 @app.command(name="optimize")

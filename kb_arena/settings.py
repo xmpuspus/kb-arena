@@ -136,6 +136,10 @@ class Settings(BaseSettings):
     sqr_shots: int = 0  # 0 = exact statevector (benchmark default); >0 = sampled SWAP test
 
     # Paths
+    # The seed a run records and sets. Two runs that differ only by seed are
+    # the same experiment, so the seed stays out of the compatibility key.
+    run_seed: int = 0
+
     datasets_path: str = "./datasets"
     results_path: str = "./results"
 
