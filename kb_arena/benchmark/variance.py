@@ -220,14 +220,14 @@ def load_runs(corpus: str | None = None) -> list[dict]:
                 # Silently shrinking the sample would report a spread over what
                 # survived. An unrelated file is not evidence, so it is skipped
                 # the same way a malformed one is.
-                if _looks_like_a_result(path):
+                if _looks_like_a_result(path) and _is_for_corpus(path, corpus):
                     unreadable.append(f"{path}: {exc}")
                 continue
             except json.JSONDecodeError as exc:
                 # Only a file shaped like a result. `results/` also holds
                 # summaries, reports and scratch, and one bad byte in any of
                 # those must not block a report about the runs.
-                if _looks_like_a_result(path):
+                if _looks_like_a_result(path) and _is_for_corpus(path, corpus):
                     unreadable.append(f"{path}: malformed JSON, {exc}")
                 continue
             if not isinstance(data, dict) or "strategy" not in data or "corpus" not in data:
@@ -269,6 +269,18 @@ def _looks_like_a_result(path: Path) -> bool:
         return False
     corpus, _, strategy = stem.partition("_")
     return bool(corpus) and bool(strategy) and path.name not in _NON_RESULT_NAMES
+
+
+def _is_for_corpus(path: Path, corpus: str | None) -> bool:
+    """Whether an unreadable result could belong to the corpus being reported.
+
+    A file that cannot be read cannot name its corpus, so the name is all there
+    is. A report about one corpus must not stop because another corpus has a
+    broken file.
+    """
+    if not corpus:
+        return True
+    return path.stem.startswith(f"{corpus}_")
 
 
 def _code_version(run: dict) -> str:

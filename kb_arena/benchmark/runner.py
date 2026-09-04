@@ -498,20 +498,15 @@ def _bind_run_manifest(
         earlier = keys.get(corpus)
         if earlier is None:
             # A checkpoint written before keys were recorded cannot be checked.
-            # Refusing it blamed the question set for a change nobody made, and
-            # an absent record is not a changed one. The same rule the seed
-            # comparison uses: what one side never wrote cannot differ.
-            logger.warning(
-                "Run %s recorded no experiment key for corpus %s, so this resume "
-                "cannot check that the two runs measured the same thing.",
-                run_id,
-                corpus,
+            # Recording the current key would relabel its stale records as
+            # results of this experiment, and this file is the evidence a
+            # reader cites. So the resume is refused, and the message says the
+            # real reason instead of blaming a change nobody made.
+            raise BenchmarkExecutionError(
+                f"cannot resume run {run_id} for corpus {corpus}: it recorded no "
+                f"experiment key, so there is no way to check that it measured the "
+                f"same thing. Start a fresh run instead of relabelling its records."
             )
-            keys[corpus] = key
-            atomic_write_text(
-                run_manifest_path(results_dir, run_id), json.dumps(run_record, indent=2)
-            )
-            return
         if earlier != key:
             raise BenchmarkExecutionError(
                 f"cannot resume run {run_id} for corpus {corpus}: the experiment key is "

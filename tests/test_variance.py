@@ -694,18 +694,22 @@ def test_the_recorded_commit_is_the_whole_one():
         assert len(sha) == 40
 
 
-def test_a_checkpoint_without_an_experiment_key_still_resumes(tmp_path, monkeypatch):
-    """Refusing it blamed the question set for a change nobody made."""
+def test_a_checkpoint_without_an_experiment_key_is_refused_for_the_right_reason(
+    tmp_path, monkeypatch
+):
+    """Recording the current key would relabel stale records as this experiment.
+
+    The old message blamed the question set, the qrels, the judge, the
+    embedding, the chunking or top_k for a change nobody made. The refusal is
+    correct and the reason now is too.
+    """
     from kb_arena.benchmark import runner
 
     monkeypatch.setattr(settings, "results_path", str(tmp_path))
-    run_dir = tmp_path / "run_old"
-    run_dir.mkdir()
     record: dict = {"run_id": "old"}
 
-    runner._bind_run_manifest(record, "c", "key123", "old", tmp_path, "old")
-
-    assert record["manifests"]["c"] == "key123", "the key is recorded, not refused"
+    with pytest.raises(runner.BenchmarkExecutionError, match="recorded no experiment key"):
+        runner._bind_run_manifest(record, "c", "key123", "old", tmp_path, "old")
 
 
 def test_a_checkpoint_with_a_different_key_is_still_refused(tmp_path, monkeypatch):
@@ -717,3 +721,23 @@ def test_a_checkpoint_with_a_different_key_is_still_refused(tmp_path, monkeypatc
 
     with pytest.raises(runner.BenchmarkExecutionError, match="experiment key"):
         runner._bind_run_manifest(record, "c", "key123", "old", tmp_path, "old")
+
+
+def test_another_corpus_broken_file_never_blocks_this_corpus(tmp_path, monkeypatch):
+    """A file that cannot be read cannot name its corpus, so the name is all there is."""
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    (tmp_path / "run_a").mkdir()
+    (tmp_path / "run_a" / "c_bm25.json").write_text(
+        json.dumps(
+            {"corpus": "c", "strategy": "bm25", "run_id": "a", "accuracy_by_tier": {"1": 0.2}}
+        )
+    )
+    (tmp_path / "run_b").mkdir()
+    (tmp_path / "run_b" / "other_bm25.json").write_text("{truncated")
+
+    # A report about corpus c proceeds.
+    assert len(variance.load_runs("c")) == 1
+
+    # A report about every corpus still stops, because that file is in scope.
+    with pytest.raises(variance.RunsUnreadableError):
+        variance.load_runs()
