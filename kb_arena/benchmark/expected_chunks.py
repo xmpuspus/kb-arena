@@ -59,8 +59,10 @@ CANDIDATES:
 OUTPUT FORMAT — strict:
 Return ONLY a single JSON object literal that maps chunk_id to a grade. No prose,
 no reasoning, no code fences. Grade 2: the chunk answers the question on its own.
-Grade 1: the chunk supports the answer but does not give it. Leave out every
-chunk that is irrelevant. If nothing is relevant, return {{}}.
+Grade 1: the chunk supports the answer but does not give it. Grade 0: you read
+the chunk and it is irrelevant. Grade every candidate you were shown, so a
+later reader knows which chunks a judge rejected. If nothing is relevant,
+grade every candidate 0.
 
 Example:
 {{"lambda-overview::pricing": 2, "ec2-overview::instance-types": 1}}"""
@@ -77,8 +79,12 @@ def _strip_fences(text: str) -> str:
     return text.strip()
 
 
-def _parse_grades(text: str, valid: set[str]) -> dict[str, int]:
-    """The judge's grades. An object maps chunk to grade. A bare array is grade 1 each."""
+def _parse_grades(text: str, valid: set[str], report: bool = False):
+    """The judge's grades, and whether anything parsed at all when report is true.
+
+    An object maps chunk to grade. A bare array is the old shape and every
+    chunk becomes grade 1, which loses the grade-2 signal, so it is logged.
+    """
     text = _strip_fences(text)
     decoder = json.JSONDecoder()
     for opener in ("{", "["):
@@ -92,13 +98,13 @@ def _parse_grades(text: str, valid: set[str]) -> dict[str, int]:
             if isinstance(parsed, dict):
                 out: dict[str, int] = {}
                 for cid, grade in parsed.items():
-                    if str(cid) in valid and not isinstance(grade, bool) and grade in (1, 2):
+                    if str(cid) in valid and not isinstance(grade, bool) and grade in (0, 1, 2):
                         out[str(cid)] = int(grade)
-                return out
+                return (out, True) if report else out
             if isinstance(parsed, list):
                 return {str(c): 1 for c in parsed if str(c) in valid}
             start = text.find(opener, start + 1)
-    return {}
+    return ({}, False) if report else {}
 
 
 def _extract_json_array(text: str) -> str | None:
@@ -161,6 +167,15 @@ async def label_one_question(
                     question_text, top_k=n_candidates, corpus=corpus
                 )
             except Exception as exc:
+                # One retriever's failure narrows the pool. It must not throw
+                # away the labels the other retrievers can still support.
+                log.warning(
+                    "Retriever %s failed while building the label pool: %s", retriever.name, exc
+                )
+                continue
+            else:
+                pass
+            if False:
                 raise RuntimeError(
                     f"Extra retriever {retriever.name} failed while building the label pool"
                 ) from exc
@@ -206,13 +221,18 @@ async def label_one_question(
 
     resp = await llm.extract(
         text=prompt,
-        system_prompt="You output only a JSON array literal. No prose. No markdown.",
+        system_prompt=(
+            "You output only a JSON object literal mapping chunk_id to a grade. "
+            "No prose. No markdown."
+        ),
     )
     cost += float(resp.cost_usd or 0.0)
     valid = {c.chunk_id for c in deduped}
-    grades = _parse_grades(resp.text, valid)
-    if not grades and "{" not in resp.text and "[" not in resp.text:
-        log.warning("No JSON in judge output: %.200s", resp.text)
+    grades, parsed_any = _parse_grades(resp.text, valid, report=True)
+    if not parsed_any:
+        # A truncated object parses as nothing. An empty label would go to
+        # disk and force=False would skip that question forever.
+        log.warning("Judge output did not parse as grades: %.200s", resp.text)
     return grades, cost
 
 
@@ -244,15 +264,18 @@ async def label_corpus(
         from kb_arena.strategies.naive_vector import NaiveVectorStrategy
 
         chroma = chromadb.PersistentClient(path=settings.chroma_path)
-        from kb_arena.strategies import get_strategy
-        from kb_arena.strategies.catalog import default_strategy_names
+        from kb_arena.strategies.qna_pairs import QnAPairsStrategy
+        from kb_arena.strategies.raptor import RaptorStrategy
 
-        # Every default strategy joins the pool when its index answers, so
-        # the labels never lean on the two retrievers that were built first.
-        pool_makers = [NaiveVectorStrategy, ContextualVectorStrategy] + [
-            (lambda chroma_client=None, _n=name: get_strategy(_n))
-            for name in default_strategy_names()
-            if name not in ("bm25", "naive_vector", "contextual_vector")
+        # Retrieval-only strategies join the pool, so labeling stays a
+        # retrieval cost. A strategy that calls the LLM per query, such as
+        # hybrid, pageindex, or qiss, would add a model call per question
+        # per strategy and its own bias, so it stays out.
+        pool_makers = [
+            NaiveVectorStrategy,
+            ContextualVectorStrategy,
+            QnAPairsStrategy,
+            RaptorStrategy,
         ]
         for cls in pool_makers:
             try:
