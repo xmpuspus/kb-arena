@@ -155,7 +155,8 @@ export default function ArenaPage() {
       if (!res.ok) throw new Error(errorMessage(data, "Vote failed"));
       if (!isVoteResult(data)) throw new Error("Server returned an invalid vote response");
       setVoteResult(data);
-      fetchLeaderboard();
+      // The vote moved the match's own scope, so refresh that board.
+      fetchLeaderboard(data.corpus ?? corpus);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Vote failed");
     } finally {

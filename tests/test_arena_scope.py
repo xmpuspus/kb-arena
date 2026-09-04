@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock
 
@@ -199,3 +200,52 @@ def test_a_named_voter_needs_the_reviewer_key():
     from kb_arena.settings import settings as live
 
     assert live.arena_reviewer_key == "", "a named voter is refused until an operator sets a key"
+
+
+def test_a_corrupt_rating_is_dropped_not_published(tmp_path):
+    path = tmp_path / "arena_state.json"
+    path.write_text(
+        json.dumps(
+            {
+                "elo": {"alpha": True, "beta": 1250.0, "gamma": "high"},
+                "elo_by_scope": {"c|default": {"alpha": 1300.0, "beta": None}},
+                "total_votes": 1,
+                "matches": [],
+            }
+        )
+    )
+
+    state = ArenaState.load(path)
+
+    assert state.elo == {"beta": 1250.0}
+    assert state.elo_by_scope["c|default"] == {"alpha": 1300.0}
+
+
+def test_a_named_voter_without_the_key_is_refused_not_recorded_as_human(arena):
+    from types import SimpleNamespace
+
+    import pytest as _pytest
+    from fastapi import HTTPException
+
+    from kb_arena.chatbot import api
+    from kb_arena.models.api import ArenaVoteRequest
+
+    match = Match(
+        id="m-key", question="q", strategy_a="alpha", strategy_b="beta", answer_a="x", answer_b="y"
+    )
+    arena.state.matches.append(match)
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(arena=arena)), headers={})
+    body = ArenaVoteRequest(match_id="m-key", winner="a", voter="reviewer-9")
+
+    with _pytest.raises(HTTPException) as refused:
+        asyncio.run(api.arena_vote(body, request))
+
+    assert refused.value.status_code == 403
+    assert match.winner is None, "the match stays open for the real reviewer"
+
+
+def test_the_page_refreshes_the_matchs_own_board_after_a_vote():
+    from pathlib import Path
+
+    page = Path("web/app/arena/page.tsx").read_text()
+    assert "fetchLeaderboard(data.corpus ?? corpus)" in page

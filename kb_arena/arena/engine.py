@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import random
 import time
 from dataclasses import dataclass, field
@@ -50,6 +51,26 @@ class Match:
 
 def scope_key(corpus: str, rubric: str = "default") -> str:
     return f"{corpus or 'all'}|{rubric or 'default'}"
+
+
+def _numeric_ratings(raw) -> dict[str, float]:
+    """Ratings from a state file, with anything that is not a real number dropped.
+
+    A JSON true reads as a Python bool, and round() accepts it, so a corrupt
+    file could publish an ELO of 1.0 instead of being refused.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, float] = {}
+    for name, value in raw.items():
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            log.warning("Dropping non-numeric arena rating for %s: %r", name, value)
+            continue
+        if not math.isfinite(float(value)):
+            log.warning("Dropping non-finite arena rating for %s: %r", name, value)
+            continue
+        out[str(name)] = float(value)
+    return out
 
 
 @dataclass
@@ -107,6 +128,10 @@ class ArenaState:
                 total_votes=data.get("total_votes", 0),
                 elo_by_scope=data.get("elo_by_scope") or {},
             )
+            state.elo = _numeric_ratings(state.elo)
+            state.elo_by_scope = {
+                key: _numeric_ratings(ratings) for key, ratings in state.elo_by_scope.items()
+            }
             if not state.elo_by_scope and state.elo:
                 # An old file holds one global table. It was built from every
                 # corpus at once, so it keeps that scope, not a corpus's own.

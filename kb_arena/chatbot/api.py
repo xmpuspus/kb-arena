@@ -1022,12 +1022,14 @@ async def arena_vote(body: ArenaVoteRequest, request: Request):
             {"error": {"code": "arena_unavailable", "message": "Arena not initialized"}}, 503
         )
     # A named reviewer is a claim about who judged, so only an operator with
-    # the reviewer key can make one. Everyone else votes as a human.
+    # the reviewer key can make one. A caller that asks for a name without
+    # the key is refused, rather than silently recorded as a human vote that
+    # consumes the match the real reviewer meant to judge.
     voter = body.voter or "human"
     if voter != "human" and request.headers.get("x-kb-arena-reviewer-key") != (
         settings.arena_reviewer_key or object()
     ):
-        voter = "human"
+        raise HTTPException(status_code=403, detail="a named voter needs the reviewer key")
     result = arena.vote(body.match_id, body.winner, voter=voter)
     if "error" in result:
         return JSONResponse({"error": {"code": "vote_failed", "message": result["error"]}}, 400)
