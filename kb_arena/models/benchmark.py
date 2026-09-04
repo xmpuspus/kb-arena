@@ -176,6 +176,11 @@ class BenchmarkResult(BaseModel):
     run_id: str = ""
     timestamp: str = ""
     config_snapshot: dict = Field(default_factory=dict)
+    # Version 1 files carry no manifest. Version 2 files carry the experiment
+    # manifest below, and the leaderboard groups runs by its compatibility key.
+    schema_version: int = 1
+    judge_provider: str = ""
+    manifest: dict = Field(default_factory=dict)
     total_questions: int = 0
     records: list[AnswerRecord] = Field(default_factory=list)
     stopped_by_cost_cap: bool = False

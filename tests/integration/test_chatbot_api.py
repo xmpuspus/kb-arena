@@ -195,6 +195,7 @@ def test_summarise_run_preserves_explicit_zero_cost():
     )
 
     assert summary == {
+        "manifest": {},
         "overall_accuracy": 0.0,
         "mean_recall_at_k": 0.0,
         "mean_ndcg_at_k": 0.0,
@@ -237,6 +238,9 @@ def test_leaderboard_skips_malformed_artifacts(app_client, tmp_path, monkeypatch
         {
             "corpus": "aws-compute",
             "strategy": "naive_vector",
+            "compatibility_key": "legacy",
+            "manifest": {},
+            "mixed_with": [],
             "runs": 1,
             "mean_accuracy": 0.75,
             "mean_recall_at_5": 0.0,

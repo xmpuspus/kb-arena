@@ -73,7 +73,44 @@ Rules:
 """
 
 
-def _load_doc_excerpts(corpus: str, max_chars: int = 50000) -> tuple[list[dict], str]:
+_SECTION_SLICE = 2000  # the most one section contributes, same as before
+_DOC_SEPARATOR = "\n\n---\n\n"
+_MIN_DOC_SHARE = 200  # a header plus one sentence; below this a share is useless
+
+
+def _cut(text: str, limit: int) -> str:
+    """Cut text to limit at a whitespace boundary, so an excerpt never ends mid-word.
+
+    The piece keeps the whitespace it ends on. A later piece of the same
+    section then starts on a fresh word instead of gluing onto the last one.
+    """
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    boundary = max(cut.rfind(" "), cut.rfind("\n"))
+    return cut[: boundary + 1] if boundary > limit // 2 else cut
+
+
+def _share(max_chars: int, count: int) -> int:
+    return (max_chars - len(_DOC_SEPARATOR) * (count - 1)) // count
+
+
+def _load_doc_excerpts(
+    corpus: str, max_chars: int = 50000
+) -> tuple[list[dict], str, dict[str, int]]:
+    """Build the excerpt text the generator reads, with a share for every document.
+
+    The old walk took sections in corpus order until one global cap filled,
+    so on the 130-document NIST corpus only the first 36 documents ever
+    reached the prompt. Now every document gets an equal share of max_chars
+    first. A second pass hands the room that short documents leave unused to
+    the documents that still have content, in order. max_chars stays a hard
+    cap. When the corpus is so large that an equal share cannot hold a header
+    and a sentence, an evenly spaced subset of documents gets a useful share
+    instead, and the coverage record says how many.
+
+    Returns the raw documents, the excerpt text, and a coverage record.
+    """
     processed_dir = Path(settings.datasets_path) / corpus / "processed"
     if not processed_dir.exists():
         raise FileNotFoundError(
@@ -91,29 +128,88 @@ def _load_doc_excerpts(corpus: str, max_chars: int = 50000) -> tuple[list[dict],
     if not docs:
         raise ValueError(f"No documents found in {processed_dir}")
 
-    excerpts = []
-    total_chars = 0
+    # Usable sections per document, each already cut to the section slice.
+    usable: list[list[tuple[str, str]]] = []
     for doc in docs:
         title = doc.get("title", "Untitled")
-        source = doc.get("source", "")
-        sections = doc.get("sections", [])
-
-        for section in sections:
+        parts = []
+        for section in doc.get("sections", []):
             content = section.get("content", "")
             if not content or len(content) < 50:
                 continue
+            header = f"[{title} / {section.get('title', '')}]\n"
+            body = _cut(content, _SECTION_SLICE)
+            if len(body) < len(content):
+                body = body.rstrip()
+            parts.append((header, body))
+        usable.append(parts)
 
-            excerpt = f"[{title} / {section.get('title', '')}]\n{content[:2000]}"
-            if total_chars + len(excerpt) > max_chars:
+    with_content = [i for i, parts in enumerate(usable) if parts]
+    # The separators between documents count against the cap too. Widen the
+    # stride until the share each selected document gets clears the floor.
+    selected = list(with_content)
+    stride = 1
+    while len(selected) > 1 and _share(max_chars, len(selected)) < _MIN_DOC_SHARE:
+        stride += 1
+        selected = with_content[::stride]
+    budget = max_chars - len(_DOC_SEPARATOR) * max(0, len(selected) - 1)
+    share = budget // len(selected) if selected else 0
+
+    # Pass one: an equal share per selected document. Pass two: hand the
+    # leftover room to documents that still have content, in order.
+    taken: dict[int, list[str]] = {i: [] for i in selected}
+    cursor: dict[int, tuple[int, int]] = {i: (0, 0) for i in selected}  # (section, offset)
+    used = 0
+
+    def _fill(i: int, room: int) -> int:
+        spent = 0
+        sec, off = cursor[i]
+        parts = usable[i]
+        while sec < len(parts) and room - spent > 0:
+            header, body = parts[sec]
+            rest = body[off:]
+            need_header = off == 0
+            # A new section after an earlier piece gets the same separator
+            # documents get, and it counts against the cap like they do.
+            lead = (_DOC_SEPARATOR if taken[i] else "") + header if need_header else ""
+            if room - spent - len(lead) < 50:
                 break
-            excerpts.append({"text": excerpt, "source": source})
-            total_chars += len(excerpt)
+            piece = _cut(rest, room - spent - len(lead))
+            if not piece:
+                break
+            taken[i].append(lead + piece)
+            spent += len(lead) + len(piece)
+            if len(piece) < len(rest):
+                off += len(piece)
+            else:
+                sec, off = sec + 1, 0
+        cursor[i] = (sec, off)
+        return spent
 
-        if total_chars >= max_chars:
+    for i in selected:
+        used += _fill(i, share)
+    leftover = budget - used
+    for i in selected:
+        if leftover <= 0:
             break
+        spent = _fill(i, leftover)
+        leftover -= spent
+        used += spent
 
-    excerpt_text = "\n\n---\n\n".join(e["text"] for e in excerpts)
-    return docs, excerpt_text
+    excerpt_text = _DOC_SEPARATOR.join("".join(taken[i]) for i in selected if taken[i])
+    contributed = sum(1 for i in selected if taken[i])
+    coverage = {
+        "documents": len(docs),
+        "documents_with_usable_section": len(with_content),
+        "documents_selected": len(selected),
+        "documents_in_prompt": contributed,
+        "documents_without_usable_section": len(docs) - len(with_content),
+        "documents_without_room": len(selected) - contributed,
+        "chars": len(excerpt_text),
+        "max_chars": max_chars,
+        "per_document_share": share,
+    }
+    return docs, excerpt_text, coverage
 
 
 async def _generate_tier_questions(
@@ -186,12 +282,20 @@ async def run_question_generation(corpus: str, count: int = 50) -> None:
     console = Console()
     console.print(f"\n[bold]Generating {count} questions for corpus: {corpus}[/bold]\n")
 
-    docs, excerpt_text = _load_doc_excerpts(corpus)
-    console.print(f"  Loaded {len(docs)} documents, {len(excerpt_text):,} chars of excerpts")
+    docs, excerpt_text, coverage = _load_doc_excerpts(corpus)
+    console.print(
+        f"  Loaded {len(docs)} documents, {coverage['chars']:,} of {coverage['max_chars']:,} "
+        f"prompt chars used. {coverage['documents_in_prompt']} of {coverage['documents']} "
+        f"documents reach the prompt, {coverage['documents_without_usable_section']} have no "
+        f"section of 50 chars or more, {coverage['documents_without_room']} got no room."
+    )
 
     llm = LLMClient()
     questions_dir = Path(settings.datasets_path) / corpus / "questions"
     questions_dir.mkdir(parents=True, exist_ok=True)
+    (questions_dir / "question_coverage.json").write_text(
+        json.dumps({"corpus": corpus, **coverage}, indent=2) + "\n"
+    )
 
     per_tier = count // 5
     remainder = count % 5
