@@ -7,7 +7,10 @@ and reliability tracking.
 from __future__ import annotations
 
 import asyncio
+import fcntl
+import hashlib
 import json
+import logging
 import math
 import random
 import re
@@ -37,6 +40,7 @@ from kb_arena.strategies.base import Strategy
 from kb_arena.strategies.catalog import default_strategy_names
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 STRATEGY_NAMES = list(default_strategy_names())
 # Optional rerank_vector and sqr strategies are intentionally outside the
@@ -449,6 +453,22 @@ def run_manifest_path(results_dir: Path, run_id: str) -> Path:
     return Path(results_dir) / f"run_{run_id}" / "run.json"
 
 
+def _hold_run_lock(results_dir: Path, run_id: str):
+    """One process per run directory. A second resume of the same run would
+    rerun the same pending questions and race on the checkpoint."""
+    path = Path(results_dir) / f"run_{run_id}" / ".lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(path, "w")  # noqa: SIM115 - held for the whole run
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        handle.close()
+        raise BenchmarkExecutionError(
+            f"run {run_id} is already running in another process ({path})"
+        ) from exc
+    return handle
+
+
 def check_resumable(results_dir: Path, run_id: str, config_snap: dict) -> dict:
     """Refuse a resume that would score under settings the first run did not use."""
     if not RUN_ID_PATTERN.match(run_id):
@@ -460,6 +480,10 @@ def check_resumable(results_dir: Path, run_id: str, config_snap: dict) -> dict:
         earlier = json.loads(path.read_text()).get("config_snapshot") or {}
     except (json.JSONDecodeError, OSError) as exc:
         raise BenchmarkExecutionError(f"cannot read {path}: {exc}") from exc
+    if not isinstance(earlier, dict) or not earlier:
+        raise BenchmarkExecutionError(
+            f"cannot resume run {run_id}: {path} carries no settings to compare against"
+        )
     # Only keys both snapshots carry can differ. A key one side lacks comes
     # from a newer release, and a missing value is not a changed setting.
     changed = [
@@ -473,20 +497,47 @@ def check_resumable(results_dir: Path, run_id: str, config_snap: dict) -> dict:
     return json.loads(path.read_text())
 
 
-def load_checkpoint(path: Path, question_ids=None) -> dict[str, AnswerRecord]:
+def question_hash(question) -> str:
+    """A digest of the whole question record, so a changed question never reuses a score."""
+    record = question.model_dump(mode="json") if hasattr(question, "model_dump") else vars(question)
+    return hashlib.sha256(json.dumps(record, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+def checkpoint_line(record: AnswerRecord, question) -> dict:
+    return {**record.model_dump(mode="json"), "question_hash": question_hash(question)}
+
+
+def load_checkpoint(
+    path: Path, question_hashes: dict[str, str] | None = None
+) -> dict[str, AnswerRecord]:
     """The records a stopped run already scored, by question id. A later line wins.
 
-    A record for a question the current file no longer holds is dropped. It
-    would invent a tier and inflate the count for a question nobody asked.
+    A record for a question the current file no longer holds, or whose text,
+    answer key, or constraints changed since it was scored, is dropped. It
+    would present a stale score as current evidence.
     """
     done: dict[str, AnswerRecord] = {}
-    for row in read_jsonl(path):
+    rows = read_jsonl(path)
+    if path.exists():
+        with open(path, encoding="utf-8") as handle:
+            lines = sum(1 for line in handle if line.strip())
+        if lines != len(rows):
+            logger.warning(
+                "Checkpoint %s: %d of %d lines did not parse. Those questions run again.",
+                path,
+                lines - len(rows),
+                lines,
+            )
+    for row in rows:
+        stamp = row.pop("question_hash", None)
         try:
             record = AnswerRecord.model_validate(row)
         except ValidationError:
             continue
-        if question_ids is not None and record.question_id not in question_ids:
-            continue
+        if question_hashes is not None:
+            expected = question_hashes.get(record.question_id)
+            if expected is None or stamp != expected:
+                continue
         done[record.question_id] = record
     return done
 
@@ -542,6 +593,7 @@ async def run_benchmark(
     semaphore = asyncio.Semaphore(settings.benchmark_max_concurrent)
     results_dir = Path(settings.results_path)
     results_dir.mkdir(parents=True, exist_ok=True)
+    run_lock = _hold_run_lock(results_dir, run_id)
     if resume_run_id:
         earlier = check_resumable(results_dir, resume_run_id, config_snap)
         # The result describes the run that started it, not the resume.
@@ -596,6 +648,8 @@ async def run_benchmark(
         selected_questions = True
 
         questions_map = {q.id: (q.type, q.tier) for q in questions}
+        by_id = {q.id: q for q in questions}
+        hashes = {q.id: question_hash(q) for q in questions}
         manifest = build_manifest(
             corp, questions, top_k=top_k, split=split, reference_free=reference_free
         )
@@ -634,7 +688,7 @@ async def run_benchmark(
                         manifest=manifest,
                     )
                     ckpt = checkpoint_path(results_dir, run_id, corp, strat.name)
-                    done = load_checkpoint(ckpt, questions_map.keys()) if resume_run_id else {}
+                    done = load_checkpoint(ckpt, hashes) if resume_run_id else {}
                     bench.records.extend(done.values())
                     progress.advance(task_ids[strat.name], len(done))
                     coros = (
@@ -659,7 +713,7 @@ async def run_benchmark(
                     async for rec in _as_completed_bounded(
                         coros, settings.benchmark_max_concurrent
                     ):
-                        append_jsonl(ckpt, rec.model_dump(mode="json"))
+                        append_jsonl(ckpt, checkpoint_line(rec, by_id[rec.question_id]))
                         bench.records.append(rec)
                         progress.advance(task_ids[strat.name])
                     bench = _aggregate(bench, questions_map)
@@ -719,7 +773,7 @@ async def run_benchmark(
                         manifest=manifest,
                     )
                     ckpt = checkpoint_path(results_dir, run_id, corp, strat.name)
-                    done = load_checkpoint(ckpt, questions_map.keys()) if resume_run_id else {}
+                    done = load_checkpoint(ckpt, hashes) if resume_run_id else {}
                     bench.records.extend(done.values())
                     # What the first attempt spent counts against this cap too,
                     # or every resume could spend a whole cap again.
@@ -728,6 +782,14 @@ async def run_benchmark(
                     cumulative_total_cost += resumed_cost
                     progress.advance(task, len(done))
                     pending = [q for q in questions if q.id not in done]
+                    if cost_cap > 0 and pending and cumulative_total_cost >= cost_cap:
+                        bench.stopped_by_cost_cap = True
+                        bench = _aggregate(bench, questions_map)
+                        _write_result(bench)
+                        raise BenchmarkIncompleteError(
+                            f"Cost cap already reached at ${cumulative_total_cost:.4f} "
+                            "by the records resumed. Nothing more ran."
+                        )
 
                     async def _run_question(q, ckpt=ckpt):
                         rec = await _run_one(
@@ -745,7 +807,7 @@ async def run_benchmark(
                             review_status=q.review_status,
                             reviewed_by=q.reviewed_by,
                         )
-                        append_jsonl(ckpt, rec.model_dump(mode="json"))
+                        append_jsonl(ckpt, checkpoint_line(rec, q))
                         return rec
 
                     if cost_cap > 0:
@@ -807,3 +869,4 @@ async def run_benchmark(
 
     if not selected_questions:
         raise BenchmarkExecutionError("No benchmark questions were selected")
+    run_lock.close()

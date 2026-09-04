@@ -64,18 +64,19 @@ class _Strategy:
         self.name = name
 
 
+def _question(qid: str, answer: str = "a") -> Question:
+    return Question(
+        id=qid,
+        tier=1,
+        type="factoid",
+        hops=1,
+        question=f"{qid}?",
+        ground_truth=GroundTruth(answer=answer),
+    )
+
+
 def _questions(n: int) -> list[Question]:
-    return [
-        Question(
-            id=f"q{i}",
-            tier=1,
-            type="factoid",
-            hops=1,
-            question=f"q{i}?",
-            ground_truth=GroundTruth(answer="a"),
-        )
-        for i in range(1, n + 1)
-    ]
+    return [_question(f"q{i}") for i in range(1, n + 1)]
 
 
 def _seed_run(tmp_path, run_id: str, **overrides):
@@ -121,8 +122,8 @@ def test_a_resumed_run_skips_checkpointed_questions(tmp_path, monkeypatch, paral
     _seed_run(tmp_path, run_id)
     for name in strategies:
         ckpt = runner.checkpoint_path(tmp_path, run_id, "c", name)
-        append_jsonl(ckpt, _record("q1", strategy=name).model_dump(mode="json"))
-        append_jsonl(ckpt, _record("q2", strategy=name).model_dump(mode="json"))
+        for qid in ("q1", "q2"):
+            append_jsonl(ckpt, runner.checkpoint_line(_record(qid, strategy=name), _question(qid)))
 
     asyncio.run(
         runner.run_benchmark(corpus="c", strategy="any", parallel=parallel, resume_run_id=run_id)
@@ -197,15 +198,15 @@ def test_resumed_records_count_toward_the_cost_cap(tmp_path, monkeypatch):
     for qid in ("q1", "q2"):
         rec = _record(qid)
         rec.cost_usd = 0.03
-        append_jsonl(ckpt, rec.model_dump(mode="json"))
+        append_jsonl(ckpt, runner.checkpoint_line(rec, _question(qid)))
 
-    with pytest.raises(runner.BenchmarkIncompleteError):
+    with pytest.raises(runner.BenchmarkIncompleteError, match="already reached"):
         asyncio.run(
             runner.run_benchmark(corpus="c", strategy="any", parallel=False, resume_run_id=run_id)
         )
 
-    # q3 ran once, then the cap that the first attempt already spent stopped the run
-    assert calls == [("x", "q3")]
+    # the cap the first attempt already spent stopped the run before q3 ran
+    assert calls == []
 
 
 def test_a_checkpoint_record_for_a_deleted_question_is_dropped(tmp_path, monkeypatch):
@@ -213,8 +214,8 @@ def test_a_checkpoint_record_for_a_deleted_question_is_dropped(tmp_path, monkeyp
     run_id = "abc12345"
     _seed_run(tmp_path, run_id)
     ckpt = runner.checkpoint_path(tmp_path, run_id, "c", "x")
-    append_jsonl(ckpt, _record("q_deleted").model_dump(mode="json"))
-    append_jsonl(ckpt, _record("q1").model_dump(mode="json"))
+    append_jsonl(ckpt, runner.checkpoint_line(_record("q_deleted"), _question("q_deleted")))
+    append_jsonl(ckpt, runner.checkpoint_line(_record("q1"), _question("q1")))
 
     asyncio.run(
         runner.run_benchmark(corpus="c", strategy="any", parallel=False, resume_run_id=run_id)
@@ -258,6 +259,69 @@ def test_an_atomic_write_keeps_the_old_mode_and_gives_a_readable_new_file(tmp_pa
     fresh = tmp_path / "fresh.json"
     atomic_write_text(fresh, "x")
     assert fresh.stat().st_mode & 0o044, "a new result file must stay readable beyond its owner"
+
+
+def test_a_changed_question_with_the_same_id_runs_again(tmp_path, monkeypatch):
+    calls = _harness(monkeypatch, tmp_path, ["x"])
+    run_id = "abc12345"
+    _seed_run(tmp_path, run_id)
+    ckpt = runner.checkpoint_path(tmp_path, run_id, "c", "x")
+    append_jsonl(
+        ckpt, runner.checkpoint_line(_record("q1"), _question("q1", answer="old answer key"))
+    )
+    append_jsonl(ckpt, runner.checkpoint_line(_record("q2"), _question("q2")))
+
+    asyncio.run(
+        runner.run_benchmark(corpus="c", strategy="any", parallel=False, resume_run_id=run_id)
+    )
+
+    assert sorted(q for _, q in calls) == ["q1", "q3"]
+
+
+def test_a_run_manifest_without_settings_cannot_be_resumed(tmp_path, monkeypatch):
+    _harness(monkeypatch, tmp_path, ["x"])
+    path = runner.run_manifest_path(tmp_path, "abc12345")
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"run_id": "abc12345"}))
+
+    with pytest.raises(runner.BenchmarkExecutionError, match="no settings"):
+        asyncio.run(
+            runner.run_benchmark(
+                corpus="c", strategy="any", parallel=False, resume_run_id="abc12345"
+            )
+        )
+
+
+def test_a_second_process_on_the_same_run_is_refused(tmp_path, monkeypatch):
+    _harness(monkeypatch, tmp_path, ["x"])
+    _seed_run(tmp_path, "abc12345")
+    held = runner._hold_run_lock(tmp_path, "abc12345")
+    try:
+        with pytest.raises(runner.BenchmarkExecutionError, match="already running"):
+            asyncio.run(
+                runner.run_benchmark(
+                    corpus="c", strategy="any", parallel=False, resume_run_id="abc12345"
+                )
+            )
+    finally:
+        held.close()
+
+
+def test_a_corrupt_checkpoint_line_is_reported(tmp_path, caplog):
+    import logging
+
+    path = tmp_path / "c_x.records.jsonl"
+    append_jsonl(path, runner.checkpoint_line(_record("q1"), _question("q1")))
+    with open(path, "a") as handle:
+        handle.write("{corrupt\n")
+    append_jsonl(path, runner.checkpoint_line(_record("q2"), _question("q2")))
+    hashes = {q: runner.question_hash(_question(q)) for q in ("q1", "q2")}
+
+    with caplog.at_level(logging.WARNING, logger="kb_arena.benchmark.runner"):
+        done = runner.load_checkpoint(path, hashes)
+
+    assert sorted(done) == ["q1", "q2"]
+    assert "1 of 3 lines did not parse" in caplog.text
 
 
 def test_the_cli_passes_the_resume_id(monkeypatch):
