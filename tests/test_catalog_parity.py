@@ -110,12 +110,20 @@ def _readme_table() -> str:
 
 def test_the_readme_table_lists_every_catalog_strategy():
     """A strategy the code offers and the README omits is one nobody finds."""
-    listed = {
-        row.split("|")[1].strip() for row in _readme_table().splitlines() if row.count("|") > 3
-    }
+    listed = set()
+    for row in _readme_table().splitlines():
+        if row.count("|") <= 3:
+            continue
+        cell = row.split("|")[1].strip()
+        # The separator row is part of the table and names no strategy.
+        if cell and set(cell) != {"-"}:
+            listed.add(cell)
     labels = {spec.label for spec in STRATEGY_CATALOG}
 
-    assert labels <= listed, f"the README omits {sorted(labels - listed)}"
+    assert labels == listed, (
+        f"the README omits {sorted(labels - listed)} and documents "
+        f"{sorted(listed - labels)} that the catalog does not hold"
+    )
 
 
 def test_the_readme_marks_the_same_defaults_the_code_uses():
@@ -134,3 +142,39 @@ def test_the_readme_marks_the_same_defaults_the_code_uses():
                 f"the README says {spec.label} default={marked[spec.label]}, and "
                 f"`--strategies all` says {spec.name in defaults}"
             )
+
+
+def test_the_frontend_fallback_marks_the_same_defaults_the_backend_runs():
+    """The fallback is what the page shows before `GET /strategies` answers.
+
+    It computed `default_benchmark: name !== "sqr"`, so rerank_vector read as a
+    default when the backend excludes it. A rule drifts the moment a strategy
+    leaves the default set for another reason, so the list is a list.
+    """
+    source = (ROOT / "web" / "lib" / "api.ts").read_text()
+    block = re.search(
+        r"DEFAULT_BENCHMARK_STRATEGIES: readonly Strategy\[\] = \[(.*?)\] as const;",
+        source,
+        re.S,
+    )
+    assert block, "web/lib/api.ts must export DEFAULT_BENCHMARK_STRATEGIES"
+    listed = re.findall(r'"([a-z0-9_]+)"', block.group(1))
+
+    assert sorted(listed) == sorted(
+        default_strategy_names()
+    ), "the frontend fallback and `--strategies all` disagree about the defaults"
+    assert (
+        "default_benchmark: DEFAULT_BENCHMARK_STRATEGIES.includes(name)" in source
+    ), "the fallback record must read the list, not a rule about one name"
+
+
+def test_the_benchmark_help_names_every_strategy():
+    """The help listed seven of eleven, so `--help` denied four that exist."""
+    from kb_arena import cli
+
+    help_text = cli._strategy_option_help()
+    for name in CATALOG_NAMES:
+        assert name in help_text, f"`kb-arena benchmark --help` does not mention {name}"
+    # It also says which ones `all` leaves out, so a user is not surprised.
+    for name in set(CATALOG_NAMES) - set(default_strategy_names()):
+        assert name in help_text.split("Not in 'all':")[-1]

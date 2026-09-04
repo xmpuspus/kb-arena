@@ -129,11 +129,26 @@ export interface StrategyCatalogRecord {
   unavailable_reason: string | null;
 }
 
+// What `--strategies all` covers. A rule such as `name !== "sqr"` drifts the
+// moment a strategy leaves the default set for another reason, and this list
+// read rerank_vector as a default when the backend excludes it.
+export const DEFAULT_BENCHMARK_STRATEGIES: readonly Strategy[] = [
+  "naive_vector",
+  "contextual_vector",
+  "qna_pairs",
+  "knowledge_graph",
+  "hybrid",
+  "raptor",
+  "pageindex",
+  "bm25",
+  "qiss",
+] as const;
+
 export const DEFAULT_STRATEGY_CATALOG: StrategyCatalogRecord[] = STRATEGIES.map((name) => ({
   name,
   label: STRATEGY_LABELS[name],
   architecture: name === "bm25" ? "lexical" : "retrieval",
-  default_benchmark: name !== "sqr",
+  default_benchmark: DEFAULT_BENCHMARK_STRATEGIES.includes(name),
   api_supported: true,
   experimental: name === "qiss" || name === "sqr",
   optional_extra: name === "sqr" ? "quantum" : null,
