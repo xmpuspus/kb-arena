@@ -1630,6 +1630,71 @@ def quantum_diagnostics(
     console.print(f"[green]Written {out_path}[/green]")
 
 
+@app.command(name="datasets")
+def datasets_command(
+    name: str = typer.Option("", "--name", help="Adapter to fetch, or empty to list them"),
+    destination: str = typer.Option(
+        "", "--destination", help="Where the corpus goes. Required for a download-only set"
+    ),
+):
+    """List the dataset adapters, or fetch one into a corpus.
+
+    An adapter records who made the data, where it came from, which revision,
+    under what licence, and what this repository did to it. That record is what
+    makes a number measured against the corpus citable.
+    """
+    from rich.table import Table
+
+    from kb_arena.adapters import ADAPTERS, LicenseRefusalError
+
+    if not name:
+        table = Table(title="Dataset adapters")
+        for column in ("name", "licence", "may ship", "revision", "attribution"):
+            table.add_column(column)
+        for adapter_name, cls in sorted(ADAPTERS.items()):
+            template = cls().manifest_template()
+            table.add_row(
+                adapter_name,
+                template.license,
+                "yes" if template.redistributable else "no, download only",
+                template.revision,
+                template.attribution[:48],
+            )
+        console.print(table)
+        console.print(
+            "A set marked download only stays yours to fetch. KB Arena never bundles "
+            "it, and it refuses to write one inside this checkout."
+        )
+        return
+
+    if name not in ADAPTERS:
+        console.print(
+            f"[red]No adapter named {name!r}. Run `kb-arena datasets` to list them.[/red]"
+        )
+        raise typer.Exit(1)
+
+    adapter = ADAPTERS[name]()
+    if not destination:
+        console.print("[red]--destination is required when fetching a dataset.[/red]")
+        raise typer.Exit(1)
+
+    from pathlib import Path as _Path
+
+    try:
+        adapter.check_destination(_Path(destination), _Path.cwd())
+        manifest = adapter.build(_Path(destination))
+    except LicenseRefusalError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from None
+    except NotImplementedError as exc:
+        console.print(f"[yellow]{exc}[/yellow]")
+        raise typer.Exit(1) from None
+    console.print(
+        f"[green]{manifest.name}: {manifest.documents} documents, "
+        f"{manifest.questions} questions[/green]"
+    )
+
+
 @app.command(name="label-chunks")
 def label_chunks(
     corpus: str = typer.Option(..., help="Corpus to label"),
