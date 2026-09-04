@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     # Embeddings — provider-agnostic. Pick via KB_ARENA_EMBEDDING_PROVIDER:
     # openai (default), voyage, cohere, bge (local), ollama (local), gemini.
     embedding_provider: str = "openai"
+    # One SQLite file in front of every embedding provider. Empty path means
+    # <chroma_path>/embedding_cache.sqlite.
+    embedding_cache_enabled: bool = True
+    embedding_cache_path: str = ""
     embedding_model: str = "text-embedding-3-large"
     embedding_dimensions: int = 3072
     ollama_embedding_model: str = "nomic-embed-text"

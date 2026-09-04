@@ -211,4 +211,10 @@ def get_embedding_function(**kwargs: Any) -> EmbeddingFunction[Documents]:
         raise ValueError(
             f"Unknown KB_ARENA_EMBEDDING_PROVIDER={provider!r}. " f"Valid: {sorted(_PROVIDERS)}"
         )
-    return cls(**kwargs)
+    inner = cls(**kwargs)
+    if not settings.embedding_cache_enabled:
+        return inner
+    from kb_arena.strategies.embedding_cache import CachedEmbedding
+
+    model = str(getattr(inner, "_model", "") or kwargs.get("model") or settings.embedding_model)
+    return CachedEmbedding(inner, provider=provider, model=model)
