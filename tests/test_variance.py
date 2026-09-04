@@ -349,3 +349,29 @@ def test_a_resume_refuses_a_different_seed():
     from kb_arena.benchmark.runner import RESUME_KEYS
 
     assert "run_seed" in RESUME_KEYS
+
+
+def test_an_old_checkpoint_without_a_seed_still_resumes(tmp_path, monkeypatch):
+    """Adding a resume key must not strand every checkpoint written before it."""
+    from kb_arena.benchmark import runner
+
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    run_dir = tmp_path / "run_old"
+    run_dir.mkdir()
+    earlier = {
+        "llm_provider": "anthropic",
+        "generate_model": "m",
+        "judge_provider": "anthropic",
+        "judge_model": "m",
+        "top_k": 5,
+        "tier": 0,
+        "question_split": "all",
+        "reference_free": False,
+        "ragas_enabled": False,
+    }
+    (run_dir / "run.json").write_text(json.dumps({"config_snapshot": earlier}))
+
+    current = {**earlier, "run_seed": 3}
+    resumed = runner.check_resumable(tmp_path, "old", current)
+
+    assert resumed is not None, "a snapshot that predates the key must still resume"
