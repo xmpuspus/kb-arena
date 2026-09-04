@@ -17,6 +17,8 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
+from kb_arena.benchmark.manifest import LEGACY_KEY
+
 # One run gives a point and no spread. Two give a range a reader can misread as
 # a bound. The sample standard deviation needs two, so it is reported from two
 # and the text says how thin it is below this.
@@ -25,6 +27,7 @@ THIN_EVIDENCE_RUNS = 3
 
 # What a run written before this slice reports for its seed.
 UNRECORDED_SEED = "unrecorded"
+UNRECORDED_VERSION = "unrecorded"
 
 
 @dataclass(frozen=True)
@@ -103,13 +106,24 @@ def _metric(run: dict, name: str) -> float | None:
 
 
 def spread_report(runs: list[dict], metrics: tuple[str, ...] = ("accuracy_by_tier",)) -> list[dict]:
-    """One row per (corpus, strategy, key), with the spread of each metric."""
+    """One row per (corpus, strategy, key), with the spread of each metric.
+
+    A run with no manifest keys as `legacy`, and every such run keys the same
+    way whatever it measured. A spread over that group would describe the
+    differences between experiments, so those rows carry `comparable: False`
+    and the caller must not read them as noise.
+    """
     rows: list[dict] = []
     for (corpus, strategy, key), group in sorted(group_by_key(runs).items()):
+        versions = sorted({_code_version(run) for run in group})
         row: dict = {
             "corpus": corpus,
             "strategy": strategy,
             "compatibility_key": key,
+            # A legacy group holds whatever had no manifest. A group whose runs
+            # came from different code is not a repeat of one experiment either.
+            "comparable": key != LEGACY_KEY and len(versions) == 1,
+            "code_versions": versions,
             "runs": len(group),
             # A run written before seeds existed reports None. Sorting that
             # beside an int raises, and every result already on disk is one of
@@ -164,6 +178,13 @@ def load_runs(corpus: str | None = None) -> list[dict]:
             seen.add(identity)
             runs.append(data)
     return runs
+
+
+def _code_version(run: dict) -> str:
+    """The package version a run recorded, or a name for one that recorded none."""
+    manifest = run.get("manifest")
+    version = manifest.get("code_version") if isinstance(manifest, dict) else None
+    return str(version) if version else UNRECORDED_VERSION
 
 
 def _seed_labels(group: list[dict]) -> list[str]:

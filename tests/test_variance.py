@@ -189,3 +189,59 @@ def test_the_loader_skips_a_file_that_is_not_a_result(tmp_path, monkeypatch):
     (tmp_path / "broken.json").write_text("{not json")
 
     assert variance.load_runs() == []
+
+
+def test_a_legacy_group_is_never_read_as_a_spread():
+    """Every manifestless run keys the same way, whatever it measured."""
+    runs = [
+        {"corpus": "c", "strategy": "bm25", "accuracy_by_tier": {"1": 0.20}},
+        {"corpus": "c", "strategy": "bm25", "accuracy_by_tier": {"1": 0.90}},
+    ]
+
+    [row] = variance.spread_report(runs)
+
+    assert row["compatibility_key"] == "legacy"
+    assert row["runs"] == 2
+    assert row["comparable"] is False, (
+        "two runs with no manifest may have measured anything, so the gap "
+        "between 0.20 and 0.90 is not noise"
+    )
+
+
+def test_runs_from_different_code_versions_are_not_repeats():
+    """A spread must describe noise, not the change between two releases."""
+    manifest = _manifest()
+    runs = [
+        {
+            "corpus": "c",
+            "strategy": "bm25",
+            "accuracy_by_tier": {"1": value},
+            "records": [{}],
+            "manifest": {**manifest, "code_version": version},
+        }
+        for version, value in (("0.10.0", 0.50), ("0.11.0", 0.70))
+    ]
+
+    [row] = variance.spread_report(runs)
+
+    assert row["code_versions"] == ["0.10.0", "0.11.0"]
+    assert row["comparable"] is False
+
+
+def test_one_code_version_is_comparable():
+    manifest = _manifest(code_version="0.11.0")
+    runs = [
+        {
+            "corpus": "c",
+            "strategy": "bm25",
+            "accuracy_by_tier": {"1": value},
+            "records": [{}],
+            "manifest": dict(manifest),
+        }
+        for value in (0.50, 0.55, 0.60)
+    ]
+
+    [row] = variance.spread_report(runs)
+
+    assert row["comparable"] is True
+    assert row["code_versions"] == ["0.11.0"]

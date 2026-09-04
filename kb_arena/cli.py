@@ -344,9 +344,10 @@ def benchmark(
         1,
         "--runs",
         min=1,
+        max=20,
         help="Repeat the whole benchmark N times, one run id each, for spread. "
-        "The cost cap applies to each run, so N runs can spend N times the cap. "
-        "Read the spread with `kb-arena variance`.",
+        "The cost cap applies to each run, so N runs can spend N times the cap, "
+        "which is why this stops at 20. Read the spread with `kb-arena variance`.",
     ),
     seed: int = typer.Option(
         -1,
@@ -1630,15 +1631,19 @@ def variance(
 
     rows = spread_report(runs, metrics=(metric,))
     table = Table(title=f"Spread over repeats ({metric})")
-    for column in ("corpus", "strategy", "key", "runs", "seeds", "mean", "sd", "range"):
+    columns = ("corpus", "strategy", "key", "runs", "seeds", "mean", "sd", "range", "comparable")
+    for column in columns:
         table.add_column(column)
     thin = 0
+    incomparable = 0
     for row in rows:
         spread = row["metrics"].get(metric)
         if not spread:
             continue
         if spread["runs"] < MIN_RUNS_FOR_SPREAD:
             thin += 1
+        if not row["comparable"]:
+            incomparable += 1
         seeds = ", ".join(row["seeds"]) or "unrecorded"
         table.add_row(
             row["corpus"],
@@ -1649,12 +1654,19 @@ def variance(
             f"{spread['mean']:.4f}",
             "-" if spread["sd"] is None else f"{spread['sd']:.4f}",
             "-" if spread["half_width"] is None else f"+/-{spread['half_width']:.4f}",
+            "yes" if row["comparable"] else "no",
         )
     console.print(table)
     console.print(
         "A row groups by compatibility key, so two runs that measured different "
         "things never share a spread."
     )
+    if incomparable:
+        console.print(
+            f"[yellow]{incomparable} row(s) are not comparable: the runs carry no "
+            f"manifest, or they came from different code versions. Read those means "
+            f"as a list of separate results, never as a spread.[/yellow]"
+        )
     if thin:
         console.print(
             f"[yellow]{thin} row(s) rest on one run. One run gives a point and no "

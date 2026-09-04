@@ -194,18 +194,37 @@ def compatibility_key(data: dict) -> str:
         key = _digest(core_of(manifest))
         # A run the cost cap stopped scored fewer questions than its manifest
         # names. It never blends with a full run of the same experiment.
-        if _is_partial(data, manifest):
-            return f"{key}-partial"
+        scored = _scored_count(data)
+        if scored is not None:
+            # A partial run of 10 questions and one of 70 are not repeats of
+            # one experiment, so the count rides in the key.
+            return f"{key}-partial-{scored}"
         return key
     return LEGACY_KEY
 
 
-def _is_partial(data: dict, manifest: dict) -> bool:
-    if data.get("stopped_by_cost_cap") is True:
-        return True
-    expected = manifest.get("question_count")
+def _scored_count(data: dict) -> int | None:
+    """How many questions a partial run scored, or None when the run is whole.
+
+    A run the cost cap stopped scored fewer questions than its manifest names.
+    It never blends with a full run, and it never blends with a partial run of
+    a different size either.
+    """
+    manifest = data.get("manifest")
+    manifest = manifest if isinstance(manifest, dict) else {}
     records = data.get("records")
-    return isinstance(expected, int) and isinstance(records, list) and len(records) < expected
+    count = len(records) if isinstance(records, list) else None
+    if data.get("stopped_by_cost_cap") is True:
+        return count if count is not None else -1
+    expected = manifest.get("question_count")
+    if isinstance(expected, int) and count is not None and count < expected:
+        return count
+    return None
+
+
+def _is_partial(data: dict, manifest: dict) -> bool:
+    """Kept for readers outside this module. The key uses `_scored_count`."""
+    return _scored_count(data) is not None
 
 
 def manifest_summary(data: dict) -> dict:
