@@ -86,6 +86,13 @@ class Score(BaseModel):
     ragas_context_recall: float = Field(ge=0.0, le=1.0, default=0.0)
     ragas_answer_relevancy: float = Field(ge=0.0, le=1.0, default=0.0)
     evaluation_cost_usd: float = Field(ge=0.0, default=0.0)
+    # Judge provenance: who graded, with which prompt, and what it said.
+    # Empty when no LLM judge ran (structural fail or reference-free mode).
+    judge_provider: str = ""
+    judge_model: str = ""
+    judge_prompt_hash: str = ""
+    judge_raw: str = ""
+    judge_rationale: str = ""
 
 
 class AnswerRecord(BaseModel):
