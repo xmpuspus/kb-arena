@@ -29,6 +29,18 @@ THIN_EVIDENCE_RUNS = 3
 UNRECORDED_SEED = "unrecorded"
 UNRECORDED_VERSION = "unrecorded"
 
+# Files a run writes beside its results. None of them is one.
+_NON_RESULT_NAMES = frozenset(
+    {
+        "summary.json",
+        "report.json",
+        "optimize.json",
+        "retriever_lab.json",
+        "run.json",
+        "arena_state.json",
+    }
+)
+
 
 class RunsUnreadableError(RuntimeError):
     """A stored result exists and cannot be read, so the sample is incomplete."""
@@ -247,16 +259,16 @@ def _looks_like_a_result(path: Path) -> bool:
     if any(path.name.endswith(f"_{spec.name}.json") for spec in STRATEGY_CATALOG):
         return True
     # A plugin strategy writes `<corpus>_<name>.json` under a run directory
-    # too, and its name is not in the built-in catalog. A file that sits in a
-    # run directory and is not one of the known non-result names is a result.
-    return path.parent.name.startswith("run_") and path.name not in {
-        "summary.json",
-        "report.json",
-        "optimize.json",
-        "retriever_lab.json",
-        "run.json",
-        "arena_state.json",
-    }
+    # too, and its name is not in the built-in catalog. Requiring the shape as
+    # well as the location keeps a stray note.json in a run directory from
+    # speaking for the evidence.
+    if not path.parent.name.startswith("run_"):
+        return False
+    stem = path.stem
+    if "_" not in stem:
+        return False
+    corpus, _, strategy = stem.partition("_")
+    return bool(corpus) and bool(strategy) and path.name not in _NON_RESULT_NAMES
 
 
 def _code_version(run: dict) -> str:

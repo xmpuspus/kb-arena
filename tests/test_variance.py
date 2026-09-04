@@ -579,6 +579,9 @@ def test_a_plugin_result_counts_as_a_result(tmp_path):
     assert variance._looks_like_a_result(run_dir / "c_my_custom_plugin.json") is True
     assert variance._looks_like_a_result(run_dir / "summary.json") is False
     assert variance._looks_like_a_result(tmp_path / "scratch.json") is False
+    # A stray file inside a run directory must not speak for the evidence.
+    assert variance._looks_like_a_result(run_dir / "notes.json") is False
+    assert variance._looks_like_a_result(run_dir / "_orphan.json") is False
 
 
 def test_an_unrelated_unreadable_file_never_aborts_the_report(tmp_path, monkeypatch):
