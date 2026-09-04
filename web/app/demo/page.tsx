@@ -12,6 +12,12 @@ import {
   type Message,
 } from "@/lib/api";
 
+// The default provider is anthropic. Another provider needs KB_ARENA_LLM_PROVIDER
+// and its own key or host, so naming one OpenAI key alone would mislead.
+const KEY_HINT =
+  "Set KB_ARENA_ANTHROPIC_API_KEY on the server, or set KB_ARENA_LLM_PROVIDER to openai " +
+  "or ollama with that provider's key or host, to enable live queries.";
+
 const DEMO_QUESTION = "How do I set up a Lambda function behind API Gateway with VPC access to an RDS database?";
 
 const DEMO_RESULTS: Partial<Record<Strategy, DemoResult>> = {
@@ -75,7 +81,8 @@ export default function DemoPage() {
   const [selectedStrategies, setSelectedStrategies] = useState<Strategy[]>([...DEMO_STRATEGIES]);
   const [trigger, setTrigger] = useState(0);
   const [history, setHistory] = useState<Message[]>([]);
-  const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
+  // undefined until /health answers. null means it never did, which reads as live.
+  const [serverStatus, setServerStatus] = useState<ServerStatus | null | undefined>(undefined);
   const [outcomes, setOutcomes] = useState<
     Partial<Record<Strategy, { outcome: PanelOutcome; message?: string }>>
   >({});
@@ -84,6 +91,7 @@ export default function DemoPage() {
   useEffect(() => { fetchCorpora().then(setCorpora); }, []);
   useEffect(() => { fetchServerStatus().then(setServerStatus); }, []);
 
+  const checking = serverStatus === undefined;
   const readOnly = serverStatus?.demoMode === true;
 
   function handleSubmit(e: React.FormEvent) {
@@ -102,18 +110,23 @@ export default function DemoPage() {
     []
   );
 
-  // Every selected panel failed. Seven copies of "HTTP 503" say less than one
-  // line that names the cause, so the panels go quiet and the page speaks.
+  // Panels that failed the same way say less as seven copies of "HTTP 503"
+  // than as one line that names the cause. Those panels go quiet and the
+  // page speaks. Panels that failed for different reasons keep their own
+  // message, because one line could not name every cause.
   const failed = selectedStrategies.filter((s) => outcomes[s]?.outcome === "error");
-  const allFailed =
-    trigger > 0 && selectedStrategies.length > 0 && failed.length === selectedStrategies.length;
-  const failureMessage = allFailed ? outcomes[failed[0]]?.message ?? "request failed" : "";
+  const sameMessage = failed.every((s) => outcomes[s]?.message === outcomes[failed[0]]?.message);
+  const consolidated =
+    trigger > 0 && failed.length > 0 && sameMessage &&
+    (failed.length > 1 || selectedStrategies.length === 1);
+  const allFailed = consolidated && failed.length === selectedStrategies.length;
+  const failureMessage = consolidated ? outcomes[failed[0]]?.message ?? "request failed" : "";
   const failureHint =
-    allFailed && readOnly
+    consolidated && readOnly
       ? "The server runs in read-only demo mode with no model key, so live questions cannot run. " +
-        "Set KB_ARENA_ANTHROPIC_API_KEY or KB_ARENA_OPENAI_API_KEY on the server to enable them."
-      : allFailed && failureMessage.includes("503")
-      ? "The server answered 503 for every strategy, so it is not ready to serve live questions."
+        KEY_HINT
+      : consolidated && failureMessage.includes("503")
+      ? "The server answered 503 for these strategies, so it is not ready to serve live questions."
       : "";
 
   function handleBackToSample() {
@@ -126,6 +139,13 @@ export default function DemoPage() {
     setSelectedStrategies((prev) =>
       prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
     );
+    // A panel that comes back on remounts and asks again. Its old outcome
+    // must not keep the alert alive over the answer it streams now.
+    setOutcomes((prev) => {
+      const next = { ...prev };
+      delete next[s];
+      return next;
+    });
   }
 
   function handleClear() {
@@ -201,8 +221,14 @@ export default function DemoPage() {
           />
           <button
             type="submit"
-            disabled={!query.trim() || selectedStrategies.length === 0 || readOnly}
-            title={readOnly ? "Live questions are off: the server runs in read-only demo mode" : undefined}
+            disabled={!query.trim() || selectedStrategies.length === 0 || readOnly || checking}
+            title={
+              readOnly
+                ? "Live questions are off: the server runs in read-only demo mode"
+                : checking
+                ? "Checking whether the server accepts live questions"
+                : undefined
+            }
             className="px-4 py-2 rounded-lg text-sm font-medium transition-opacity disabled:opacity-30"
             style={{ background: "var(--accent)", color: "#fff" }}
           >
@@ -247,11 +273,19 @@ export default function DemoPage() {
           style={{ borderColor: "var(--accent)", background: "var(--card)", color: "var(--foreground)" }}
         >
           <span className="font-semibold">Read-only demo.</span> The server has no model key, so live
-          questions are off and the panels below show precomputed sample output. Set
-          KB_ARENA_ANTHROPIC_API_KEY or KB_ARENA_OPENAI_API_KEY on the server to enable live queries.
+          questions are off and the panels below show precomputed sample output. {KEY_HINT}
         </div>
       )}
-      {trigger === 0 && selectedStrategies.length > 0 && !readOnly && (
+      {trigger === 0 && selectedStrategies.length > 0 && checking && (
+        <div
+          role="status"
+          className="px-3 py-2 rounded-lg text-xs"
+          style={{ background: "var(--border)", color: "var(--muted)" }}
+        >
+          Showing precomputed sample output. Checking whether the server accepts live questions.
+        </div>
+      )}
+      {trigger === 0 && selectedStrategies.length > 0 && !readOnly && !checking && (
         <div
           className="px-3 py-2 rounded-lg text-xs"
           style={{ background: "var(--border)", color: "var(--muted)" }}
@@ -261,7 +295,7 @@ export default function DemoPage() {
       )}
 
       {/* One consolidated failure after submit */}
-      {allFailed && (
+      {consolidated && (
         <div
           role="alert"
           className="px-3 py-2 rounded-lg text-xs border space-y-2"
@@ -269,7 +303,10 @@ export default function DemoPage() {
         >
           <p>
             <span className="font-semibold" style={{ color: "var(--danger)" }}>
-              All {selectedStrategies.length} strategies failed: {failureMessage}.
+              {allFailed
+                ? `All ${selectedStrategies.length} strategies failed`
+                : `${failed.length} of ${selectedStrategies.length} strategies failed`}
+              : {failureMessage}.
             </span>{" "}
             {failureHint}
           </p>
@@ -302,7 +339,7 @@ export default function DemoPage() {
               trigger={trigger}
               demoResult={trigger === 0 ? DEMO_RESULTS[s] : undefined}
               onOutcome={handleOutcome}
-              muted={allFailed}
+              muted={consolidated && outcomes[s]?.outcome === "error"}
             />
           ))}
         </div>

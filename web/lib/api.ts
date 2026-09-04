@@ -167,7 +167,6 @@ export async function fetchCorpora(): Promise<CorpusInfo[]> {
 
 export interface ServerStatus {
   demoMode: boolean;
-  strategies: string[];
 }
 
 // null means the server did not answer, which is not the same as live mode.
@@ -177,7 +176,7 @@ export async function fetchServerStatus(): Promise<ServerStatus | null> {
     const res = await fetch(`${API_URL}/health`);
     if (!res.ok) return null;
     const data = await res.json();
-    return { demoMode: Boolean(data.demo_mode), strategies: data.strategies ?? [] };
+    return { demoMode: Boolean(data.demo_mode) };
   } catch {
     return null;
   }
