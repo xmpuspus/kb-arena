@@ -43,12 +43,16 @@ jobs:
       - run: npx next build
       # high/critical only: low/moderate advisories must not fail every PR.
       - name: npm audit, with a retry and a deadline for the registry
-        # Three attempts of 90s with 15s between them is 300s of work, so the
-        # step deadline has to sit well above that or it fires on the healthy
-        # path. The first version used 90s attempts, 30s sleeps and a 6 minute
-        # step, which is 330s against a 360s ceiling, and it killed the step in
-        # the same second the warning printed.
-        timeout-minutes: 9
+        # The binding limit is the JOB timeout, not this one. The job gets 10
+        # minutes and npm ci, lint and next build take about six of them, so
+        # this step has roughly four minutes to work with. Two earlier versions
+        # missed that: one budgeted 330s against a 360s step ceiling, the next
+        # budgeted 300s and was killed by the job at ten minutes with the audit
+        # still running. A job kill reports as "cancelled", which reads like
+        # flakiness rather than a budget that does not fit.
+        #
+        # Three attempts of 45s with 10s between them is 155s, which fits.
+        timeout-minutes: 4
         run: |
           # A vulnerability fails the job. A registry outage does not: the
           # audit endpoint answered "Bad Request" for an hour on 2026-09-04
@@ -63,7 +67,7 @@ jobs:
           # deadline, and the step has one too.
           for attempt in 1 2 3; do
             set +e
-            out=$(timeout 90s npm audit --audit-level=high 2>&1)
+            out=$(timeout 45s npm audit --audit-level=high 2>&1)
             code=$?
             set -e
             echo "$out"
@@ -72,15 +76,15 @@ jobs:
             fi
             # 124 is what `timeout` returns when it kills the command.
             if [ "$code" -eq 124 ]; then
-              echo "registry did not answer within 90s on attempt $attempt, retrying in 15s"
-              sleep 15
+              echo "registry did not answer within 45s on attempt $attempt, retrying in 10s"
+              sleep 10
               continue
             fi
             if ! echo "$out" | grep -q "audit endpoint returned an error"; then
               exit "$code"
             fi
-            echo "registry audit endpoint unavailable on attempt $attempt, retrying in 15s"
-            sleep 15
+            echo "registry audit endpoint unavailable on attempt $attempt, retrying in 10s"
+            sleep 10
           done
           echo "::warning::npm audit skipped: the registry did not answer or errored three times"
 

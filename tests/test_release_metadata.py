@@ -301,21 +301,34 @@ def test_the_npm_audit_step_cannot_hang_the_job() -> None:
     steps = workflow["jobs"]["frontend"]["steps"]
     audit = next(s for s in steps if "audit" in (s.get("name") or ""))
 
-    assert "timeout 90s npm audit" in audit["run"], "each attempt needs a deadline"
+    import re as _re
 
-    # The step deadline must sit above the worst healthy path, or it fires on a
-    # run that is behaving. The first version used 330s of work against a 360s
-    # ceiling and killed the step in the same second the warning printed.
-    ceiling = audit.get("timeout-minutes")
-    assert ceiling, "the step needs a deadline of its own"
-    attempts = audit["run"].count("for attempt in 1 2 3") and 3
-    per_attempt = 90
-    between = 15 * (attempts - 1)
-    worst = attempts * per_attempt + between
+    run = audit["run"]
+    per_attempt = int(_re.search(r"timeout (\d+)s npm audit", run).group(1))
+    between = int(_re.search(r"sleep (\d+)", run).group(1))
+    attempts = len(_re.search(r"for attempt in ([\d ]+); do", run).group(1).split())
+    worst = attempts * per_attempt + between * (attempts - 1)
+
+    # Two limits bind, and the earlier versions of this fix each missed one.
+    # The step deadline killed the step in the same second its own warning
+    # printed. Then the JOB deadline killed the whole job at ten minutes with
+    # the audit still running, which reports as "cancelled" and reads like
+    # flakiness rather than a budget that does not fit.
+    step_ceiling = audit.get("timeout-minutes")
+    assert step_ceiling, "the step needs a deadline of its own"
     assert (
-        worst < ceiling * 60
-    ), f"three attempts take {worst}s and the step is killed at {ceiling * 60}s"
-    assert f"sleep {15}" in audit["run"], "the gap between attempts is part of the budget"
+        worst < step_ceiling * 60
+    ), f"the attempts take {worst}s and the step is killed at {step_ceiling * 60}s"
+
+    job_ceiling = workflow["jobs"]["frontend"].get("timeout-minutes")
+    assert job_ceiling, "the job needs a deadline too"
+    # npm ci, lint and next build took about six minutes on 2026-09-04, so the
+    # audit has to fit in what is left rather than in the job as a whole.
+    build_budget_seconds = 6 * 60
+    assert worst + build_budget_seconds < job_ceiling * 60, (
+        f"the audit takes {worst}s, the build takes about {build_budget_seconds}s, "
+        f"and the job is killed at {job_ceiling * 60}s"
+    )
     # 124 is what `timeout` returns when it kills the command, and it must be
     # retried rather than failing the job for a registry that went quiet.
     assert "-eq 124" in audit["run"]
