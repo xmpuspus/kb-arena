@@ -12,7 +12,7 @@ chunk. Every stored chunk id is canonical, with no strategy prefix, so a label
 is reachable for every strategy.
 
 Idempotent: skips questions that already have labels unless force=True.
-Cost-capped: stops once cumulative cost reaches KB_ARENA_COST_CAP_USD.
+Cost-capped: stops once cumulative cost reaches KB_ARENA_BENCHMARK_COST_CAP_USD.
 """
 
 from __future__ import annotations

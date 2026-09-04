@@ -161,3 +161,25 @@ def test_the_doc_does_not_promise_a_grade_for_every_candidate():
     help_text = _flat(inspect.getdoc(cli.label_chunks) or "").lower()
     assert "a partial answer is accepted" in help_text
     assert "unjudged, not rejected" in help_text
+
+
+def test_no_file_names_a_settings_variable_that_does_not_exist():
+    """One wrong name was fixed in the CLI help and left in a module docstring.
+
+    Grepping the whole tree closes the class instead of the instance. The
+    exception is this test file, which quotes the wrong name to explain it.
+    """
+    import re
+
+    from kb_arena.settings import Settings
+
+    pattern = re.compile(r"KB_ARENA_[A-Z0-9_]+")
+    bad: list[str] = []
+    for path in list(ROOT.glob("kb_arena/**/*.py")) + list(ROOT.glob("docs/*.md")):
+        if path.name == "settings.py":
+            continue
+        for name in set(pattern.findall(path.read_text())):
+            field = name.removeprefix("KB_ARENA_").lower()
+            if field not in Settings.model_fields:
+                bad.append(f"{path.relative_to(ROOT)}: {name}")
+    assert not bad, "these name a setting that does not exist: " + "; ".join(sorted(bad))
