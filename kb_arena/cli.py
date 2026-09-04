@@ -6,6 +6,7 @@ Each command is independently runnable and re-runnable.
 from __future__ import annotations
 
 import logging
+import math
 
 import typer
 from rich.console import Console
@@ -344,8 +345,16 @@ def benchmark(
         1,
         "--runs",
         min=1,
+        max=20,
         help="Repeat the whole benchmark N times, one run id each, for spread. "
-        "The cost cap applies to each run, so N runs can spend N times the cap.",
+        "The cost cap applies to each run, so N runs can spend N times the cap, "
+        "which is why this stops at 20. Read the spread with `kb-arena variance`.",
+    ),
+    seed: int = typer.Option(
+        -1,
+        "--seed",
+        help="Seed recorded in every run manifest. Default -1 keeps KB_ARENA_RUN_SEED. "
+        "It does not control provider-side model sampling.",
     ),
     strategy_module: str = typer.Option(
         "",
@@ -412,6 +421,23 @@ def benchmark(
         console.print("\n  Remove --dry-run to execute.")
         return
 
+    if seed != -1:
+        from pydantic import ValidationError
+
+        from kb_arena.settings import Settings
+        from kb_arena.settings import settings as _seed_settings
+
+        try:
+            # Only -1 means "keep the setting". Another negative is a typo, and
+            # treating it as the default would silently ignore what was typed.
+            # Assigning the attribute skips the field validator, so the bound
+            # the model declares would never apply. Building the value through
+            # the model keeps the CLI and the setting under one rule.
+            _seed_settings.run_seed = Settings(run_seed=seed).run_seed
+        except ValidationError as exc:
+            console.print(f"[red]Invalid --seed {seed}: {exc.errors()[0]['msg']}[/red]")
+            raise typer.Exit(1) from None
+
     _preflight(needs_llm=True, needs_embeddings=True)
 
     if ragas or reference_free:
@@ -421,21 +447,25 @@ def benchmark(
 
     from kb_arena.benchmark.runner import BenchmarkExecutionError, run_benchmark
 
+    produced: list[str] = []
+
     try:
         # Each repeat gets its own run id and result files, so a later reader
         # can see the spread across runs instead of one point.
         for repeat in range(runs):
-            asyncio.run(
-                run_benchmark(
-                    corpus=corpus,
-                    strategy=strategy,
-                    tier=tier,
-                    split=split,
-                    parallel=parallel,
-                    reference_free=reference_free,
-                    top_k=top_k,
-                    # only the first repeat resumes; the rest are fresh runs
-                    resume_run_id=(resume or None) if repeat == 0 else None,
+            produced.append(
+                asyncio.run(
+                    run_benchmark(
+                        corpus=corpus,
+                        strategy=strategy,
+                        tier=tier,
+                        split=split,
+                        parallel=parallel,
+                        reference_free=reference_free,
+                        top_k=top_k,
+                        # only the first repeat resumes; the rest are fresh runs
+                        resume_run_id=(resume or None) if repeat == 0 else None,
+                    )
                 )
             )
     except BenchmarkExecutionError as exc:
@@ -443,21 +473,51 @@ def benchmark(
         raise typer.Exit(1) from None
 
     if fail_below > 0:
-        from kb_arena.benchmark.reporter import _load_results
+        from kb_arena.benchmark.variance import load_runs
 
-        all_results = _load_results(corpus if corpus != "all" else None)
+        # Every repeat, not only the last. `_load_results` reads the top-level
+        # files, which each repeat overwrites, so with `--runs 3` a gate would
+        # have judged run three and ignored the two before it.
+        # Only the runs this command produced. Reading every run would let a
+        # stale result from an earlier invocation fail a clean benchmark.
+        mine = set(produced)
+        runs_to_gate = [
+            run
+            for run in load_runs(corpus if corpus != "all" else None)
+            if str(run.get("run_id", "")) in mine
+        ]
         failed = False
-        for r in all_results:
-            if r.accuracy_by_tier:
-                avg = sum(r.accuracy_by_tier.values()) / len(r.accuracy_by_tier)
-                if avg < fail_below:
-                    console.print(
-                        f"[red]FAIL: {r.strategy} accuracy {avg:.1%} < {fail_below:.1%}[/red]"
-                    )
-                    failed = True
+        for run in runs_to_gate:
+            strategy_name = str(run.get("strategy", ""))
+            run_id = str(run.get("run_id", ""))
+            raw = run.get("accuracy_by_tier") or {}
+            tiers = [
+                float(v)
+                for v in raw.values()
+                if isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v)
+            ]
+            if len(tiers) != len(raw) or not tiers:
+                # A NaN compares false against every threshold and an emptied
+                # table skips the comparison, so both would have printed PASS.
+                console.print(
+                    f"[red]FAIL: {strategy_name} has no readable accuracy " f"(run {run_id})[/red]"
+                )
+                failed = True
+                continue
+            avg = sum(tiers) / len(tiers)
+            if avg < fail_below:
+                console.print(
+                    f"[red]FAIL: {strategy_name} accuracy {avg:.1%} < "
+                    f"{fail_below:.1%} (run {run_id})[/red]"
+                )
+                failed = True
         if failed:
             raise typer.Exit(1)
-        console.print(f"[green]PASS: All strategies above {fail_below:.1%}[/green]")
+        if not runs_to_gate:
+            # A PASS over nothing reads as a green gate. It is a missing one.
+            console.print("[red]FAIL: --fail-below found no run from this command to judge[/red]")
+            raise typer.Exit(1)
+        console.print(f"[green]PASS: {len(runs_to_gate)} run(s) above {fail_below:.1%}[/green]")
 
     _next_step("benchmark", corpus)
 
@@ -1606,6 +1666,116 @@ def label_chunks(
         raise typer.Exit(1)
 
 
+@app.command(name="variance")
+def variance(
+    corpus: str = typer.Option("", help="Corpus to read, or every corpus when empty"),
+    metric: str = typer.Option(
+        "accuracy_by_tier", help="Result field to spread, averaged over its tiers"
+    ),
+):
+    """Stage 4b: the spread across repeats of one experiment.
+
+    `kb-arena benchmark --runs N` writes N results that share a compatibility
+    key. This reads them and says how far the number moved when nothing about
+    the experiment changed.
+    """
+    from rich.table import Table
+
+    from kb_arena.benchmark.variance import (
+        THIN_EVIDENCE_RUNS,
+        RunsUnreadableError,
+        load_runs,
+        spread_report,
+    )
+
+    try:
+        runs = load_runs(corpus or None)
+    except RunsUnreadableError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from None
+    if not runs:
+        console.print("[yellow]No results found. Run `kb-arena benchmark` first.[/yellow]")
+        raise typer.Exit(1)
+
+    rows = spread_report(runs, metrics=(metric,))
+    if not any(metric in row["metrics"] for row in rows):
+        console.print(
+            f"[red]No run carries the metric {metric!r}. An empty table and a zero "
+            f"exit would read as 'no variance found'.[/red]"
+        )
+        raise typer.Exit(1)
+    table = Table(title=f"Spread over repeats ({metric})")
+    # "half span" and not "+/-": the value is half the distance between the
+    # lowest and highest run, which is not a symmetric interval around the mean.
+    columns = (
+        "corpus",
+        "strategy",
+        "key",
+        "runs",
+        "seeds",
+        "mean",
+        "sd",
+        "half span",
+        "comparable",
+    )
+    # An incomparable row prints its values under "mean", because there is no
+    # mean to print: the runs measured different things.
+    for column in columns:
+        table.add_column(column)
+    thin = 0
+    incomparable = 0
+    for row in rows:
+        spread = row["metrics"].get(metric)
+        if not spread:
+            continue
+        if not row["comparable"]:
+            incomparable += 1
+            table.add_row(
+                row["corpus"],
+                row["strategy"],
+                row["compatibility_key"][:12],
+                str(spread["runs"]),
+                ", ".join(row["seeds"]) or "unrecorded",
+                ", ".join(f"{v:.4f}" for v in spread["values"]),
+                "-",
+                "-",
+                "no",
+            )
+            continue
+        if spread["runs"] < THIN_EVIDENCE_RUNS:
+            thin += 1
+        seeds = ", ".join(row["seeds"]) or "unrecorded"
+        table.add_row(
+            row["corpus"],
+            row["strategy"],
+            row["compatibility_key"][:12],
+            str(spread["runs"]),
+            seeds,
+            f"{spread['mean']:.4f}",
+            "-" if spread["sd"] is None else f"{spread['sd']:.4f}",
+            "-" if spread["half_width"] is None else f"{spread['half_width']:.4f}",
+            "yes" if row["comparable"] else "no",
+        )
+    console.print(table)
+    console.print(
+        "A row groups by compatibility key, so two runs that measured different "
+        "things never share a spread."
+    )
+    if incomparable:
+        console.print(
+            f"[yellow]{incomparable} row(s) are not comparable: the runs carry no "
+            f"manifest, or they came from different commits. Those rows list every "
+            f"value and no mean, because the gap between them is a change, not "
+            f"noise.[/yellow]"
+        )
+    if thin:
+        console.print(
+            f"[yellow]{thin} row(s) rest on fewer than {THIN_EVIDENCE_RUNS} runs. Two "
+            f"runs give a range a reader can misread as a bound. Use "
+            f"`kb-arena benchmark --runs 3` or more.[/yellow]"
+        )
+
+
 @app.command(name="optimize")
 def optimize(
     corpus: str = typer.Option(..., help="Corpus to optimize against"),
@@ -1635,7 +1805,13 @@ def optimize(
     ),
     method: str = typer.Option("grid", "--method", help="Search method: grid|random"),
     max_trials: int = typer.Option(0, "--max-trials", help="Cap trials per strategy (0 = no cap)"),
-    seed: int = typer.Option(0, "--seed", help="RNG seed for --method random"),
+    seed: int = typer.Option(
+        -1,
+        "--seed",
+        help="Seed for --method random AND for the bootstrap. Default -1 keeps "
+        "KB_ARENA_RUN_SEED. One value drives both, so the recorded seed and the "
+        "so the manifest and the trial order cannot disagree.",
+    ),
     confirm_holdout: bool = typer.Option(
         False,
         "--confirm-holdout",
@@ -1655,6 +1831,22 @@ def optimize(
     and sweep top-k only, so optimization never regenerates LLM-built artifacts.
     `--dry-run` needs no API keys.
     """
+
+    if seed != -1:
+        from pydantic import ValidationError
+
+        from kb_arena.settings import Settings
+        from kb_arena.settings import settings as _seed_settings
+
+        try:
+            # Only -1 means "keep the setting". One seed source: the sweep and
+            # its bootstrap both read it, so the manifest cannot disagree with
+            # the trial order.
+            _seed_settings.run_seed = Settings(run_seed=seed).run_seed
+        except ValidationError as exc:
+            console.print(f"[red]Invalid --seed {seed}: {exc.errors()[0]['msg']}[/red]")
+            raise typer.Exit(1) from None
+
     import asyncio as _asyncio
 
     from kb_arena.benchmark.optimizer import run_optimize, validate_optimize_inputs
@@ -1696,7 +1888,8 @@ def optimize(
             metric=metric,
             method=method,
             max_trials=max_trials,
-            seed=seed,
+            # One seed source: the setting, which --seed writes above.
+            seed=None,
             dry_run=dry_run,
             split=split,
             allow_holdout=confirm_holdout,
