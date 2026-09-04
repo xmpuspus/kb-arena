@@ -28,7 +28,12 @@ logging.getLogger("chromadb.telemetry").setLevel(logging.CRITICAL)
 logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 
 
-from kb_arena.benchmark.ir_metrics import _match_expected, compute_all  # noqa: E402
+from kb_arena.benchmark.ir_metrics import (  # noqa: E402
+    MATCH_CLASSES,
+    _match_expected,
+    compute_all,
+    match_class,
+)
 from kb_arena.benchmark.manifest import build_manifest  # noqa: E402
 from kb_arena.benchmark.questions import discover_corpora, load_questions  # noqa: E402
 from kb_arena.models.benchmark import RetrievalMetrics  # noqa: E402
@@ -191,6 +196,20 @@ def _summarize_with_tiers(
             by_tier[tier] = _aggregate_means(tier_rows)
     out["by_tier"] = by_tier
     return out
+
+
+def count_match_classes(classes) -> dict[str, int]:
+    """Count retrieved chunks per match class, every class present."""
+    counts = dict.fromkeys(MATCH_CLASSES, 0)
+    for cls in classes:
+        counts[cls] = counts.get(cls, 0) + 1
+    return counts
+
+
+def _strict_share(counts: dict[str, int]) -> float | None:
+    """The share of hits that matched a strict id. None when nothing matched."""
+    hits = counts.get("strict", 0) + counts.get("parent", 0) + counts.get("doc", 0)
+    return round(counts.get("strict", 0) / hits, 4) if hits else None
 
 
 def _summarize(records: list[RetrievalMetrics]) -> dict[str, float | int]:
@@ -457,6 +476,9 @@ async def _run_corpora_loop(
             continue
 
         per_strategy_rows: dict[str, list[RetrievalMetrics]] = {s.name: [] for s in strategies}
+        per_strategy_classes: dict[str, dict[str, int]] = {
+            s.name: dict.fromkeys(MATCH_CLASSES, 0) for s in strategies
+        }
         per_strategy_tier_rows: dict[str, list[tuple[int, RetrievalMetrics]]] = {
             s.name: [] for s in strategies
         }
@@ -507,6 +529,13 @@ async def _run_corpora_loop(
                     return chunk.doc_id in hits_set
                 return _match_expected(chunk.chunk_id, hits_set) is not None
 
+            classes = {
+                c.chunk_id: match_class(
+                    c.chunk_id, hits_set, doc_level=metrics.fallback_doc_level, doc_id=c.doc_id
+                )
+                for c in trace.retrieved
+            }
+
             return {
                 "corpus": corp,
                 "strategy": s.name,
@@ -519,6 +548,10 @@ async def _run_corpora_loop(
                 "ndcg_at_k": metrics.ndcg_at_k,
                 "fallback_doc_level": metrics.fallback_doc_level,
                 "hits": list(hits_set),
+                # How each hit matched: a strict id, a parent label, or a
+                # document-level fallback. A recall built on parent and doc
+                # matches is looser than one built on strict ones.
+                "match_classes": count_match_classes(classes.values()),
                 "retrieved": [
                     {
                         "chunk_id": c.chunk_id,
@@ -527,6 +560,7 @@ async def _run_corpora_loop(
                         "score": c.score,
                         "source_strategy": c.source_strategy,
                         "is_hit": _is_hit(c),
+                        "match": classes[c.chunk_id],
                     }
                     for c in trace.retrieved
                 ],
@@ -586,7 +620,10 @@ async def _run_corpora_loop(
                     per_strategy_tier_rows[s.name].append((int(q.tier or 0), metrics))
                     if not trace.retrieved:
                         per_strategy_empty[s.name] += 1
-                    per_question_rows.append(_row(q, trace, metrics))
+                    row = _row(q, trace, metrics)
+                    for cls, n in row["match_classes"].items():
+                        per_strategy_classes[s.name][cls] += n
+                    per_question_rows.append(row)
                 if live is not None:
                     live.update(_build_table(title, top_k, strategies, per_strategy_rows))
                 if live is None:
@@ -604,6 +641,8 @@ async def _run_corpora_loop(
             stats = _summarize_with_tiers(per_strategy_tier_rows[s.name])
             stats["empty_retrieval"] = per_strategy_empty[s.name]
             stats["execution_errors"] = per_strategy_errors[s.name]
+            stats["match_classes"] = dict(per_strategy_classes[s.name])
+            stats["strict_share_of_hits"] = _strict_share(per_strategy_classes[s.name])
             summary[s.name] = stats
         overall["corpora"][corp] = summary
         overall["manifests"][corp] = build_manifest(
