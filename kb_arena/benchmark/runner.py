@@ -458,7 +458,11 @@ def check_resumable(results_dir: Path, run_id: str, config_snap: dict) -> None:
         earlier = json.loads(path.read_text()).get("config_snapshot") or {}
     except (json.JSONDecodeError, OSError) as exc:
         raise BenchmarkExecutionError(f"cannot read {path}: {exc}") from exc
-    changed = [k for k in RESUME_KEYS if k in earlier and earlier.get(k) != config_snap.get(k)]
+    # Only keys both snapshots carry can differ. A key one side lacks comes
+    # from a newer release, and a missing value is not a changed setting.
+    changed = [
+        k for k in RESUME_KEYS if k in earlier and k in config_snap and earlier[k] != config_snap[k]
+    ]
     if changed:
         raise BenchmarkExecutionError(
             "cannot resume run "
