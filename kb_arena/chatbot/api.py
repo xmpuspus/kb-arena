@@ -24,7 +24,7 @@ from pydantic import BaseModel, field_validator
 from sse_starlette.sse import EventSourceResponse
 
 from kb_arena import __version__
-from kb_arena.arena.engine import ArenaEngine
+from kb_arena.arena.engine import ArenaEngine, scope_key
 from kb_arena.benchmark.compare import compare_result_files, resolve_result_path
 from kb_arena.benchmark.manifest import compatibility_key, manifest_summary
 from kb_arena.chatbot.auth import require_auth
@@ -1043,7 +1043,12 @@ async def arena_leaderboard(request: Request, corpus: str = "", rubric: str = "d
         "leaderboard": board,
         "scope": {"corpus": corpus or "all", "rubric": rubric or "default"},
         "scopes": sorted(arena.state.elo_by_scope),
-        "total_votes": sum(row["matches"] for row in board),
+        # Each match sits on two rows, so count the matches, not the rows.
+        "total_votes": sum(
+            1
+            for m in arena.state.matches
+            if m.winner and scope_key(m.corpus, m.rubric) == scope_key(corpus, rubric)
+        ),
     }
 
 

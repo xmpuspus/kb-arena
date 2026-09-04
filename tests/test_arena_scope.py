@@ -132,3 +132,43 @@ def test_the_request_models_carry_rubric_and_voter():
     assert ArenaVoteRequest(match_id="m", winner="a").voter == "human"
     with pytest.raises(ValueError):
         ArenaVoteRequest(match_id="m", winner="a", voter="")
+
+
+def test_a_legacy_match_names_its_voter_as_legacy(tmp_path):
+    path = tmp_path / "arena_state.json"
+    path.write_text(
+        json.dumps(
+            {
+                "elo": {"alpha": 1216.0, "beta": 1184.0},
+                "total_votes": 1,
+                "matches": [
+                    {
+                        "id": "m1",
+                        "question": "q",
+                        "strategy_a": "alpha",
+                        "strategy_b": "beta",
+                        "winner": "a",
+                    }
+                ],
+            }
+        )
+    )
+    state = ArenaState.load(path)
+    assert state.matches[0].voter == "legacy"
+
+
+@pytest.mark.asyncio
+async def test_the_leaderboard_route_counts_each_match_once(arena):
+    from types import SimpleNamespace
+
+    from kb_arena.chatbot import api
+
+    _vote_a(arena, "aws-compute")
+    _vote_a(arena, "aws-compute")
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(arena=arena)))
+
+    body = await api.arena_leaderboard(request, corpus="aws-compute")
+
+    assert body["total_votes"] == 2
+    assert body["scope"] == {"corpus": "aws-compute", "rubric": "default"}
+    assert "aws-compute|default" in body["scopes"]

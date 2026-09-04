@@ -128,7 +128,8 @@ class ArenaState:
                         timestamp=m.get("timestamp", 0),
                         corpus=m.get("corpus", ""),
                         rubric=m.get("rubric", "default"),
-                        voter=m.get("voter", ""),
+                        # A match from before voters were recorded says so.
+                        voter=m.get("voter") or ("legacy" if m.get("winner") else ""),
                     )
                 )
             return state
@@ -277,7 +278,11 @@ class ArenaEngine:
                 if m.winner == "tie" and (m.strategy_a == name or m.strategy_b == name)
             )
             voters = sorted(
-                {m.voter for m in scoped if m.winner and name in (m.strategy_a, m.strategy_b)}
+                {
+                    m.voter or "legacy"
+                    for m in scoped
+                    if m.winner and name in (m.strategy_a, m.strategy_b)
+                }
             )
             board.append(
                 {
