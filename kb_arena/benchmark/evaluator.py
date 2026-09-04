@@ -81,7 +81,8 @@ Return ONLY valid JSON with these exact keys:
 {
   "accuracy": <float 0.0-1.0>,
   "completeness": <float 0.0-1.0>,
-  "faithfulness": <float 0.0-1.0>
+  "faithfulness": <float 0.0-1.0>,
+  "rationale": "<one sentence naming the main reason for the scores>"
 }
 
 Scoring guidance:
@@ -90,6 +91,11 @@ Scoring guidance:
 - faithfulness: Does it avoid hallucination/fabrication? 1.0 = no fabrication, 0.0 = makes things up
 
 Be strict. A partially correct answer scores 0.5-0.7, not 0.9."""
+
+
+# The verdict text a record keeps. Enough for a reader to see the JSON and
+# its rationale, small enough that a results file stays readable.
+_JUDGE_RAW_LIMIT = 2000
 
 
 def _hash_text(text: str) -> str:
@@ -254,6 +260,12 @@ async def _evaluate_uncached(
             score.accuracy = judge_scores["accuracy"]
             score.completeness = judge_scores["completeness"]
             score.faithfulness = judge_scores["faithfulness"]
+            score.judge_provider = resp.provider
+            score.judge_model = resp.model
+            score.judge_prompt_hash = _hash_text(JUDGE_SYSTEM_PROMPT)
+            score.judge_raw = resp.text[:_JUDGE_RAW_LIMIT]
+            rationale = parsed.get("rationale")
+            score.judge_rationale = rationale.strip() if isinstance(rationale, str) else ""
         except Exception as exc:
             raise EvaluationExecutionError(f"LLM judge failed: {exc}") from exc
 

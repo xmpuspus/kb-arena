@@ -18,6 +18,9 @@ class Settings(BaseSettings):
 
     # LLM provider selection
     llm_provider: str = "anthropic"  # anthropic | openai | ollama
+    # The judge can run on a different provider than generation, so the
+    # model that answers never grades itself. Empty follows llm_provider.
+    judge_provider: str = ""  # "" | anthropic | openai | ollama
     llm_api_key: str = ""  # generic key, falls back to provider-specific
 
     # Ollama settings
