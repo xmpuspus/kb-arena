@@ -527,6 +527,17 @@ def check_resumable(results_dir: Path, run_id: str, config_snap: dict) -> dict:
     changed = [
         k for k in RESUME_KEYS if k in earlier and k in config_snap and earlier[k] != config_snap[k]
     ]
+    if "run_seed" not in earlier and "run_seed" in config_snap:
+        # The checkpoint predates seed capture, so the records it holds were
+        # scored under an unknown seed. The finished run is stamped with the
+        # seed of this invocation, and that stamp covers only the new records.
+        logger.warning(
+            "Run %s was checkpointed before seeds were recorded. The manifest will "
+            "name seed %s, and that seed applies only to the questions this "
+            "invocation scores.",
+            run_id,
+            config_snap["run_seed"],
+        )
     if changed:
         raise BenchmarkExecutionError(
             "cannot resume run "

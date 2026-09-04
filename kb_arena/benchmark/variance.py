@@ -70,6 +70,8 @@ class Spread:
 
 def summarize(values: list[float]) -> Spread | None:
     """The spread of one metric over repeats, or None when nothing was measured."""
+    # A non-finite value is not a measurement. The caller counts what it
+    # passed against `Spread.runs`, so a dropped value shows up as missing.
     clean = [float(v) for v in values if v is not None and math.isfinite(float(v))]
     if not clean:
         return None
@@ -158,7 +160,9 @@ def spread_report(runs: list[dict], metrics: tuple[str, ...] = ("accuracy_by_tie
                 continue
             # A run in this group whose metric was missing or the wrong type is
             # not in the spread. Saying how many keeps the count honest.
-            missing = len(group) - len(values)
+            # Both a run that carries no metric and a run whose metric is not
+            # finite are absent from the spread, so both are counted here.
+            missing = len(group) - spread.runs
             if row["comparable"]:
                 row["metrics"][name] = {**spread.as_dict(), "runs_without_this_metric": missing}
             else:

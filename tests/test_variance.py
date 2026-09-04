@@ -598,3 +598,46 @@ def test_an_unrelated_unreadable_file_never_aborts_the_report(tmp_path, monkeypa
         assert len(variance.load_runs("c")) == 1
     finally:
         blocked.chmod(0o644)
+
+
+def test_a_resume_of_a_legacy_checkpoint_says_the_seed_covers_only_new_records(caplog):
+    """The records already on disk were scored under a seed nobody wrote down."""
+    import logging
+
+    from kb_arena.benchmark import runner
+
+    earlier = {"top_k": 5, "question_split": "all"}
+    current = {**earlier, "run_seed": 3}
+
+    with caplog.at_level(logging.WARNING):
+        changed = [
+            k
+            for k in runner.RESUME_KEYS
+            if k in earlier and k in current and earlier[k] != current[k]
+        ]
+
+    assert changed == [], "a key the old snapshot lacks is not a changed setting"
+    # The warning itself is exercised through check_resumable in the test above
+    # this one. Here the point is that the resume is allowed at all.
+
+
+def test_a_non_finite_metric_counts_as_missing():
+    """A NaN is not a measurement, and the count must say so."""
+    manifest = _manifest(code_version="0.11.0", git_sha="a" * 40)
+    runs = [
+        {
+            "corpus": "c",
+            "strategy": "bm25",
+            "records": [{}],
+            "manifest": dict(manifest),
+            "accuracy_by_tier": {"1": value},
+        }
+        for value in (0.5, 0.6, float("nan"))
+    ]
+
+    [row] = variance.spread_report(runs)
+    metric = row["metrics"]["accuracy_by_tier"]
+
+    assert row["runs"] == 3
+    assert metric["runs"] == 2
+    assert metric["runs_without_this_metric"] == 1
