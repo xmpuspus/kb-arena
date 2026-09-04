@@ -222,3 +222,105 @@ def test_the_cache_file_uses_wal(tmp_path):
     cache(["alpha"])
     with sqlite3.connect(tmp_path / "c.sqlite") as conn:
         assert conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
+
+
+def test_a_corrupt_vector_row_is_dropped_and_embedded_again(tmp_path):
+    path = tmp_path / "c.sqlite"
+    provider = _Provider()
+    cache = CachedEmbedding(provider, provider="fake", model="m", path=path)
+    cache(["alpha"])
+    with sqlite3.connect(path) as conn:
+        conn.execute("UPDATE vectors SET vector = ?", (json.dumps([1.0, "x"]),))
+
+    assert _plain(cache(["alpha"])) == [[5.0, 1.0]]
+    assert provider.calls == [["alpha"], ["alpha"]]
+    with sqlite3.connect(path) as conn:
+        conn.execute("UPDATE vectors SET vector = ?", (json.dumps([float("nan"), 1.0]),))
+    assert _plain(cache(["alpha"])) == [[5.0, 1.0]]
+
+
+def test_a_row_with_the_wrong_length_for_its_identity_is_dropped(tmp_path):
+    path = tmp_path / "c.sqlite"
+    provider = _Provider()
+    cache = CachedEmbedding(provider, provider="fake", model="m", path=path)
+    cache(["alpha", "beta", "gamma"])
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "UPDATE vectors SET vector = ? WHERE key = ?",
+            (json.dumps([9.0]), cache_key("fake", "m", "beta")),
+        )
+
+    vectors = _plain(cache(["alpha", "beta", "gamma"]))
+
+    assert vectors[1] == [4.0, 1.0], "the short row went back to the provider"
+    assert provider.calls[-1] == ["beta"]
+
+
+def test_the_salt_retires_old_vectors(tmp_path, monkeypatch):
+    path = tmp_path / "c.sqlite"
+    provider = _Provider()
+    cache = CachedEmbedding(provider, provider="ollama", model="m", path=path)
+    monkeypatch.setattr(settings, "embedding_cache_salt", "")
+    cache(["alpha"])
+    monkeypatch.setattr(settings, "embedding_cache_salt", "rev-2")
+    cache(["alpha"])
+
+    assert provider.calls == [["alpha"], ["alpha"]]
+
+
+def test_a_claim_in_the_database_stops_a_second_process_from_paying_twice(tmp_path):
+    import sqlite3 as _sqlite
+    import time as _time
+
+    path = tmp_path / "c.sqlite"
+    first = CachedEmbedding(_Provider(), provider="fake", model="m", path=path)
+    key = cache_key("fake", "m", "alpha")
+    # another process claimed the key a moment ago
+    with _sqlite.connect(path) as conn:
+        conn.execute("INSERT INTO claims (key, claimed_at) VALUES (?, ?)", (key, _time.time()))
+        conn.commit()
+
+    import threading
+
+    def other_process_finishes():
+        _time.sleep(0.2)
+        with _sqlite.connect(path) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO vectors (key, vector) VALUES (?, ?)",
+                (key, json.dumps([7.0, 7.0])),
+            )
+            conn.execute("DELETE FROM claims WHERE key = ?", (key,))
+            conn.commit()
+
+    threading.Thread(target=other_process_finishes).start()
+    vectors = _plain(first(["alpha"]))
+
+    assert vectors == [
+        [7.0, 7.0]
+    ], "the vector came from the other process, not a second provider call"
+    assert first._inner.calls == []
+
+
+def test_a_stale_claim_is_taken_over(tmp_path):
+    import sqlite3 as _sqlite
+
+    path = tmp_path / "c.sqlite"
+    provider = _Provider()
+    cache = CachedEmbedding(provider, provider="fake", model="m", path=path)
+    with _sqlite.connect(path) as conn:
+        conn.execute(
+            "INSERT INTO claims (key, claimed_at) VALUES (?, ?)",
+            (cache_key("fake", "m", "alpha"), 1.0),
+        )
+        conn.commit()
+
+    assert _plain(cache(["alpha"])) == [[5.0, 1.0]]
+    assert provider.calls == [["alpha"]]
+    with _sqlite.connect(path) as conn:
+        assert conn.execute("SELECT count(*) FROM claims").fetchone()[0] == 0
+
+
+def test_the_cache_file_is_ignored_by_git():
+    from pathlib import Path
+
+    assert "embedding_cache.sqlite" in Path(".gitignore").read_text()

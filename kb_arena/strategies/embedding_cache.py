@@ -12,8 +12,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import sqlite3
 import threading
+import time
 from pathlib import Path
 
 from chromadb import Documents, EmbeddingFunction, Embeddings
@@ -22,6 +24,13 @@ from kb_arena.settings import settings
 
 log = logging.getLogger(__name__)
 _SCHEMA = "CREATE TABLE IF NOT EXISTS vectors (key TEXT PRIMARY KEY, vector TEXT NOT NULL)"
+# A claim marks a key one process is computing right now. INSERT OR IGNORE
+# on a primary key is atomic across processes, so two benchmark processes
+# never both pay the provider for one text. A claim older than this many
+# seconds belongs to a process that died, and the next caller takes it over.
+_CLAIMS = "CREATE TABLE IF NOT EXISTS claims (key TEXT PRIMARY KEY, claimed_at REAL NOT NULL)"
+_CLAIM_TTL_S = 120.0
+_CLAIM_POLL_S = 0.05
 # One lock per cache file for the whole process. Four strategies build at
 # once in one benchmark, each with its own wrapper, and they share the file.
 _FILE_LOCKS: dict[str, threading.Lock] = {}
@@ -38,15 +47,17 @@ def _lock_for(path: Path) -> threading.Lock:
         return _FILE_LOCKS.setdefault(key, threading.Lock())
 
 
-def cache_key(provider: str, model: str, text: str, endpoint: str = "") -> str:
-    """One key per provider, model, endpoint, and exact text.
+def cache_key(provider: str, model: str, text: str, endpoint: str = "", salt: str = "") -> str:
+    """One key per provider, model, endpoint, salt, and exact text.
 
     The endpoint matters for a self-hosted provider: two Ollama servers with
     one model name can hold different weights, so their vectors never share.
-    The four parts go through one JSON digest, so a colon inside a model tag
-    can never make two identities collide.
+    The salt is KB_ARENA_EMBEDDING_CACHE_SALT, for a model that changed
+    under the same tag: set it to the new revision and the old vectors are
+    never read again. The parts go through one JSON digest, so a colon inside
+    a model tag can never make two identities collide.
     """
-    scope = json.dumps([provider, model, endpoint.rstrip("/"), text], separators=(",", ":"))
+    scope = json.dumps([provider, model, endpoint.rstrip("/"), salt, text], separators=(",", ":"))
     return hashlib.sha256(scope.encode("utf-8")).hexdigest()
 
 
@@ -60,6 +71,16 @@ def default_cache_path() -> Path:
     if settings.embedding_cache_path:
         return Path(settings.embedding_cache_path)
     return Path("./embedding_cache.sqlite")
+
+
+def _valid_vector(vector) -> bool:
+    """A non-empty list of finite numbers, and nothing else, counts as a vector."""
+    if not isinstance(vector, list) or not vector:
+        return False
+    for x in vector:
+        if isinstance(x, bool) or not isinstance(x, int | float) or not math.isfinite(x):
+            return False
+    return True
 
 
 class CachedEmbedding(EmbeddingFunction[Documents]):
@@ -85,6 +106,7 @@ class CachedEmbedding(EmbeddingFunction[Documents]):
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.execute(_SCHEMA)
+            conn.execute(_CLAIMS)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._path, timeout=30, check_same_thread=False)
@@ -116,8 +138,14 @@ class CachedEmbedding(EmbeddingFunction[Documents]):
                         vector = json.loads(raw)
                     except json.JSONDecodeError:
                         continue
-                    if isinstance(vector, list) and vector:
+                    if _valid_vector(vector):
                         found[key] = vector
+        # Every vector of one identity has one length. A row with another
+        # length is corrupt, so it is dropped and embedded again.
+        lengths = {len(v) for v in found.values()}
+        if len(lengths) > 1:
+            common = max(lengths, key=lambda n: sum(1 for v in found.values() if len(v) == n))
+            found = {k: v for k, v in found.items() if len(v) == common}
         return found
 
     def _write(self, pairs: list[tuple[str, list[float]]]) -> None:
@@ -130,27 +158,71 @@ class CachedEmbedding(EmbeddingFunction[Documents]):
     def _inflight(self) -> dict[str, threading.Event]:
         return _INFLIGHT.setdefault(str(self._path.resolve()), {})
 
+    def _claim(self, keys: list[str]) -> set[str]:
+        """The keys this process now owns. A stale claim from a dead process is taken over."""
+        now = time.time()
+        with self._connect() as conn:
+            conn.execute("DELETE FROM claims WHERE claimed_at < ?", (now - _CLAIM_TTL_S,))
+            mine: set[str] = set()
+            for key in keys:
+                cur = conn.execute(
+                    "INSERT OR IGNORE INTO claims (key, claimed_at) VALUES (?, ?)", (key, now)
+                )
+                if cur.rowcount == 1:
+                    mine.add(key)
+        return mine
+
+    def _release(self, keys: list[str]) -> None:
+        with self._connect() as conn:
+            conn.executemany("DELETE FROM claims WHERE key = ?", [(k,) for k in keys])
+
+    def _wait_for_foreign(self, keys: list[str]) -> None:
+        """Wait for another process to store the keys it claimed, or for its claim to expire."""
+        deadline = time.time() + _CLAIM_TTL_S
+        pending = set(keys)
+        while pending and time.time() < deadline:
+            time.sleep(_CLAIM_POLL_S)
+            with self._lock:
+                stored = self._read(list(pending))
+                with self._connect() as conn:
+                    marks = ",".join("?" for _ in pending)
+                    live = {
+                        row[0]
+                        for row in conn.execute(
+                            f"SELECT key FROM claims WHERE key IN ({marks})", list(pending)
+                        )
+                    }
+            pending -= set(stored)
+            pending -= {k for k in pending if k not in live}
+
     def __call__(self, input: Documents) -> Embeddings:  # type: ignore[override]
         texts = list(input)
-        keys = [cache_key(self._provider, self._model, text, self._endpoint) for text in texts]
+        salt = settings.embedding_cache_salt
+        keys = [
+            cache_key(self._provider, self._model, text, self._endpoint, salt) for text in texts
+        ]
         unique = list(dict.fromkeys(keys))
         text_of = dict(zip(keys, texts, strict=True))
         # Under the lock: read what is stored, claim the misses nobody is
         # computing, and note the misses another caller is computing now.
+        # The claim lives in the database, so it holds across processes.
         with self._lock:
             found = self._read(unique)
             inflight = self._inflight()
             mine: list[str] = []
             waits: list[threading.Event] = []
-            for key in unique:
-                if key in found:
-                    continue
+            foreign: list[str] = []
+            missing = [key for key in unique if key not in found]
+            claimed = self._claim(missing) if missing else set()
+            for key in missing:
                 pending = inflight.get(key)
                 if pending is not None:
                     waits.append(pending)
-                else:
+                elif key in claimed:
                     inflight[key] = threading.Event()
                     mine.append(key)
+                else:
+                    foreign.append(key)
         self.hits += sum(1 for key in keys if key in found)
         self.misses += sum(1 for key in keys if key not in found)
         try:
@@ -166,10 +238,16 @@ class CachedEmbedding(EmbeddingFunction[Documents]):
                 found.update(zip(mine, fresh, strict=True))
         finally:
             with self._lock:
+                if mine:
+                    self._release(mine)
                 for key in mine:
-                    self._inflight().pop(key, None).set() if key in self._inflight() else None
+                    event = self._inflight().pop(key, None)
+                    if event is not None:
+                        event.set()
         for event in waits:
             event.wait()
+        if foreign:
+            self._wait_for_foreign(foreign)
         still_missing = [key for key in unique if key not in found]
         if still_missing:
             with self._lock:
