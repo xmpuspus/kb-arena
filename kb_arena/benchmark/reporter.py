@@ -12,6 +12,7 @@ from pathlib import Path
 from rich.console import Console
 
 from kb_arena.benchmark.manifest import compatibility_key, manifest_summary
+from kb_arena.benchmark.review import publication_blockers, review_summary
 from kb_arena.models.benchmark import BenchmarkResult
 from kb_arena.settings import settings
 from kb_arena.strategies.catalog import STRATEGY_CATALOG
@@ -109,6 +110,22 @@ def cost_efficiency(result: BenchmarkResult) -> dict:
 
 def _build_markdown(results: list[BenchmarkResult], profile: str = DEFAULT_PROFILE) -> str:
     lines = ["# KB Arena Benchmark Report", ""]
+    records = [rec for result in results for rec in result.records]
+    review = review_summary(records)
+    blockers = publication_blockers(records)
+    if blockers:
+        lines.append(
+            "Not citable evidence: "
+            + "; ".join(blockers)
+            + ". A machine-assisted draft question is a development signal, because "
+            "nobody checked its answer key."
+        )
+    else:
+        lines.append(
+            f"Every scored question is human-reviewed ({review['questions']} questions, "
+            f"share {review['reviewed_share']:.0%})."
+        )
+    lines.append("")
 
     # Group by corpus
     by_corpus: dict[str, list[BenchmarkResult]] = {}
@@ -408,7 +425,12 @@ def _add_ranking_section(
 
 
 def _build_summary(results: list[BenchmarkResult]) -> dict:
-    summary: dict = {"corpora": {}, "rankings": {}, "profiles": PROFILES}
+    summary: dict = {
+        "corpora": {},
+        "rankings": {},
+        "profiles": PROFILES,
+        "review": review_summary([rec for result in results for rec in result.records]),
+    }
     for key, group in group_by_experiment(results).items():
         summary["rankings"][key] = {
             "experiment": _experiment_label(group, key),
