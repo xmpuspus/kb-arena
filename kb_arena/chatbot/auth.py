@@ -95,8 +95,9 @@ def require_read_auth(
 
     The rule this enforces:
 
-    - Demo mode: allowed. The demo publishes its own corpus on purpose.
-    - A token is set: the token is required, the same as any write route.
+    - A token is set: the token is required, whatever else is true. Demo mode
+      says who may read WITHOUT a token; it never removes one.
+    - Demo mode and no token: allowed. The demo publishes its corpus on purpose.
     - No token, not a demo, and the caller is not on the loopback address:
       refused. A laptop that binds to every interface would otherwise serve
       its documents to the whole network.
@@ -104,14 +105,10 @@ def require_read_auth(
     A route that returns only aggregates, such as a leaderboard, a health
     check or a corpus list, does not need this. The content is what matters.
     """
-    if settings.demo_mode:
-        # A public demo serves its own corpus deliberately. Rate limiting still
-        # applies, so a reader cannot walk the whole thing at speed.
-        check_rate_limit(request)
-        return
-
     check_rate_limit(request)
 
+    # A token, once set, is enforced whatever else is true. Demo mode says who
+    # may read without one; it never removes one that an operator configured.
     expected = settings.api_token
     if expected:
         provided = ""
@@ -119,6 +116,12 @@ def require_read_auth(
             provided = authorization[len("Bearer ") :].strip()
         if not provided or not hmac.compare_digest(provided, expected):
             raise HTTPException(status_code=401, detail="unauthorized")
+        return
+
+    if settings.demo_mode:
+        # A public demo serves its own corpus deliberately, and it set no
+        # token. Rate limiting still applies, so a reader cannot walk the
+        # whole corpus at speed.
         return
 
     client_host = _client_key(request)

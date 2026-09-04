@@ -788,7 +788,7 @@ async def graph_stats(request: Request, corpus: str = "all") -> dict:
     }
 
 
-@app.get("/api/graph/data")
+@app.get("/api/graph/data", dependencies=[Depends(require_read_auth)])
 async def graph_data(
     request: Request,
     corpus: str = "all",

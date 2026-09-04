@@ -1,6 +1,10 @@
 import { API_URL } from "./api";
 import { apiFetch } from "./auth";
 
+// A refusal to read is not an answer about the corpus.
+export const QA_PAIRS_UNAUTHORIZED =
+  "The Q&A pairs need an API token. Enter one to read them.";
+
 // Types
 
 export interface QaPair {
@@ -206,9 +210,15 @@ export async function fetchQaPairs(corpus: string): Promise<{ pairs: QaPair[]; t
   try {
     // Document-derived questions and answers, so it carries the API token.
     const res = await apiFetch(`${API_URL}/api/tools/qa-pairs?corpus=${corpus}`);
+    if (res.status === 401) {
+      // An empty list here reads as "this corpus has no pairs", which is a
+      // claim about the corpus. The truth is that the read was refused.
+      throw new Error(QA_PAIRS_UNAUTHORIZED);
+    }
     if (!res.ok) return { pairs: [], total: 0 };
     return await res.json();
-  } catch {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === QA_PAIRS_UNAUTHORIZED) throw err;
     return { pairs: [], total: 0 };
   }
 }

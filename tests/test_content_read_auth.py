@@ -99,3 +99,34 @@ def test_the_demo_command_serves_this_machine_by_default():
     source = inspect.getsource(cli.demo)
     assert '"0.0.0.0"' not in source, "the default must not serve the network"
     assert '"127.0.0.1"' in source
+
+
+def test_demo_mode_never_removes_a_token_an_operator_set(monkeypatch):
+    """Demo mode says who may read WITHOUT a token. It does not delete one."""
+    monkeypatch.setattr(settings, "demo_mode", True)
+    monkeypatch.setattr(settings, "api_token", "s3cret")
+
+    with pytest.raises(HTTPException) as refused:
+        require_read_auth(_request("203.0.113.7"), None)
+    assert refused.value.status_code == 401
+
+    assert require_read_auth(_request("203.0.113.7"), "Bearer s3cret") is None
+
+
+def test_the_graph_data_route_carries_the_read_gate():
+    """It returns entities extracted from the documents, so it is content."""
+    import inspect
+
+    from kb_arena.chatbot import api
+
+    source = inspect.getsource(api)
+    assert '"/api/graph/data", dependencies=[Depends(require_read_auth)]' in source
+
+
+def test_a_refused_read_is_never_reported_as_an_empty_corpus():
+    """An empty list reads as a claim about the corpus, and a 401 is not one."""
+    from pathlib import Path
+
+    client = Path("web/lib/tools-api.ts").read_text()
+    assert "QA_PAIRS_UNAUTHORIZED" in client
+    assert "res.status === 401" in client
