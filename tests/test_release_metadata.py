@@ -288,3 +288,55 @@ def test_an_empty_or_wrong_sbom_fails_the_run() -> None:
     # The dry run persists an attestation, and it says so rather than implying
     # that nothing outward happened.
     assert "DID persist a build attestation" in report["run"]
+
+
+def test_the_npm_audit_step_cannot_hang_the_job() -> None:
+    """A retry catches an endpoint that answers an error, not one that never answers.
+
+    The frontend job was cancelled twice on 2026-09-04 with `npm audit` still
+    running as an orphan process after ten minutes. A cancelled check is not a
+    pass, and it reads like flakiness rather than a hang.
+    """
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text())
+    steps = workflow["jobs"]["frontend"]["steps"]
+    audit = next(s for s in steps if "audit" in (s.get("name") or ""))
+
+    import re as _re
+
+    run = audit["run"]
+    per_attempt = int(_re.search(r"timeout (\d+)s npm audit", run).group(1))
+    between = int(_re.search(r"sleep (\d+)", run).group(1))
+    attempts = len(_re.search(r"for attempt in ([\d ]+); do", run).group(1).split())
+    worst = attempts * per_attempt + between * (attempts - 1)
+
+    # Two limits bind, and the earlier versions of this fix each missed one.
+    # The step deadline killed the step in the same second its own warning
+    # printed. Then the JOB deadline killed the whole job at ten minutes with
+    # the audit still running, which reports as "cancelled" and reads like
+    # flakiness rather than a budget that does not fit.
+    step_ceiling = audit.get("timeout-minutes")
+    assert step_ceiling, "the step needs a deadline of its own"
+    assert (
+        worst < step_ceiling * 60
+    ), f"the attempts take {worst}s and the step is killed at {step_ceiling * 60}s"
+
+    job_ceiling = workflow["jobs"]["frontend"].get("timeout-minutes")
+    assert job_ceiling, "the job needs a deadline too"
+    # npm ci, lint and next build took about six minutes on 2026-09-04, so the
+    # audit has to fit in what is left rather than in the job as a whole.
+    build_budget_seconds = 6 * 60
+    assert worst + build_budget_seconds < job_ceiling * 60, (
+        f"the audit takes {worst}s, the build takes about {build_budget_seconds}s, "
+        f"and the job is killed at {job_ceiling * 60}s"
+    )
+    # 124 is what `timeout` returns when it kills the command, and it must be
+    # retried rather than failing the job for a registry that went quiet.
+    assert "-eq 124" in audit["run"]
+
+
+def test_every_ci_job_has_a_timeout() -> None:
+    """A job with no timeout waits for the runner limit before anyone learns."""
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text())
+
+    missing = [name for name, job in workflow["jobs"].items() if not job.get("timeout-minutes")]
+    assert not missing, f"these jobs have no timeout: {sorted(missing)}"
