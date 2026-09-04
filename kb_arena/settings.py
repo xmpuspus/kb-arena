@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     # LLM — OpenAI (for embeddings)
     openai_api_key: str = ""
 
+    # Graph analysis budgets. Exact betweenness is O(n*m) and loads the whole
+    # graph into one process. Above these the analyzer loads a bounded slice
+    # and samples the centrality instead of hanging the API.
+    graph_node_budget: int = 5000
+    graph_edge_budget: int = 50000
+    graph_centrality_exact_max_nodes: int = 1000
+    graph_centrality_samples: int = 200
+
     # Neo4j
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"

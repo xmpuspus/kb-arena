@@ -15,6 +15,7 @@ from typing import Any
 import networkx as nx
 
 from kb_arena.graph.neo4j_store import Neo4jStore
+from kb_arena.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,22 @@ class GraphAnalyzer:
         self._store = store
         # cache: key -> (timestamp, value)
         self._cache: dict[str, tuple[float, Any]] = {}
+        # What the last load and the last centrality run did, for the caller
+        # that reports them. A truncated graph or a sampled centrality must
+        # never pass as the whole picture.
+        self.last_load: dict[str, Any] = {}
+        self.last_centrality: dict[str, Any] = {}
+
+    async def _load_rows(self, cypher: str, budget: int) -> tuple[list[dict], bool]:
+        """Rows up to the budget, and whether more existed beyond it.
+
+        One extra row tells truncation apart from a graph that fits, without
+        a second count query against the store.
+        """
+        rows = await self._store.execute_query(cypher, {"limit": budget + 1})
+        rows = list(rows)
+        truncated = len(rows) > budget
+        return rows[:budget], truncated
 
     def _cache_get(self, key: str) -> Any | None:
         entry = self._cache.get(key)
@@ -44,22 +61,48 @@ class GraphAnalyzer:
         if cached is not None:
             return cached
 
-        nodes = await self._store.execute_query(
+        nodes, nodes_truncated = await self._load_rows(
             "MATCH (n:KBArenaEntity) "
             "RETURN n.entity_id AS entity_id, n.fqn AS fqn, "
-            "head([label IN labels(n) WHERE label <> 'KBArenaEntity']) AS label"
+            "head([label IN labels(n) WHERE label <> 'KBArenaEntity']) AS label "
+            "ORDER BY n.entity_id LIMIT $limit",
+            settings.graph_node_budget,
         )
-        edges = await self._store.execute_query(
+        edges, edges_truncated = await self._load_rows(
             "MATCH (a:KBArenaEntity)-[r]->(b:KBArenaEntity) "
-            "RETURN a.entity_id AS src, b.entity_id AS dst, type(r) AS rel"
+            "RETURN a.entity_id AS src, b.entity_id AS dst, type(r) AS rel "
+            "ORDER BY a.entity_id, b.entity_id LIMIT $limit",
+            settings.graph_edge_budget,
         )
 
         graph: nx.Graph = nx.Graph()
         for row in nodes:
             graph.add_node(row["entity_id"], fqn=row["fqn"], label=row["label"])
+        dropped_edges = 0
         for row in edges:
+            # An edge to a node outside the loaded slice would add a bare node
+            # and inflate the count, so it stays out.
+            if row["src"] not in graph or row["dst"] not in graph:
+                dropped_edges += 1
+                continue
             graph.add_edge(row["src"], row["dst"], rel=row["rel"], weight=1)
 
+        self.last_load = {
+            "nodes_loaded": graph.number_of_nodes(),
+            "edges_loaded": graph.number_of_edges(),
+            "node_budget": settings.graph_node_budget,
+            "edge_budget": settings.graph_edge_budget,
+            "truncated": nodes_truncated or edges_truncated,
+            "edges_dropped_outside_slice": dropped_edges,
+        }
+        if self.last_load["truncated"]:
+            logger.warning(
+                "Graph load truncated at the budget: %d nodes, %d edges loaded. "
+                "Raise KB_ARENA_GRAPH_NODE_BUDGET or KB_ARENA_GRAPH_EDGE_BUDGET "
+                "for the whole graph.",
+                graph.number_of_nodes(),
+                graph.number_of_edges(),
+            )
         self._cache_set("undirected", graph)
         logger.debug(
             "Built undirected graph: %d nodes, %d edges",
@@ -149,8 +192,24 @@ class GraphAnalyzer:
             return cached
 
         graph = await self._build_networkx_graph()
-        centrality: dict[str, float] = await asyncio.to_thread(
-            nx.betweenness_centrality, graph, normalized=True
-        )
+        node_count = graph.number_of_nodes()
+        exact = node_count <= settings.graph_centrality_exact_max_nodes
+        if exact:
+            centrality: dict[str, float] = await asyncio.to_thread(
+                nx.betweenness_centrality, graph, normalized=True
+            )
+            self.last_centrality = {"method": "exact", "nodes": node_count, "samples": None}
+        else:
+            # Brandes sampling: k pivot nodes instead of all of them. Seeded,
+            # so two calls on one graph agree.
+            samples = min(settings.graph_centrality_samples, node_count)
+            centrality = await asyncio.to_thread(
+                nx.betweenness_centrality, graph, k=samples, normalized=True, seed=0
+            )
+            self.last_centrality = {
+                "method": "approximate",
+                "nodes": node_count,
+                "samples": samples,
+            }
         self._cache_set("centrality", centrality)
         return centrality

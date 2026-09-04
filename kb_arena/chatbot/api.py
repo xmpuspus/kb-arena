@@ -766,6 +766,9 @@ async def graph_stats(request: Request) -> dict:
             for entity_id, centrality_score in top_hubs
         ],
         "community_count": len(communities),
+        # A reader must see when the numbers come from a slice or a sample.
+        "centrality": analyzer.last_centrality,
+        "load": analyzer.last_load,
     }
 
 
