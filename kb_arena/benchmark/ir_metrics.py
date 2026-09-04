@@ -254,7 +254,10 @@ def bpref(
             # many non-relevant items rank above a single relevant one.
             n_clamped = min(n_above, denom)
             s += 1.0 - (n_clamped / denom)
-        elif rid in judged_nonrelevant:
+        elif _match_expected(rid, judged_nonrelevant) is not None:
+            # A positive matches through `_candidate_ids`, so a negative must
+            # too. Raw equality never matched `L1:doc::no` against `doc::no`,
+            # and bpref then ignored a judged negative ranked above a hit.
             n_above += 1
     return s / r_count
 
@@ -278,7 +281,10 @@ def compute_all(
     `exponential_gain` selects the 2^rel - 1 gain function.
     """
     fallback = False
-    if not expected_ids and expected_doc_ids:
+    # A question whose every chunk got grade 0 has ground truth: the judge
+    # read the chunks and rejected them. Falling back to the document then
+    # awards relevance the judgments contradict.
+    if not expected_ids and expected_doc_ids and not judged_nonrelevant:
         ids_in_top_k = [c.doc_id for c in retrieved]
         target = expected_doc_ids
         fallback = True

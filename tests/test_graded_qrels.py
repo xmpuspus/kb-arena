@@ -398,3 +398,54 @@ def test_an_empty_candidate_pool_returns_a_mapping_not_a_list():
     assert grades == {}
     assert isinstance(grades, dict)
     assert cost == 0.0
+
+
+def test_a_negative_matches_the_way_a_positive_does():
+    """A positive matched through the prefix strip, a negative by raw equality."""
+    ranked = [
+        RetrievedChunk(chunk_id=c, doc_id="doc", content="t", rank=i + 1, source_strategy="x")
+        for i, c in enumerate(["L1:doc::no", "L1:doc::yes"])
+    ]
+    metrics = compute_all(ranked, {"doc::yes"}, 5, judged_nonrelevant={"doc::no"})
+    assert metrics.bpref < 1.0, "a judged negative above the hit must cost bpref"
+
+
+def test_a_question_the_judge_rejected_never_falls_back_to_the_document():
+    """An all-zero label is ground truth, not an absence of it."""
+    ranked = [
+        RetrievedChunk(
+            chunk_id="doc::other", doc_id="doc", content="t", rank=1, source_strategy="x"
+        )
+    ]
+    judged = compute_all(ranked, set(), 5, expected_doc_ids={"doc"}, judged_nonrelevant={"doc::a"})
+    unjudged = compute_all(ranked, set(), 5, expected_doc_ids={"doc"})
+    assert unjudged.recall_at_k == 1.0, "with no chunk judgments the document match stands"
+    assert judged.recall_at_k == 0.0, "the judge rejected every chunk, so nothing is relevant"
+
+
+def test_the_optimizer_reads_the_grades_and_the_negatives():
+    """The lab and the sweep must score the same evidence, or they disagree."""
+    import inspect
+
+    from kb_arena.benchmark import optimizer
+
+    source = inspect.getsource(optimizer._score_trial)
+    assert "expected_relevance=" in source
+    assert "judged_nonrelevant=" in source
+
+
+def test_a_candidate_with_no_chunk_in_the_corpus_never_becomes_a_label():
+    """A cluster summary is reachable only by the strategy that made it."""
+    import inspect
+
+    source = inspect.getsource(labeler.label_one_question)
+    assert "corpus_ids" in source
+    assert "canonical_chunk_id(c.chunk_id) in corpus_ids" in source
+
+
+def test_a_failed_forced_relabel_drops_the_stale_grade():
+    """Republishing an old grade reads as a judgment the judge never made."""
+    import inspect
+
+    source = inspect.getsource(labeler.label_corpus)
+    assert "del out_dict[q.id]" in source

@@ -218,6 +218,20 @@ async def label_one_question(
             by_id[cid] = c
     deduped = list(by_id.values())
 
+    # A cluster summary or a generated pair has no chunk in the corpus, so a
+    # label on it is reachable only by the strategy that made it. The BM25
+    # index holds the corpus's own chunk ids, which is the namespace a stored
+    # label lives in, so a candidate outside it never becomes ground truth.
+    corpus_ids = set(getattr(bm25, "_chunk_ids", None) or [])
+    if corpus_ids:
+        kept = [c for c in deduped if canonical_chunk_id(c.chunk_id) in corpus_ids]
+        dropped = len(deduped) - len(kept)
+        if dropped:
+            log.info("Dropping %d candidate(s) with no chunk in the corpus", dropped)
+        deduped = kept
+    if not deduped:
+        return {}, cost
+
     candidates_text = "\n\n".join(
         f"[{canonical_chunk_id(c.chunk_id)}] {c.content[:400]}" for c in deduped
     )
@@ -360,6 +374,11 @@ async def label_corpus(
             log.warning("Skipping %s: %s", q.id, exc)
             total_cost += getattr(exc, "cost_usd", 0.0)
             unparsed += 1
+            if force and q.id in out_dict:
+                # A forced relabel that failed must not republish the old
+                # grade as if the judge had just confirmed it.
+                del out_dict[q.id]
+                log.warning("Dropped the stale label for %s after a failed relabel", q.id)
             continue
         total_cost += cost
         out_dict[q.id] = grades
