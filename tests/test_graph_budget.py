@@ -120,3 +120,30 @@ async def test_graph_stats_reports_the_method_and_the_load(monkeypatch):
     assert stats["community_count"] == 2
     assert stats["centrality"]["method"] == "approximate"
     assert stats["load"]["truncated"] is True
+
+
+@pytest.mark.asyncio
+async def test_the_directed_graph_loads_under_the_same_budget(monkeypatch):
+    monkeypatch.setattr(settings, "graph_node_budget", 3)
+    monkeypatch.setattr(settings, "graph_edge_budget", 100)
+    nodes, edges = _chain(6)
+    analyzer = GraphAnalyzer(_store(nodes, edges))
+
+    graph = await analyzer._build_directed_graph()
+
+    assert graph.number_of_nodes() == 3
+    assert graph.number_of_edges() == 2
+    limits = [call.args[1]["limit"] for call in analyzer._store.execute_query.await_args_list]
+    assert limits == [4, 101]
+    chains = await analyzer.find_dependency_chains("c::n0", max_depth=4)
+    assert chains and all(len(path) <= 3 for path in chains)
+
+
+def test_a_zero_budget_or_sample_count_is_rejected():
+    from kb_arena.settings import Settings
+
+    with pytest.raises(ValueError):
+        Settings(graph_node_budget=0)
+    with pytest.raises(ValueError):
+        Settings(graph_centrality_samples=0)
+    assert Settings(graph_node_budget=1).graph_node_budget == 1

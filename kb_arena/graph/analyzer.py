@@ -112,31 +112,40 @@ class GraphAnalyzer:
         return graph
 
     async def _build_directed_graph(self) -> nx.DiGraph:
-        """Pull nodes and edges from Neo4j into a directed networkx graph."""
+        """Directed graph for path finding, loaded under the same budgets."""
         cached = self._cache_get("directed")
         if cached is not None:
             return cached
 
-        nodes = await self._store.execute_query(
+        nodes, nodes_truncated = await self._load_rows(
             "MATCH (n:KBArenaEntity) "
             "RETURN n.entity_id AS entity_id, n.fqn AS fqn, "
-            "head([label IN labels(n) WHERE label <> 'KBArenaEntity']) AS label"
+            "head([label IN labels(n) WHERE label <> 'KBArenaEntity']) AS label "
+            "ORDER BY n.entity_id LIMIT $limit",
+            settings.graph_node_budget,
         )
-        edges = await self._store.execute_query(
+        edges, edges_truncated = await self._load_rows(
             "MATCH (a:KBArenaEntity)-[r]->(b:KBArenaEntity) "
-            "RETURN a.entity_id AS src, b.entity_id AS dst, type(r) AS rel"
+            "RETURN a.entity_id AS src, b.entity_id AS dst, type(r) AS rel "
+            "ORDER BY a.entity_id, b.entity_id LIMIT $limit",
+            settings.graph_edge_budget,
         )
 
         graph: nx.DiGraph = nx.DiGraph()
         for row in nodes:
             graph.add_node(row["entity_id"], fqn=row["fqn"], label=row["label"])
         for row in edges:
+            if row["src"] not in graph or row["dst"] not in graph:
+                continue
             graph.add_edge(row["src"], row["dst"], rel=row["rel"])
-
+        if nodes_truncated or edges_truncated:
+            logger.warning(
+                "Directed graph load truncated at the budget: %d nodes, %d edges loaded.",
+                graph.number_of_nodes(),
+                graph.number_of_edges(),
+            )
         self._cache_set("directed", graph)
         return graph
-
-    # ── Algorithms ────────────────────────────────────────────────────────────
 
     async def analyze_communities(self, resolution: float = 1.0) -> list[set[str]]:
         """Louvain community detection.
