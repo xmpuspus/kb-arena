@@ -28,6 +28,7 @@ logging.getLogger("chromadb.telemetry").setLevel(logging.CRITICAL)
 logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 
 
+from kb_arena.benchmark.atomic import atomic_write_text  # noqa: E402
 from kb_arena.benchmark.ir_metrics import _match_expected, compute_all  # noqa: E402
 from kb_arena.benchmark.questions import discover_corpora, load_questions  # noqa: E402
 from kb_arena.models.benchmark import RetrievalMetrics  # noqa: E402
@@ -374,8 +375,9 @@ async def run_retriever_lab(
         _llm_patch.__exit__(None, None, None)
 
     json_path = results_dir / "retriever_lab.json"
-    json_path.write_text(
-        json.dumps({**overall, "questions": per_question_rows}, indent=2, ensure_ascii=False)
+    atomic_write_text(
+        json_path,
+        json.dumps({**overall, "questions": per_question_rows}, indent=2, ensure_ascii=False),
     )
 
     md_lines = [f"# Retriever Lab: run {run_id}", "", f"Top-k: {top_k}", ""]
@@ -403,7 +405,7 @@ async def run_retriever_lab(
             )
         md_lines.append("")
     md_path = results_dir / "retriever_lab.md"
-    md_path.write_text("\n".join(md_lines))
+    atomic_write_text(md_path, "\n".join(md_lines))
 
     floor_violation = False
     for corp_name, by_strategy in overall["corpora"].items():

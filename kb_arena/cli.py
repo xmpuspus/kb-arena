@@ -335,6 +335,11 @@ def benchmark(
     ragas: bool = typer.Option(
         False, "--ragas", help="Enable RAGAS metrics (faithfulness, precision, recall, relevancy)"
     ),
+    resume: str = typer.Option(
+        "",
+        "--resume",
+        help="Run id to resume. Questions already checkpointed under results/run_<id> are skipped",
+    ),
     strategy_module: str = typer.Option(
         "",
         "--strategy-module",
@@ -419,6 +424,7 @@ def benchmark(
                 parallel=parallel,
                 reference_free=reference_free,
                 top_k=top_k,
+                resume_run_id=resume or None,
             )
         )
     except BenchmarkExecutionError as exc:

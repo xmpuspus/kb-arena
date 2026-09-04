@@ -17,6 +17,9 @@ from typing import TypeVar
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
+from pydantic import ValidationError
+
+from kb_arena.benchmark.atomic import append_jsonl, atomic_write_text, read_jsonl
 from kb_arena.benchmark.evaluator import evaluate
 from kb_arena.benchmark.ir_metrics import compute_all as compute_ir_metrics
 from kb_arena.benchmark.questions import discover_corpora, load_questions
@@ -420,6 +423,22 @@ class CostCapExceededError(Exception):
     """Raised when cumulative benchmark cost exceeds the configured cap."""
 
 
+def checkpoint_path(results_dir: Path, run_id: str, corpus: str, strategy: str) -> Path:
+    return Path(results_dir) / f"run_{run_id}" / f"{corpus}_{strategy}.records.jsonl"
+
+
+def load_checkpoint(path: Path) -> dict[str, AnswerRecord]:
+    """The records a stopped run already scored, by question id. A later line wins."""
+    done: dict[str, AnswerRecord] = {}
+    for row in read_jsonl(path):
+        try:
+            record = AnswerRecord.model_validate(row)
+        except ValidationError:
+            continue
+        done[record.question_id] = record
+    return done
+
+
 async def run_benchmark(
     corpus: str = "all",
     strategy: str = "all",
@@ -428,6 +447,7 @@ async def run_benchmark(
     parallel: bool = True,
     reference_free: bool = False,
     top_k: int = 5,
+    resume_run_id: str | None = None,
 ) -> None:
     """Run benchmark questions against specified strategies.
 
@@ -438,7 +458,10 @@ async def run_benchmark(
     from datetime import UTC, datetime
     from uuid import uuid4
 
-    run_id = uuid4().hex[:8]
+    # Every scored record lands in a JSONL checkpoint under the run directory
+    # as soon as it exists. A resumed run reads that file and skips the
+    # questions it already holds.
+    run_id = resume_run_id or uuid4().hex[:8]
     timestamp = datetime.now(UTC).isoformat()
     cost_cap = settings.benchmark_cost_cap_usd
     if not math.isfinite(cost_cap) or cost_cap < 0:
@@ -475,6 +498,10 @@ async def run_benchmark(
     selected_questions = False
 
     console.print(f"[dim]Run ID: {run_id}[/dim]")
+    if resume_run_id:
+        console.print(
+            "[dim]Resuming: questions already checkpointed for this run are skipped[/dim]"
+        )
     if cost_cap > 0:
         console.print(f"[dim]Cost cap: ${cost_cap:.2f}[/dim]")
         if parallel:
@@ -503,12 +530,10 @@ async def run_benchmark(
         def _write_result(bench: BenchmarkResult) -> None:
             # Latest (backward compat)
             latest_path = results_dir / f"{bench.corpus}_{bench.strategy}.json"
-            latest_path.write_text(bench.model_dump_json(indent=2))
+            atomic_write_text(latest_path, bench.model_dump_json(indent=2))
             # Timestamped run copy
-            run_dir = results_dir / f"run_{run_id}"
-            run_dir.mkdir(parents=True, exist_ok=True)
-            run_path = run_dir / f"{bench.corpus}_{bench.strategy}.json"
-            run_path.write_text(bench.model_dump_json(indent=2))
+            run_path = results_dir / f"run_{run_id}" / f"{bench.corpus}_{bench.strategy}.json"
+            atomic_write_text(run_path, bench.model_dump_json(indent=2))
 
         if parallel and len(strategies) > 1 and cost_cap <= 0:
             with Progress(
@@ -532,6 +557,10 @@ async def run_benchmark(
                         timestamp=timestamp,
                         config_snapshot=config_snap,
                     )
+                    ckpt = checkpoint_path(results_dir, run_id, corp, strat.name)
+                    done = load_checkpoint(ckpt) if resume_run_id else {}
+                    bench.records.extend(done.values())
+                    progress.advance(task_ids[strat.name], len(done))
                     coros = (
                         _run_one(
                             strat,
@@ -549,10 +578,12 @@ async def run_benchmark(
                             reviewed_by=q.reviewed_by,
                         )
                         for q in questions
+                        if q.id not in done
                     )
                     async for rec in _as_completed_bounded(
                         coros, settings.benchmark_max_concurrent
                     ):
+                        append_jsonl(ckpt, rec.model_dump(mode="json"))
                         bench.records.append(rec)
                         progress.advance(task_ids[strat.name])
                     bench = _aggregate(bench, questions_map)
@@ -608,9 +639,14 @@ async def run_benchmark(
                         timestamp=timestamp,
                         config_snapshot=config_snap,
                     )
+                    ckpt = checkpoint_path(results_dir, run_id, corp, strat.name)
+                    done = load_checkpoint(ckpt) if resume_run_id else {}
+                    bench.records.extend(done.values())
+                    progress.advance(task, len(done))
+                    pending = [q for q in questions if q.id not in done]
 
-                    async def _run_question(q):
-                        return await _run_one(
+                    async def _run_question(q, ckpt=ckpt):
+                        rec = await _run_one(
                             strat,
                             q.id,
                             q.question,
@@ -625,16 +661,18 @@ async def run_benchmark(
                             review_status=q.review_status,
                             reviewed_by=q.reviewed_by,
                         )
+                        append_jsonl(ckpt, rec.model_dump(mode="json"))
+                        return rec
 
                     if cost_cap > 0:
                         records = []
-                        for question in questions:
+                        for question in pending:
                             records.append(await _run_question(question))
                             if cumulative_total_cost + sum(r.cost_usd for r in records) >= cost_cap:
                                 break
                     else:
                         records = []
-                        coros = (_run_question(question) for question in questions)
+                        coros = (_run_question(question) for question in pending)
                         async for record in _as_completed_bounded(
                             coros, settings.benchmark_max_concurrent
                         ):
