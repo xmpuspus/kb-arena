@@ -31,6 +31,18 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
+      - name: Refuse a real publish from anything but a tag or main
+        if: ${{ !inputs.dry_run }}
+        run: |
+          # workflow_dispatch builds whatever ref the caller selected, so
+          # without this anyone who can dispatch could publish a branch under
+          # the repository's PyPI token.
+          ref="${{ github.ref }}"
+          case "$ref" in
+            refs/tags/v*|refs/heads/main) echo "Publishing from $ref" ;;
+            *) echo "Refusing to publish from $ref. Use a v* tag or main." ; exit 1 ;;
+          esac
+
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
@@ -68,10 +80,47 @@ jobs:
       - name: Report the dry run
         if: ${{ inputs.dry_run }}
         run: |
-          echo "Dry run. Every step above ran for real and nothing was uploaded."
+          set -euo pipefail
+          echo "Dry run. Nothing was uploaded to PyPI."
           echo "Artifacts built:"
           ls -la dist/
-          echo "SBOM components: $(python -c "import json;print(len(json.load(open('sbom.cdx.json')).get('components',[])))")"
+          # Not a subshell inside an echo: that hid every failure behind a
+          # zero exit and printed an empty count as if it were a real one.
+          python - <<'PYEOF'
+          import json
+          import sys
+
+          with open("sbom.cdx.json") as handle:
+              sbom = json.load(handle)
+          components = sbom.get("components")
+          if not isinstance(components, list) or not components:
+              sys.exit("SBOM carries no components. The scan did not describe the package.")
+          print(f"SBOM components: {len(components)}")
+          names = {str(c.get("name", "")).replace("_", "-") for c in components}
+          if "kb-arena" not in names:
+              sys.exit("SBOM does not name kb-arena. It scanned the wrong interpreter.")
+          print("SBOM names kb-arena.")
+          PYEOF
+          echo
+          echo "This dry run DID persist a build attestation and upload the SBOM"
+          echo "artifact, for a build that was never published. That is deliberate:"
+          echo "the attestation step is the one most likely to be misconfigured,"
+          echo "so it is exercised here rather than first at a release."
+
+      - name: Refuse to republish a version PyPI already holds
+        if: ${{ !inputs.dry_run }}
+        run: |
+          # `--skip-existing` reports success when the version is already on
+          # PyPI, so a run that published nothing looked identical to one that
+          # published everything, while the attestation above described local
+          # files that differ from the released ones.
+          version=$(python -c "import kb_arena; print(kb_arena.__version__)")
+          code=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/kb-arena/$version/json")
+          if [ "$code" = "200" ]; then
+            echo "kb-arena $version is already on PyPI. Bump the version before publishing."
+            exit 1
+          fi
+          echo "kb-arena $version is not on PyPI yet."
 
       - name: Publish to PyPI
         if: ${{ !inputs.dry_run }}
@@ -83,4 +132,4 @@ jobs:
             echo "PYPI_API_TOKEN secret not set. See README for manual publish steps."
             exit 1
           fi
-          twine upload --skip-existing dist/*
+          twine upload dist/*

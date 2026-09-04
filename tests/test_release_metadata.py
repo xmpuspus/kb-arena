@@ -176,7 +176,48 @@ def test_the_publish_workflow_can_run_without_uploading() -> None:
     assert upload["if"] == "${{ !inputs.dry_run }}", "the upload must be the only guarded step"
 
     # The steps that prove the path must run either way.
-    always = {"Build package", "Twine check"}
+    always = {"Build package", "Twine check", "Generate SBOM"}
     for step in steps:
         if step.get("name") in always:
             assert "if" not in step, f"{step['name']} must run in a dry run too"
+
+
+def test_a_dispatch_cannot_publish_an_arbitrary_branch() -> None:
+    """`workflow_dispatch` builds whatever ref the caller selected."""
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "publish.yml").read_text())
+    steps = workflow["jobs"]["publish"]["steps"]
+    guard = next(s for s in steps if "Refuse a real publish" in (s.get("name") or ""))
+
+    assert guard["if"] == "${{ !inputs.dry_run }}"
+    assert "refs/tags/v*" in guard["run"]
+    assert "refs/heads/main" in guard["run"]
+    # The guard must sit before the build, or it protects nothing.
+    names = [s.get("name") or s.get("uses", "") for s in steps]
+    assert names.index(guard["name"]) < names.index("Build package")
+
+
+def test_the_workflow_never_reports_success_for_a_version_already_on_pypi() -> None:
+    """`--skip-existing` made a run that published nothing look like a release."""
+    text = (ROOT / ".github" / "workflows" / "publish.yml").read_text()
+    workflow = yaml.safe_load(text)
+    steps = workflow["jobs"]["publish"]["steps"]
+    upload = next(s for s in steps if s.get("name") == "Publish to PyPI")
+
+    assert (
+        "--skip-existing" not in upload["run"]
+    ), "a version already on PyPI must fail the run, not pass it in silence"
+    check = next(s for s in steps if "Refuse to republish" in (s.get("name") or ""))
+    assert "pypi.org/pypi/kb-arena" in check["run"]
+
+
+def test_the_dry_run_summary_fails_on_an_empty_sbom() -> None:
+    """A count printed inside an echo hides every failure behind a zero exit."""
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "publish.yml").read_text())
+    steps = workflow["jobs"]["publish"]["steps"]
+    report = next(s for s in steps if s.get("name") == "Report the dry run")
+
+    assert "set -euo pipefail" in report["run"]
+    assert "sys.exit" in report["run"], "an empty or wrong SBOM must fail the step"
+    # The dry run persists an attestation, and it says so rather than implying
+    # that nothing outward happened.
+    assert "DID persist a build attestation" in report["run"]
