@@ -182,6 +182,31 @@ def test_the_publish_workflow_can_run_without_uploading() -> None:
             assert "if" not in step, f"{step['name']} must run in a dry run too"
 
 
+def test_the_job_sits_behind_an_environment() -> None:
+    """The workflow file comes from the selected ref, so it can rewrite its own guards.
+
+    An environment is configured on the repository, not in the file, so a
+    branch cannot remove it. It is the only control here that a crafted ref
+    cannot reach.
+    """
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "publish.yml").read_text())
+
+    assert workflow["jobs"]["publish"]["environment"] == "pypi"
+
+
+def test_the_sbom_check_runs_on_a_real_publish_too() -> None:
+    """It ran only in a dry run, so a release could ship an SBOM the dry run refused."""
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "publish.yml").read_text())
+    steps = workflow["jobs"]["publish"]["steps"]
+    check = next(s for s in steps if "Check the SBOM" in (s.get("name") or ""))
+
+    assert "if" not in check, "the SBOM check must not be a dry-run-only step"
+    names = [s.get("name") or s.get("uses", "") for s in steps]
+    # A bad SBOM must not be attested or uploaded.
+    assert names.index(check["name"]) < names.index("Attest build provenance")
+    assert names.index(check["name"]) < names.index("Upload SBOM")
+
+
 def test_a_dispatch_cannot_publish_an_arbitrary_branch() -> None:
     """`workflow_dispatch` builds whatever ref the caller selected."""
     workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "publish.yml").read_text())
@@ -230,14 +255,16 @@ def test_the_workflow_never_reports_success_for_a_version_already_on_pypi() -> N
     assert "dist/*.whl" in check["run"]
 
 
-def test_the_dry_run_summary_fails_on_an_empty_sbom() -> None:
+def test_an_empty_or_wrong_sbom_fails_the_run() -> None:
     """A count printed inside an echo hides every failure behind a zero exit."""
     workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "publish.yml").read_text())
     steps = workflow["jobs"]["publish"]["steps"]
-    report = next(s for s in steps if s.get("name") == "Report the dry run")
+    check = next(s for s in steps if "Check the SBOM" in (s.get("name") or ""))
 
-    assert "set -euo pipefail" in report["run"]
-    assert "sys.exit" in report["run"], "an empty or wrong SBOM must fail the step"
+    assert "set -euo pipefail" in check["run"]
+    assert "sys.exit" in check["run"], "an empty or wrong SBOM must fail the step"
+
+    report = next(s for s in steps if s.get("name") == "Report the dry run")
     # The dry run persists an attestation, and it says so rather than implying
     # that nothing outward happened.
     assert "DID persist a build attestation" in report["run"]

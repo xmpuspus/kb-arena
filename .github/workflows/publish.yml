@@ -19,6 +19,12 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # The workflow FILE comes from the ref the dispatch selected, so a branch
+    # can rewrite every guard below it. An environment is the one control the
+    # ref cannot touch: it is configured on the repository, and its required
+    # reviewers and branch rules gate the secret itself. Configure `pypi` in
+    # Settings, Environments, with a required reviewer and a tag rule.
+    environment: pypi
     permissions:
       contents: read
       # attest-build-provenance (a wrapper on actions/attest as of v4) mints
@@ -104,24 +110,11 @@ jobs:
           /tmp/sbom-venv/bin/pip install --quiet dist/*.whl
           cyclonedx-py environment -o sbom.cdx.json /tmp/sbom-venv/bin/python
 
-      - name: Attest build provenance
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-path: "dist/*"
-
-      - name: Upload SBOM
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: sbom
-          path: sbom.cdx.json
-
-      - name: Report the dry run
-        if: ${{ inputs.dry_run }}
+      - name: Check the SBOM describes the built package
         run: |
           set -euo pipefail
-          echo "Dry run. Nothing was uploaded to PyPI."
-          echo "Artifacts built:"
-          ls -la dist/
+          # This ran only in a dry run, so a real publish could ship an SBOM
+          # the dry run would have refused. It runs either way now.
           # Not a subshell inside an echo: that hid every failure behind a
           # zero exit and printed an empty count as if it were a real one.
           python - <<'PYEOF'
@@ -149,6 +142,25 @@ jobs:
               sys.exit(f"SBOM describes kb-arena {sorted(found)} and the wheel is {built}.")
           print(f"SBOM names kb-arena {built}.")
           PYEOF
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: "dist/*"
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom
+          path: sbom.cdx.json
+
+      - name: Report the dry run
+        if: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          echo "Dry run. Nothing was uploaded to PyPI."
+          echo "Artifacts built:"
+          ls -la dist/
           echo
           echo "This dry run DID persist a build attestation and upload the SBOM"
           echo "artifact, for a build that was never published. That is deliberate:"
