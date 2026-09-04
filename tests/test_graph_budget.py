@@ -118,7 +118,7 @@ async def test_graph_stats_reports_the_method_and_the_load(monkeypatch):
 
         async def calculate_centrality(self, corpus=None):
             assert corpus == "alpha"
-            return {"c::a": 0.5, "c::b": 0.2, "c::c": 0.0}
+            return {"c::a": 0.5, "c::b": 0.0031, "c::c": 0.0}
 
         async def analyze_communities(self, resolution=1.0, corpus=None):
             return [{"c::a", "c::b"}, {"c::c"}]
@@ -135,6 +135,8 @@ async def test_graph_stats_reports_the_method_and_the_load(monkeypatch):
     assert stats["centrality"]["method"] == "approximate"
     assert stats["load"]["truncated"] is True
     assert stats["top_hubs"][0]["centrality"] == 0.5
+    # a sampled score keeps two significant digits, so a small hub is not erased
+    assert stats["top_hubs"][1]["centrality"] == 0.0031
 
 
 @pytest.mark.asyncio
@@ -207,21 +209,23 @@ async def test_a_corpus_filter_loads_that_corpus_only(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_sampling_every_node_is_exact_and_a_cache_hit_keeps_the_record(monkeypatch):
+async def test_above_the_ceiling_the_run_is_a_sample_and_a_cache_hit_keeps_the_record(monkeypatch):
     monkeypatch.setattr(settings, "graph_centrality_exact_max_nodes", 5)
     monkeypatch.setattr(settings, "graph_centrality_samples", 500)
     nodes, edges = _chain(20)
     analyzer = GraphAnalyzer(_store(nodes, edges))
 
     first = await analyzer.calculate_centrality()
-    assert analyzer.last_centrality["method"] == "exact"
+    # the pivots cover every node, the numbers equal the exact ones, and the
+    # label still says sample, because the ceiling is what bounds the cost
+    assert analyzer.last_centrality == {"method": "approximate", "nodes": 20, "samples": 20}
     analyzer.last_centrality = {}
     analyzer.last_load = {}
 
     second = await analyzer.calculate_centrality()
 
     assert second == first
-    assert analyzer.last_centrality["method"] == "exact"
+    assert analyzer.last_centrality["method"] == "approximate"
     assert analyzer.last_load["nodes_loaded"] == 20
 
 

@@ -45,7 +45,9 @@ class GraphAnalyzer:
         One extra row tells truncation apart from a graph that fits. An entity
         id starts with its corpus, so a corpus filter is a prefix match. An
         edge query gets the loaded node ids, so an edge that leaves the slice
-        never spends the edge budget.
+        never spends the edge budget. The budget bounds what the process
+        holds. The store still matches and orders every edge among the loaded
+        ids before the limit, so a dense slice costs the database that scan.
         """
         params: dict[str, Any] = {"limit": budget + 1, "prefix": f"{corpus}::" if corpus else ""}
         if ids is not None:
@@ -278,11 +280,11 @@ class GraphAnalyzer:
         graph = await self._build_networkx_graph(corpus)
         node_count = graph.number_of_nodes()
         samples = min(settings.graph_centrality_samples, node_count)
-        # k pivots equal to every node is the exact computation at the same
-        # cost, so it is labeled exact. The ceiling still bounds the cost:
-        # above it the run never visits more than graph_centrality_samples
-        # pivots.
-        exact = node_count <= settings.graph_centrality_exact_max_nodes or samples >= node_count
+        # Above the ceiling the run never visits more than
+        # graph_centrality_samples pivots, whatever the graph size, and it
+        # is labeled a sample even when the pivots happen to cover every
+        # node. The ceiling is the one number that bounds the cost.
+        exact = node_count <= settings.graph_centrality_exact_max_nodes
         if exact:
             centrality: dict[str, float] = await asyncio.to_thread(
                 nx.betweenness_centrality, graph, normalized=True

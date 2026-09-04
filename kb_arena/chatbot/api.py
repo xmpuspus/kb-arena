@@ -758,8 +758,12 @@ async def graph_stats(request: Request, corpus: str = "all") -> dict:
     scope = None if corpus in ("", "all") else corpus
     centrality = await analyzer.calculate_centrality(scope)
     top_hubs = sorted(centrality.items(), key=lambda x: x[1], reverse=True)[:10]
-    # A sampled score carries about two digits, an exact one four.
-    digits = 4 if analyzer.last_centrality.get("method") == "exact" else 2
+    # An exact score keeps four decimals. A sampled one keeps two significant
+    # digits, so a hub at 0.0031 still reads as 0.0031 and not as zero.
+    exact = analyzer.last_centrality.get("method") == "exact"
+
+    def _shown(score: float) -> float:
+        return round(score, 4) if exact else float(f"{score:.2g}")
 
     communities = await analyzer.analyze_communities(corpus=scope)
 
@@ -772,7 +776,7 @@ async def graph_stats(request: Request, corpus: str = "all") -> dict:
             {
                 "entity_id": entity_id,
                 "fqn": entity_id.split("::", 1)[-1],
-                "centrality": round(centrality_score, digits),
+                "centrality": _shown(centrality_score),
             }
             for entity_id, centrality_score in top_hubs
         ],
