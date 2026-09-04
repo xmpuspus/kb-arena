@@ -98,9 +98,12 @@ export default function ArenaPage() {
   const [corpus, setCorpus] = useState("all");
   const [corpora, setCorpora] = useState(CORPORA);
 
-  async function fetchLeaderboard() {
+  // The board is per corpus, so a vote on one corpus never moves the numbers
+  // a reader sees next to another.
+  async function fetchLeaderboard(scope: string = corpus) {
     try {
-      const res = await fetch(`${API}/api/arena/leaderboard`);
+      const query = scope && scope !== "all" ? `?corpus=${encodeURIComponent(scope)}` : "";
+      const res = await fetch(`${API}/api/arena/leaderboard${query}`);
       const data = await res.json();
       setLeaderboard(data.leaderboard || []);
       setTotalVotes(data.total_votes || 0);
@@ -154,11 +157,15 @@ export default function ArenaPage() {
     }
   }
 
-  // Fetch leaderboard on mount
+  // Fetch the board on mount, and again whenever the corpus changes
   useEffect(() => {
-    fetchLeaderboard();
     fetchCorpora().then(setCorpora);
   }, []);
+
+  useEffect(() => {
+    fetchLeaderboard(corpus);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [corpus]);
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
