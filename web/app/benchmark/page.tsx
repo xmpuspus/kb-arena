@@ -10,10 +10,13 @@ import {
   fetchBenchmarkResults,
   fetchCorpora,
 } from "@/lib/api";
+import { useTokenEpoch } from "@/lib/useTokenEpoch";
 
 type ViewMode = "table" | "chart" | "both" | "compare";
 
 export default function BenchmarkPage() {
+  // A saved token must retry the read it was entered for.
+  const tokenEpoch = useTokenEpoch();
   const [corpus, setCorpus] = useState("all");
   const [view, setView] = useState<ViewMode>("both");
   const [rows, setRows] = useState(MOCK_BENCHMARK_DATA);
@@ -43,7 +46,7 @@ export default function BenchmarkPage() {
     return () => {
       active = false;
     };
-  }, [corpus]);
+  }, [corpus, tokenEpoch]);
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">

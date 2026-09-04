@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { API_URL, STRATEGY_LABELS, type Strategy } from "@/lib/api";
 import { apiFetch } from "@/lib/auth";
+import { useTokenEpoch } from "@/lib/useTokenEpoch";
 
 type StrategySummary = {
   mean_recall_at_k: number;
@@ -155,6 +156,8 @@ function ChunkRow({ item }: { item: RetrievedItem }) {
 }
 
 export default function RetrieverLabPage() {
+  // A saved token must retry the read it was entered for.
+  const tokenEpoch = useTokenEpoch();
   const [runs, setRuns] = useState<RunListEntry[]>([]);
   const [selectedRun, setSelectedRun] = useState<string>("");
   const [data, setData] = useState<RunData | null>(null);
@@ -208,7 +211,7 @@ export default function RetrieverLabPage() {
       active = false;
       controller.abort();
     };
-  }, [selectedRun]);
+  }, [selectedRun, tokenEpoch]);
 
   const corpusSummary = useMemo(() => {
     if (!data || !selectedCorpus) return null;

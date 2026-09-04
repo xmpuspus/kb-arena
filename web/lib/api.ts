@@ -2,8 +2,16 @@ import { apiFetch } from "./auth";
 
 // A refusal to read is not a benchmark result.
 // A refusal to read is not an outage of the graph database.
+// A rate limit or a server error is not an outage of the graph database.
+export const GRAPH_UNAVAILABLE =
+  "The graph could not be read just now. Try again in a moment.";
+
 export const GRAPH_UNAUTHORIZED =
   "The graph needs an API token. Enter one to read it.";
+
+// A rate limit or a server error is not a benchmark result either.
+export const BENCHMARK_UNAVAILABLE =
+  "The benchmark results could not be read just now. Try again in a moment.";
 
 export const BENCHMARK_UNAUTHORIZED =
   "The benchmark results need an API token. Enter one to read them.";
@@ -201,15 +209,21 @@ export async function fetchGraphData(corpus: string = "all"): Promise<GraphData>
     // The route returns entities extracted from the documents, so it carries
     // the API token when one is set.
     const res = await apiFetch(`${API_URL}/api/graph/data?corpus=${corpus}`);
-    if (res.status === 401) {
+    if (res.status === 401 || res.status === 429 || res.status >= 500) {
       // `connected: false` reads as "the graph database is down", which is a
-      // claim about the deployment. The truth is that the read was refused.
-      throw new Error(GRAPH_UNAUTHORIZED);
+      // claim about the deployment. A refusal, a rate limit and a server
+      // error are all failures to read, and none of them is that claim.
+      throw new Error(res.status === 401 ? GRAPH_UNAUTHORIZED : GRAPH_UNAVAILABLE);
     }
     if (!res.ok) return { nodes: [], edges: [], connected: false };
     return await res.json();
   } catch (err: unknown) {
-    if (err instanceof Error && err.message === GRAPH_UNAUTHORIZED) throw err;
+    if (
+      err instanceof Error &&
+      (err.message === GRAPH_UNAUTHORIZED || err.message === GRAPH_UNAVAILABLE)
+    ) {
+      throw err;
+    }
     return { nodes: [], edges: [], connected: false };
   }
 }
@@ -328,16 +342,23 @@ export async function fetchBenchmarkResults(
     // This route returns per-question records, so it carries the API token
     // when one is set. A bare fetch would get 401 on a deployment with a token.
     const res = await apiFetch(`${API_URL}/api/benchmark/results?corpus=${corpus}`);
-    if (res.status === 401) {
-      // Sample numbers in place of a refused read would put invented results
-      // on screen under a real corpus name. Say the read was refused.
-      throw new Error(BENCHMARK_UNAUTHORIZED);
+    if (res.status === 401 || res.status === 429 || res.status >= 500) {
+      // Sample numbers in place of a failed read would put invented results
+      // on screen under a real corpus name. Say what happened instead.
+      throw new Error(
+        res.status === 401 ? BENCHMARK_UNAUTHORIZED : BENCHMARK_UNAVAILABLE,
+      );
     }
     if (!res.ok) return MOCK_BENCHMARK_DATA;
     const data = await res.json();
     return data.results?.length ? data.results : MOCK_BENCHMARK_DATA;
   } catch (err: unknown) {
-    if (err instanceof Error && err.message === BENCHMARK_UNAUTHORIZED) throw err;
+    if (
+      err instanceof Error &&
+      (err.message === BENCHMARK_UNAUTHORIZED || err.message === BENCHMARK_UNAVAILABLE)
+    ) {
+      throw err;
+    }
     return MOCK_BENCHMARK_DATA;
   }
 }

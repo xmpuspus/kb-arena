@@ -10,6 +10,7 @@ import {
   streamGraphBuild,
   type CorpusInfo,
 } from "@/lib/api";
+import { useTokenEpoch } from "@/lib/useTokenEpoch";
 
 // Fallback data shown when Neo4j is not connected
 const SAMPLE_NODES: GraphNode[] = [
@@ -100,7 +101,7 @@ export default function GraphPage() {
   // A refused read, distinct from the graph database being unreachable.
   const [readError, setReadError] = useState("");
   // Entering a token is the moment a refused read should be tried again.
-  const [tokenEpoch, setTokenEpoch] = useState(0);
+  const tokenEpoch = useTokenEpoch();
   const [buildStatus, setBuildStatus] = useState<"idle" | "building" | "done" | "error">("idle");
   const [buildProgress, setBuildProgress] = useState("");
   const abortRef = useRef<AbortController | null>(null);
@@ -226,11 +227,6 @@ export default function GraphPage() {
     };
   }, [corpus, tokenEpoch]);
 
-  useEffect(() => {
-    const bump = () => setTokenEpoch((n) => n + 1);
-    window.addEventListener("kb-arena-token-changed", bump);
-    return () => window.removeEventListener("kb-arena-token-changed", bump);
-  }, []);
 
 
 

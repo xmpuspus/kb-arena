@@ -216,7 +216,8 @@ def test_a_refused_graph_read_is_never_shown_as_a_database_outage():
     assert "GRAPH_UNAUTHORIZED" in Path("web/lib/api.ts").read_text()
     page = Path("web/app/graph/page.tsx").read_text()
     assert "readError" in page
-    assert "kb-arena-token-changed" in page, "a saved token must retry the refused read"
+    # The retry now lives in one shared hook, checked by its own test below.
+    assert "useTokenEpoch()" in page, "a saved token must retry the refused read"
 
 
 def test_saving_a_token_announces_itself():
@@ -280,3 +281,35 @@ def test_the_leaderboard_never_averages_two_builds_into_one_row(tmp_path, monkey
     assert len(board) == 2, "two commits are two builds, not one measurement repeated"
     assert {row["build"] for row in board} == {"0.11.0@aaa", "0.11.0@bbb"}
     assert all(row["runs"] == 1 for row in board)
+
+
+def test_every_protected_page_retries_when_a_token_is_saved():
+    """Retrying one page and not the others reads as the token half working."""
+    from pathlib import Path
+
+    hook = Path("web/lib/useTokenEpoch.ts")
+    assert hook.is_file(), "one hook, so the pages cannot drift apart"
+    assert "kb-arena-token-changed" in hook.read_text()
+
+    for name in (
+        "web/app/graph/page.tsx",
+        "web/app/benchmark/page.tsx",
+        "web/app/retriever-lab/page.tsx",
+    ):
+        page = Path(name).read_text()
+        assert "useTokenEpoch()" in page, f"{name} must retry on a token change"
+        assert "tokenEpoch]" in page, f"{name} must read tokenEpoch in its effect"
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["GRAPH_UNAVAILABLE", "BENCHMARK_UNAVAILABLE"],
+)
+def test_a_rate_limit_is_never_a_domain_answer(name):
+    """A 429 or a 500 is a failure to read, not a result and not an outage."""
+    from pathlib import Path
+
+    client = Path("web/lib/api.ts").read_text()
+    assert name in client
+    assert "res.status === 429" in client
+    assert "res.status >= 500" in client
