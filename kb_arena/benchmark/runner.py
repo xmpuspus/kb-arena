@@ -527,7 +527,8 @@ def check_resumable(results_dir: Path, run_id: str, config_snap: dict) -> dict:
     changed = [
         k for k in RESUME_KEYS if k in earlier and k in config_snap and earlier[k] != config_snap[k]
     ]
-    if "run_seed" not in earlier and "run_seed" in config_snap:
+    seed_known = "run_seed" in earlier or "run_seed" not in config_snap
+    if not seed_known:
         # The checkpoint predates seed capture, so the records it holds were
         # scored under an unknown seed. The finished run is stamped with the
         # seed of this invocation, and that stamp covers only the new records.
@@ -543,7 +544,10 @@ def check_resumable(results_dir: Path, run_id: str, config_snap: dict) -> dict:
             "cannot resume run "
             f"{run_id}: these settings differ from the first run: {', '.join(changed)}"
         )
-    return json.loads(path.read_text())
+    resumed = json.loads(path.read_text())
+    if isinstance(resumed, dict):
+        resumed["_seed_covers_whole_run"] = seed_known
+    return resumed
 
 
 def question_hash(question) -> str:
@@ -648,6 +652,7 @@ async def run_benchmark(
     # as soon as it exists. A resumed run reads that file and skips the
     # questions it already holds.
     run_id = resume_run_id or uuid4().hex[:8]
+    seed_covers_whole_run = True
     if resume_run_id and not RUN_ID_PATTERN.match(resume_run_id):
         raise BenchmarkExecutionError(
             f"invalid run id {resume_run_id!r}: letters, digits, - and _ only"
@@ -673,6 +678,9 @@ async def run_benchmark(
     run_record: dict = {"run_id": run_id, "timestamp": timestamp, "config_snapshot": config_snap}
     if resume_run_id:
         earlier = check_resumable(results_dir, resume_run_id, config_snap)
+        # A checkpoint written before seeds existed holds records scored under
+        # an unknown seed, so this run's seed does not cover the whole run.
+        seed_covers_whole_run = bool(earlier.get("_seed_covers_whole_run", True))
         # The result describes the run that started it, not the resume.
         timestamp = earlier.get("timestamp") or timestamp
         run_record = earlier
@@ -734,7 +742,12 @@ async def run_benchmark(
         by_id = {q.id: q for q in questions}
         hashes = {q.id: question_hash(q) for q in questions}
         manifest = build_manifest(
-            corp, questions, top_k=top_k, split=split, reference_free=reference_free
+            corp,
+            questions,
+            top_k=top_k,
+            split=split,
+            reference_free=reference_free,
+            seed_covers_whole_run=seed_covers_whole_run,
         )
         # The manifest key covers the question set, the qrels, the judge, the
         # embedding, the chunking, and top_k. A resume that lands on a different

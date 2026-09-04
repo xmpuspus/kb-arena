@@ -95,10 +95,15 @@ def embedding_identity() -> dict[str, str]:
 
 
 def git_sha() -> str | None:
-    """Best effort. A wheel install has no repository, and that is fine."""
+    """Best effort. A wheel install has no repository, and that is fine.
+
+    The whole commit, not the abbreviation. `kb-arena variance` compares this
+    value for equality when it decides whether two runs came from one build,
+    and an abbreviation is a prefix rather than an identity.
+    """
     try:
         out = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
+            ["git", "rev-parse", "HEAD"],
             capture_output=True,
             text=True,
             timeout=2,
@@ -131,7 +136,15 @@ def core_of(manifest: dict) -> dict:
     return {field: manifest.get(field) for field in CORE_FIELDS}
 
 
-def build_manifest(corpus: str, questions, *, top_k: int, split: str, reference_free: bool) -> dict:
+def build_manifest(
+    corpus: str,
+    questions,
+    *,
+    top_k: int,
+    split: str,
+    reference_free: bool,
+    seed_covers_whole_run: bool = True,
+) -> dict:
     """The record a result file carries. The compatibility key covers the core."""
     core = {
         "schema_version": SCHEMA_VERSION,
@@ -157,7 +170,7 @@ def build_manifest(corpus: str, questions, *, top_k: int, split: str, reference_
         # Deliberately outside the core: two runs that differ only by seed
         # measured the same experiment, so they must group together and give
         # a spread instead of splitting into two keys of one run each.
-        "seed": seed_identity(),
+        "seed": seed_identity(covers_whole_run=seed_covers_whole_run),
         "question_count": len(questions),
         "code_version": __version__,
         "git_sha": git_sha(),
@@ -165,7 +178,7 @@ def build_manifest(corpus: str, questions, *, top_k: int, split: str, reference_
     }
 
 
-def seed_identity() -> dict:
+def seed_identity(covers_whole_run: bool = True) -> dict:
     """The seed a run sets, and what that seed does and does not control.
 
     Nothing in KB Arena samples from a strategy today, and the judge runs at
@@ -175,6 +188,10 @@ def seed_identity() -> dict:
     """
     return {
         "value": int(settings.run_seed),
+        # A resume of a checkpoint written before seeds existed inherits
+        # records scored under an unknown seed. The reader is told, rather than
+        # left to assume the value below covers the whole run.
+        "covers_whole_run": bool(covers_whole_run),
         # Only what code in this package actually reads. A claim here that no
         # consumer honours is a record of work that never happened.
         "controls": ["optimize trial order", "bootstrap resampling"],

@@ -644,3 +644,51 @@ def test_a_non_finite_metric_counts_as_missing():
     assert row["runs"] == 3
     assert metric["runs"] == 2
     assert metric["runs_without_this_metric"] == 1
+
+
+def test_a_resumed_legacy_run_says_the_seed_does_not_cover_it(tmp_path, monkeypatch):
+    """The records it inherited were scored under a seed nobody wrote down."""
+    from kb_arena.benchmark import runner
+    from kb_arena.benchmark.manifest import seed_identity
+
+    assert seed_identity()["covers_whole_run"] is True
+    assert seed_identity(covers_whole_run=False)["covers_whole_run"] is False
+
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    run_dir = tmp_path / "run_old"
+    run_dir.mkdir()
+    earlier = {"top_k": 5, "question_split": "all"}
+    (run_dir / "run.json").write_text(json.dumps({"config_snapshot": earlier}))
+
+    resumed = runner.check_resumable(tmp_path, "old", {**earlier, "run_seed": 3})
+
+    assert (
+        resumed["_seed_covers_whole_run"] is False
+    ), "a checkpoint that predates seeds cannot vouch for the records it holds"
+
+
+def test_a_fresh_run_records_a_seed_that_covers_all_of_it(tmp_path, monkeypatch):
+    from kb_arena.benchmark import runner
+
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    run_dir = tmp_path / "run_new"
+    run_dir.mkdir()
+    snapshot = {"top_k": 5, "question_split": "all", "run_seed": 3}
+    (run_dir / "run.json").write_text(json.dumps({"config_snapshot": snapshot}))
+
+    resumed = runner.check_resumable(tmp_path, "new", dict(snapshot))
+
+    assert resumed["_seed_covers_whole_run"] is True
+
+
+def test_the_recorded_commit_is_the_whole_one():
+    """Variance compares this for equality, and an abbreviation is a prefix."""
+    import inspect
+
+    from kb_arena.benchmark import manifest
+
+    source = inspect.getsource(manifest.git_sha)
+    assert '"--short"' not in source, "the whole commit, not the abbreviation"
+    sha = manifest.git_sha()
+    if sha:
+        assert len(sha) == 40
