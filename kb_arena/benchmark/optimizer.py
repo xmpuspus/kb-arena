@@ -112,10 +112,14 @@ class OptimizeResult(BaseModel):
     # over n_comparisons, and p_value_raw is what one test alone would say.
     p_value_raw: float | None = None
     trial_p_values: list[float | None] = Field(default_factory=list)
+    # Which trials are hypotheses: not the baseline, and not a no-op trial
+    # whose scores equal the baseline on every question.
+    trial_in_family: list[bool] = Field(default_factory=list)
     n_comparisons: int = 1
     correction: str = "none"
     exploratory: bool = False
     publishable: bool = False
+    inference_failed: bool = False
     win_rate_vs_baseline: float = 0.0
     best_metric_per_ms: float = 0.0
     baseline_metric_per_ms: float = 0.0
@@ -329,10 +333,16 @@ def _wilcoxon(baseline: list[float], best: list[float]) -> float | None:
         return None
 
 
-def holm_adjust(p_values: list[float | None]) -> list[float | None]:
-    """Holm step-down adjustment. None entries stay None and do not count."""
+def holm_adjust(p_values: list[float | None], family_size: int | None = None) -> list[float | None]:
+    """Holm step-down adjustment. None entries stay None.
+
+    family_size is the number of hypotheses the family holds. It defaults to
+    the count of non-None entries, and a caller that knows of tests that
+    failed to run passes a larger one, so a failed test never shrinks the
+    correction.
+    """
     indexed = [(p, i) for i, p in enumerate(p_values) if p is not None]
-    m = len(indexed)
+    m = max(len(indexed), family_size or 0)
     adjusted: list[float | None] = [None] * len(p_values)
     running = 0.0
     for rank, (p, i) in enumerate(sorted(indexed)):
@@ -341,42 +351,53 @@ def holm_adjust(p_values: list[float | None]) -> list[float | None]:
     return adjusted
 
 
-def _apply_family(result: OptimizeResult, adjusted_best: float | None, n_comparisons: int) -> None:
+def _family_members(result: OptimizeResult) -> list[int]:
+    """Trial indexes that count as hypotheses: every trial but the baseline
+    and the no-op trials whose scores equal the baseline on every question."""
+    return [i for i, member in enumerate(result.trial_in_family) if member]
+
+
+def _apply_family(
+    result: OptimizeResult, adjusted_best: float | None, n_comparisons: int, split: str = ""
+) -> None:
     """Set the adjusted p, the flags, and the family size on one result."""
     result.p_value = adjusted_best
     result.n_comparisons = n_comparisons
-    result.correction = "holm" if n_comparisons > 1 else "none"
+    result.correction = "holm" if n_comparisons > 1 and adjusted_best is not None else "none"
+    result.inference_failed = result.best_trial_index is not None and adjusted_best is None
     result.significant = (
         adjusted_best is not None
         and adjusted_best < 0.05
         and result.best_score > result.baseline_score
     )
-    # A sweep picks the best of many. Its finding is a lead to confirm on the
-    # holdout split, not a result to publish on its own.
+    # A sweep picks the best of many. Its finding is a lead, and only a run
+    # on the sealed holdout split can turn a lead into a publishable result.
     result.exploratory = n_comparisons > 1
-    result.publishable = result.significant and not result.exploratory
+    result.publishable = result.significant and split == "holdout"
 
 
-def apply_run_wide_holm(results: dict[str, OptimizeResult]) -> int:
+def apply_run_wide_holm(results: dict[str, OptimizeResult], split: str = "") -> int:
     """One Holm family over every trial-versus-baseline test in the run.
 
     Returns the family size. Each result's p_value becomes the run-wide
-    adjusted p of its best trial.
+    adjusted p of its best trial. A trial whose test failed still counts
+    as a hypothesis, so a failure never shrinks the correction.
     """
     order: list[tuple[str, int]] = []
     raw: list[float | None] = []
+    family = 0
     for name, r in results.items():
-        for i, p in enumerate(r.trial_p_values):
+        for i in _family_members(r):
             order.append((name, i))
-            raw.append(p)
-    adjusted = holm_adjust(raw)
-    m = sum(1 for p in raw if p is not None)
+            raw.append(r.trial_p_values[i])
+            family += 1
+    adjusted = holm_adjust(raw, family_size=family)
     by_key = {key: p for key, p in zip(order, adjusted, strict=True)}
     for name, r in results.items():
         best_index = r.best_trial_index
         best_adjusted = by_key.get((name, best_index)) if best_index is not None else None
-        _apply_family(r, best_adjusted, max(1, m))
-    return m
+        _apply_family(r, best_adjusted, max(1, family), split)
+    return family
 
 
 def _win_rate(baseline: list[float], best: list[float]) -> float:
@@ -390,6 +411,7 @@ def summarize_optimization(
     trials: list[TrialResult],
     baseline: TrialConfig,
     metric: str = "ndcg",
+    split: str = "",
 ) -> OptimizeResult:
     """Pick the best trial and attach the statistical layer (CI, p, win-rate, efficiency).
 
@@ -417,7 +439,11 @@ def summarize_optimization(
         else _wilcoxon(baseline_trial.per_question_scores, t.per_question_scores)
         for t in trials
     ]
-    best_index = None if same else trials.index(best_trial)
+    trial_in_family = [
+        t is not baseline_trial and t.per_question_scores != baseline_trial.per_question_scores
+        for t in trials
+    ]
+    best_index = None if same else next(i for i, t in enumerate(trials) if t is best_trial)
     p_value_raw = None if same else trial_p_values[best_index]
     win_rate = (
         0.0
@@ -438,14 +464,17 @@ def summarize_optimization(
         baseline_score_ci=_bootstrap_ci(baseline_trial.per_question_scores),
         p_value_raw=p_value_raw,
         trial_p_values=trial_p_values,
+        trial_in_family=trial_in_family,
         best_trial_index=best_index,
         win_rate_vs_baseline=win_rate,
         best_metric_per_ms=best_score / best_lat,
         baseline_metric_per_ms=baseline_score / base_lat,
     )
-    adjusted = holm_adjust(trial_p_values)
-    family = sum(1 for p in trial_p_values if p is not None)
-    _apply_family(result, None if same else adjusted[best_index], max(1, family))
+    members = _family_members(result)
+    family_p = [trial_p_values[i] for i in members]
+    adjusted = holm_adjust(family_p, family_size=len(members))
+    by_index = dict(zip(members, adjusted, strict=True))
+    _apply_family(result, None if same else by_index.get(best_index), max(1, len(members)), split)
     return result
 
 
@@ -466,6 +495,7 @@ def strategy_report(r: OptimizeResult) -> dict:
         "correction": r.correction,
         "exploratory": r.exploratory,
         "publishable": r.publishable,
+        "inference_failed": r.inference_failed,
         "significant": r.significant,
         "win_rate_vs_baseline": r.win_rate_vs_baseline,
         "best_metric_per_ms": r.best_metric_per_ms,
@@ -835,10 +865,12 @@ async def run_optimize(
                 f"[dim]{s} {cfg.model_dump(exclude={'strategy'})} "
                 f"{metric}={tr.mean_score:.4f} ({(time.perf_counter() - start):.1f}s)[/dim]"
             )
-        results[s] = summarize_optimization(s, trial_results, base, metric=metric)
+        results[s] = summarize_optimization(
+            s, trial_results, base, metric=metric, split=effective_split
+        )
 
     pareto_optimal_strategies(list(results.values()))  # marks pareto_optimal in-place
-    family_size = apply_run_wide_holm(results)
+    family_size = apply_run_wide_holm(results, split=effective_split)
 
     out = Path(out_dir) if out_dir else Path(settings.results_path) / f"run_{run_id}"
     out.mkdir(parents=True, exist_ok=True)
@@ -853,8 +885,8 @@ async def run_optimize(
         "correction": "holm" if family_size > 1 else "none",
         "note": (
             "Every p_value is Holm-adjusted over n_comparisons trial-versus-baseline tests "
-            "in this run. p_value_raw is the single-test value. A sweep is exploratory: "
-            "confirm a lead on the holdout split before you publish it."
+            "in this run. p_value_raw is the single-test value. A sweep is exploratory. "
+            "publishable is true only for a significant lift measured on the holdout split."
         ),
         "strategies": {name: strategy_report(r) for name, r in results.items()},
     }
@@ -891,11 +923,11 @@ async def run_optimize(
     console.print(table)
     console.print(
         f"[dim]p-values Holm-adjusted over {family_size} trial-versus-baseline tests. "
-        "A sweep is exploratory: confirm a lead on the holdout split before you publish it.[/dim]"
+        "A sweep is exploratory. Only a holdout run can mark a lift publishable.[/dim]"
     )
     console.print(
         "[dim][Pareto] = Pareto-optimal on (score, score/ms). "
-        "Significance: green delta = Wilcoxon p<0.05 + positive lift.[/dim]"
+        "Significance: green delta = Holm-adjusted p<0.05 + positive lift.[/dim]"
     )
     console.print(f"[green]Report: {out / 'optimize.json'}[/green]")
     return 0
