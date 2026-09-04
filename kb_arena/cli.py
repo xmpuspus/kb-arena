@@ -340,6 +340,13 @@ def benchmark(
         "--resume",
         help="Run id to resume. Questions already checkpointed under results/run_<id> are skipped",
     ),
+    runs: int = typer.Option(
+        1,
+        "--runs",
+        min=1,
+        help="Repeat the whole benchmark N times, one run id each, for spread. "
+        "The cost cap applies to each run, so N runs can spend N times the cap.",
+    ),
     strategy_module: str = typer.Option(
         "",
         "--strategy-module",
@@ -391,10 +398,10 @@ def benchmark(
         # Cost/time estimates
         est_cost_per_query = 0.003  # ~$0.003 per query (Haiku eval + Sonnet gen avg)
         est_judge_cost = 0.005  # ~$0.005 per LLM judge call (Opus)
-        est_cost = total_queries * (est_cost_per_query + est_judge_cost)
+        est_cost = total_queries * (est_cost_per_query + est_judge_cost) * runs
         avg_seconds_per_query = 4.5
         est_parallel = settings.benchmark_max_concurrent
-        est_time_s = (total_queries / est_parallel) * avg_seconds_per_query
+        est_time_s = (total_queries / est_parallel) * avg_seconds_per_query * runs
         est_minutes = est_time_s / 60
 
         console.print(f"\n  [bold]Estimated cost:[/bold] ~${est_cost:.2f}")
@@ -415,18 +422,22 @@ def benchmark(
     from kb_arena.benchmark.runner import BenchmarkExecutionError, run_benchmark
 
     try:
-        asyncio.run(
-            run_benchmark(
-                corpus=corpus,
-                strategy=strategy,
-                tier=tier,
-                split=split,
-                parallel=parallel,
-                reference_free=reference_free,
-                top_k=top_k,
-                resume_run_id=resume or None,
+        # Each repeat gets its own run id and result files, so a later reader
+        # can see the spread across runs instead of one point.
+        for repeat in range(runs):
+            asyncio.run(
+                run_benchmark(
+                    corpus=corpus,
+                    strategy=strategy,
+                    tier=tier,
+                    split=split,
+                    parallel=parallel,
+                    reference_free=reference_free,
+                    top_k=top_k,
+                    # only the first repeat resumes; the rest are fresh runs
+                    resume_run_id=(resume or None) if repeat == 0 else None,
+                )
             )
-        )
     except BenchmarkExecutionError as exc:
         console.print(f"[red]Benchmark failed: {exc}[/red]")
         raise typer.Exit(1) from None

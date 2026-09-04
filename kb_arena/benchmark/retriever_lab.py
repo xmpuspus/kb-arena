@@ -30,6 +30,7 @@ logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICA
 
 from kb_arena.benchmark.atomic import atomic_write_text  # noqa: E402
 from kb_arena.benchmark.ir_metrics import _match_expected, compute_all  # noqa: E402
+from kb_arena.benchmark.manifest import build_manifest  # noqa: E402
 from kb_arena.benchmark.questions import discover_corpora, load_questions  # noqa: E402
 from kb_arena.models.benchmark import RetrievalMetrics  # noqa: E402
 from kb_arena.models.retrieval import RetrievalTrace  # noqa: E402
@@ -341,6 +342,7 @@ async def run_retriever_lab(
         "question_split": split or "all",
         "corpora": {},
         "retrieval_ceiling": {},
+        "manifests": {},
     }
     per_question_rows: list[dict] = []
 
@@ -606,6 +608,9 @@ async def _run_corpora_loop(
             stats["execution_errors"] = per_strategy_errors[s.name]
             summary[s.name] = stats
         overall["corpora"][corp] = summary
+        overall["manifests"][corp] = build_manifest(
+            corp, questions, top_k=top_k, split=split, reference_free=True
+        )
 
         if not run_ceiling:
             ceiling = {
