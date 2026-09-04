@@ -840,6 +840,13 @@ async def run_optimize(
         else [q for q in all_questions if getattr(q, "split", "unspecified") == effective_split]
     )
     if not questions:
+        if touches_holdout(all_questions) and not allow_holdout:
+            console.print(
+                f"[red]No questions for {corpus} outside the sealed holdout split. optimize tunes "
+                "on the development split. To confirm one lead on the holdout, pass "
+                "--confirm-holdout.[/red]"
+            )
+            return 1
         console.print(f"[red]No questions for {corpus}.[/red]")
         return 1
     # The optimizer searches. A search that reads holdout questions fits to

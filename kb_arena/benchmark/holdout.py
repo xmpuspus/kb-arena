@@ -47,12 +47,17 @@ def record_holdout_use(
     return entry
 
 
-def holdout_uses(results_dir: Path | str, corpus: str | None = None) -> list[dict]:
-    """Every recorded use, oldest first. A torn line is skipped."""
+def read_ledger(results_dir: Path | str) -> tuple[list[dict], int]:
+    """Every recorded use, oldest first, and the count of lines that did not parse.
+
+    A line that did not parse is a use the count would otherwise hide, so
+    the reader gets the number and can say the count is a floor.
+    """
     path = ledger_path(results_dir)
     if not path.exists():
-        return []
+        return [], 0
     uses: list[dict] = []
+    corrupt = 0
     with open(path, encoding="utf-8") as handle:
         for line in handle:
             line = line.strip()
@@ -61,7 +66,16 @@ def holdout_uses(results_dir: Path | str, corpus: str | None = None) -> list[dic
             try:
                 entry = json.loads(line)
             except json.JSONDecodeError:
+                corrupt += 1
                 continue
-            if isinstance(entry, dict) and (corpus is None or entry.get("corpus") == corpus):
+            if isinstance(entry, dict):
                 uses.append(entry)
-    return uses
+            else:
+                corrupt += 1
+    return uses, corrupt
+
+
+def holdout_uses(results_dir: Path | str, corpus: str | None = None) -> list[dict]:
+    """Every recorded use, oldest first. read_ledger reports the lines that did not parse."""
+    uses, _ = read_ledger(results_dir)
+    return [u for u in uses if corpus is None or u.get("corpus") == corpus]

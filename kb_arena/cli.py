@@ -1319,10 +1319,15 @@ def holdout_uses_command(
     """List every run that opened the sealed holdout split, oldest first."""
     from rich.table import Table
 
-    from kb_arena.benchmark.holdout import holdout_uses
+    from kb_arena.benchmark.holdout import holdout_uses, read_ledger
     from kb_arena.settings import settings
 
     uses = holdout_uses(settings.results_path, corpus or None)
+    _, corrupt = read_ledger(settings.results_path)
+    if corrupt:
+        console.print(
+            f"[yellow]{corrupt} ledger line(s) did not parse. The count below is a floor.[/yellow]"
+        )
     if not uses:
         console.print("[green]The holdout split has not been opened.[/green]")
         return
