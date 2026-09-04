@@ -692,7 +692,7 @@ def test_the_recorded_commit_is_the_whole_one():
     sha = manifest.git_sha()
     if sha:
         # A dirty tree carries a suffix, so the commit is the first 40.
-        assert len(sha.removesuffix("-dirty")) == 40
+        assert len(sha.split("-dirty")[0]) == 40
 
 
 def test_a_checkpoint_without_an_experiment_key_is_refused_for_the_right_reason(
@@ -751,7 +751,14 @@ def test_an_uncommitted_change_is_not_the_commit_it_sits_on():
     sha = git_sha()
     if sha is None:
         pytest.skip("no repository in this checkout")
-    assert len(sha) == 40 or sha.endswith("-dirty")
+    if "-dirty" in sha:
+        # Two different working trees on one commit are two different builds,
+        # so the identity carries a digest of the uncommitted diff.
+        head, _, rest = sha.partition("-dirty")
+        assert len(head) == 40
+        assert rest in {"", "-" + rest.lstrip("-")}
+    else:
+        assert len(sha) == 40
 
 
 def test_an_oversized_integer_is_unreadable_and_not_a_crash():
@@ -759,3 +766,27 @@ def test_an_oversized_integer_is_unreadable_and_not_a_crash():
     huge = 10**400
     assert variance._metric({"accuracy_by_tier": huge}, "accuracy_by_tier") is None
     assert variance._metric({"accuracy_by_tier": {"1": huge}}, "accuracy_by_tier") is None
+
+
+def test_two_different_dirty_trees_are_two_different_builds():
+    """A bare -dirty suffix would call every uncommitted state one build."""
+    import subprocess
+    from unittest.mock import patch
+
+    from kb_arena.benchmark import manifest
+
+    def fake(cmd, **kwargs):
+        if cmd[1] == "rev-parse":
+            return subprocess.CompletedProcess(cmd, 0, stdout="a" * 40 + "\n", stderr="")
+        if cmd[1] == "status":
+            return subprocess.CompletedProcess(cmd, 0, stdout=" M file.py\n", stderr="")
+        return subprocess.CompletedProcess(cmd, 0, stdout=fake.diff, stderr="")
+
+    with patch.object(manifest.subprocess, "run", side_effect=fake):
+        fake.diff = "diff one"
+        first = manifest.git_sha()
+        fake.diff = "diff two"
+        second = manifest.git_sha()
+
+    assert first != second, "two working trees on one commit are two builds"
+    assert first.startswith("a" * 40 + "-dirty-")

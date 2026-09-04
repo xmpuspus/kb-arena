@@ -130,7 +130,22 @@ def git_sha() -> str | None:
     except (OSError, subprocess.SubprocessError):
         return sha
     if dirty.returncode == 0 and dirty.stdout.strip():
-        return f"{sha}-dirty"
+        # Two different working trees on one commit are two different builds,
+        # so a bare "-dirty" would call them repeats of each other. The digest
+        # of the uncommitted diff tells them apart.
+        try:
+            diff = subprocess.run(
+                ["git", "diff", "HEAD"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                cwd=Path(__file__).resolve().parents[2],
+            )
+        except (OSError, subprocess.SubprocessError):
+            return f"{sha}-dirty"
+        if diff.returncode != 0:
+            return f"{sha}-dirty"
+        return f"{sha}-dirty-{_digest(diff.stdout)[:8]}"
     return sha
 
 
