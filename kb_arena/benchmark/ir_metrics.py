@@ -57,6 +57,35 @@ def _match_expected(chunk_id: str, expected: set[str]) -> str | None:
     return None
 
 
+MATCH_CLASSES = ("strict", "parent", "doc", "unmapped")
+
+
+def match_class(
+    chunk_id: str, expected: set[str], *, doc_level: bool = False, doc_id: str = ""
+) -> str:
+    """How a retrieved chunk matched the ground truth, if it did.
+
+    strict: the chunk id, or the id with a strategy prefix stripped, is an
+    expected id. parent: a "::"-prefix of the chunk id is an expected id, so
+    the label sits above the chunk. doc: the run fell back to document-level
+    labels and the chunk's document is expected. unmapped: no match. A lab
+    summary that reports these apart says how much of a recall number rests
+    on a loose match.
+    """
+    if not expected:
+        return "unmapped"
+    if doc_level:
+        return "doc" if doc_id in expected else "unmapped"
+    for cand in _candidate_ids(chunk_id):
+        if cand in expected:
+            return "strict"
+        parts = cand.split("::")
+        for n in range(len(parts) - 1, 0, -1):
+            if "::".join(parts[:n]) in expected:
+                return "parent"
+    return "unmapped"
+
+
 def recall_at_k(retrieved_ids: list[str], expected_ids: set[str], k: int) -> float:
     """Fraction of expected items that appear in the top-k retrieval.
 
