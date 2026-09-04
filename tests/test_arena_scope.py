@@ -314,3 +314,26 @@ def test_the_packaged_bundle_carries_the_scoped_board():
         pytest.skip("no packaged bundle in this checkout")
     hits = [p for p in static.rglob("*.js") if "votes_in_history" in p.read_text(errors="ignore")]
     assert hits, "the packaged bundle predates the scoped leaderboard"
+
+
+def test_the_packaged_bundle_matches_its_sources():
+    """A field grep only catches the one stale bundle somebody thought to name.
+
+    This catches any of them. The bundle carries the digest of the frontend
+    sources it was built from, and a page edit without a rebuild breaks it.
+    """
+    from pathlib import Path
+
+    from kb_arena.frontend_bundle import read_stamp, source_digest
+
+    web, static = Path("web"), Path("kb_arena/static")
+    if not web.is_dir() or not static.is_dir():
+        pytest.skip("no frontend sources or no packaged bundle in this checkout")
+    stamp = read_stamp(static)
+    assert stamp, "the packaged bundle carries no source stamp; run scripts/sync_frontend_bundle.py"
+    digest, count = source_digest(web)
+    assert stamp["digest"] == digest, (
+        f"the packaged bundle was built from {stamp['files']} source files with digest "
+        f"{stamp['digest'][:12]}, and the tree now holds {count} files with digest "
+        f"{digest[:12]}. Run `npx next build` in web/, then scripts/sync_frontend_bundle.py."
+    )
