@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     # LLM — OpenAI (for embeddings)
     openai_api_key: str = ""
 
+    # A named arena voter is a claim about who judged. Only a caller that
+    # sends this key in x-kb-arena-reviewer-key can make one.
+    arena_reviewer_key: str = ""
+    # Each (corpus, rubric) pair makes a persistent rating table. A free-text
+    # rubric would otherwise grow the state file and every leaderboard reply.
+    arena_max_scopes: int = Field(default=50, ge=1)
     # Graph analysis budgets. Exact betweenness is O(n*m) and loads the whole
     # graph into one process. Above these the analyzer loads a bounded slice
     # and samples the centrality instead of hanging the API.

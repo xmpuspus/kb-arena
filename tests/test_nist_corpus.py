@@ -10,6 +10,7 @@ from pathlib import Path
 
 import yaml
 
+from kb_arena.benchmark.questions import load_qrels
 from kb_arena.models.document import Document
 
 CORPUS = Path("datasets/nist-800-171-r3")
@@ -140,7 +141,10 @@ def test_nist_questions_have_traceable_draft_reviews_and_no_duplicates():
 
 def test_nist_qrels_are_nonempty_and_resolve_to_processed_sections():
     documents = _documents()
-    qrels = yaml.safe_load((CORPUS / "questions/expected_chunks.yaml").read_text())
+    path = CORPUS / "questions/expected_chunks.yaml"
+    # `load_qrels` reads both the version 1 list shape and the version 2
+    # `{version, pool, labels}` shape, so a re-label never breaks this test.
+    qrels, _version = load_qrels(yaml.safe_load(path.read_text()), path)
     question_ids = {item["id"] for item in _questions()}
     section_ids = {
         f"{document.id}::{section.id}" for document in documents for section in document.sections

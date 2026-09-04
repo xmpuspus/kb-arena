@@ -200,6 +200,24 @@ def _summarize_with_tiers(
     return out
 
 
+def _negatives_of(question) -> set[str] | None:
+    """Chunks a judge called irrelevant, for bpref.
+
+    None when the labels name none. `compute_all` reads None as "nobody judged
+    negatives here" and falls back to the TREC bpref-10 proxy. An empty set
+    would instead say "the judge found no negatives", which turns the proxy off
+    and scores a bad ranking as perfect.
+    """
+    named = getattr(question, "judged_negatives", None) or []
+    return set(named) or None
+
+
+def _grades_of(question) -> dict[str, float] | None:
+    """Graded relevance for the IR metrics, or None when the labels carry no grades."""
+    grades = getattr(question, "expected_grades", None) or {}
+    return {c: float(g) for c, g in grades.items()} if grades else None
+
+
 def count_match_classes(classes) -> dict[str, int]:
     """Count retrieved chunks per match class, every class present."""
     counts = dict.fromkeys(MATCH_CLASSES, 0)
@@ -303,14 +321,22 @@ async def _retrieval_ceiling(
         retrieved = trace.retrieved
         expected = set(q.expected_chunks or [])
         doc_ids = set(q.ground_truth.source_refs)
+        grades = _grades_of(q)
         m_top = compute_all(
-            retrieved=retrieved[:top_k], expected_ids=expected, k=top_k, expected_doc_ids=doc_ids
+            retrieved=retrieved[:top_k],
+            expected_ids=expected,
+            k=top_k,
+            expected_doc_ids=doc_ids,
+            expected_relevance=grades,
+            judged_nonrelevant=_negatives_of(q),
         )
         m_ceil = compute_all(
             retrieved=retrieved[:ceiling_k],
             expected_ids=expected,
             k=ceiling_k,
             expected_doc_ids=doc_ids,
+            expected_relevance=grades,
+            judged_nonrelevant=_negatives_of(q),
         )
         top_recalls.append(m_top.recall_at_k)
         ceiling_recalls.append(m_ceil.recall_at_k)
@@ -607,6 +633,8 @@ async def _run_corpora_loop(
                         metrics = compute_all(
                             retrieved=trace.retrieved,
                             expected_ids=set(q.expected_chunks or []),
+                            expected_relevance=_grades_of(q),
+                            judged_nonrelevant=_negatives_of(q),
                             k=top_k,
                             expected_doc_ids=set(q.ground_truth.source_refs),
                         )

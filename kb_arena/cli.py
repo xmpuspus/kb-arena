@@ -1596,11 +1596,22 @@ def label_chunks(
     _preflight(needs_llm=True, needs_embeddings=True)
     result = _asyncio.run(label_corpus(corpus, force=force, n_candidates=n_candidates))
     note = " (halted by cost cap)" if result.get("halted_by_cost_cap") else ""
+    unparsed = result.get("unparsed", 0)
+    colour = "yellow" if unparsed else "green"
     console.print(
-        f"[green]Labeled {result['labeled']}, skipped {result['skipped']} "
-        f"of {result['total_questions']} (cost ${result['cost_usd']:.4f}{note})[/green]"
+        f"[{colour}]Labeled {result['labeled']}, skipped {result['skipped']}, "
+        f"unparsed {unparsed} of {result['total_questions']} "
+        f"(cost ${result['cost_usd']:.4f}{note})[/{colour}]"
     )
     console.print(f"Saved to {result['path']}")
+    if unparsed and not result["labeled"]:
+        # Every judgment failed. A zero exit here tells automation the corpus
+        # gained ground truth, and it gained none.
+        console.print(
+            "[red]No question got a label. The judge output did not parse. "
+            "Check the model and the provider settings, then run again.[/red]"
+        )
+        raise typer.Exit(1)
 
 
 @app.command(name="variance")

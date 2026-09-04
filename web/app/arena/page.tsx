@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { apiFetch } from "@/lib/auth";
 import { CORPORA, fetchCorpora } from "@/lib/api";
 
@@ -30,6 +30,8 @@ interface VoteResult {
   winner: string;
   elo: Record<string, number>;
   total_votes: number;
+  corpus?: string;
+  rubric?: string;
 }
 
 interface LeaderboardEntry {
@@ -73,6 +75,21 @@ function isMatchResult(data: unknown): data is MatchResult {
   );
 }
 
+interface LeaderboardResponse {
+  leaderboard: LeaderboardEntry[];
+  votes_in_history?: number;
+  total_votes?: number;
+}
+
+function isLeaderboardResponse(data: unknown): data is LeaderboardResponse {
+  if (!data || typeof data !== "object") return false;
+  const board = data as Record<string, unknown>;
+  if (!Array.isArray(board.leaderboard)) return false;
+  const counted = (v: unknown) => v === undefined || typeof v === "number";
+  // A count that arrives as a string renders as a real number of votes.
+  return counted(board.votes_in_history) && counted(board.total_votes);
+}
+
 function isVoteResult(data: unknown): data is VoteResult {
   if (!data || typeof data !== "object") return false;
   const vote = data as Record<string, unknown>;
@@ -97,15 +114,36 @@ export default function ArenaPage() {
   const [error, setError] = useState("");
   const [corpus, setCorpus] = useState("all");
   const [corpora, setCorpora] = useState(CORPORA);
+  const [boardError, setBoardError] = useState("");
 
-  async function fetchLeaderboard() {
+  // The board is per corpus, so a vote on one corpus never moves the numbers
+  // a reader sees next to another.
+  // Only the newest request writes the board. A quick run of corpus changes
+  // otherwise lands out of order and shows another corpus's numbers.
+  const boardRequest = useRef(0);
+
+  async function fetchLeaderboard(scope: string = corpus) {
+    const ticket = ++boardRequest.current;
     try {
-      const res = await fetch(`${API}/api/arena/leaderboard`);
+      const query = scope && scope !== "all" ? `?corpus=${encodeURIComponent(scope)}` : "";
+      const res = await fetch(`${API}/api/arena/leaderboard${query}`);
       const data = await res.json();
-      setLeaderboard(data.leaderboard || []);
-      setTotalVotes(data.total_votes || 0);
-    } catch {
-      // ignore
+      if (ticket !== boardRequest.current) return;
+      if (!res.ok) throw new Error(errorMessage(data, "Leaderboard unavailable"));
+      if (!isLeaderboardResponse(data)) {
+        throw new Error("Server returned an invalid leaderboard response");
+      }
+      setLeaderboard(data.leaderboard);
+      // The board is scoped, so the count next to it is the scope's own.
+      setTotalVotes(data.votes_in_history ?? data.total_votes ?? 0);
+      setBoardError("");
+    } catch (err: unknown) {
+      // A stale board next to a live corpus name reads as that corpus's
+      // result, so drop it and say the read failed.
+      if (ticket !== boardRequest.current) return;
+      setLeaderboard([]);
+      setTotalVotes(0);
+      setBoardError(err instanceof Error ? err.message : "Leaderboard unavailable");
     }
   }
 
@@ -146,7 +184,8 @@ export default function ArenaPage() {
       if (!res.ok) throw new Error(errorMessage(data, "Vote failed"));
       if (!isVoteResult(data)) throw new Error("Server returned an invalid vote response");
       setVoteResult(data);
-      fetchLeaderboard();
+      // The vote moved the match's own scope, so refresh that board.
+      fetchLeaderboard(data.corpus ?? corpus);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Vote failed");
     } finally {
@@ -154,11 +193,15 @@ export default function ArenaPage() {
     }
   }
 
-  // Fetch leaderboard on mount
+  // Fetch the board on mount, and again whenever the corpus changes
   useEffect(() => {
-    fetchLeaderboard();
     fetchCorpora().then(setCorpora);
   }, []);
+
+  useEffect(() => {
+    fetchLeaderboard(corpus);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [corpus]);
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
@@ -366,7 +409,20 @@ export default function ArenaPage() {
       )}
 
       {/* Leaderboard */}
-      {leaderboard.length > 0 && (
+      {boardError && (
+        <div className="max-w-2xl mx-auto">
+          <div
+            className="rounded-lg border px-4 py-3 text-sm"
+            style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+            role="status"
+          >
+            The leaderboard did not load: {boardError}. The ratings below are hidden, because a
+            board from an earlier read would name the wrong corpus.
+          </div>
+        </div>
+      )}
+
+      {!boardError && leaderboard.length > 0 && (
         <div className="max-w-2xl mx-auto">
           <h2 className="text-base font-semibold mb-3" style={{ color: "var(--foreground)" }}>
             ELO Leaderboard

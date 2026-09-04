@@ -208,6 +208,7 @@ async def _run_one(
     top_k: int = 5,
     reference_free: bool = False,
     corpus: str = "all",
+    expected_grades: dict[str, int] | None = None,
     review_status: str = "unspecified",
     reviewed_by: str = "",
 ) -> AnswerRecord:
@@ -266,6 +267,11 @@ async def _run_one(
                     ir_metrics = compute_ir_metrics(
                         retrieved=result.retrieval.retrieved,
                         expected_ids=set(expected_chunks),
+                        expected_relevance=(
+                            {c: float(g) for c, g in (expected_grades or {}).items()}
+                            if expected_grades
+                            else None
+                        ),
                         k=top_k,
                         expected_doc_ids=set(ground_truth.source_refs),
                     )
@@ -776,6 +782,7 @@ async def run_benchmark(
                             top_k=top_k,
                             reference_free=reference_free,
                             corpus=corp,
+                            expected_grades=q.expected_grades,
                             review_status=q.review_status,
                             reviewed_by=q.reviewed_by,
                         )
@@ -876,6 +883,7 @@ async def run_benchmark(
                             top_k=top_k,
                             reference_free=reference_free,
                             corpus=corp,
+                            expected_grades=q.expected_grades,
                             review_status=q.review_status,
                             reviewed_by=q.reviewed_by,
                         )
