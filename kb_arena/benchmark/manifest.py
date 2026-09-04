@@ -208,10 +208,22 @@ def compatibility_key(data: dict) -> str:
         scored = _scored_count(data)
         if scored is not None:
             # A partial run of 10 questions and one of 70 are not repeats of
-            # one experiment, so the count rides in the key.
-            return f"{key}-partial-{scored}"
+            # one experiment. Neither are two runs of 10 that scored different
+            # questions, so the suffix names which ones, not only how many.
+            return f"{key}-partial-{scored}-{_scored_fingerprint(data)}"
         return key
     return LEGACY_KEY
+
+
+def _scored_fingerprint(data: dict) -> str:
+    """A short digest of which questions a partial run scored."""
+    records = data.get("records")
+    if not isinstance(records, list):
+        return "none"
+    ids = sorted(
+        str(r.get("question_id") or r.get("id") or "") for r in records if isinstance(r, dict)
+    )
+    return _digest(ids)[:8] if ids else "none"
 
 
 def _scored_count(data: dict) -> int | None:

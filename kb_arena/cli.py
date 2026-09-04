@@ -6,6 +6,7 @@ Each command is independently runnable and re-runnable.
 from __future__ import annotations
 
 import logging
+import math
 
 import typer
 from rich.console import Console
@@ -446,21 +447,25 @@ def benchmark(
 
     from kb_arena.benchmark.runner import BenchmarkExecutionError, run_benchmark
 
+    produced: list[str] = []
+
     try:
         # Each repeat gets its own run id and result files, so a later reader
         # can see the spread across runs instead of one point.
         for repeat in range(runs):
-            asyncio.run(
-                run_benchmark(
-                    corpus=corpus,
-                    strategy=strategy,
-                    tier=tier,
-                    split=split,
-                    parallel=parallel,
-                    reference_free=reference_free,
-                    top_k=top_k,
-                    # only the first repeat resumes; the rest are fresh runs
-                    resume_run_id=(resume or None) if repeat == 0 else None,
+            produced.append(
+                asyncio.run(
+                    run_benchmark(
+                        corpus=corpus,
+                        strategy=strategy,
+                        tier=tier,
+                        split=split,
+                        parallel=parallel,
+                        reference_free=reference_free,
+                        top_k=top_k,
+                        # only the first repeat resumes; the rest are fresh runs
+                        resume_run_id=(resume or None) if repeat == 0 else None,
+                    )
                 )
             )
     except BenchmarkExecutionError as exc:
@@ -468,38 +473,51 @@ def benchmark(
         raise typer.Exit(1) from None
 
     if fail_below > 0:
-        from types import SimpleNamespace
-
         from kb_arena.benchmark.variance import load_runs
 
         # Every repeat, not only the last. `_load_results` reads the top-level
         # files, which each repeat overwrites, so with `--runs 3` a gate would
         # have judged run three and ignored the two before it.
-        all_results = [
-            SimpleNamespace(
-                strategy=str(run.get("strategy", "")),
-                run_id=str(run.get("run_id", "")),
-                accuracy_by_tier={
-                    k: float(v)
-                    for k, v in (run.get("accuracy_by_tier") or {}).items()
-                    if isinstance(v, int | float) and not isinstance(v, bool)
-                },
-            )
+        # Only the runs this command produced. Reading every run would let a
+        # stale result from an earlier invocation fail a clean benchmark.
+        mine = set(produced)
+        runs_to_gate = [
+            run
             for run in load_runs(corpus if corpus != "all" else None)
+            if str(run.get("run_id", "")) in mine
         ]
         failed = False
-        for r in all_results:
-            if r.accuracy_by_tier:
-                avg = sum(r.accuracy_by_tier.values()) / len(r.accuracy_by_tier)
-                if avg < fail_below:
-                    console.print(
-                        f"[red]FAIL: {r.strategy} accuracy {avg:.1%} < {fail_below:.1%}"
-                        f"{f' (run {r.run_id})' if r.run_id else ''}[/red]"
-                    )
-                    failed = True
+        for run in runs_to_gate:
+            strategy_name = str(run.get("strategy", ""))
+            run_id = str(run.get("run_id", ""))
+            raw = run.get("accuracy_by_tier") or {}
+            tiers = [
+                float(v)
+                for v in raw.values()
+                if isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v)
+            ]
+            if len(tiers) != len(raw) or not tiers:
+                # A NaN compares false against every threshold and an emptied
+                # table skips the comparison, so both would have printed PASS.
+                console.print(
+                    f"[red]FAIL: {strategy_name} has no readable accuracy " f"(run {run_id})[/red]"
+                )
+                failed = True
+                continue
+            avg = sum(tiers) / len(tiers)
+            if avg < fail_below:
+                console.print(
+                    f"[red]FAIL: {strategy_name} accuracy {avg:.1%} < "
+                    f"{fail_below:.1%} (run {run_id})[/red]"
+                )
+                failed = True
         if failed:
             raise typer.Exit(1)
-        console.print(f"[green]PASS: All strategies above {fail_below:.1%}[/green]")
+        if not runs_to_gate:
+            # A PASS over nothing reads as a green gate. It is a missing one.
+            console.print("[red]FAIL: --fail-below found no run from this command to judge[/red]")
+            raise typer.Exit(1)
+        console.print(f"[green]PASS: {len(runs_to_gate)} run(s) above {fail_below:.1%}[/green]")
 
     _next_step("benchmark", corpus)
 

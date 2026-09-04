@@ -111,7 +111,10 @@ def _metric(run: dict, name: str) -> float | None:
         return direct
     if isinstance(by_tier, dict) and by_tier:
         numeric = [n for v in by_tier.values() if (n := _number(v)) is not None]
-        if numeric:
+        # Averaging the readable tiers of a run whose other tiers are corrupt
+        # turns malformed evidence into an ordinary-looking result, and the
+        # run then counts as carrying the metric. It does not.
+        if len(numeric) == len(by_tier):
             return sum(numeric) / len(numeric)
     return None
 

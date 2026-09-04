@@ -623,7 +623,7 @@ async def run_benchmark(
     reference_free: bool = False,
     top_k: int = 5,
     resume_run_id: str | None = None,
-) -> None:
+) -> str:
     """Run benchmark questions against specified strategies.
 
     Loads questions, calls each strategy x question concurrently (bounded by semaphore),
@@ -950,3 +950,4 @@ async def run_benchmark(
     if not selected_questions:
         raise BenchmarkExecutionError("No benchmark questions were selected")
     run_lock.close()
+    return run_id
