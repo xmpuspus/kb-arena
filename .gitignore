@@ -85,3 +85,6 @@ PLAN.md
 
 # Claude Code
 .claude/
+
+# Embedding cache (generated vectors, never committed)
+embedding_cache.sqlite*

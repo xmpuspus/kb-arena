@@ -196,6 +196,16 @@ def test_summarise_run_preserves_explicit_zero_cost():
 
     assert summary == {
         "manifest": {},
+        "review": {
+            "counts": {"human-reviewed": 0, "machine-assisted-draft": 0, "unspecified": 1},
+            "questions": 1,
+            "reviewed_share": 0.0,
+            "publishable": False,
+            "note": (
+                "publishable is true only when every scored question is human-reviewed. "
+                "A machine-assisted draft is a development signal, not citable evidence."
+            ),
+        },
         "overall_accuracy": 0.0,
         "mean_recall_at_k": 0.0,
         "mean_ndcg_at_k": 0.0,
@@ -240,6 +250,12 @@ def test_leaderboard_skips_malformed_artifacts(app_client, tmp_path, monkeypatch
             "strategy": "naive_vector",
             "compatibility_key": "legacy",
             "manifest": {},
+            "review": {
+                "counts": {"human-reviewed": 0, "machine-assisted-draft": 0, "unspecified": 0},
+                "questions": 0,
+                "reviewed_share": None,
+                "publishable": False,
+            },
             "mixed_with": [],
             "runs": 1,
             "mean_accuracy": 0.75,
