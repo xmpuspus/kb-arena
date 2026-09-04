@@ -197,9 +197,12 @@ def load_runs(corpus: str | None = None) -> list[dict]:
             try:
                 data = json.loads(path.read_text())
             except OSError as exc:
-                # A run that exists and cannot be read is lost evidence. Silently
-                # shrinking the sample would report a spread over what survived.
-                unreadable.append(f"{path}: {exc}")
+                # A RESULT that exists and cannot be read is lost evidence.
+                # Silently shrinking the sample would report a spread over what
+                # survived. An unrelated file is not evidence, so it is skipped
+                # the same way a malformed one is.
+                if _looks_like_a_result(path):
+                    unreadable.append(f"{path}: {exc}")
                 continue
             except json.JSONDecodeError as exc:
                 # Only a file shaped like a result. `results/` also holds
@@ -234,7 +237,19 @@ def load_runs(corpus: str | None = None) -> list[dict]:
 def _looks_like_a_result(path: Path) -> bool:
     from kb_arena.strategies.catalog import STRATEGY_CATALOG
 
-    return any(path.name.endswith(f"_{spec.name}.json") for spec in STRATEGY_CATALOG)
+    if any(path.name.endswith(f"_{spec.name}.json") for spec in STRATEGY_CATALOG):
+        return True
+    # A plugin strategy writes `<corpus>_<name>.json` under a run directory
+    # too, and its name is not in the built-in catalog. A file that sits in a
+    # run directory and is not one of the known non-result names is a result.
+    return path.parent.name.startswith("run_") and path.name not in {
+        "summary.json",
+        "report.json",
+        "optimize.json",
+        "retriever_lab.json",
+        "run.json",
+        "arena_state.json",
+    }
 
 
 def _code_version(run: dict) -> str:

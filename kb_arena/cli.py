@@ -468,16 +468,33 @@ def benchmark(
         raise typer.Exit(1) from None
 
     if fail_below > 0:
-        from kb_arena.benchmark.reporter import _load_results
+        from types import SimpleNamespace
 
-        all_results = _load_results(corpus if corpus != "all" else None)
+        from kb_arena.benchmark.variance import load_runs
+
+        # Every repeat, not only the last. `_load_results` reads the top-level
+        # files, which each repeat overwrites, so with `--runs 3` a gate would
+        # have judged run three and ignored the two before it.
+        all_results = [
+            SimpleNamespace(
+                strategy=str(run.get("strategy", "")),
+                run_id=str(run.get("run_id", "")),
+                accuracy_by_tier={
+                    k: float(v)
+                    for k, v in (run.get("accuracy_by_tier") or {}).items()
+                    if isinstance(v, int | float) and not isinstance(v, bool)
+                },
+            )
+            for run in load_runs(corpus if corpus != "all" else None)
+        ]
         failed = False
         for r in all_results:
             if r.accuracy_by_tier:
                 avg = sum(r.accuracy_by_tier.values()) / len(r.accuracy_by_tier)
                 if avg < fail_below:
                     console.print(
-                        f"[red]FAIL: {r.strategy} accuracy {avg:.1%} < {fail_below:.1%}[/red]"
+                        f"[red]FAIL: {r.strategy} accuracy {avg:.1%} < {fail_below:.1%}"
+                        f"{f' (run {r.run_id})' if r.run_id else ''}[/red]"
                     )
                     failed = True
         if failed:

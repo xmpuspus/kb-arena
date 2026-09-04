@@ -557,3 +557,44 @@ def test_a_malformed_file_that_is_not_a_result_never_blocks_the_report(tmp_path,
     runs = variance.load_runs("c")
 
     assert len(runs) == 1
+
+
+def test_the_fail_below_gate_reads_every_repeat():
+    """`--runs 3` overwrites the top-level file twice, so a gate saw run three."""
+    import inspect
+
+    from kb_arena import cli
+
+    source = inspect.getsource(cli.benchmark)
+    assert "load_runs(" in source, "the gate must read every run directory"
+    assert (
+        "_load_results(" not in source
+    ), "_load_results reads the top-level files, which each repeat overwrites"
+
+
+def test_a_plugin_result_counts_as_a_result(tmp_path):
+    """A plugin strategy writes a result whose name is not in the catalog."""
+    run_dir = tmp_path / "run_a"
+    run_dir.mkdir()
+    assert variance._looks_like_a_result(run_dir / "c_my_custom_plugin.json") is True
+    assert variance._looks_like_a_result(run_dir / "summary.json") is False
+    assert variance._looks_like_a_result(tmp_path / "scratch.json") is False
+
+
+def test_an_unrelated_unreadable_file_never_aborts_the_report(tmp_path, monkeypatch):
+    """A permission error on a scratch file is not lost benchmark evidence."""
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    (tmp_path / "run_a").mkdir()
+    (tmp_path / "run_a" / "c_bm25.json").write_text(
+        json.dumps(
+            {"corpus": "c", "strategy": "bm25", "run_id": "a", "accuracy_by_tier": {"1": 0.2}}
+        )
+    )
+    blocked = tmp_path / "notes.json"
+    blocked.write_text("{}")
+    blocked.chmod(0o000)
+
+    try:
+        assert len(variance.load_runs("c")) == 1
+    finally:
+        blocked.chmod(0o644)
