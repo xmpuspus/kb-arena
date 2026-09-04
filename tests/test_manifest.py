@@ -12,8 +12,20 @@ from kb_arena.models.benchmark import AnswerRecord, BenchmarkResult, Score
 from kb_arena.settings import settings
 
 
-def _q(qid: str, text: str, chunks: list[str] | None = None, split: str = "development"):
-    return SimpleNamespace(id=qid, question=text, expected_chunks=chunks or [], split=split)
+def _q(
+    qid: str,
+    text: str,
+    chunks: list[str] | None = None,
+    split: str = "development",
+    answer: str = "a",
+):
+    return SimpleNamespace(
+        id=qid,
+        question=text,
+        expected_chunks=chunks or [],
+        split=split,
+        ground_truth={"answer": answer},
+    )
 
 
 def test_question_fingerprint_ignores_order_and_tracks_content():
@@ -23,6 +35,25 @@ def test_question_fingerprint_ignores_order_and_tracks_content():
 
     assert mf.question_set_fingerprint(a) == mf.question_set_fingerprint(b)
     assert mf.question_set_fingerprint(a) != mf.question_set_fingerprint(c)
+
+
+def test_question_fingerprint_tracks_the_answer_key_the_judge_reads():
+    from kb_arena.models.benchmark import GroundTruth, Question
+
+    def make(answer: str, entities: list[str]):
+        return Question(
+            id="q1",
+            tier=1,
+            type="factoid",
+            hops=1,
+            question="one",
+            ground_truth=GroundTruth(answer=answer, required_entities=entities),
+        )
+
+    base = mf.question_set_fingerprint([make("a", ["x"])])
+    assert base != mf.question_set_fingerprint([make("b", ["x"])])
+    assert base != mf.question_set_fingerprint([make("a", ["x", "y"])])
+    assert base == mf.question_set_fingerprint([make("a", ["x"])])
 
 
 def test_compatibility_key_changes_with_judge_split_top_k_and_qrels(tmp_path, monkeypatch):
@@ -53,6 +84,9 @@ def test_compatibility_key_changes_with_judge_split_top_k_and_qrels(tmp_path, mo
 def test_a_result_file_without_a_manifest_is_legacy():
     assert mf.compatibility_key({"corpus": "c", "strategy": "s"}) == mf.LEGACY_KEY
     assert mf.compatibility_key({"manifest": {"compatibility_key": "abc123"}}) == "abc123"
+    assert mf.compatibility_key({"manifest": {"compatibility_key": ""}}) == mf.LEGACY_KEY
+    assert mf.compatibility_key({"manifest": {"compatibility_key": "  "}}) == mf.LEGACY_KEY
+    assert mf.compatibility_key({"manifest": {"compatibility_key": 7}}) == mf.LEGACY_KEY
 
 
 def _write_run(
@@ -95,6 +129,21 @@ def test_leaderboard_groups_only_runs_that_share_a_compatibility_key(tmp_path, m
     assert rows["bbbbbbbbbbbb"]["mean_accuracy"] == 0.1
     assert rows["aaaaaaaaaaaa"]["mixed_with"] == ["bbbbbbbbbbbb", mf.LEGACY_KEY]
     assert rows["aaaaaaaaaaaa"]["manifest"]["judge_model"] == "judge-a"
+
+
+def test_a_run_written_twice_counts_once(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    key = {"compatibility_key": "aaaaaaaaaaaa", "judge": {"model": "j"}, "top_k": 5}
+    _write_run(tmp_path, "r1", "c", "bm25", 0.0, key)
+    _write_run(tmp_path, "r2", "c", "bm25", 1.0, key)
+    # the runner also leaves the newest run at the top level
+    (tmp_path / "c_bm25.json").write_text((tmp_path / "run_r2" / "c_bm25.json").read_text())
+
+    board = asyncio.run(api.leaderboard(None, corpus="c"))["leaderboard"]
+
+    assert len(board) == 1
+    assert board[0]["runs"] == 2
+    assert board[0]["mean_accuracy"] == 0.5
 
 
 def test_benchmark_runs_option_repeats_the_run(monkeypatch):

@@ -1058,6 +1058,18 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
     # Collect (corpus, strategy) -> list[per-run metrics]
     rows: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
     seen_corpora: set[str] = set()
+    # The runner writes each result twice, once at the top level and once
+    # under its run directory. One run counts once.
+    seen_runs: set[tuple[str, str, str]] = set()
+
+    def _first_sighting(c: str, s: str, data: dict) -> bool:
+        run_id = data.get("run_id")
+        if not isinstance(run_id, str) or not run_id:
+            return True
+        if (c, s, run_id) in seen_runs:
+            return False
+        seen_runs.add((c, s, run_id))
+        return True
 
     # Top-level files (legacy single-run shape)
     for path in sorted(base.glob("*.json")):
@@ -1075,6 +1087,8 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
             continue
         seen_corpora.add(c)
         if corpus != "all" and c != corpus:
+            continue
+        if not _first_sighting(c, s, data):
             continue
         try:
             rows[(c, s, compatibility_key(data))].append(_summarise_run(data))
@@ -1098,6 +1112,8 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
                 continue
             seen_corpora.add(c)
             if corpus != "all" and c != corpus:
+                continue
+            if not _first_sighting(c, s, data):
                 continue
             try:
                 rows[(c, s, compatibility_key(data))].append(_summarise_run(data))
