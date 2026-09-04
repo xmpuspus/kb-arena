@@ -28,17 +28,18 @@ def _digest(payload: Any) -> str:
     ]
 
 
+def _question_record(q) -> dict:
+    # The judge reads the ground-truth answer, the required entities, the
+    # constraints, and the source refs. A change to any of them changes the
+    # score, so the whole record goes into the fingerprint, not a few fields.
+    if hasattr(q, "model_dump"):
+        return q.model_dump(mode="json")
+    return {k: v for k, v in vars(q).items() if not k.startswith("_")}
+
+
 def question_set_fingerprint(questions) -> str:
-    """Stable across file order and process runs. Changes when a question changes."""
-    rows = sorted(
-        (
-            q.id,
-            q.question,
-            tuple(sorted(getattr(q, "expected_chunks", None) or [])),
-            getattr(q, "split", "unspecified"),
-        )
-        for q in questions
-    )
+    """Stable across file order and process runs. Changes when any field of a question changes."""
+    rows = sorted((_question_record(q) for q in questions), key=lambda r: str(r.get("id")))
     return _digest(rows)
 
 
@@ -109,8 +110,11 @@ def build_manifest(corpus: str, questions, *, top_k: int, split: str, reference_
 def compatibility_key(data: dict) -> str:
     """The key a stored result groups under. A file without a manifest is legacy."""
     manifest = data.get("manifest")
-    if isinstance(manifest, dict) and isinstance(manifest.get("compatibility_key"), str):
-        return manifest["compatibility_key"]
+    key = manifest.get("compatibility_key") if isinstance(manifest, dict) else None
+    # An empty or non-string key is not a digest. Treat it as unstamped, so
+    # two files with a blank key never group as if they matched.
+    if isinstance(key, str) and key.strip():
+        return key
     return LEGACY_KEY
 
 
