@@ -29,6 +29,9 @@ _SCHEMA = "CREATE TABLE IF NOT EXISTS vectors (key TEXT PRIMARY KEY, vector TEXT
 # never both pay the provider for one text. A claim older than this many
 # seconds belongs to a process that died, and the next caller takes it over.
 _CLAIMS = "CREATE TABLE IF NOT EXISTS claims (key TEXT PRIMARY KEY, claimed_at REAL NOT NULL)"
+# The vector length each identity produced the first time. A later row of
+# another length is corrupt, whether it sits alone in a lookup or not.
+_DIMS = "CREATE TABLE IF NOT EXISTS dims (identity TEXT PRIMARY KEY, dim INTEGER NOT NULL)"
 _CLAIM_TTL_S = 120.0
 _CLAIM_POLL_S = 0.05
 # One lock per cache file for the whole process. Four strategies build at
@@ -73,6 +76,22 @@ def default_cache_path() -> Path:
     return Path("./embedding_cache.sqlite")
 
 
+def _checked_vectors(fresh) -> list[list[float]]:
+    """Provider output as plain float lists, rejected when any element is not a finite number."""
+    out: list[list[float]] = []
+    for vector in fresh:
+        items = list(vector)
+        for x in items:
+            if isinstance(x, bool) or isinstance(x, str) or not math.isfinite(float(x)):
+                raise RuntimeError(
+                    "embedding provider returned a vector with a non-numeric element"
+                )
+        out.append([float(x) for x in items])
+    if out and len({len(v) for v in out}) != 1:
+        raise RuntimeError("embedding provider returned vectors of different lengths")
+    return out
+
+
 def _valid_vector(vector) -> bool:
     """A non-empty list of finite numbers, and nothing else, counts as a vector."""
     if not isinstance(vector, list) or not vector:
@@ -107,6 +126,7 @@ class CachedEmbedding(EmbeddingFunction[Documents]):
         with self._connect() as conn:
             conn.execute(_SCHEMA)
             conn.execute(_CLAIMS)
+            conn.execute(_DIMS)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._path, timeout=30, check_same_thread=False)
@@ -114,6 +134,23 @@ class CachedEmbedding(EmbeddingFunction[Documents]):
         # processes on one cache never wait thirty seconds for each other.
         conn.execute("PRAGMA journal_mode=WAL")
         return conn
+
+    def _identity_key(self) -> str:
+        return json.dumps(
+            [self._provider, self._model, self._endpoint, settings.embedding_cache_salt],
+            separators=(",", ":"),
+        )
+
+    def _known_dim(self, conn: sqlite3.Connection) -> int | None:
+        row = conn.execute(
+            "SELECT dim FROM dims WHERE identity = ?", (self._identity_key(),)
+        ).fetchone()
+        return int(row[0]) if row else None
+
+    def _record_dim(self, conn: sqlite3.Connection, dim: int) -> None:
+        conn.execute(
+            "INSERT OR IGNORE INTO dims (identity, dim) VALUES (?, ?)", (self._identity_key(), dim)
+        )
 
     @property
     def identity(self) -> dict[str, str]:
@@ -127,6 +164,7 @@ class CachedEmbedding(EmbeddingFunction[Documents]):
     def _read(self, keys: list[str]) -> dict[str, list[float]]:
         found: dict[str, list[float]] = {}
         with self._connect() as conn:
+            known_dim = self._known_dim(conn)
             for start in range(0, len(keys), 500):
                 chunk = keys[start : start + 500]
                 marks = ",".join("?" for _ in chunk)
@@ -138,18 +176,21 @@ class CachedEmbedding(EmbeddingFunction[Documents]):
                         vector = json.loads(raw)
                     except json.JSONDecodeError:
                         continue
-                    if _valid_vector(vector):
+                    if _valid_vector(vector) and (known_dim is None or len(vector) == known_dim):
                         found[key] = vector
-        # Every vector of one identity has one length. A row with another
-        # length is corrupt, so it is dropped and embedded again.
-        lengths = {len(v) for v in found.values()}
-        if len(lengths) > 1:
-            common = max(lengths, key=lambda n: sum(1 for v in found.values() if len(v) == n))
-            found = {k: v for k, v in found.items() if len(v) == common}
+        # Every vector of one identity has one length. Before the first write
+        # recorded it, the majority length in this lookup stands in for it.
+        if known_dim is None:
+            lengths = {len(v) for v in found.values()}
+            if len(lengths) > 1:
+                common = max(lengths, key=lambda n: sum(1 for v in found.values() if len(v) == n))
+                found = {k: v for k, v in found.items() if len(v) == common}
         return found
 
     def _write(self, pairs: list[tuple[str, list[float]]]) -> None:
         with self._connect() as conn:
+            if pairs:
+                self._record_dim(conn, len(pairs[0][1]))
             conn.executemany(
                 "INSERT OR REPLACE INTO vectors (key, vector) VALUES (?, ?)",
                 [(key, json.dumps(vector)) for key, vector in pairs],
@@ -228,7 +269,7 @@ class CachedEmbedding(EmbeddingFunction[Documents]):
         try:
             if mine:
                 fresh = self._inner([text_of[key] for key in mine])
-                fresh = [list(map(float, vector)) for vector in fresh]
+                fresh = _checked_vectors(fresh)
                 if len(fresh) != len(mine):
                     raise RuntimeError(
                         f"embedding provider returned {len(fresh)} vectors for {len(mine)} texts"
@@ -256,7 +297,7 @@ class CachedEmbedding(EmbeddingFunction[Documents]):
             if lost:
                 # The other caller failed. Compute the leftovers ourselves.
                 fresh = self._inner([text_of[key] for key in lost])
-                fresh = [list(map(float, vector)) for vector in fresh]
+                fresh = _checked_vectors(fresh)
                 if len(fresh) != len(lost):
                     raise RuntimeError(
                         f"embedding provider returned {len(fresh)} vectors for {len(lost)} texts"

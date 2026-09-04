@@ -324,3 +324,34 @@ def test_the_cache_file_is_ignored_by_git():
     from pathlib import Path
 
     assert "embedding_cache.sqlite" in Path(".gitignore").read_text()
+
+
+def test_a_lone_row_with_the_wrong_length_for_its_identity_is_dropped(tmp_path):
+    path = tmp_path / "c.sqlite"
+    provider = _Provider()
+    cache = CachedEmbedding(provider, provider="fake", model="m", path=path)
+    cache(["alpha"])  # records the identity's length, 2
+    with sqlite3.connect(path) as conn:
+        conn.execute("UPDATE vectors SET vector = ?", (json.dumps([9.0, 9.0, 9.0]),))
+
+    assert _plain(cache(["alpha"])) == [
+        [5.0, 1.0]
+    ], "a lone wrong-length row went back to the provider"
+    assert provider.calls == [["alpha"], ["alpha"]]
+
+
+def test_provider_output_with_a_bad_element_is_rejected_not_stored(tmp_path):
+    class _Bad:
+        def __call__(self, input):
+            return [[1.0, "2.0"] for _ in input]
+
+    class _Bool:
+        def __call__(self, input):
+            return [[True, 1.0] for _ in input]
+
+    for bad in (_Bad(), _Bool()):
+        cache = CachedEmbedding(bad, provider="fake", model="m", path=tmp_path / "c.sqlite")
+        with pytest.raises(RuntimeError, match="non-numeric"):
+            cache(["alpha"])
+    with sqlite3.connect(tmp_path / "c.sqlite") as conn:
+        assert conn.execute("SELECT count(*) FROM vectors").fetchone()[0] == 0
