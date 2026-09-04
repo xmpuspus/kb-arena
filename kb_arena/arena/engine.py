@@ -211,13 +211,7 @@ class ArenaEngine:
         # Every distinct rubric makes a rating table that the file keeps and
         # every leaderboard lists. Without a cap a caller grows both without
         # limit, one new name at a time.
-        key = scope_key(corpus, rubric)
-        cap = settings.arena_max_scopes
-        if key not in self.state.elo_by_scope and len(self.state.elo_by_scope) >= cap:
-            raise ValueError(
-                f"The arena already holds {cap} rating scopes. Reuse one of them, "
-                f"or raise KB_ARENA_ARENA_MAX_SCOPES."
-            )
+        self._check_scope_room(corpus, rubric)
         a_name, b_name = random.sample(names, 2)
         selected_corpus = corpus or "all"
 
@@ -256,6 +250,23 @@ class ArenaEngine:
         self.state.matches.append(match)
         return match
 
+    def _check_scope_room(self, corpus: str, rubric: str) -> None:
+        """Refuse a scope the state file has no room for.
+
+        `ArenaState.ratings` creates the table with `setdefault`, and only
+        `_update_elo` calls it, so the table grows on the VOTE and not on the
+        match. A check in `create_match` alone lets a burst of matches on new
+        rubrics past, and every later vote then adds a table. Both paths call
+        this.
+        """
+        key = scope_key(corpus, rubric)
+        cap = settings.arena_max_scopes
+        if key not in self.state.elo_by_scope and len(self.state.elo_by_scope) >= cap:
+            raise ValueError(
+                f"The arena already holds {cap} rating scopes. Reuse one of them, "
+                f"or raise KB_ARENA_ARENA_MAX_SCOPES."
+            )
+
     def vote(self, match_id: str, winner: str, voter: str = "human") -> dict:
         """Record a vote and update the match's scope ratings. winner: 'a', 'b', or 'tie'."""
         if winner not in ("a", "b", "tie"):
@@ -266,6 +277,13 @@ class ArenaEngine:
             return {"error": "Match not found"}
         if match.winner is not None:
             return {"error": "Match already voted on"}
+
+        try:
+            self._check_scope_room(match.corpus, match.rubric)
+        except ValueError as exc:
+            # The scope becomes persistent here, not at match time, so this is
+            # the check that actually bounds the state file.
+            return {"error": str(exc)}
 
         match.winner = winner
         match.voter = voter or "human"

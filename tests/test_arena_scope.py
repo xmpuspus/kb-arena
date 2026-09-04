@@ -375,6 +375,34 @@ async def test_a_new_rubric_stops_at_the_scope_cap(arena, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_a_burst_of_matches_cannot_walk_past_the_scope_cap(arena, monkeypatch):
+    """The table grows on the vote, so a check at match time alone bounds nothing.
+
+    `ArenaState.ratings` creates the entry with `setdefault`, and only
+    `_update_elo` calls it. Matches on new rubrics leave the table empty, so a
+    cap read at match time sees room that later votes then consume.
+    """
+    monkeypatch.setattr(settings, "arena_max_scopes", 2)
+    assert arena.state.elo_by_scope == {}
+
+    matches = []
+    for i in range(4):
+        try:
+            matches.append(await arena.create_match("q?", corpus="c", rubric=f"r{i}"))
+        except ValueError:
+            break
+
+    errors = 0
+    for match in matches:
+        result = arena.vote(match.id, "a")
+        if "error" in result:
+            errors += 1
+
+    assert len(arena.state.elo_by_scope) <= 2, "the vote path must respect the cap too"
+    assert errors, "a vote past the cap must say so, not grow the file in silence"
+
+
+@pytest.mark.asyncio
 async def test_the_two_vote_counts_agree_about_what_a_vote_is(arena):
     """`votes_in_history` counted a stored winner the leaderboard rows ignore."""
     from types import SimpleNamespace
