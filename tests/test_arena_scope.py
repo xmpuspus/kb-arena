@@ -249,3 +249,68 @@ def test_the_page_refreshes_the_matchs_own_board_after_a_vote():
 
     page = Path("web/app/arena/page.tsx").read_text()
     assert "fetchLeaderboard(data.corpus ?? corpus)" in page
+
+
+@pytest.mark.asyncio
+async def test_the_leaderboard_route_answers_503_when_the_arena_is_down():
+    """An empty board reads as a real result, so an outage must not return one."""
+    from types import SimpleNamespace
+
+    from kb_arena.chatbot import api
+
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(arena=None)))
+
+    response = await api.arena_leaderboard(request, corpus="aws-compute")
+
+    assert response.status_code == 503
+    assert b"arena_unavailable" in response.body
+
+
+def test_a_corrupt_vote_total_never_counts_as_a_vote(tmp_path):
+    """A JSON true adds like a 1, so the loader must refuse it."""
+    path = tmp_path / "arena.json"
+    path.write_text(json.dumps({"elo": {"alpha": 1200.0}, "total_votes": True}))
+
+    state = ArenaState.load(path)
+
+    assert state.total_votes == 0
+
+
+def test_a_legacy_table_survives_a_file_that_already_holds_another_scope(tmp_path):
+    """A file with one corpus scope still carries a global table that predates scoping."""
+    path = tmp_path / "arena.json"
+    path.write_text(
+        json.dumps(
+            {
+                "elo": {"alpha": 1240.0, "beta": 1160.0},
+                "total_votes": 4,
+                "elo_by_scope": {"aws-compute|default": {"alpha": 1210.0}},
+            }
+        )
+    )
+
+    state = ArenaState.load(path)
+
+    assert state.elo_by_scope["all|default"] == {"alpha": 1240.0, "beta": 1160.0}
+    assert state.elo_by_scope["aws-compute|default"] == {"alpha": 1210.0}
+
+
+def test_the_page_drops_a_stale_board_when_the_read_fails():
+    """A board from an earlier corpus beside a new corpus name reads as that corpus."""
+    from pathlib import Path
+
+    page = Path("web/app/arena/page.tsx").read_text()
+    assert "setBoardError(" in page
+    assert "setLeaderboard([]);" in page
+    assert "data.votes_in_history ?? data.total_votes ?? 0" in page
+
+
+def test_the_packaged_bundle_carries_the_scoped_board():
+    """`kb-arena serve` ships this bundle, so a stale one hides every page fix."""
+    from pathlib import Path
+
+    static = Path("kb_arena/static")
+    if not static.exists():
+        pytest.skip("no packaged bundle in this checkout")
+    hits = [p for p in static.rglob("*.js") if "votes_in_history" in p.read_text(errors="ignore")]
+    assert hits, "the packaged bundle predates the scoped leaderboard"

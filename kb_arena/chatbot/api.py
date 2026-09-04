@@ -1046,11 +1046,11 @@ async def arena_leaderboard(request: Request, corpus: str = "", rubric: str = "d
             raise HTTPException(status_code=400, detail=f"invalid {name}")
     arena = request.app.state.arena
     if not arena:
-        return {
-            "leaderboard": [],
-            "total_votes": 0,
-            "scope": {"corpus": corpus or "all", "rubric": rubric},
-        }
+        # An empty board reads as a real result: nobody voted yet. The match
+        # and vote routes answer 503 for the same outage, so this one does too.
+        return JSONResponse(
+            {"error": {"code": "arena_unavailable", "message": "Arena not initialized"}}, 503
+        )
     board = arena.leaderboard(corpus=corpus, rubric=rubric)
     return {
         "leaderboard": board,

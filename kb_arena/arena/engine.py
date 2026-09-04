@@ -53,6 +53,18 @@ def scope_key(corpus: str, rubric: str = "default") -> str:
     return f"{corpus or 'all'}|{rubric or 'default'}"
 
 
+def _vote_count(raw) -> int:
+    """A vote total from a state file, or 0 when the file holds something else.
+
+    A JSON true reads as a Python bool and adds like a 1, so a corrupt file
+    could otherwise report a vote nobody cast.
+    """
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        log.warning("Dropping non-integer arena vote total: %r", raw)
+        return 0
+    return max(0, raw)
+
+
 def _numeric_ratings(raw) -> dict[str, float]:
     """Ratings from a state file, with anything that is not a real number dropped.
 
@@ -125,14 +137,14 @@ class ArenaState:
             data = json.loads(path.read_text())
             state = cls(
                 elo=data.get("elo", {}),
-                total_votes=data.get("total_votes", 0),
+                total_votes=_vote_count(data.get("total_votes", 0)),
                 elo_by_scope=data.get("elo_by_scope") or {},
             )
             state.elo = _numeric_ratings(state.elo)
             state.elo_by_scope = {
                 key: _numeric_ratings(ratings) for key, ratings in state.elo_by_scope.items()
             }
-            if not state.elo_by_scope and state.elo:
+            if scope_key("", "default") not in state.elo_by_scope and state.elo:
                 # An old file holds one global table. It was built from every
                 # corpus at once, so it keeps that scope, not a corpus's own.
                 state.elo_by_scope[scope_key("", "default")] = dict(state.elo)

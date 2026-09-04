@@ -30,6 +30,8 @@ interface VoteResult {
   winner: string;
   elo: Record<string, number>;
   total_votes: number;
+  corpus?: string;
+  rubric?: string;
 }
 
 interface LeaderboardEntry {
@@ -97,6 +99,7 @@ export default function ArenaPage() {
   const [error, setError] = useState("");
   const [corpus, setCorpus] = useState("all");
   const [corpora, setCorpora] = useState(CORPORA);
+  const [boardError, setBoardError] = useState("");
 
   // The board is per corpus, so a vote on one corpus never moves the numbers
   // a reader sees next to another.
@@ -111,10 +114,18 @@ export default function ArenaPage() {
       const res = await fetch(`${API}/api/arena/leaderboard${query}`);
       const data = await res.json();
       if (ticket !== boardRequest.current) return;
+      if (!res.ok) throw new Error(errorMessage(data, "Leaderboard unavailable"));
       setLeaderboard(data.leaderboard || []);
-      setTotalVotes(data.total_votes || 0);
-    } catch {
-      // ignore
+      // The board is scoped, so the count next to it is the scope's own.
+      setTotalVotes(data.votes_in_history ?? data.total_votes ?? 0);
+      setBoardError("");
+    } catch (err: unknown) {
+      // A stale board next to a live corpus name reads as that corpus's
+      // result, so drop it and say the read failed.
+      if (ticket !== boardRequest.current) return;
+      setLeaderboard([]);
+      setTotalVotes(0);
+      setBoardError(err instanceof Error ? err.message : "Leaderboard unavailable");
     }
   }
 
@@ -380,7 +391,20 @@ export default function ArenaPage() {
       )}
 
       {/* Leaderboard */}
-      {leaderboard.length > 0 && (
+      {boardError && (
+        <div className="max-w-2xl mx-auto">
+          <div
+            className="rounded-lg border px-4 py-3 text-sm"
+            style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+            role="status"
+          >
+            The leaderboard did not load: {boardError}. The ratings below are hidden, because a
+            board from an earlier read would name the wrong corpus.
+          </div>
+        </div>
+      )}
+
+      {!boardError && leaderboard.length > 0 && (
         <div className="max-w-2xl mx-auto">
           <h2 className="text-base font-semibold mb-3" style={{ color: "var(--foreground)" }}>
             ELO Leaderboard
