@@ -739,8 +739,13 @@ async def list_strategies(request: Request) -> dict:
 
 
 @app.get("/graph/stats")
-async def graph_stats(request: Request) -> dict:
-    """Return graph node and edge counts, centrality hubs, and communities."""
+async def graph_stats(request: Request, corpus: str = "all") -> dict:
+    """Return graph node and edge counts, centrality hubs, and communities.
+
+    With a corpus, only that corpus's entities count. Without one, a store
+    over the budget loads a slice ordered by entity id, and the load names
+    the corpora that slice holds.
+    """
     if request.app.state.neo4j is None:
         return {"error": "Neo4j not connected", "stats": None}
 
@@ -750,18 +755,24 @@ async def graph_stats(request: Request) -> dict:
     store = Neo4jStore(request.app.state.neo4j)
     analyzer = GraphAnalyzer(store)
 
-    centrality = await analyzer.calculate_centrality()
+    scope = None if corpus in ("", "all") else corpus
+    centrality = await analyzer.calculate_centrality(scope)
     top_hubs = sorted(centrality.items(), key=lambda x: x[1], reverse=True)[:10]
+    # A sampled score carries about two digits, an exact one four.
+    digits = 4 if analyzer.last_centrality.get("method") == "exact" else 2
 
-    communities = await analyzer.analyze_communities()
+    communities = await analyzer.analyze_communities(corpus=scope)
 
     return {
+        "corpus": corpus or "all",
+        # node_count is the slice the numbers come from. load.nodes_total is
+        # what the store holds, and load.truncated says when they differ.
         "node_count": sum(1 for _ in centrality),
         "top_hubs": [
             {
                 "entity_id": entity_id,
                 "fqn": entity_id.split("::", 1)[-1],
-                "centrality": round(centrality_score, 4),
+                "centrality": round(centrality_score, digits),
             }
             for entity_id, centrality_score in top_hubs
         ],

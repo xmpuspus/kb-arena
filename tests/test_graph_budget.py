@@ -21,8 +21,15 @@ def _store(nodes, edges):
     store = AsyncMock()
 
     async def execute_query(cypher, params=None):
-        limit = (params or {}).get("limit")
-        rows = nodes if "MATCH (n:KBArenaEntity)" in cypher else edges
+        params = params or {}
+        prefix = params.get("prefix", "")
+        if "count(n)" in cypher:
+            return [{"n": sum(1 for n in nodes if n["entity_id"].startswith(prefix))}]
+        limit = params.get("limit")
+        if "MATCH (n:KBArenaEntity)" in cypher:
+            rows = [n for n in nodes if n["entity_id"].startswith(prefix)]
+        else:
+            rows = [e for e in edges if e["src"].startswith(prefix)]
         return rows[:limit] if limit else rows
 
     store.execute_query.side_effect = execute_query
@@ -59,7 +66,8 @@ async def test_a_graph_over_the_node_budget_loads_a_slice_and_drops_edges_outsid
     assert analyzer.last_load["truncated"] is True
     assert analyzer.last_load["edges_dropped_outside_slice"] == 3
     # the store was asked for one row past the budget, never the whole graph
-    limits = [call.args[1]["limit"] for call in analyzer._store.execute_query.await_args_list]
+    calls = analyzer._store.execute_query.await_args_list
+    limits = [c.args[1]["limit"] for c in calls if "limit" in c.args[1]]
     assert limits == [4, 101]
 
 
@@ -104,22 +112,25 @@ async def test_graph_stats_reports_the_method_and_the_load(monkeypatch):
             self.last_load = {"truncated": True, "nodes_loaded": 3}
             self.last_centrality = {"method": "approximate", "nodes": 3, "samples": 2}
 
-        async def calculate_centrality(self):
+        async def calculate_centrality(self, corpus=None):
+            assert corpus == "alpha"
             return {"c::a": 0.5, "c::b": 0.2, "c::c": 0.0}
 
-        async def analyze_communities(self):
+        async def analyze_communities(self, resolution=1.0, corpus=None):
             return [{"c::a", "c::b"}, {"c::c"}]
 
     monkeypatch.setattr("kb_arena.graph.analyzer.GraphAnalyzer", _FakeAnalyzer)
     monkeypatch.setattr("kb_arena.graph.neo4j_store.Neo4jStore", lambda driver: object())
     request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(neo4j=object())))
 
-    stats = await api.graph_stats(request)
+    stats = await api.graph_stats(request, corpus="alpha")
 
     assert stats["node_count"] == 3
+    assert stats["corpus"] == "alpha"
     assert stats["community_count"] == 2
     assert stats["centrality"]["method"] == "approximate"
     assert stats["load"]["truncated"] is True
+    assert stats["top_hubs"][0]["centrality"] == 0.5
 
 
 @pytest.mark.asyncio
@@ -133,7 +144,8 @@ async def test_the_directed_graph_loads_under_the_same_budget(monkeypatch):
 
     assert graph.number_of_nodes() == 3
     assert graph.number_of_edges() == 2
-    limits = [call.args[1]["limit"] for call in analyzer._store.execute_query.await_args_list]
+    calls = analyzer._store.execute_query.await_args_list
+    limits = [c.args[1]["limit"] for c in calls if "limit" in c.args[1]]
     assert limits == [4, 101]
     chains = await analyzer.find_dependency_chains("c::n0", max_depth=4)
     assert chains and all(len(path) <= 3 for path in chains)
@@ -147,3 +159,75 @@ def test_a_zero_budget_or_sample_count_is_rejected():
     with pytest.raises(ValueError):
         Settings(graph_centrality_samples=0)
     assert Settings(graph_node_budget=1).graph_node_budget == 1
+
+
+def _two_corpora():
+    nodes, edges = [], []
+    for corpus, n in (("alpha", 6), ("beta", 6)):
+        nodes += [
+            {"entity_id": f"{corpus}::n{i}", "fqn": f"n{i}", "label": "Topic"} for i in range(n)
+        ]
+        edges += [
+            {"src": f"{corpus}::n{i}", "dst": f"{corpus}::n{i + 1}", "rel": "DEPENDS_ON"}
+            for i in range(n - 1)
+        ]
+    return nodes, edges
+
+
+@pytest.mark.asyncio
+async def test_a_truncated_multi_corpus_load_names_its_corpora_and_the_total(monkeypatch):
+    monkeypatch.setattr(settings, "graph_node_budget", 8)
+    nodes, edges = _two_corpora()
+    analyzer = GraphAnalyzer(_store(nodes, edges))
+
+    await analyzer.calculate_centrality()
+
+    assert analyzer.last_load["truncated"] is True
+    assert analyzer.last_load["corpora_in_slice"] == ["alpha", "beta"]
+    assert analyzer.last_load["nodes_total"] == 12
+    assert analyzer.last_load["nodes_loaded"] == 8
+
+
+@pytest.mark.asyncio
+async def test_a_corpus_filter_loads_that_corpus_only(monkeypatch):
+    monkeypatch.setattr(settings, "graph_node_budget", 8)
+    nodes, edges = _two_corpora()
+    analyzer = GraphAnalyzer(_store(nodes, edges))
+
+    centrality = await analyzer.calculate_centrality("beta")
+
+    assert set(centrality) == {f"beta::n{i}" for i in range(6)}
+    assert analyzer.last_load["corpus"] == "beta"
+    assert analyzer.last_load["truncated"] is False
+    assert analyzer.last_load["corpora_in_slice"] == ["beta"]
+
+
+@pytest.mark.asyncio
+async def test_sampling_every_node_is_exact_and_a_cache_hit_keeps_the_record(monkeypatch):
+    monkeypatch.setattr(settings, "graph_centrality_exact_max_nodes", 5)
+    monkeypatch.setattr(settings, "graph_centrality_samples", 500)
+    nodes, edges = _chain(20)
+    analyzer = GraphAnalyzer(_store(nodes, edges))
+
+    first = await analyzer.calculate_centrality()
+    assert analyzer.last_centrality["method"] == "exact"
+    analyzer.last_centrality = {}
+    analyzer.last_load = {}
+
+    second = await analyzer.calculate_centrality()
+
+    assert second == first
+    assert analyzer.last_centrality["method"] == "exact"
+    assert analyzer.last_load["nodes_loaded"] == 20
+
+
+@pytest.mark.asyncio
+async def test_communities_are_seeded():
+    nodes, edges = _chain(60)
+    analyzer = GraphAnalyzer(_store(nodes, edges))
+
+    first = await analyzer.analyze_communities()
+    analyzer._cache.clear()
+    second = await analyzer.analyze_communities()
+
+    assert [sorted(c) for c in first] == [sorted(c) for c in second]

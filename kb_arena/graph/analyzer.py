@@ -26,53 +26,81 @@ class GraphAnalyzer:
     def __init__(self, store: Neo4jStore) -> None:
         self._store = store
         # cache: key -> (timestamp, value)
-        self._cache: dict[str, tuple[float, Any]] = {}
+        self._cache: dict[Any, tuple[float, Any]] = {}
         # What the last load and the last centrality run did, for the caller
         # that reports them. A truncated graph or a sampled centrality must
         # never pass as the whole picture.
         self.last_load: dict[str, Any] = {}
         self.last_centrality: dict[str, Any] = {}
 
-    async def _load_rows(self, cypher: str, budget: int) -> tuple[list[dict], bool]:
+    async def _load_rows(
+        self, cypher: str, budget: int, corpus: str | None = None
+    ) -> tuple[list[dict], bool]:
         """Rows up to the budget, and whether more existed beyond it.
 
-        One extra row tells truncation apart from a graph that fits, without
-        a second count query against the store.
+        One extra row tells truncation apart from a graph that fits. An entity
+        id starts with its corpus, so a corpus filter is a prefix match.
         """
-        rows = await self._store.execute_query(cypher, {"limit": budget + 1})
+        params = {"limit": budget + 1, "prefix": f"{corpus}::" if corpus else ""}
+        rows = await self._store.execute_query(cypher, params)
         rows = list(rows)
         truncated = len(rows) > budget
         return rows[:budget], truncated
 
-    def _cache_get(self, key: str) -> Any | None:
+    def _cache_get(self, key: Any) -> Any | None:
         entry = self._cache.get(key)
         if entry and time.monotonic() - entry[0] < _CACHE_TTL:
             return entry[1]
         return None
 
-    def _cache_set(self, key: str, value: Any) -> None:
+    def _cache_set(self, key: Any, value: Any) -> None:
         self._cache[key] = (time.monotonic(), value)
+
+    async def _count_nodes(self, corpus: str | None) -> int | None:
+        """How many entities the store holds, so a slice can say what it left out."""
+        try:
+            rows = await self._store.execute_query(
+                "MATCH (n:KBArenaEntity) WHERE $prefix = '' OR n.entity_id STARTS WITH $prefix "
+                "RETURN count(n) AS n",
+                {"prefix": f"{corpus}::" if corpus else ""},
+            )
+        except Exception:  # noqa: BLE001 - a count is a courtesy, never a failure
+            return None
+        rows = list(rows)
+        if not rows:
+            return None
+        value = rows[0].get("n") if isinstance(rows[0], dict) else None
+        return int(value) if isinstance(value, int) else None
 
     # ── Graph builders ────────────────────────────────────────────────────────
 
-    async def _build_networkx_graph(self) -> nx.Graph:
-        """Pull nodes and edges from Neo4j into an undirected networkx graph."""
-        cached = self._cache_get("undirected")
+    async def _build_networkx_graph(self, corpus: str | None = None) -> nx.Graph:
+        """Pull nodes and edges from Neo4j into an undirected networkx graph.
+
+        With a corpus, only that corpus's entities load. Without one, the
+        slice is ordered by entity id, which starts with the corpus name, so
+        a truncated multi-corpus load names the corpora it holds.
+        """
+        cached = self._cache_get(("undirected", corpus))
         if cached is not None:
-            return cached
+            graph, self.last_load = cached
+            return graph
 
         nodes, nodes_truncated = await self._load_rows(
-            "MATCH (n:KBArenaEntity) "
+            "MATCH (n:KBArenaEntity) WHERE $prefix = '' OR n.entity_id STARTS WITH $prefix "
             "RETURN n.entity_id AS entity_id, n.fqn AS fqn, "
             "head([label IN labels(n) WHERE label <> 'KBArenaEntity']) AS label "
             "ORDER BY n.entity_id LIMIT $limit",
             settings.graph_node_budget,
+            corpus,
         )
         edges, edges_truncated = await self._load_rows(
             "MATCH (a:KBArenaEntity)-[r]->(b:KBArenaEntity) "
+            "WHERE $prefix = '' OR a.entity_id STARTS WITH $prefix "
             "RETURN a.entity_id AS src, b.entity_id AS dst, type(r) AS rel "
-            "ORDER BY a.entity_id, b.entity_id LIMIT $limit",
+            "ORDER BY a.entity_id LIMIT $limit",
             settings.graph_edge_budget,
+            corpus,
         )
 
         graph: nx.Graph = nx.Graph()
@@ -87,8 +115,13 @@ class GraphAnalyzer:
                 continue
             graph.add_edge(row["src"], row["dst"], rel=row["rel"], weight=1)
 
+        corpora = sorted({str(n).split("::", 1)[0] for n in graph.nodes if "::" in str(n)})
+        total = await self._count_nodes(corpus) if nodes_truncated else graph.number_of_nodes()
         self.last_load = {
+            "corpus": corpus or "all",
+            "corpora_in_slice": corpora,
             "nodes_loaded": graph.number_of_nodes(),
+            "nodes_total": total,
             "edges_loaded": graph.number_of_edges(),
             "node_budget": settings.graph_node_budget,
             "edge_budget": settings.graph_edge_budget,
@@ -103,7 +136,7 @@ class GraphAnalyzer:
                 graph.number_of_nodes(),
                 graph.number_of_edges(),
             )
-        self._cache_set("undirected", graph)
+        self._cache_set(("undirected", corpus), (graph, dict(self.last_load)))
         logger.debug(
             "Built undirected graph: %d nodes, %d edges",
             graph.number_of_nodes(),
@@ -111,24 +144,27 @@ class GraphAnalyzer:
         )
         return graph
 
-    async def _build_directed_graph(self) -> nx.DiGraph:
+    async def _build_directed_graph(self, corpus: str | None = None) -> nx.DiGraph:
         """Directed graph for path finding, loaded under the same budgets."""
-        cached = self._cache_get("directed")
+        cached = self._cache_get(("directed", corpus))
         if cached is not None:
             return cached
 
         nodes, nodes_truncated = await self._load_rows(
-            "MATCH (n:KBArenaEntity) "
+            "MATCH (n:KBArenaEntity) WHERE $prefix = '' OR n.entity_id STARTS WITH $prefix "
             "RETURN n.entity_id AS entity_id, n.fqn AS fqn, "
             "head([label IN labels(n) WHERE label <> 'KBArenaEntity']) AS label "
             "ORDER BY n.entity_id LIMIT $limit",
             settings.graph_node_budget,
+            corpus,
         )
         edges, edges_truncated = await self._load_rows(
             "MATCH (a:KBArenaEntity)-[r]->(b:KBArenaEntity) "
+            "WHERE $prefix = '' OR a.entity_id STARTS WITH $prefix "
             "RETURN a.entity_id AS src, b.entity_id AS dst, type(r) AS rel "
-            "ORDER BY a.entity_id, b.entity_id LIMIT $limit",
+            "ORDER BY a.entity_id LIMIT $limit",
             settings.graph_edge_budget,
+            corpus,
         )
 
         graph: nx.DiGraph = nx.DiGraph()
@@ -144,18 +180,24 @@ class GraphAnalyzer:
                 graph.number_of_nodes(),
                 graph.number_of_edges(),
             )
-        self._cache_set("directed", graph)
+        self._cache_set(("directed", corpus), graph)
         return graph
 
-    async def analyze_communities(self, resolution: float = 1.0) -> list[set[str]]:
-        """Louvain community detection.
+    async def analyze_communities(
+        self, resolution: float = 1.0, corpus: str | None = None
+    ) -> list[set[str]]:
+        """Louvain community detection, seeded so two calls agree.
 
-        CPU-bound — runs in thread pool to avoid blocking the event loop.
+        CPU-bound: runs in a thread so the event loop stays free.
         Returns list of sets, each containing corpus-qualified entity IDs.
         """
-        graph = await self._build_networkx_graph()
+        graph = await self._build_networkx_graph(corpus)
         communities = await asyncio.to_thread(
-            nx.community.louvain_communities, graph, weight="weight", resolution=resolution
+            nx.community.louvain_communities,
+            graph,
+            weight="weight",
+            resolution=resolution,
+            seed=0,
         )
         return [set(c) for c in communities]
 
@@ -191,18 +233,22 @@ class GraphAnalyzer:
         )
         return paths
 
-    async def calculate_centrality(self) -> dict[str, float]:
+    async def calculate_centrality(self, corpus: str | None = None) -> dict[str, float]:
         """Betweenness centrality for all nodes.
 
         High centrality = conceptual hub (important for graph-guided RAG).
         """
-        cached = self._cache_get("centrality")
+        cached = self._cache_get(("centrality", corpus))
         if cached is not None:
-            return cached
+            centrality, self.last_centrality = cached
+            await self._build_networkx_graph(corpus)  # restores last_load from its cache
+            return centrality
 
-        graph = await self._build_networkx_graph()
+        graph = await self._build_networkx_graph(corpus)
         node_count = graph.number_of_nodes()
-        exact = node_count <= settings.graph_centrality_exact_max_nodes
+        samples = min(settings.graph_centrality_samples, node_count)
+        # k pivots equal to every node is the exact computation, so say so.
+        exact = node_count <= settings.graph_centrality_exact_max_nodes or samples >= node_count
         if exact:
             centrality: dict[str, float] = await asyncio.to_thread(
                 nx.betweenness_centrality, graph, normalized=True
@@ -211,7 +257,6 @@ class GraphAnalyzer:
         else:
             # Brandes sampling: k pivot nodes instead of all of them. Seeded,
             # so two calls on one graph agree.
-            samples = min(settings.graph_centrality_samples, node_count)
             centrality = await asyncio.to_thread(
                 nx.betweenness_centrality, graph, k=samples, normalized=True, seed=0
             )
@@ -220,5 +265,5 @@ class GraphAnalyzer:
                 "nodes": node_count,
                 "samples": samples,
             }
-        self._cache_set("centrality", centrality)
+        self._cache_set(("centrality", corpus), (centrality, dict(self.last_centrality)))
         return centrality
