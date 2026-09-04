@@ -118,7 +118,12 @@ def _metric(run: dict, name: str) -> float | None:
         # file would otherwise contribute a perfect score.
         if isinstance(value, bool) or not isinstance(value, int | float):
             return None
-        return float(value)
+        try:
+            # A JSON integer has no size limit, and float() raises on one too
+            # large to represent. An unreadable metric is not a crash.
+            return float(value)
+        except (OverflowError, ValueError):
+            return None
 
     by_tier = run.get(name)
     if (direct := _number(by_tier)) is not None:

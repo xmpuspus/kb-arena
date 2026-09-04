@@ -111,7 +111,27 @@ def git_sha() -> str | None:
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    return out.stdout.strip() or None if out.returncode == 0 else None
+    if out.returncode != 0:
+        return None
+    sha = out.stdout.strip()
+    if not sha:
+        return None
+    # An uncommitted change is not the commit it sits on. Without this, a
+    # developer comparing a local edit against the last commit would see the
+    # two runs called one build and their difference reported as noise.
+    try:
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            cwd=Path(__file__).resolve().parents[2],
+        )
+    except (OSError, subprocess.SubprocessError):
+        return sha
+    if dirty.returncode == 0 and dirty.stdout.strip():
+        return f"{sha}-dirty"
+    return sha
 
 
 # The fields that decide whether two runs compare. The reader recomputes the

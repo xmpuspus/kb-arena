@@ -691,7 +691,8 @@ def test_the_recorded_commit_is_the_whole_one():
     assert '"--short"' not in source, "the whole commit, not the abbreviation"
     sha = manifest.git_sha()
     if sha:
-        assert len(sha) == 40
+        # A dirty tree carries a suffix, so the commit is the first 40.
+        assert len(sha.removesuffix("-dirty")) == 40
 
 
 def test_a_checkpoint_without_an_experiment_key_is_refused_for_the_right_reason(
@@ -741,3 +742,20 @@ def test_another_corpus_broken_file_never_blocks_this_corpus(tmp_path, monkeypat
     # A report about every corpus still stops, because that file is in scope.
     with pytest.raises(variance.RunsUnreadableError):
         variance.load_runs()
+
+
+def test_an_uncommitted_change_is_not_the_commit_it_sits_on():
+    """Two runs across a local edit are not repeats of one build."""
+    from kb_arena.benchmark.manifest import git_sha
+
+    sha = git_sha()
+    if sha is None:
+        pytest.skip("no repository in this checkout")
+    assert len(sha) == 40 or sha.endswith("-dirty")
+
+
+def test_an_oversized_integer_is_unreadable_and_not_a_crash():
+    """A JSON integer has no size limit, and float() raises on a huge one."""
+    huge = 10**400
+    assert variance._metric({"accuracy_by_tier": huge}, "accuracy_by_tier") is None
+    assert variance._metric({"accuracy_by_tier": {"1": huge}}, "accuracy_by_tier") is None
