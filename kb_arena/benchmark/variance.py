@@ -99,11 +99,18 @@ def group_by_key(runs: list[dict]) -> dict[tuple[str, str, str], list[dict]]:
 
 
 def _metric(run: dict, name: str) -> float | None:
+    def _number(value) -> float | None:
+        # A JSON true is a Python bool and float(True) is 1.0, so a corrupt
+        # file would otherwise contribute a perfect score.
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            return None
+        return float(value)
+
     by_tier = run.get(name)
-    if isinstance(by_tier, int | float):
-        return float(by_tier)
+    if (direct := _number(by_tier)) is not None:
+        return direct
     if isinstance(by_tier, dict) and by_tier:
-        numeric = [float(v) for v in by_tier.values() if isinstance(v, int | float)]
+        numeric = [n for v in by_tier.values() if (n := _number(v)) is not None]
         if numeric:
             return sum(numeric) / len(numeric)
     return None
@@ -184,7 +191,8 @@ def load_runs(corpus: str | None = None) -> list[dict]:
                 # shrinking the sample would report a spread over what survived.
                 unreadable.append(f"{path}: {exc}")
                 continue
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
+                unreadable.append(f"{path}: malformed JSON, {exc}")
                 continue
             if not isinstance(data, dict) or "strategy" not in data or "corpus" not in data:
                 continue
@@ -220,7 +228,7 @@ def _code_version(run: dict) -> str:
     if not version and not sha:
         return UNRECORDED_VERSION
     label = str(version) if version else UNRECORDED_VERSION
-    return f"{label}@{str(sha)[:7]}" if sha else label
+    return f"{label}@{sha}" if sha else label
 
 
 def _seed_labels(group: list[dict]) -> list[str]:

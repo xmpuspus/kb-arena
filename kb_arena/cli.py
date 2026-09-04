@@ -1734,7 +1734,12 @@ def optimize(
     ),
     method: str = typer.Option("grid", "--method", help="Search method: grid|random"),
     max_trials: int = typer.Option(0, "--max-trials", help="Cap trials per strategy (0 = no cap)"),
-    seed: int = typer.Option(0, "--seed", help="RNG seed for --method random"),
+    seed: int = typer.Option(
+        -1,
+        "--seed",
+        help="RNG seed for --method random. Default -1 uses the recorded run seed, "
+        "so the manifest and the trial order cannot disagree.",
+    ),
     confirm_holdout: bool = typer.Option(
         False,
         "--confirm-holdout",
@@ -1795,7 +1800,7 @@ def optimize(
             metric=metric,
             method=method,
             max_trials=max_trials,
-            seed=seed,
+            seed=None if seed < 0 else seed,
             dry_run=dry_run,
             split=split,
             allow_holdout=confirm_holdout,

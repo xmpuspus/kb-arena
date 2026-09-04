@@ -184,9 +184,10 @@ def test_the_loader_counts_a_run_once_even_when_it_sits_in_two_places(tmp_path, 
 
 
 def test_the_loader_skips_a_file_that_is_not_a_result(tmp_path, monkeypatch):
+    """A summary is valid JSON and carries no run, so it is not lost evidence."""
     monkeypatch.setattr(settings, "results_path", str(tmp_path))
     (tmp_path / "summary.json").write_text(json.dumps({"corpora": {}}))
-    (tmp_path / "broken.json").write_text("{not json")
+    (tmp_path / "report.json").write_text(json.dumps([1, 2, 3]))
 
     assert variance.load_runs() == []
 
@@ -287,6 +288,57 @@ def test_an_incomparable_group_reports_values_and_no_mean():
     assert metric["values"] == [0.2, 0.8]
     assert "mean" not in metric, "0.5 is the midpoint of a code change, not a mean"
     assert "sd" not in metric
+
+
+def test_a_malformed_result_stops_the_command_too(tmp_path, monkeypatch):
+    """A file that parses as nothing is lost evidence, the same as an unreadable one."""
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    good = {"corpus": "c", "strategy": "bm25", "run_id": "a", "accuracy_by_tier": {"1": 0.2}}
+    (tmp_path / "run_a").mkdir()
+    (tmp_path / "run_a" / "c_bm25.json").write_text(json.dumps(good))
+    (tmp_path / "run_b").mkdir()
+    (tmp_path / "run_b" / "c_bm25.json").write_text("{truncated")
+
+    with pytest.raises(variance.RunsUnreadableError, match="malformed JSON"):
+        variance.load_runs("c")
+
+
+def test_a_true_in_a_result_is_never_a_perfect_score():
+    """float(True) is 1.0, so a corrupt file would report a perfect run."""
+    assert variance._metric({"accuracy_by_tier": True}, "accuracy_by_tier") is None
+    assert variance._metric({"accuracy_by_tier": {"1": True}}, "accuracy_by_tier") is None
+    assert variance._metric({"accuracy_by_tier": {"1": 0.5}}, "accuracy_by_tier") == 0.5
+
+
+def test_the_build_identity_keeps_the_whole_commit():
+    """Seven characters is an abbreviation, and this value is used for equality."""
+    manifest = {"code_version": "0.11.0", "git_sha": "a" * 40}
+
+    assert variance._code_version({"manifest": manifest}).endswith("a" * 40)
+
+
+def test_the_seed_reaches_the_lab_bootstrap_it_claims_to_control():
+    """The manifest names bootstrap resampling, and the lab has its own."""
+    import inspect
+
+    from kb_arena.benchmark import retriever_lab
+
+    source = inspect.getsource(retriever_lab._bootstrap_ci)
+    assert "settings.run_seed" in source
+    assert "random_state=0" not in source
+
+
+def test_the_seed_setting_stays_inside_the_range_scipy_accepts():
+    """scipy rejects a seed above 2**32-1, after the sweep has already run."""
+    from pydantic import ValidationError
+
+    from kb_arena.settings import Settings
+
+    with pytest.raises(ValidationError):
+        Settings(run_seed=2**32)
+    with pytest.raises(ValidationError):
+        Settings(run_seed=-1)
+    assert Settings(run_seed=2**32 - 1).run_seed == 2**32 - 1
 
 
 def test_an_unreadable_result_stops_the_command(tmp_path, monkeypatch):
