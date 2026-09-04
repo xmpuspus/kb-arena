@@ -81,6 +81,60 @@ def test_compatibility_key_changes_with_judge_split_top_k_and_qrels(tmp_path, mo
     assert other_qrels["qrels_fingerprint"]
 
 
+def test_the_answering_model_is_part_of_the_key(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path))
+    questions = [_q("q1", "one")]
+    monkeypatch.setattr(settings, "generate_model", "model-a")
+    a = mf.build_manifest("c", questions, top_k=5, split="development", reference_free=False)
+    monkeypatch.setattr(settings, "generate_model", "model-b")
+    b = mf.build_manifest("c", questions, top_k=5, split="development", reference_free=False)
+    assert a["compatibility_key"] != b["compatibility_key"]
+    assert a["generation"]["model"] == "model-a"
+
+
+def test_a_reference_free_run_ignores_the_judge(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path))
+    questions = [_q("q1", "one")]
+    monkeypatch.setattr(settings, "judge_model", "judge-a")
+    a = mf.build_manifest("c", questions, top_k=5, split="development", reference_free=True)
+    monkeypatch.setattr(settings, "judge_model", "judge-b")
+    b = mf.build_manifest("c", questions, top_k=5, split="development", reference_free=True)
+    assert a["compatibility_key"] == b["compatibility_key"]
+    assert a["judge"] is None
+    judged = mf.build_manifest("c", questions, top_k=5, split="development", reference_free=False)
+    assert judged["compatibility_key"] != a["compatibility_key"]
+
+
+def test_a_comment_in_the_qrels_file_keeps_the_key(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path))
+    qrels = tmp_path / "c" / "questions"
+    qrels.mkdir(parents=True)
+    (qrels / "expected_chunks.yaml").write_text("q1: [c1]\n")
+    before = mf.qrels_fingerprint("c")
+    (qrels / "expected_chunks.yaml").write_text("# reviewed 2026-09-04\nq1:\n  - c1\n")
+    assert mf.qrels_fingerprint("c") == before
+    (qrels / "expected_chunks.yaml").write_text("q1: [c1, c2]\n")
+    assert mf.qrels_fingerprint("c") != before
+
+
+def test_a_cost_capped_partial_run_never_blends_with_a_full_one(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path))
+    manifest = mf.build_manifest(
+        "c", [_q("q1", "one"), _q("q2", "two")], top_k=5, split="", reference_free=False
+    )
+    full = {"manifest": manifest, "records": [{}, {}]}
+    short = {"manifest": manifest, "records": [{}]}
+    capped = {"manifest": manifest, "records": [{}, {}], "stopped_by_cost_cap": True}
+    assert mf.compatibility_key(full) == manifest["compatibility_key"]
+    assert mf.compatibility_key(short) == manifest["compatibility_key"] + "-partial"
+    assert mf.compatibility_key(capped) == manifest["compatibility_key"] + "-partial"
+
+
+def test_a_v1_file_dumped_by_the_v2_model_still_summarises_empty():
+    assert mf.manifest_summary({"manifest": {}, "schema_version": 1}) == {}
+    assert mf.manifest_summary({"manifest": {"compatibility_key": "x"}}) == {}
+
+
 def test_a_result_file_without_a_manifest_is_legacy():
     assert mf.compatibility_key({"corpus": "c", "strategy": "s"}) == mf.LEGACY_KEY
     assert mf.compatibility_key({"manifest": {"compatibility_key": "abc123"}}) == mf.LEGACY_KEY

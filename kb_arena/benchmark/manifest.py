@@ -15,6 +15,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from kb_arena import __version__
 from kb_arena.settings import settings
 
@@ -44,10 +46,15 @@ def question_set_fingerprint(questions) -> str:
 
 
 def qrels_fingerprint(corpus: str) -> str | None:
+    """A digest of the parsed labels. A comment or a reflow in the YAML never moves it."""
     path = Path(settings.datasets_path) / corpus / "questions" / "expected_chunks.yaml"
     if not path.exists():
         return None
-    return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+    try:
+        parsed = yaml.safe_load(path.read_text())
+    except yaml.YAMLError:
+        return _digest(path.read_bytes().hex())
+    return _digest(parsed)
 
 
 def judge_identity() -> dict[str, str]:
@@ -57,6 +64,17 @@ def judge_identity() -> dict[str, str]:
         "openai": settings.openai_judge_model,
         "ollama": settings.ollama_judge_model,
     }.get(provider, settings.judge_model)
+    return {"provider": provider, "model": model}
+
+
+def generation_identity() -> dict[str, str]:
+    """The provider and model that answer the questions. A different answerer is a different run."""
+    provider = settings.llm_provider
+    model = {
+        "anthropic": settings.generate_model,
+        "openai": settings.openai_generate_model,
+        "ollama": settings.ollama_generate_model,
+    }.get(provider, "")
     return {"provider": provider, "model": model}
 
 
@@ -94,6 +112,8 @@ CORE_FIELDS = (
     "question_split",
     "question_set_fingerprint",
     "qrels_fingerprint",
+    "generation",
+    "scoring",
     "judge",
     "embedding",
     "chunk",
@@ -113,12 +133,15 @@ def build_manifest(corpus: str, questions, *, top_k: int, split: str, reference_
         "question_split": split or "all",
         "question_set_fingerprint": question_set_fingerprint(questions),
         "qrels_fingerprint": qrels_fingerprint(corpus),
-        "judge": {
-            **judge_identity(),
+        "generation": generation_identity(),
+        # RAGAS adds judge calls and changes the recorded scores and cost.
+        "scoring": {
             "reference_free": reference_free,
-            # RAGAS adds judge calls and changes the recorded scores and cost.
             "ragas": bool(settings.benchmark_enable_ragas),
         },
+        # A reference-free run never calls the judge, so its identity must
+        # not split runs that scored the same way.
+        "judge": None if reference_free else judge_identity(),
         "embedding": embedding_identity(),
         "chunk": {"tokens": settings.chunk_tokens, "overlap_tokens": settings.chunk_overlap_tokens},
         "top_k": top_k,
@@ -141,15 +164,30 @@ def compatibility_key(data: dict) -> str:
     # core fields instead of trusting the stored one, so a stale, edited, or
     # blank key can never group runs that differ.
     if isinstance(manifest.get("question_set_fingerprint"), str):
-        return _digest(core_of(manifest))
+        key = _digest(core_of(manifest))
+        # A run the cost cap stopped scored fewer questions than its manifest
+        # names. It never blends with a full run of the same experiment.
+        if _is_partial(data, manifest):
+            return f"{key}-partial"
+        return key
     return LEGACY_KEY
+
+
+def _is_partial(data: dict, manifest: dict) -> bool:
+    if data.get("stopped_by_cost_cap") is True:
+        return True
+    expected = manifest.get("question_count")
+    records = data.get("records")
+    return isinstance(expected, int) and isinstance(records, list) and len(records) < expected
 
 
 def manifest_summary(data: dict) -> dict:
     """The few manifest fields a leaderboard row shows next to its numbers."""
-    if "manifest" not in data:
-        return {}
     manifest = data.get("manifest") if isinstance(data.get("manifest"), dict) else {}
+    # A v1 file dumped through the v2 model carries an empty manifest. That
+    # is still a legacy file, and a summary of nulls would say otherwise.
+    if not isinstance(manifest.get("question_set_fingerprint"), str):
+        return {}
     judge = manifest.get("judge") if isinstance(manifest.get("judge"), dict) else {}
     return {
         "schema_version": manifest.get("schema_version", 1),
