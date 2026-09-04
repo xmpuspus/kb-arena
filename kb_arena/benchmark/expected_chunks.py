@@ -257,8 +257,16 @@ async def label_one_question(
     return grades, cost
 
 
+class NarrowPoolError(RuntimeError):
+    """No retriever but BM25 answered, so the labels would be BM25-shaped."""
+
+
 async def label_corpus(
-    corpus: str, force: bool = False, n_candidates: int = 20, n_random: int = 10
+    corpus: str,
+    force: bool = False,
+    n_candidates: int = 20,
+    n_random: int = 10,
+    allow_bm25_only: bool = False,
 ) -> dict:
     """Label every question in a corpus. Idempotent unless force=True. Cost-capped.
 
@@ -319,10 +327,21 @@ async def label_corpus(
     except ImportError:
         pass
 
+    if not extra_retrievers and not allow_bm25_only:
+        # A provider outage during the probe looks exactly like an index that
+        # was never built, and both produce a gold set drawn only from what
+        # BM25 ranks high. That file then scores every strategy for the rest of
+        # its life. Writing it must be a decision, not a default.
+        raise NarrowPoolError(
+            f"Only BM25 answered the index probe for {corpus!r}, so the labels would "
+            "carry BM25's bias and every strategy would be scored against it. "
+            "Run `kb-arena build-vectors` and label again, or pass --allow-bm25-only "
+            "to write a BM25-shaped gold set on purpose."
+        )
     if not extra_retrievers:
         log.warning(
-            "Ground-truth pool is BM25-only — vector indexes not built yet. "
-            "For unbiased labels run `kb-arena build-vectors` first, then re-label."
+            "Ground-truth pool is BM25-only by request. Every strategy will be "
+            "scored against a gold set drawn from what BM25 ranks high."
         )
 
     out_path = (
@@ -346,7 +365,9 @@ async def label_corpus(
     total_cost = 0.0
     out_dict: dict[str, dict[str, int]] = dict(existing)
     pool_record = {
+        # The retrievers that answered, not the ones the run hoped for.
         "retrievers": ["bm25"] + [r.name for r in extra_retrievers],
+        "bm25_only_by_request": bool(allow_bm25_only and not extra_retrievers),
         "n_candidates": n_candidates,
         "n_random": n_random,
     }

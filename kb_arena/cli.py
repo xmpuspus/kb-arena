@@ -1635,7 +1635,18 @@ def label_chunks(
     corpus: str = typer.Option(..., help="Corpus to label"),
     force: bool = typer.Option(False, "--force", help="Re-label even if labels exist"),
     n_candidates: int = typer.Option(
-        20, "--n-candidates", help="Candidates per question, per retriever in the pool"
+        20,
+        "--n-candidates",
+        min=1,
+        max=200,
+        help="Candidates per question, per retriever in the pool. Every candidate "
+        "goes in the judge prompt, so this drives the cost of each call.",
+    ),
+    allow_bm25_only: bool = typer.Option(
+        False,
+        "--allow-bm25-only",
+        help="Write labels even when only BM25 answered. The gold set then carries "
+        "BM25's bias and every strategy is scored against it.",
     ),
 ):
     """Generate datasets/{corpus}/questions/expected_chunks.yaml with a graded judge.
@@ -1654,7 +1665,20 @@ def label_chunks(
     from kb_arena.benchmark.expected_chunks import label_corpus
 
     _preflight(needs_llm=True, needs_embeddings=True)
-    result = _asyncio.run(label_corpus(corpus, force=force, n_candidates=n_candidates))
+    from kb_arena.benchmark.expected_chunks import NarrowPoolError
+
+    try:
+        result = _asyncio.run(
+            label_corpus(
+                corpus,
+                force=force,
+                n_candidates=n_candidates,
+                allow_bm25_only=allow_bm25_only,
+            )
+        )
+    except NarrowPoolError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from None
     note = " (halted by cost cap)" if result.get("halted_by_cost_cap") else ""
     unparsed = result.get("unparsed", 0)
     colour = "yellow" if unparsed else "green"

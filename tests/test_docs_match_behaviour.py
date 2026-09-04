@@ -63,6 +63,8 @@ def test_the_labeling_doc_names_the_pool_the_labeler_builds():
     # must point at the pool record rather than promise which retrievers ran.
     assert "an index you built can still drop out" in doc
     assert "names the retrievers that actually answered" in doc
+    assert "refuses to write" in doc, "the doc must state the refusal the code makes"
+    assert "--allow-bm25-only" in doc
 
 
 def test_the_labeling_doc_describes_the_file_the_writer_produces():
@@ -187,3 +189,36 @@ def test_no_file_names_a_settings_variable_that_does_not_exist():
             if field not in Settings.model_fields:
                 bad.append(f"{path.relative_to(ROOT)}: {name}")
     assert not bad, "these name a setting that does not exist: " + "; ".join(sorted(bad))
+
+
+def test_a_bm25_only_gold_set_is_a_decision_and_not_a_default():
+    """A provider outage looks exactly like an index that was never built.
+
+    Both leave BM25 alone in the pool, and the labels that come out are drawn
+    from what BM25 ranks high. That file then scores every strategy for the
+    rest of its life, so writing it has to be asked for.
+    """
+    from kb_arena.benchmark.expected_chunks import NarrowPoolError, label_corpus
+
+    signature = inspect.signature(label_corpus)
+    assert signature.parameters["allow_bm25_only"].default is False
+    assert issubclass(NarrowPoolError, RuntimeError)
+
+    source = inspect.getsource(label_corpus)
+    assert "if not extra_retrievers and not allow_bm25_only:" in source
+    # The pool record says whether the narrow pool was asked for.
+    assert '"bm25_only_by_request"' in source
+
+
+def test_the_candidate_count_is_bounded():
+    """Every candidate goes in the judge prompt, so the count drives the cost."""
+    from kb_arena import cli
+
+    for param in inspect.signature(cli.label_chunks).parameters.values():
+        if param.name == "n_candidates":
+            option = param.default
+            assert option.min == 1
+            assert option.max == 200
+            break
+    else:  # pragma: no cover - the parameter exists
+        raise AssertionError("label-chunks must take --n-candidates")

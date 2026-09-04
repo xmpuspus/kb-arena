@@ -33,7 +33,13 @@ probe query, which can be naive vector, contextual vector, Q and A pairs and RAP
 plus a seeded random sample of the rest of the corpus. A probe cannot tell a missing
 index from a provider that did not answer, so an index you built can still drop out.
 The `pool` record in the output names the retrievers that actually answered, and that
-record, not this sentence, is what a reader should trust for a given file. A pool made only of what one retriever ranks high never
+record, not this sentence, is what a reader should trust for a given file.
+
+If nothing but BM25 answers, `label-chunks` refuses to write. Labels drawn only from
+what BM25 ranks high carry BM25's bias, and every strategy is then scored against
+them for as long as that file lives. Build the indexes and label again, or pass
+`--allow-bm25-only` to write a BM25-shaped gold set deliberately. The pool record
+says which of the two happened. A pool made only of what one retriever ranks high never
 shows the judge a chunk it missed, and the random sample is what gives the labels their
 negatives.
 
