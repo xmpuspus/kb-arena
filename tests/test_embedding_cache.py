@@ -176,3 +176,49 @@ def test_two_callers_that_miss_on_one_text_pay_for_it_once(tmp_path):
     shared_calls = sum(1 for call in provider.calls if "shared" in call)
     assert shared_calls == 1, "the second caller waited for the first instead of paying again"
     assert results["a"][0] == [6.0, 1.0] and results["b"][0] == [6.0, 1.0]
+
+
+def test_the_cache_never_lives_under_the_chroma_path(tmp_path, monkeypatch):
+    from kb_arena.strategies.embedding_cache import default_cache_path
+
+    monkeypatch.setattr(settings, "embedding_cache_path", "")
+    monkeypatch.setattr(settings, "chroma_path", str(tmp_path / "trial-temp"))
+    assert str(tmp_path / "trial-temp") not in str(default_cache_path().resolve())
+    monkeypatch.setattr(settings, "embedding_cache_path", str(tmp_path / "keep.sqlite"))
+    assert default_cache_path() == tmp_path / "keep.sqlite"
+
+
+def test_a_local_provider_names_its_own_model_in_the_key(tmp_path, monkeypatch):
+    class _Local:
+        def __init__(self, model="local-weights-v1"):
+            self._model = model
+
+        def __call__(self, input):
+            return [[1.0] for _ in input]
+
+    monkeypatch.setattr(settings, "embedding_provider", "bge")
+    monkeypatch.setattr(settings, "embedding_cache_path", str(tmp_path / "c.sqlite"))
+    monkeypatch.setattr(settings, "embedding_model", "text-embedding-3-large")
+    monkeypatch.setattr(embeddings, "_PROVIDERS", {"bge": _Local})
+
+    wrapped = embeddings.get_embedding_function()
+
+    assert wrapped.identity["model"] == "local-weights-v1"
+
+
+def test_the_bge_provider_records_its_model_name():
+    import inspect
+
+    from kb_arena.strategies.embeddings import BGEEmbedding
+
+    source = inspect.getsource(BGEEmbedding.__init__)
+    assert "self._model = model" in source
+
+
+def test_the_cache_file_uses_wal(tmp_path):
+    import sqlite3
+
+    cache = CachedEmbedding(_Provider(), provider="fake", model="m", path=tmp_path / "c.sqlite")
+    cache(["alpha"])
+    with sqlite3.connect(tmp_path / "c.sqlite") as conn:
+        assert conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"

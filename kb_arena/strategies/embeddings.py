@@ -127,6 +127,7 @@ class BGEEmbedding(EmbeddingFunction[Documents]):
     """Local BGE-large via sentence-transformers — no API key, fully on-prem."""
 
     def __init__(self, model: str = "BAAI/bge-large-en-v1.5") -> None:
+        self._model = model
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError as exc:  # pragma: no cover
@@ -216,7 +217,7 @@ def get_embedding_function(**kwargs: Any) -> EmbeddingFunction[Documents]:
         return inner
     from kb_arena.strategies.embedding_cache import CachedEmbedding
 
-    model = str(getattr(inner, "_model", "") or kwargs.get("model") or settings.embedding_model)
+    model = str(getattr(inner, "_model", "") or kwargs.get("model") or f"{provider}-default")
     # A self-hosted endpoint is part of the identity: another server with the
     # same model name can hold other weights.
     endpoint = ""

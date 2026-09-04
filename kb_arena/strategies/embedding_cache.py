@@ -43,16 +43,23 @@ def cache_key(provider: str, model: str, text: str, endpoint: str = "") -> str:
 
     The endpoint matters for a self-hosted provider: two Ollama servers with
     one model name can hold different weights, so their vectors never share.
+    The four parts go through one JSON digest, so a colon inside a model tag
+    can never make two identities collide.
     """
-    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    scope = f"{provider}:{model}:{endpoint}" if endpoint else f"{provider}:{model}"
-    return f"{scope}:{digest}"
+    scope = json.dumps([provider, model, endpoint.rstrip("/"), text], separators=(",", ":"))
+    return hashlib.sha256(scope.encode("utf-8")).hexdigest()
 
 
 def default_cache_path() -> Path:
+    """The cache file. It never lives under chroma_path.
+
+    An optimize trial that rebuilds an index redirects chroma_path to a temp
+    directory and deletes it afterwards. A cache there would be built in full
+    and thrown away on every trial, which costs more than no cache.
+    """
     if settings.embedding_cache_path:
         return Path(settings.embedding_cache_path)
-    return Path(settings.chroma_path) / "embedding_cache.sqlite"
+    return Path("./embedding_cache.sqlite")
 
 
 class CachedEmbedding(EmbeddingFunction[Documents]):
@@ -70,7 +77,7 @@ class CachedEmbedding(EmbeddingFunction[Documents]):
         self._inner = inner
         self._provider = provider
         self._model = model
-        self._endpoint = endpoint
+        self._endpoint = endpoint.rstrip("/")
         self._path = Path(path) if path else default_cache_path()
         self._lock = _lock_for(self._path)
         self.hits = 0
@@ -80,7 +87,11 @@ class CachedEmbedding(EmbeddingFunction[Documents]):
             conn.execute(_SCHEMA)
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self._path, timeout=30, check_same_thread=False)
+        conn = sqlite3.connect(self._path, timeout=30, check_same_thread=False)
+        # WAL lets a second process read while one writes, so two benchmark
+        # processes on one cache never wait thirty seconds for each other.
+        conn.execute("PRAGMA journal_mode=WAL")
+        return conn
 
     @property
     def identity(self) -> dict[str, str]:
