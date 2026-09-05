@@ -1,0 +1,75 @@
+"""Compare a fresh kb-arena retriever-lab run against a stored baseline.
+
+Exits 1 when a named metric drops by more than the caller's threshold, so a
+pull request that regresses retrieval quality fails its check instead of
+merging silently. corpus, metric, and top_k are all checked against the
+baseline file, not assumed, so a baseline never gets compared against a run
+it was not recorded for.
+"""
+
+from __future__ import annotations
+
+import glob
+import json
+import os
+import sys
+
+
+def _load_json(path: str) -> dict:
+    with open(path, encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _load_run(results_path: str) -> dict:
+    matches = glob.glob(os.path.join(results_path, "run_*", "retriever_lab.json"))
+    if len(matches) != 1:
+        sys.exit(
+            f"Expected exactly one retriever_lab.json under {results_path}, found {len(matches)}"
+        )
+    return _load_json(matches[0])
+
+
+def main() -> None:
+    metric = os.environ["METRIC"]
+    threshold = float(os.environ["THRESHOLD"])
+    corpus = os.environ["CORPUS"]
+    top_k = int(os.environ["TOP_K"])
+    baseline = _load_json(os.environ["BASELINE_PATH"])
+    run = _load_run(os.environ["KB_ARENA_RESULTS_PATH"])
+
+    for field, expected in (("corpus", corpus), ("metric", metric), ("top_k", top_k)):
+        if baseline.get(field) != expected:
+            sys.exit(
+                f"Baseline records {field}={baseline.get(field)!r}, "
+                f"the gate ran with {field}={expected!r}"
+            )
+
+    by_strategy = run.get("corpora", {}).get(corpus, {})
+    failures = []
+    for strategy, baseline_value in baseline["strategies"].items():
+        strategy_result = by_strategy.get(strategy)
+        if strategy_result is None:
+            failures.append(f"{strategy}: missing from the fresh run")
+            continue
+        new_value = strategy_result.get(metric)
+        if new_value is None:
+            failures.append(f"{strategy}: {metric} missing from the fresh run")
+            continue
+        drop = baseline_value - new_value
+        status = "REGRESSION" if drop > threshold else "ok"
+        print(
+            f"{strategy}: baseline={baseline_value:.4f} new={new_value:.4f} "
+            f"drop={drop:.4f} [{status}]"
+        )
+        if drop > threshold:
+            failures.append(
+                f"{strategy}: {metric} dropped {drop:.4f}, over the {threshold} threshold"
+            )
+
+    if failures:
+        sys.exit("Retrieval regression gate failed:\n" + "\n".join(failures))
+    print("Retrieval regression gate passed.")
+
+
+if __name__ == "__main__":
+    main()

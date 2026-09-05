@@ -1,0 +1,92 @@
+name: Retrieval regression gate
+description: >-
+  Ingest a corpus, build the selected kb-arena strategy indexes, run a
+  retrieval-only benchmark, and fail the job when a named metric drops by
+  more than a caller-set threshold against a stored baseline. Vector and
+  graph strategies that need an embedding or LLM provider are out of
+  scope for this action; wire your own credentials before selecting them.
+
+inputs:
+  corpus:
+    description: Corpus name to benchmark, for example aws-compute.
+    required: true
+  corpus-path:
+    description: Path to the corpus's raw documents, for example datasets/aws-compute/raw.
+    required: true
+  strategies:
+    description: Comma-separated kb-arena strategy filter, for example bm25.
+    required: true
+  top-k:
+    description: Top-k chunks per query.
+    required: false
+    default: "5"
+  metric:
+    description: Metric name from retriever_lab.json to compare, for example mean_recall_at_k.
+    required: true
+  baseline-path:
+    description: Path to the stored baseline JSON, relative to the caller's checkout.
+    required: true
+  threshold:
+    description: Maximum allowed drop in the metric before the gate fails.
+    required: true
+  kb-arena-version:
+    description: Pinned kb-arena version to install from PyPI.
+    required: false
+    default: "0.10.0"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      with:
+        python-version: "3.12"
+
+    - name: Install kb-arena
+      shell: bash
+      env:
+        KB_ARENA_VERSION: ${{ inputs.kb-arena-version }}
+      run: pip install "kb-arena==$KB_ARENA_VERSION"
+
+    - name: Ingest the corpus
+      shell: bash
+      env:
+        CORPUS: ${{ inputs.corpus }}
+        CORPUS_PATH: ${{ inputs.corpus-path }}
+      run: kb-arena ingest "$CORPUS_PATH" --corpus "$CORPUS"
+
+    - name: Build the strategy indexes
+      shell: bash
+      env:
+        CORPUS: ${{ inputs.corpus }}
+        STRATEGIES: ${{ inputs.strategies }}
+      run: |
+        IFS=',' read -ra names <<< "$STRATEGIES"
+        for name in "${names[@]}"; do
+          kb-arena build-vectors --corpus "$CORPUS" --strategy "$name"
+        done
+
+    - name: Run the retriever-lab benchmark
+      shell: bash
+      env:
+        CORPUS: ${{ inputs.corpus }}
+        STRATEGIES: ${{ inputs.strategies }}
+        TOP_K: ${{ inputs.top-k }}
+        KB_ARENA_RESULTS_PATH: ${{ runner.temp }}/kb-arena-regression-gate
+      run: |
+        kb-arena retriever-lab \
+          --corpus "$CORPUS" \
+          --strategies "$STRATEGIES" \
+          --top-k "$TOP_K" \
+          --min-recall 0
+
+    - name: Compare against the stored baseline
+      shell: bash
+      env:
+        METRIC: ${{ inputs.metric }}
+        BASELINE_PATH: ${{ inputs.baseline-path }}
+        THRESHOLD: ${{ inputs.threshold }}
+        CORPUS: ${{ inputs.corpus }}
+        TOP_K: ${{ inputs.top-k }}
+        KB_ARENA_RESULTS_PATH: ${{ runner.temp }}/kb-arena-regression-gate
+      run: python3 "${{ github.action_path }}/compare_metric.py"

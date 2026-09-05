@@ -28,6 +28,7 @@ from typing import Any
 from chromadb import Documents, EmbeddingFunction, Embeddings
 
 from kb_arena.settings import settings
+from kb_arena.telemetry import traced_span
 
 _MAX_RETRIES = 3
 _TIMEOUT_S = 30
@@ -35,26 +36,31 @@ log = logging.getLogger(__name__)
 
 
 def _retry(fn, *args, **kwargs):
-    """Retry helper with exponential backoff + jitter for embedding calls."""
+    """Retry helper with exponential backoff + jitter for embedding calls.
+
+    Reads the active provider straight from settings for the span label,
+    since every caller here embeds through the one provider a run selected.
+    """
     import random
 
-    last_exc: Exception | None = None
-    for attempt in range(_MAX_RETRIES):
-        try:
-            return fn(*args, **kwargs)
-        except Exception as exc:  # noqa: BLE001 — providers raise heterogeneous errors
-            last_exc = exc
-            if attempt < _MAX_RETRIES - 1:
-                wait = (2**attempt) + random.uniform(0.0, 0.5)
-                log.warning(
-                    "Embedding attempt %d/%d failed (%s); retrying in %.1fs",
-                    attempt + 1,
-                    _MAX_RETRIES,
-                    exc,
-                    wait,
-                )
-                time.sleep(wait)
-    raise RuntimeError(f"Embedding failed after {_MAX_RETRIES} attempts: {last_exc}")
+    with traced_span("kb_arena.embedding", provider=settings.embedding_provider):
+        last_exc: Exception | None = None
+        for attempt in range(_MAX_RETRIES):
+            try:
+                return fn(*args, **kwargs)
+            except Exception as exc:  # noqa: BLE001 — providers raise heterogeneous errors
+                last_exc = exc
+                if attempt < _MAX_RETRIES - 1:
+                    wait = (2**attempt) + random.uniform(0.0, 0.5)
+                    log.warning(
+                        "Embedding attempt %d/%d failed (%s); retrying in %.1fs",
+                        attempt + 1,
+                        _MAX_RETRIES,
+                        exc,
+                        wait,
+                    )
+                    time.sleep(wait)
+        raise RuntimeError(f"Embedding failed after {_MAX_RETRIES} attempts: {last_exc}")
 
 
 class OpenAIEmbedding(EmbeddingFunction[Documents]):
@@ -139,7 +145,8 @@ class BGEEmbedding(EmbeddingFunction[Documents]):
 
     def __call__(self, input: Documents) -> Embeddings:  # type: ignore[override]
         # sentence-transformers .encode is local and synchronous; no retry needed.
-        vecs = self._st.encode(list(input), normalize_embeddings=True, convert_to_numpy=True)
+        with traced_span("kb_arena.embedding", provider="bge"):
+            vecs = self._st.encode(list(input), normalize_embeddings=True, convert_to_numpy=True)
         return [v.tolist() for v in vecs]
 
 

@@ -60,6 +60,15 @@ rerank = ["sentence-transformers>=5.0,<6"]
 # (sqr, Qiskit Aer SWAP test + PCA reduction). Lazy-imported, so the core
 # install and CI stay light; install with `pip install 'kb-arena[quantum]'`.
 quantum = ["qiskit==2.5.2", "qiskit-aer==0.17.2", "scikit-learn==1.9.0"]
+# Optional tracing (see kb_arena/telemetry.py). Lazy-imported, so the core
+# install and CI stay light; install with `pip install 'kb-arena[otel]'` and
+# set KB_ARENA_OTEL_ENABLED=true. The host process still configures the
+# exporter, for example with `opentelemetry-instrument`.
+otel = [
+    "opentelemetry-api==1.40.0",
+    "opentelemetry-sdk==1.40.0",
+    "opentelemetry-exporter-otlp-proto-grpc==1.40.0",
+]
 
 [project.scripts]
 kb-arena = "kb_arena.cli:app"

@@ -260,6 +260,9 @@ async def _run_one(
                         else []
                     ),
                     reference_free=reference_free,
+                    strategy=strategy.name,
+                    corpus=corpus,
+                    top_k=top_k,
                 )
 
                 ir_metrics = None
