@@ -8,9 +8,10 @@ Compare retrieval architectures on your own documentation and choose with eviden
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![DOI](https://zenodo.org/badge/1182030516.svg)](https://zenodo.org/badge/latestdoi/1182030516)
 
-KB Arena runs lexical, dense, graph, hybrid, hierarchical, and reranked retrieval on the same
-corpus and question set. It records retrieval quality, answer quality, latency, cost, and run
-artifacts so you can decide which design fits your data.
+KB Arena runs the same corpus and question set through 19 built-in retrieval strategies,
+lexical, dense, graph, hybrid, hierarchical, reranked, and more. It records retrieval quality,
+answer quality, latency, cost, and run artifacts, so you can decide which design fits your data
+before you build on it.
 
 Use it before you commit to a retrieval architecture, or as a regression lab after your corpus,
 chunking, model, or index changes.
@@ -34,6 +35,31 @@ source drill-down and the strategy comparison all have real numbers behind them.
 The Retriever Lab and the spread across repeated runs are empty until you produce them. They
 read run directories, and the package bundles none. Run `kb-arena retriever-lab` and
 `kb-arena benchmark --runs 3` against a corpus to fill them.
+
+## Point it at your own documents
+
+Ingest your files, build the strategy your provider budget allows, and score retrieval for free
+through BM25, the one built-in strategy that needs no key. [Run it on your
+documents](#run-it-on-your-documents) below has the setup for local and hosted providers, and
+[the own-corpus walkthrough](https://github.com/xmpuspus/kb-arena/blob/main/docs/own-corpus-walkthrough.md)
+runs ingest through an exported evidence bundle with the real console output from each step.
+
+## Four ways to run a comparison
+
+- **CLI** runs `kb-arena`, with commands from `ingest` through `evidence`. See [the command
+  reference](https://github.com/xmpuspus/kb-arena/blob/main/docs/reference-cli.md).
+- **HTTP API** starts with `kb-arena serve`, which runs the FastAPI server behind the dashboard.
+  See [the HTTP reference](https://github.com/xmpuspus/kb-arena/blob/main/docs/reference-http.md)
+  for every route and its auth gate.
+- **MCP server** installs with `pip install 'kb-arena[mcp]'`, then runs with `python3 -m
+  kb_arena.mcp.server`. It exposes corpus, strategy, benchmark, and evidence tools over stdio to
+  an MCP client such as Claude Code or Codex. See
+  [the server module](https://github.com/xmpuspus/kb-arena/blob/main/kb_arena/mcp/server.py).
+- **GitHub Action**
+  [`retrieval-regression-gate`](https://github.com/xmpuspus/kb-arena/tree/main/.github/actions/retrieval-regression-gate)
+  ingests a corpus, builds an index, and fails a pull request when a named metric drops past a
+  threshold. See
+  [the example workflow](https://github.com/xmpuspus/kb-arena/blob/main/.github/workflows/retrieval-regression-example.yml).
 
 ## What KB Arena helps decide
 

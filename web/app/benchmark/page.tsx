@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import BenchmarkTable from "@/components/BenchmarkTable";
 import TierChart from "@/components/TierChart";
 import StrategyCompare from "@/components/StrategyCompare";
+import StrategyRunPanel from "@/components/StrategyRunPanel";
 import {
   MOCK_BENCHMARK_DATA,
   CORPORA,
@@ -59,6 +60,8 @@ export default function BenchmarkPage() {
           Accuracy by tier, latency, and cost for the strategies recorded in each run.
         </p>
       </div>
+
+      <StrategyRunPanel corpora={corpora} />
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-4">
