@@ -42,6 +42,10 @@ TARGET_DATE = str(
 # is the copy this file already got wrong once, which is what PR 62 removed from
 # the dependency pins. So the check proves what it can prove, and the release
 # checklist carries the rest.
+#
+# The consequence this guard was reaching for is covered anyway: PyPI refuses an
+# upload of a version it already holds, so a reverted version cannot publish. It
+# fails at the upload rather than in this file. Logged as N-104.
 def test_release_metadata_is_aligned() -> None:
     citation = yaml.safe_load((ROOT / "CITATION.cff").read_text())
     changelog = (ROOT / "CHANGELOG.md").read_text()
