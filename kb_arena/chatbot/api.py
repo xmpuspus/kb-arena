@@ -299,8 +299,8 @@ async def lifespan(app: FastAPI):
                     await driver.close()
                 app.state.neo4j_error = str(exc)
                 logger.warning(
-                    "Neo4j not available at %s (%s); knowledge_graph and hybrid will use mock "
-                    "data. Run: docker compose up neo4j -d",
+                    "Neo4j not available at %s (%s); knowledge_graph, lightrag, and hybrid will "
+                    "use mock data. Run: docker compose up neo4j -d",
                     settings.neo4j_uri,
                     exc,
                 )
@@ -1402,7 +1402,7 @@ async def readiness(request: Request) -> JSONResponse:
     ready = True
 
     # Neo4j: only required if a neo4j-dependent strategy is loaded
-    neo4j_strategies = {"knowledge_graph", "hybrid"}
+    neo4j_strategies = {"knowledge_graph", "lightrag", "hybrid"}
     loaded = set(request.app.state.strategies.keys())
     needs_neo4j = bool(loaded & neo4j_strategies)
 

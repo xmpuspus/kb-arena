@@ -70,6 +70,15 @@ installing the selected backend.
 
 ## Experimental methods
 
+### LightRAG
+
+Reads the same Neo4j graph as Knowledge Graph, through two paths at once. Local retrieval walks the
+one-hop neighborhood of entities matched in the question. Global retrieval groups fulltext-matched
+candidates into a community by their shared neighbor links, then reads the community's member names
+and descriptions as a summary. Every retrieved chunk records which path produced it. It is excluded
+from the default benchmark because a degraded (Neo4j-unreachable) result fails the benchmark run,
+unlike knowledge_graph and hybrid, which still carry that same risk in the default set today.
+
 ### QISS
 
 Reranks dense candidates with pure NumPy state-fidelity calculations. Its single-query score is a
@@ -104,6 +113,13 @@ Expands a query and each indexed passage into a weighted set of vocabulary terms
 query against a passage by the dot product of their term weights. It builds and reads its own
 term-weight index, so it needs no embedding provider. It is excluded from the default benchmark and
 needs `kb-arena[splade]`.
+### Agentic
+
+Retrieves, then asks the LLM whether the gathered context already answers the question, and
+retrieves again with a refined query when it does not. A maximum iteration count and a maximum
+LLM-call count are set at construction time and enforced every round, so the loop always stops even
+when the judge keeps asking for another round. It is excluded from the default benchmark because it
+costs several LLM calls per question.
 
 The experiments answer research questions about operators and overhead. They do not define KB
 Arena's main product category.

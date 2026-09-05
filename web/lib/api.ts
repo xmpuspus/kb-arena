@@ -24,6 +24,7 @@ export const STRATEGIES = [
   "contextual_vector",
   "qna_pairs",
   "knowledge_graph",
+  "lightrag",
   "hybrid",
   "raptor",
   "pageindex",
@@ -37,6 +38,7 @@ export const STRATEGIES = [
   "multi_query",
   "late_interaction",
   "splade",
+  "agentic",
 ] as const;
 
 export type Strategy = (typeof STRATEGIES)[number];
@@ -46,6 +48,7 @@ export const STRATEGY_LABELS: Record<Strategy, string> = {
   contextual_vector: "Contextual Vector",
   qna_pairs: "QnA Pairs",
   knowledge_graph: "Knowledge Graph",
+  lightrag: "LightRAG",
   hybrid: "Hybrid",
   raptor: "RAPTOR",
   pageindex: "PageIndex",
@@ -59,6 +62,7 @@ export const STRATEGY_LABELS: Record<Strategy, string> = {
   multi_query: "Multi-Query",
   late_interaction: "Late Interaction",
   splade: "SPLADE",
+  agentic: "Agentic (experimental)",
 };
 
 export const STRATEGY_COLORS: Record<Strategy, string> = {
@@ -66,6 +70,7 @@ export const STRATEGY_COLORS: Record<Strategy, string> = {
   contextual_vector: "#3b82f6",
   qna_pairs: "#8b5cf6",
   knowledge_graph: "#22c55e",
+  lightrag: "#16a34a",
   hybrid: "#f59e0b",
   raptor: "#ef4444",
   pageindex: "#ec4899",
@@ -79,6 +84,7 @@ export const STRATEGY_COLORS: Record<Strategy, string> = {
   multi_query: "#06b6d4",
   late_interaction: "#0d9488",
   splade: "#d946ef",
+  agentic: "#d946ef",
 };
 
 export const TIER_INFO: Record<number, { label: string; description: string }> = {
@@ -118,6 +124,8 @@ export const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
     "Generates question-answer pairs at index time and retrieves against those pairs instead of only source chunks.",
   knowledge_graph:
     "Extracts entities and relationships into Neo4j, then queries the graph through intent-matched Cypher templates.",
+  lightrag:
+    "Reads the same Neo4j graph two ways: a local entity neighborhood walk and a global community summary, and labels which one produced each chunk.",
   hybrid:
     "Routes by intent between vector and graph paths, then uses reciprocal rank fusion when both paths contribute.",
   raptor:
@@ -144,6 +152,8 @@ export const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
     "ColBERT-style reranker that keeps one embedding per token and scores by MaxSim instead of a single pooled vector. Needs the optional late-interaction dependency group.",
   splade:
     "Expands a query into weighted vocabulary terms and scores against its own sparse term-weight index. Needs the optional splade dependency group.",
+  agentic:
+    "Retrieves, judges whether the context is enough, and retrieves again with a refined query, under a hard iteration and LLM-call budget. Excluded from the default benchmark because it costs several LLM calls per question.",
 };
 
 export interface StrategyCatalogRecord {
@@ -183,6 +193,7 @@ export const DEFAULT_STRATEGY_CATALOG: StrategyCatalogRecord[] = STRATEGIES.map(
   default_benchmark: DEFAULT_BENCHMARK_STRATEGIES.includes(name),
   api_supported: true,
   experimental: name === "qiss" || name === "sqr" || name === "hyde" || name === "multi_query",
+  experimental: name === "qiss" || name === "sqr" || name === "agentic" || name === "lightrag",
   optional_extra: name === "sqr" ? "quantum" : null,
   required_modules: name === "sqr" ? ["qiskit", "qiskit_aer", "sklearn"] : [],
   status: "unknown",

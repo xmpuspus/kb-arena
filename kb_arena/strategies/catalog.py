@@ -33,6 +33,17 @@ STRATEGY_CATALOG: tuple[StrategySpec, ...] = (
     StrategySpec("contextual_vector", "Contextual Vector", "dense"),
     StrategySpec("qna_pairs", "Q&A Pairs", "generated index"),
     StrategySpec("knowledge_graph", "Knowledge Graph", "graph"),
+    # A degraded (Neo4j-unreachable) query returns mock=True, and the benchmark
+    # runner treats a mock result as a failure. Unlike knowledge_graph/hybrid,
+    # lightrag stays out of `all` so a fresh checkout without Neo4j can still
+    # run the default benchmark end to end.
+    StrategySpec(
+        "lightrag",
+        "LightRAG",
+        "local + global graph",
+        default_benchmark=False,
+        experimental=True,
+    ),
     StrategySpec("hybrid", "Hybrid", "hybrid"),
     StrategySpec("raptor", "RAPTOR", "hierarchical"),
     StrategySpec("pageindex", "PageIndex", "hierarchical"),
@@ -105,6 +116,17 @@ STRATEGY_CATALOG: tuple[StrategySpec, ...] = (
         optional_extra="splade",
         required_modules=("transformers", "torch"),
         needs_embeddings=False,
+    ),
+    # The retrieve-judge-refine loop costs several LLM calls per question, so it
+    # stays out of the default `all` benchmark: an unbounded loop over 75
+    # questions is a bill, not a benchmark run. It carries no recall claim over
+    # the other strategies yet, so it is marked experimental like qiss/sqr.
+    StrategySpec(
+        "agentic",
+        "Agentic",
+        "iterative",
+        default_benchmark=False,
+        experimental=True,
     ),
 )
 

@@ -10,6 +10,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
 from kb_arena.models.document import Document
 from kb_arena.settings import settings
+from kb_arena.strategies.agentic import AgenticStrategy
 from kb_arena.strategies.bm25 import BM25Strategy
 from kb_arena.strategies.catalog import (
     STRATEGY_CATALOG,
@@ -21,6 +22,7 @@ from kb_arena.strategies.hybrid import HybridStrategy
 from kb_arena.strategies.hyde import HydeStrategy
 from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
 from kb_arena.strategies.late_interaction import LateInteractionStrategy
+from kb_arena.strategies.lightrag import LightRAGStrategy
 from kb_arena.strategies.metadata_filtered import MetadataFilteredStrategy
 from kb_arena.strategies.multi_query import MultiQueryStrategy
 from kb_arena.strategies.naive_vector import NaiveVectorStrategy
@@ -41,6 +43,7 @@ STRATEGY_REGISTRY: dict[str, type] = {
     "contextual_vector": ContextualVectorStrategy,
     "qna_pairs": QnAPairStrategy,
     "knowledge_graph": KnowledgeGraphStrategy,
+    "lightrag": LightRAGStrategy,
     "hybrid": HybridStrategy,
     "raptor": RaptorStrategy,
     "pageindex": PageIndexStrategy,
@@ -54,6 +57,7 @@ STRATEGY_REGISTRY: dict[str, type] = {
     "multi_query": MultiQueryStrategy,
     "late_interaction": LateInteractionStrategy,
     "splade": SPLADEStrategy,
+    "agentic": AgenticStrategy,
 }
 
 # Optional-dependency strategies: name -> (modules required, extra name).
@@ -266,6 +270,9 @@ def get_strategy(name: str):
     # Vector-backed strategies need a ChromaDB client. qiss/sqr/late_interaction
     # wrap naive_vector for coarse retrieval (like rerank_vector) and rerank the
     # same Chroma index.
+    # Vector-backed strategies need a ChromaDB client. qiss/sqr/agentic wrap
+    # naive_vector for coarse retrieval (like rerank_vector) and read or rerank
+    # the same Chroma index.
     if name in (
         "naive_vector",
         "contextual_vector",
@@ -279,12 +286,13 @@ def get_strategy(name: str):
         "hyde",
         "multi_query",
         "late_interaction",
+        "agentic",
     ):
         chroma = chromadb.PersistentClient(path=settings.chroma_path)
         return cls(chroma_client=chroma)
 
     # Graph-backed strategies need an async Neo4j driver
-    if name == "knowledge_graph":
+    if name in ("knowledge_graph", "lightrag"):
         try:
             driver = AsyncGraphDatabase.driver(
                 settings.neo4j_uri,
@@ -323,6 +331,7 @@ __all__ = [
     "ContextualVectorStrategy",
     "QnAPairStrategy",
     "KnowledgeGraphStrategy",
+    "LightRAGStrategy",
     "HybridStrategy",
     "RaptorStrategy",
     "PageIndexStrategy",
@@ -336,6 +345,7 @@ __all__ = [
     "MultiQueryStrategy",
     "LateInteractionStrategy",
     "SPLADEStrategy",
+    "AgenticStrategy",
     "build_vector_indexes",
     "load_documents",
 ]

@@ -1,6 +1,7 @@
 {
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
   "digest": "34afaa7b304ce8836111b52e17b13bd8cfdf7465aac24b33a33fe2370431dde4",
 =======
   "digest": "22994d401767fbedcf1f51dd0158929368dc73085116c5137242c079a164e25c",
@@ -8,5 +9,8 @@
 =======
   "digest": "d479e6541b68400a4f286c2bd93ffab9de6bc8c65c7ab07d37ee239dc71858b8",
 >>>>>>> 918a5fd (Add late_interaction (ColBERT-style MaxSim) and splade (learned sparse) strategies)
+=======
+  "digest": "45f783bd1967572dfd3a3b70cee968bc1ed2a50dec783ef7b3dd0999f795661f",
+>>>>>>> 6835d75 (Add agentic and lightrag retrieval strategies)
   "files": 38
 }

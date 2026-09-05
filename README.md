@@ -185,6 +185,11 @@ The catalog includes the strategies below. The default `all` benchmark excludes 
 SQR, Late Interaction, and SPLADE. Rerank Vector needs the dependency for its selected backend,
 SQR needs the optional `quantum` dependency group, Late Interaction needs `late-interaction`, and
 SPLADE needs `splade`. The API reports loaded and unavailable strategies at `GET /strategies`.
+The catalog includes the strategies below. The default `all` benchmark excludes Rerank Vector, SQR,
+LightRAG, and Agentic. Rerank Vector needs the dependency for its selected backend, SQR needs the
+optional `quantum` dependency group, LightRAG needs a reachable Neo4j (a degraded result would fail
+the benchmark run rather than the strategy), and Agentic costs several LLM calls per question. The
+API reports loaded and unavailable strategies at `GET /strategies`.
 
 | Strategy | Architecture | Default | Notes |
 |---|---|:---:|---|
@@ -192,6 +197,7 @@ SPLADE needs `splade`. The API reports loaded and unavailable strategies at `GET
 | Contextual Vector | Dense | Yes | Adds parent context before embedding |
 | Q&A Pairs | Generated index | Yes | Creates likely questions at index time |
 | Knowledge Graph | Graph | Yes | Retrieves through Neo4j entities and relationships |
+| LightRAG | Experimental | No | Local entity neighborhood plus a global community summary, needs Neo4j |
 | Hybrid | Hybrid | Yes | Routes and fuses vector and graph results with RRF |
 | RAPTOR | Hierarchical | Yes | Retrieves chunks and recursive summaries |
 | PageIndex | Hierarchical | Yes | Uses document structure and LLM tree traversal |
@@ -205,6 +211,7 @@ SPLADE needs `splade`. The API reports loaded and unavailable strategies at `GET
 | Multi-Query | Experimental | No | Asks the LLM for several sub-queries and fuses their results with RRF |
 | Late Interaction | Token-level dense | No | ColBERT-style MaxSim reranker, install `kb-arena[late-interaction]` |
 | SPLADE | Learned sparse | No | Term-weight expansion over its own sparse index, install `kb-arena[splade]` |
+| Agentic | Experimental | No | Retrieve-judge-refine loop under a hard iteration and call budget |
 
 See [strategy details](https://github.com/xmpuspus/kb-arena/blob/main/docs/strategy-catalog.md) and the
 [plugin guide](https://github.com/xmpuspus/kb-arena/blob/main/CONTRIBUTING.md#add-a-strategy).
