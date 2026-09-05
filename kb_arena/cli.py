@@ -1692,11 +1692,15 @@ def evidence_command(
     import json as _json
     from pathlib import Path as _Path
 
-    from kb_arena.benchmark.evidence import build_bundle, check_bundle, write_bundle
+    from kb_arena.benchmark.evidence import (
+        build_bundle,
+        check_bundle,
+        is_bundle_result,
+        write_bundle,
+    )
     from kb_arena.benchmark.manifest import question_set_fingerprint
     from kb_arena.benchmark.questions import load_questions
     from kb_arena.benchmark.review import review_summary
-    from kb_arena.benchmark.variance import NON_RESULT_NAMES
     from kb_arena.settings import settings as _settings
 
     root = _Path.cwd()
@@ -1734,12 +1738,10 @@ def evidence_command(
     # path a reader can follow from the repository root.
     results = []
     for found in sorted(run_dir.glob("*.json")):
-        # A run writes several files beside its results, and none of them is
-        # one. `evidence.json` is the bundle itself, so listing it makes a
-        # second `kb-arena evidence` write a different bundle than the first.
-        # `run.json` is the run record. Neither carries a manifest, so asking
-        # either one for its question set refuses a bundle that is fine.
-        if found.name in NON_RESULT_NAMES:
+        # A run directory holds more than measurements: the bundle itself, the
+        # run record, a report, and a comparison whose name varies. Naming them
+        # one at a time cost three rounds, so this asks what a result IS.
+        if not is_bundle_result(found):
             continue
         resolved = found.resolve()
         results.append(resolved.relative_to(root) if root in resolved.parents else found)

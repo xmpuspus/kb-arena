@@ -308,6 +308,28 @@ def _live_review(corpus, split) -> tuple[str, dict] | None:
     return question_set_fingerprint(questions), review_summary(questions)
 
 
+def is_bundle_result(path: Path) -> bool:
+    """Whether a file in a run directory is one of the run's measurements.
+
+    A run directory holds more than measurements. It holds the bundle, the run
+    record, a report, and a comparison whose name carries two strategies and a
+    metric. A name deny-list cannot catch the last one, because the name varies,
+    and the third file of that class already cost a round.
+
+    So this is an allow-list with three clauses. The lab writes one file with
+    one name. A benchmark result is `<corpus>_<strategy>.json` for a strategy in
+    the catalog. A plugin strategy is not in the catalog, so a file that carries
+    a manifest counts as well, which is the record a bundle needs from it.
+    """
+    from kb_arena.strategies.catalog import STRATEGY_CATALOG
+
+    if path.name == "retriever_lab.json":
+        return True
+    if any(path.name.endswith(f"_{spec.name}.json") for spec in STRATEGY_CATALOG):
+        return True
+    return bool(_manifests_in(path))
+
+
 def measurement_in(path: Path, corpus: str) -> tuple[int | None, int | None]:
     """How many questions a result scored, and how many its manifest names.
 
@@ -336,21 +358,27 @@ def _is_count(value) -> bool:
 
 
 def _scored_in(data: dict, corpus: str) -> int | None:
+    """The weakest strategy's scored count, because the bundle covers them all.
+
+    The first version took the maximum, and the comment beside it named the very
+    defect the maximum causes. One strategy that scored every question then
+    spoke for a sibling that scored none, and the bundle cited a table with an
+    outage in it. The weakest row decides, so a failed sibling cannot hide.
+    """
     corpora = data.get("corpora")
     if isinstance(corpora, dict):
         summaries = corpora.get(corpus)
         if not isinstance(summaries, dict) or not summaries:
             return None
         counts = [s.get("questions") if isinstance(s, dict) else None for s in summaries.values()]
-        # One unusable count makes the whole file unproven. Taking the maximum
-        # over the readable ones lets a broken strategy summary hide behind a
-        # sound one, which is the defect this module already paid for twice.
         if not all(_is_count(c) for c in counts):
             return None
-        return max(counts)
+        return min(counts)
     records = data.get("records")
     if isinstance(records, list):
-        return len(records)
+        # A record marked `is_error` is a question the run failed to score. The
+        # row exists, so counting the list counted an outage as a measurement.
+        return sum(1 for r in records if isinstance(r, dict) and not r.get("is_error"))
     return None
 
 

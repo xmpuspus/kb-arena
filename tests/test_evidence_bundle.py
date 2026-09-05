@@ -451,11 +451,41 @@ def test_a_readable_manifest_does_not_stand_in_for_a_broken_one(tmp_path):
     assert any("nobody can read" in p for p in problems), problems
 
 
-def test_the_evidence_command_skips_every_file_a_run_writes_beside_its_results(tmp_path):
-    """`run.json` carries no manifest, so reading it refused a sound bundle."""
-    from kb_arena.benchmark.variance import NON_RESULT_NAMES
+@pytest.mark.parametrize(
+    ("name", "kept"),
+    [
+        ("retriever_lab.json", True),
+        ("aws-compute_bm25.json", True),
+        ("evidence.json", False),
+        ("run.json", False),
+        ("summary.json", False),
+        ("compare_lab_bm25_vs_naive_vector_ndcg_at_k.json", False),
+        ("notes.json", False),
+    ],
+)
+def test_only_a_measurement_goes_into_a_bundle(tmp_path, name, kept):
+    """Naming the non-results one at a time cost three rounds.
 
-    assert {"run.json", "evidence.json", "summary.json"} <= NON_RESULT_NAMES
+    `summary.json`, then `evidence.json`, then `run.json`, then a comparison
+    whose name carries two strategies and a metric. A deny-list cannot hold a
+    name that varies, so the rule asks what a result is.
+    """
+    from kb_arena.benchmark.evidence import is_bundle_result
+
+    path = tmp_path / name
+    path.write_text(json.dumps({"corpus": "aws-compute"}))
+
+    assert is_bundle_result(path) is kept
+
+
+def test_a_plugin_result_stays_in_the_bundle_because_it_carries_a_manifest(tmp_path):
+    """A plugin strategy is not in the catalog, so the name rule alone drops it."""
+    from kb_arena.benchmark.evidence import is_bundle_result
+
+    path = tmp_path / "aws-compute_my_plugin.json"
+    path.write_text(json.dumps({"manifest": {"question_set_fingerprint": "abc"}}))
+
+    assert is_bundle_result(path) is True
 
 
 def test_the_bundle_never_lists_itself_as_one_of_the_run_results():
@@ -583,3 +613,94 @@ def test_a_question_file_holding_a_scalar_reports_instead_of_crashing(tmp_path, 
     problems = check_bundle(bundle, tmp_path)
 
     assert any("cannot be read" in p for p in problems), problems
+
+
+def test_a_strategy_that_scored_everything_does_not_speak_for_one_that_failed(
+    tmp_path, monkeypatch
+):
+    """The count used to be the maximum over the strategies.
+
+    So one sound row spoke for a sibling that scored nothing, and the bundle
+    cited a table with an outage in it. The weakest row decides now.
+    """
+    from kb_arena.benchmark.manifest import question_set_fingerprint
+    from kb_arena.benchmark.questions import load_questions
+
+    corpus = _reviewed_corpus(tmp_path, monkeypatch)
+    questions = load_questions(corpus)
+    fingerprint = question_set_fingerprint(questions)
+    run = tmp_path / "results" / "run_mixed"
+    run.mkdir(parents=True)
+    (run / "retriever_lab.json").write_text(
+        json.dumps(
+            {
+                "corpora": {
+                    corpus: {
+                        "bm25": {"questions": 4, "execution_errors": 0},
+                        "naive_vector": {"questions": 0, "execution_errors": 4},
+                    }
+                },
+                "manifests": {
+                    corpus: {
+                        "question_set_fingerprint": fingerprint,
+                        "question_split": "all",
+                        "question_count": 4,
+                    }
+                },
+            }
+        )
+    )
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    bundle = {
+        **bundle,
+        "corpus": corpus,
+        "results": ["results/run_mixed/retriever_lab.json"],
+        "question_set_fingerprint": fingerprint,
+        "review_question_set": fingerprint,
+        "review_split": "all",
+        "review": review_summary(questions),
+    }
+
+    problems = check_bundle(bundle, tmp_path)
+
+    assert any("scored no questions" in p for p in problems), problems
+
+
+def test_a_benchmark_record_marked_as_an_error_is_not_a_measurement(tmp_path, monkeypatch):
+    """Counting the rows counted an outage as 75 measurements."""
+    from kb_arena.benchmark.manifest import question_set_fingerprint
+    from kb_arena.benchmark.questions import load_questions
+
+    corpus = _reviewed_corpus(tmp_path, monkeypatch)
+    questions = load_questions(corpus)
+    fingerprint = question_set_fingerprint(questions)
+    run = tmp_path / "results" / "run_err"
+    run.mkdir(parents=True)
+    (run / f"{corpus}_bm25.json").write_text(
+        json.dumps(
+            {
+                "corpus": corpus,
+                "strategy": "bm25",
+                "records": [{"question_id": f"q{i}", "is_error": True} for i in range(4)],
+                "manifest": {
+                    "question_set_fingerprint": fingerprint,
+                    "question_split": "all",
+                    "question_count": 4,
+                },
+            }
+        )
+    )
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    bundle = {
+        **bundle,
+        "corpus": corpus,
+        "results": [f"results/run_err/{corpus}_bm25.json"],
+        "question_set_fingerprint": fingerprint,
+        "review_question_set": fingerprint,
+        "review_split": "all",
+        "review": review_summary(questions),
+    }
+
+    problems = check_bundle(bundle, tmp_path)
+
+    assert any("scored no questions" in p for p in problems), problems
