@@ -10,8 +10,8 @@ authors:
 repository-code: "https://github.com/xmpuspus/kb-arena"
 url: "https://github.com/xmpuspus/kb-arena"
 license: MIT
-version: "0.10.0"
-date-released: "2026-08-05"
+version: "0.11.0"
+date-released: "2026-09-05"
 abstract: >
   KB Arena compares lexical, dense, graph, hybrid, hierarchical, and reranked
   retrieval on user-provided documentation. It runs the architectures on a

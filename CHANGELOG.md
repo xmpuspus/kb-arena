@@ -4,9 +4,18 @@ All notable changes to KB Arena.
 
 ## [Unreleased]
 
-Thirty-two pull requests, closing the one Critical and all thirteen High
-findings from the 2026-09-03 audit. The theme is that a number now says what it
-is, and refuses to say what it is not.
+## [0.11.0] - 2026-09-05 - Nineteen strategies, and a run that repeats itself
+
+Forty-two pull requests. The one Critical and all thirteen High findings from
+the 2026-09-03 audit are closed. The theme is that a number now says what it is,
+and refuses to say what it is not.
+
+The release adds eight retrieval strategies, six dataset adapters, a
+bring-your-own-retriever contract, a vector-store interface with four adapters,
+a reusable GitHub Action, optional OpenTelemetry, and an MCP server. It also
+makes the committed run repeat itself: the recorded command reproduces the
+measurement to the last digit, and the recorded commit is one a reader can check
+out.
 
 ### Added
 - Added `kb-arena variance`, which reports the spread across repeats of one
@@ -77,6 +86,54 @@ is, and refuses to say what it is not.
   which are meaningless for a check.
 - Fixed `kb-arena retriever-lab` asking for an embedding key on a bm25-only run,
   which two READMEs promise needs no key.
+
+
+
+### Added in 0.11.0
+- Added eight retrieval strategies, taking the catalog from 11 to 19: `hyde`,
+  `multi_query`, `metadata_filtered`, `temporal`, `late_interaction`, `splade`,
+  `agentic` and `lightrag`. Nine strategies still run by default. The rest need
+  an LLM call per query, an optional extra, a graph database, or a filter the
+  caller passes.
+- Added six dataset adapters, all download-only: MultiHop-RAG, FRAMES, BRIGHT,
+  one BEIR slice, MIRACL and LongBench v2. Each records a confirmed licence and
+  a pinned revision, and no dataset content enters the repository.
+- Added a bring-your-own-retriever HTTP contract. It validates the reply against
+  a schema, bounds each call by a wall clock, and reuses the SSRF guard the web
+  parser already carries.
+- Added a vector-store interface with Chroma, Qdrant, pgvector and LanceDB
+  adapters. Chroma stays the default and the only core dependency.
+- Added a reusable GitHub Action that fails a pull request when a named
+  retrieval metric drops past a threshold against a stored baseline.
+- Added optional OpenTelemetry spans around retrieval, embedding and judge
+  calls. They carry the strategy, the corpus and the top_k, never question text,
+  document text or a key.
+- Added an MCP stdio server with eight typed tools, behind the `mcp` extra.
+- Added `docs/choosing-a-strategy.md`, `docs/deployment.md`,
+  `docs/mcp-server.md`, `docs/github-action.md` and
+  `docs/own-corpus-walkthrough.md`.
+
+### Changed in 0.11.0
+- The strategy picker groups 19 strategies into baseline, advanced and
+  experimental, derived from the catalog's own fields, and puts the operator
+  controls behind one collapsed section.
+- `sse-starlette` moves to 3.4.10, because the `mcp` extra could not resolve
+  against the old pin and so could not be installed at all.
+- The dependency test asserts that every runtime dependency carries an exact
+  `==`, rather than asserting five literal versions that made each routine bump
+  fail a test about Python support.
+
+### Fixed in 0.11.0
+- Fixed the evidence bundle recording a command that did not reproduce the run.
+  It was built from the corpus name alone, so a bundle for a bm25-only run told
+  a reader to run eleven strategies. The lab and the benchmark runner record
+  their own command now, and a run written before that reads its own fields.
+- Fixed the committed run naming a commit nobody can check out. It recorded a
+  dirty tree, and the run before it recorded a branch commit the squash merge
+  erased. `kb-arena evidence --check` refuses both.
+- Fixed `variance.py` and `evidence.py` judging a result file through a growing
+  pile of shape checks. One validated read replaces them, which made four
+  recurring defect classes unreachable rather than guarded.
 
 
 ## [0.10.0] - 2026-08-05 - Retrieval architecture decision lab

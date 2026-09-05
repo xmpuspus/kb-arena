@@ -4,7 +4,7 @@
 
 | Version | Support |
 |---|---|
-| 0.10.x | Active fixes |
+| 0.11.x | Active fixes |
 | 0.9.x | Critical fixes on a best-effort basis |
 | 0.8.x and earlier | Unsupported |
 

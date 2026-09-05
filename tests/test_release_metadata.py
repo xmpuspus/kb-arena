@@ -9,21 +9,31 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-TARGET_VERSION = "0.10.0"
-TARGET_DATE = "2026-08-05"
+# The version lives in `pyproject.toml` and nowhere else. Naming it here too
+# made a third copy that a release had to edit in step, and the tests failed on
+# the bump rather than on a real disagreement. These read the one source and
+# check that every other surface agrees with it.
+TARGET_VERSION = tomllib.loads(
+    (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text()
+)["project"]["version"]
+TARGET_DATE = str(
+    yaml.safe_load((Path(__file__).resolve().parents[1] / "CITATION.cff").read_text())[
+        "date-released"
+    ]
+)
 
 
 def test_release_metadata_is_aligned() -> None:
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text())
     citation = yaml.safe_load((ROOT / "CITATION.cff").read_text())
     changelog = (ROOT / "CHANGELOG.md").read_text()
 
-    assert project["project"]["version"] == TARGET_VERSION
     assert citation["version"] == TARGET_VERSION
     assert str(citation["date-released"]) == TARGET_DATE
     assert f"## [{TARGET_VERSION}] - {TARGET_DATE}" in changelog
+    # The supported line is the released minor, whatever it is.
+    minor = ".".join(TARGET_VERSION.split(".")[:2])
     security = (ROOT / "SECURITY.md").read_text()
-    assert "| 0.10.x | Active fixes |" in security
+    assert f"| {minor}.x | Active fixes |" in security
 
 
 def test_source_version_fallback_matches_project_metadata(monkeypatch) -> None:
