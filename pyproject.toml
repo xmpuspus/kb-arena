@@ -69,6 +69,10 @@ otel = [
     "opentelemetry-sdk==1.40.0",
     "opentelemetry-exporter-otlp-proto-grpc==1.40.0",
 ]
+# MCP server (kb_arena/mcp/): stdio tools for corpus, strategy, and benchmark
+# work. Lazy-imported everywhere in the core install, so the CLI and API stay
+# usable without it; install with `pip install 'kb-arena[mcp]'`.
+mcp = ["mcp==2.1.1"]
 
 [project.scripts]
 kb-arena = "kb_arena.cli:app"
