@@ -163,6 +163,9 @@ def spread_report(runs: list[dict], metrics: tuple[str, ...] = ("accuracy_by_tie
             # came from different code is not a repeat of one experiment either.
             "comparable": (
                 key != LEGACY_KEY
+                # A record that cannot prove which questions it scored makes the
+                # whole group unreadable as a spread, whatever the key says.
+                and not any(run.get("sample_unproven") for run in group)
                 and len(versions) == 1
                 # "unrecorded" is not a build. Two runs that both fail to name
                 # one are not known to share it, so they are not repeats.
@@ -305,7 +308,10 @@ def _lab_run_is_lost(data: dict, corpus: str | None) -> bool:
     """
     corpora = data.get("corpora")
     corpora = corpora if isinstance(corpora, dict) else {}
-    if corpus and corpus not in corpora:
+    # An empty map is not "this run belongs to another corpus". It is a run that
+    # stopped before it could name any corpus, so it is lost evidence under
+    # every filter. Only a map that names other corpora rules the run out.
+    if corpus and corpora and corpus not in corpora:
         return False
     return True
 
@@ -440,7 +446,9 @@ def _flatten_lab_run(data: dict, corpus: str | None) -> list[dict]:
         for strategy, metrics in strategies.items():
             if not isinstance(metrics, dict):
                 continue
-            rows_scored, digest = scored_ids.get((corpus_name, strategy), (0, "none"))
+            rows_scored, digest, unreadable_ids = scored_ids.get(
+                (corpus_name, strategy), (0, "none", False)
+            )
             # Every query failed, and the lab writes each mean as 0.0 anyway.
             # Carrying those through would report an outage as a strategy that
             # retrieves nothing relevant. The record stays, so the group still
@@ -452,20 +460,31 @@ def _flatten_lab_run(data: dict, corpus: str | None) -> list[dict]:
             # something when either the count is a positive whole number or at
             # least one question row carries no error.
             scored = metrics.get("questions")
-            counted = isinstance(scored, int) and not isinstance(scored, bool) and scored > 0
+            usable = isinstance(scored, int) and not isinstance(scored, bool)
+            counted = usable and scored > 0
             measured = metrics if (counted or rows_scored > 0) else {"questions": scored}
-            flat.append(
-                {
-                    **measured,
-                    "corpus": corpus_name,
-                    "strategy": strategy,
-                    "run_id": run_id,
-                    "manifest": manifests.get(corpus_name, {}),
-                    "source": "retriever_lab",
-                    "lab_status": status,
-                    "scored_fingerprint": digest,
-                }
-            )
+            # The rows outrank the summary. A count of 2 over one scored row is a
+            # file contradicting itself, and taking the 2 would call the run
+            # whole and drop the digest that separates two question sets.
+            if usable and rows_scored and scored != rows_scored:
+                measured = {**measured, "questions": rows_scored}
+            record = {
+                **measured,
+                "corpus": corpus_name,
+                "strategy": strategy,
+                "run_id": run_id,
+                "manifest": manifests.get(corpus_name, {}),
+                "source": "retriever_lab",
+                "lab_status": status,
+                "scored_fingerprint": digest,
+            }
+            # Nothing here proves which questions the run scored, so a mean over
+            # this record and another would be a number about two unknowns. The
+            # key still separates what it can, and the group says it cannot be
+            # read as a spread.
+            if unreadable_ids or not usable or (usable and rows_scored and scored != rows_scored):
+                record["sample_unproven"] = True
+            flat.append(record)
     return flat
 
 
@@ -493,19 +512,14 @@ def _scored_question_ids(data: dict) -> dict[tuple[str, str], str]:
         # `str()` maps null to "None", the same text a real id of "None" gives,
         # so two different question sets hashed alike. JSON keeps them apart.
         if not isinstance(qid, str) or not qid.strip():
-            # An id nobody can read names no question. Two runs that both refuse
-            # to name theirs are not known to have measured the same ones, so
-            # the digest carries the run and each one groups alone.
+            # An id nobody can read names no question, so the digest over these
+            # rows proves nothing. Building an ever-more-unique key was the
+            # wrong answer: it collided the same way the run id did, one
+            # function over. The record carries `sample_unproven` instead, and
+            # the group it lands in reports every value and no mean.
             unidentified.add(pair)
         ids.setdefault(pair, []).append(json.dumps(qid))
-    run_id = str(data.get("run_id", "")) or "unknown"
-    return {
-        pair: (
-            len(v),
-            f"unidentified-{run_id}" if pair in unidentified else question_digest(v),
-        )
-        for pair, v in ids.items()
-    }
+    return {pair: (len(v), question_digest(v), pair in unidentified) for pair, v in ids.items()}
 
 
 def _is_for_corpus(path: Path, corpus: str | None) -> bool:
