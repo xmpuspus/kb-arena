@@ -1192,3 +1192,15 @@ def test_a_transient_git_failure_is_not_read_as_a_missing_commit(tmp_path, monke
     monkeypatch.setattr(subprocess, "run", flaky)
 
     assert evidence._commit_problem("a" * 40, ROOT) == ""
+
+
+@pytest.mark.parametrize("bad", ["--help", "HEAD", "../../etc/passwd", "abc", "0" * 39])
+def test_a_git_sha_that_is_not_a_commit_never_reaches_git(bad):
+    """The value comes out of a JSON file the reader did not write.
+
+    `--help` was read as an option rather than a commit, and git then answered
+    something the check took for silence.
+    """
+    from kb_arena.benchmark.evidence import _commit_problem
+
+    assert "where a commit belongs" in _commit_problem(bad, ROOT)

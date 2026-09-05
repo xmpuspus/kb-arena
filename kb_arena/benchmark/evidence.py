@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import platform
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,6 +24,9 @@ from kb_arena.benchmark.result_schema import (
 )
 
 BUNDLE_VERSION = 1
+
+# A commit is 40 hex characters, or 64 under sha256. Nothing else reaches git.
+_COMMIT_SHA = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 
 
 def _python_identity() -> dict:
@@ -186,6 +190,15 @@ def _commit_problem(sha, root: Path) -> str:
         return (
             f"calls itself citable and was built from an uncommitted tree, {sha}. "
             f"Nobody can get that tree back, so the run cannot be repeated."
+        )
+    # The value comes out of a JSON file the reader did not write, so it is
+    # checked before it reaches git. A value of `--help` was read as an option
+    # rather than a commit, and git then answered something this function took
+    # for silence.
+    if not _COMMIT_SHA.fullmatch(sha):
+        return (
+            f"calls itself citable and records {sha[:24]!r} where a commit belongs, "
+            f"so nobody can get the code back"
         )
     head = _default_branch_head(root)
     if head is None:
