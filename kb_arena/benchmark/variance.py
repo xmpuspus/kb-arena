@@ -366,12 +366,12 @@ def _lab_records(lab: LabRun, corpus: str | None) -> list[dict]:
         # retrieves nothing relevant. The record stays, so the group still
         # counts it under `runs_without_this_metric`, and it carries no number
         # for anybody to read.
-        measured = result.summary if result.measured else {"questions": result.claimed}
-        # The rows outrank the summary. A count of 2 over one scored row is a
-        # file contradicting itself, and taking the 2 would call the run whole
-        # and drop the digest that separates two question sets.
-        if result.contradicted:
-            measured = {**measured, "questions": result.row_count}
+        #
+        # `reported` is the one definition of the grouping count, and the rows
+        # outrank the summary inside it. A count of 2 over one scored row is a
+        # file contradicting itself, and taking the 2 would call the run whole.
+        measured = result.summary if result.measured else {}
+        measured = {**measured, "questions": result.reported}
         manifest = lab.manifests.get(result.corpus)
         record = {
             **measured,

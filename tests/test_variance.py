@@ -1213,7 +1213,12 @@ def test_a_lab_run_with_an_unusable_question_count_groups_only_with_itself(bad_c
     rows = variance.spread_report(whole + unknown, metrics=("mean_recall_at_k",))
 
     assert len(rows) == 2, f"a count of {bad_count!r} is not a proof of a full run"
-    assert any("-partial-unknown-" in r["compatibility_key"] for r in rows)
+    # The rows are the witness now, so the key names the one question this run
+    # scored rather than calling the sample unknown. The guarantee is the same
+    # one the earlier `-partial-unknown-` marker carried: the short run never
+    # joins the whole one, and the group it lands in reports no mean.
+    assert any("-partial-1-" in r["compatibility_key"] for r in rows)
+    assert not all(r["comparable"] for r in rows)
 
 
 def test_a_manifest_with_no_question_count_never_merges_into_a_whole_run():
