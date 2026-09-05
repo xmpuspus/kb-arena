@@ -266,6 +266,26 @@ def _reviewed_corpus(tmp_path, monkeypatch, name="split-demo"):
     return name
 
 
+def _rows(corpus: str, strategy: str, scored: int, errors: int = 0) -> list[dict]:
+    """The per-question rows a real Retriever Lab file always writes.
+
+    The scored count in a strategy summary is a claim, and these rows are its
+    witness. A fixture that omits them describes a file the lab never writes,
+    and a bundle over it is refused for that reason alone.
+    """
+    rows = [{"corpus": corpus, "strategy": strategy, "question_id": f"q{i}"} for i in range(scored)]
+    rows += [
+        {
+            "corpus": corpus,
+            "strategy": strategy,
+            "question_id": f"e{i}",
+            "execution_error": {"type": "RuntimeError", "message": "boom"},
+        }
+        for i in range(errors)
+    ]
+    return rows
+
+
 def test_a_split_filtered_run_stays_citable_because_its_manifest_names_the_split(
     tmp_path, monkeypatch
 ):
@@ -284,6 +304,7 @@ def test_a_split_filtered_run_stays_citable_because_its_manifest_names_the_split
         json.dumps(
             {
                 "corpora": {corpus: {"bm25": {"questions": 2, "execution_errors": 0}}},
+                "questions": _rows(corpus, "bm25", 2),
                 "manifests": {
                     corpus: {
                         "question_set_fingerprint": holdout,
@@ -328,6 +349,7 @@ def test_a_run_whose_every_query_failed_is_not_citable(tmp_path, monkeypatch):
                 "corpora": {
                     corpus: {"bm25": {"questions": 0, "execution_errors": 4}},
                 },
+                "questions": _rows(corpus, "bm25", 0, errors=4),
                 "manifests": {
                     corpus: {
                         "question_set_fingerprint": fingerprint,
@@ -576,6 +598,7 @@ def test_a_partial_run_does_not_read_as_a_whole_one(tmp_path, monkeypatch):
         json.dumps(
             {
                 "corpora": {corpus: {"bm25": {"questions": 3, "execution_errors": 1}}},
+                "questions": _rows(corpus, "bm25", 3, errors=1),
                 "manifests": {
                     corpus: {
                         "question_set_fingerprint": fingerprint,
@@ -647,6 +670,7 @@ def test_a_strategy_that_scored_everything_does_not_speak_for_one_that_failed(
                         "naive_vector": {"questions": 0, "execution_errors": 4},
                     }
                 },
+                "questions": _rows(corpus, "bm25", 4) + _rows(corpus, "naive_vector", 0, errors=4),
                 "manifests": {
                     corpus: {
                         "question_set_fingerprint": fingerprint,
@@ -800,3 +824,31 @@ def test_a_manifest_that_names_fewer_questions_than_the_review_covers_is_refused
     problems = check_bundle(bundle, tmp_path)
 
     assert any("names 1 questions in its manifest" in p for p in problems), problems
+
+
+def test_a_summary_count_with_no_rows_behind_it_cannot_back_a_citable_bundle(tmp_path, monkeypatch):
+    """N-94. `check_bundle` took the strategy summary at its word.
+
+    Emptying the per-question rows and leaving the summary and the manifest
+    alone left the bundle reading as complete, while `variance` flagged the same
+    file as an unproven sample. The count and the rows are one fact now.
+    """
+    data = json.loads((COMMITTED / "retriever_lab.json").read_text())
+    data["questions"] = []
+    run = tmp_path / "results" / "run_norows"
+    run.mkdir(parents=True)
+    (run / "retriever_lab.json").write_text(json.dumps(data))
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    bundle = {**bundle, "results": ["results/run_norows/retriever_lab.json"]}
+
+    problems = check_bundle(bundle, tmp_path)
+
+    assert any("no question rows behind that count" in p for p in problems), problems
+
+
+def test_the_committed_bundle_still_checks_out_against_its_own_run():
+    """The rewrite must not refuse the run the repository ships as its evidence."""
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    root = COMMITTED.parent.parent
+
+    assert check_bundle(bundle, root) == []

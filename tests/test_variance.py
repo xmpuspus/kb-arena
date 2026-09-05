@@ -1763,3 +1763,73 @@ def test_a_report_summary_is_never_read_as_a_lab_run(tmp_path, monkeypatch):
 
     assert len(runs) == 1, "the summary is not a run"
     assert failures == [], "and it never failed"
+
+
+def test_a_corpus_whose_summaries_are_not_a_record_is_named(tmp_path, monkeypatch):
+    """N-66. A null corpus summary dropped a whole repeat in silence.
+
+    The loader reported an unreadable STRATEGY and said nothing about an
+    unreadable CORPUS, so a report over two repeats read as a report over one.
+    """
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    path = tmp_path / "run_a" / "retriever_lab.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"run_id": "a", "status": "complete", "corpora": {"c": None}}))
+
+    failures: list[str] = []
+    runs = variance.load_runs("c", failures=failures)
+
+    assert runs == []
+    assert any("corpus c has no readable summary" in f for f in failures), failures
+
+
+def test_an_incomplete_run_is_named_even_when_its_first_corpus_finished(tmp_path, monkeypatch):
+    """N-68. The fourth pass over one guard, after N-55, N-60 and N-64.
+
+    The writer adds a corpus summary only after it finishes that corpus. A run
+    over `a` and `b` that died inside `b` names only `a`, so the map it wrote is
+    not the list of corpora it meant to cover. The earlier guard asked whether
+    the file yielded any record at all, and a finished first corpus answered yes.
+    """
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    path = tmp_path / "run_a" / "retriever_lab.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(
+            {
+                "run_id": "a",
+                "status": "incomplete",
+                "execution_error": {"type": "TimeoutError", "message": "corpus b never finished"},
+                "corpora": {"a": {"bm25": {"mean_recall_at_k": 0.5, "questions": 2}}},
+                "questions": [
+                    {"corpus": "a", "strategy": "bm25", "question_id": "q0"},
+                    {"corpus": "a", "strategy": "bm25", "question_id": "q1"},
+                ],
+            }
+        )
+    )
+
+    failures: list[str] = []
+    runs = variance.load_runs(None, failures=failures)
+
+    assert len(runs) == 1, "the corpus that finished still carries its measurement"
+    assert any("corpus b never finished" in f for f in failures), failures
+
+
+def test_a_run_that_scored_more_questions_than_its_manifest_names_is_a_different_sample():
+    """N-67. The check asked `scored < expected`, so an overshoot read as whole.
+
+    Both values are valid integers, so no schema can catch this one. A run that
+    scored 5 against a manifest naming 4 is not the manifest's sample either,
+    and averaging it with a run that was is a mean over two different sets.
+    """
+    whole = {
+        "source": "retriever_lab",
+        "questions": 4,
+        "scored_fingerprint": "d",
+        "manifest": {"question_count": 4},
+    }
+    over = {**whole, "questions": 5, "scored_fingerprint": "e"}
+
+    assert variance._lab_sample_suffix(whole) != variance._lab_sample_suffix(over)
+    assert "partial-5" in variance._lab_sample_suffix(over)
