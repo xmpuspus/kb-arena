@@ -9,6 +9,10 @@ command, so no tool result depends on a Typer wrapper. No tool returns an
 empty result to mean the call failed. A failure raises instead, so a caller
 can tell "nothing here" from "could not check".
 
+Every raised exception reaches the client as a `ToolError`, carrying the
+original message. Below, "raises" always means the client sees a
+`ToolError` with the stated text, never a generic crash message.
+
 ## Install the extra
 
 ```bash
@@ -22,7 +26,7 @@ this reason, so the two requirements resolve to one version.
 ## Start the server
 
 ```bash
-python -m kb_arena.mcp.server
+python3 -m kb_arena.mcp.server
 ```
 
 The server speaks JSON-RPC over stdin and stdout. An MCP client starts this
@@ -113,8 +117,8 @@ status.
 | `metric` | string | no | `"accuracy"` |
 
 Pairs two strategies question by question on the same corpus, from their
-stored result files. The reported delta is `b` minus `a`. Raises
-`FileNotFoundError` when a named result file is missing.
+stored result files. The reported delta is `b` minus `a`. Raises with the
+message `no result file at <path>` when a named result file is missing.
 
 ### `get_manifest`
 
@@ -155,7 +159,7 @@ Add the server with the `claude mcp add` command, or add this block to
 {
   "mcpServers": {
     "kb-arena": {
-      "command": "python",
+      "command": "python3",
       "args": ["-m", "kb_arena.mcp.server"]
     }
   }
@@ -171,7 +175,7 @@ global MCP settings.
 {
   "mcpServers": {
     "kb-arena": {
-      "command": "python",
+      "command": "python3",
       "args": ["-m", "kb_arena.mcp.server"]
     }
   }
@@ -185,7 +189,7 @@ JSON-RPC over its stdin and stdout.
 
 ```json
 {
-  "command": "python",
+  "command": "python3",
   "args": ["-m", "kb_arena.mcp.server"]
 }
 ```
