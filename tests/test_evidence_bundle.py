@@ -952,3 +952,50 @@ def test_a_strategy_that_scored_too_many_questions_is_not_hidden_by_a_sibling(tm
     problems = _measurement_problems(bundle, tmp_path, None)
 
     assert any("scored 1 and 2 questions" in p for p in problems), problems
+
+
+def test_the_bundle_records_the_command_that_repeats_the_run():
+    """The command used to be built from the corpus name and nothing else.
+
+    So the bundle for a bm25-only run told a reader to run every strategy,
+    which needs an API key and measures something else. The recorded command
+    now names the strategies the run measured and the top_k it used.
+    """
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    run = json.loads((COMMITTED / "retriever_lab.json").read_text())
+    measured = sorted(run["corpora"]["aws-compute"])
+
+    assert bundle["command"][:2] == ["kb-arena", "retriever-lab"]
+    assert "--strategies" in bundle["command"]
+    named = bundle["command"][bundle["command"].index("--strategies") + 1]
+    assert sorted(named.split(",")) == measured
+    assert "--top-k" in bundle["command"]
+    assert bundle["command"][bundle["command"].index("--top-k") + 1] == str(run["top_k"])
+
+
+def test_a_run_that_records_no_command_and_names_no_strategy_backs_no_bundle(tmp_path):
+    """A file that cannot say what it measured cannot say how to repeat it either."""
+    from kb_arena.cli import _run_command
+
+    run = tmp_path / "results" / "run_x"
+    run.mkdir(parents=True)
+    (run / "retriever_lab.json").write_text(json.dumps({"corpora": {}, "top_k": 5}))
+
+    assert _run_command([Path("results/run_x/retriever_lab.json")], tmp_path) == []
+
+
+def test_two_results_that_disagree_about_the_command_name_none(tmp_path):
+    """Two commands is not one run, so the bundle claims neither."""
+    from kb_arena.cli import _run_command
+
+    run = tmp_path / "results" / "run_x"
+    run.mkdir(parents=True)
+    (run / "a_bm25.json").write_text(
+        json.dumps({"command": ["kb-arena", "benchmark", "--corpus", "a"]})
+    )
+    (run / "a_naive_vector.json").write_text(
+        json.dumps({"command": ["kb-arena", "benchmark", "--corpus", "b"]})
+    )
+    paths = [Path("results/run_x/a_bm25.json"), Path("results/run_x/a_naive_vector.json")]
+
+    assert _run_command(paths, tmp_path) == []

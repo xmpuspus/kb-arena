@@ -87,10 +87,25 @@ def build_bundle(
         "review_split": review_split,
         "review": review,
         # The claim the bundle makes about itself, stated rather than implied.
-        "citable": bool(review.get("publishable")),
-        "why_not_citable": "" if review.get("publishable") else review.get("note", ""),
+        # A run that records no command cannot be repeated, so it cannot be
+        # cited either, whatever its review verdict says about the questions.
+        "citable": bool(review.get("publishable")) and bool(command),
+        "why_not_citable": _why_not(review, command),
         "notes": notes,
     }
+
+
+def _why_not(review: dict, command: list[str]) -> str:
+    """Why this bundle is a development signal rather than citable evidence."""
+    reasons = []
+    if not review.get("publishable"):
+        reasons.append(review.get("note", "the review verdict refuses"))
+    if not command:
+        reasons.append(
+            "the run records no command, so nobody can repeat it. Re-run it with "
+            "a build that records one."
+        )
+    return "; ".join(r for r in reasons if r)
 
 
 def write_bundle(directory: Path, bundle: dict) -> Path:

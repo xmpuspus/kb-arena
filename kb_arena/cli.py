@@ -1677,6 +1677,68 @@ def _run_scope(results, root) -> tuple[str, str]:
     return fingerprint, split
 
 
+def _run_command(results, root) -> list[str]:
+    """The command a run recorded, or an empty list when no result records one.
+
+    This used to be built from the corpus name alone, so the bundle for a
+    bm25-only run told a reader to run every strategy. The command is part of
+    the run, and only the run knows it. Two results that disagree name no
+    command, for the same reason two question sets name none.
+    """
+    import json as _json
+
+    found: set[tuple[str, ...]] = set()
+    for path in results:
+        full = root / path if not path.is_absolute() else path
+        try:
+            data = _json.loads(full.read_text())
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        recorded = data.get("command")
+        if isinstance(recorded, list) and all(isinstance(part, str) for part in recorded):
+            found.add(tuple(recorded))
+            continue
+        derived = _derived_lab_command(data)
+        if derived:
+            found.add(tuple(derived))
+    return list(next(iter(found))) if len(found) == 1 else []
+
+
+def _derived_lab_command(data: dict) -> list[str]:
+    """The command for a lab run written before the lab recorded its own.
+
+    Derived from the run, never from the corpus name. The file names the
+    corpora it measured, the strategies under each one, the top_k it used and
+    the split it scored, so the command it took is recoverable. `--min-recall`
+    is left out on purpose: it decides the exit code and not the measurement.
+    """
+    corpora = data.get("corpora")
+    if not isinstance(corpora, dict) or len(corpora) != 1:
+        return []
+    corpus, summaries = next(iter(corpora.items()))
+    if not isinstance(summaries, dict) or not summaries:
+        return []
+    top_k = data.get("top_k")
+    if not isinstance(top_k, int) or isinstance(top_k, bool):
+        return []
+    command = [
+        "kb-arena",
+        "retriever-lab",
+        "--corpus",
+        str(corpus),
+        "--strategies",
+        ",".join(sorted(str(name) for name in summaries)),
+        "--top-k",
+        str(top_k),
+    ]
+    split = data.get("question_split")
+    if isinstance(split, str) and split and split != "all":
+        command += ["--split", split]
+    return command
+
+
 @app.command(name="evidence")
 def evidence_command(
     corpus: str = typer.Option("", "--corpus", help="Corpus the run scored"),
@@ -1753,8 +1815,11 @@ def evidence_command(
     questions = load_questions(corpus, split=run_split or "all")
     review = review_summary(questions)
 
+    # A run written before the lab recorded its command answers an empty list.
+    # The bundle then says it is not citable and names that as the reason,
+    # rather than carrying a command that does not repeat the run.
     bundle = build_bundle(
-        command=["kb-arena", "retriever-lab", "--corpus", corpus],
+        command=_run_command(results, root),
         result_paths=list(results),
         review=review,
         corpus=corpus,
