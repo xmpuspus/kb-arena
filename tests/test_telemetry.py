@@ -229,3 +229,33 @@ async def test_judge_call_opens_a_span_with_strategy_corpus_and_top_k(monkeypatc
     assert spans[0].attributes["corpus"] == "aws-compute"
     assert spans[0].attributes["top_k"] == 5
     assert set(spans[0].attributes.keys()) == {"strategy", "corpus", "top_k"}
+
+
+@pytest.mark.asyncio
+async def test_every_strategy_gets_a_retrieval_span_not_only_naive_vector(monkeypatch):
+    """The span used to sit inside one strategy, so a full run traced one row of eleven.
+
+    It belongs to the shared retrieval call, where every strategy passes.
+    """
+    from kb_arena.benchmark.retriever_lab import _retrieve_only
+    from kb_arena.models.retrieval import RetrievalTrace
+    from kb_arena.strategies.base import AnswerResult
+
+    provider, exporter = _in_memory_provider()
+    monkeypatch.setattr(settings, "otel_enabled", True)
+    monkeypatch.setattr(telemetry, "_tracer_provider", lambda: provider)
+
+    class _Bm25Like:
+        name = "bm25"
+
+        async def query(self, question, top_k=5, corpus="all"):
+            return AnswerResult(
+                answer="a",
+                retrieval=RetrievalTrace(query=question, retrieved=[], latency_ms=1.0, top_k=top_k),
+            )
+
+    await _retrieve_only(_Bm25Like(), "q", top_k=5, corpus="aws-compute")
+
+    spans = {span.name: span for span in exporter.get_finished_spans()}
+    assert "kb_arena.retrieval" in spans
+    assert spans["kb_arena.retrieval"].attributes["strategy"] == "bm25"

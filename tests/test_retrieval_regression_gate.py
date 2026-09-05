@@ -10,6 +10,7 @@ import json
 import re
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -155,3 +156,23 @@ def test_corpus_raw_documents_are_tracked_so_the_example_can_actually_ingest() -
     ).stdout
     tracked_md = [line for line in output.splitlines() if line.endswith(".md")]
     assert tracked_md, "no tracked markdown source for the example corpus"
+
+
+def test_a_threshold_that_is_not_a_number_refuses_instead_of_passing():
+    """`float()` takes `nan`, and every comparison against NaN is false.
+
+    A NaN threshold turned the gate green whatever the drop, which is the one
+    thing a regression gate must never do.
+    """
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(
+        0, str(Path(__file__).resolve().parents[1] / ".github/actions/retrieval-regression-gate")
+    )
+    import compare_metric
+
+    for bad in ("nan", "inf", "-inf", "not-a-number"):
+        with pytest.raises(SystemExit) as caught:
+            compare_metric._finite(bad, "THRESHOLD")
+        assert "THRESHOLD" in str(caught.value)

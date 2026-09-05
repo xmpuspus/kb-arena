@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import glob
 import json
+import math
 import os
 import sys
 
@@ -29,9 +30,24 @@ def _load_run(results_path: str) -> dict:
     return _load_json(matches[0])
 
 
+def _finite(raw: str, name: str) -> float:
+    """One environment value as a real number, or a refusal.
+
+    `float()` accepts `nan` and `inf`, and every comparison against NaN is
+    false. A NaN threshold turned the gate green whatever the drop.
+    """
+    try:
+        value = float(raw)
+    except ValueError:
+        sys.exit(f"{name} must be a number, got {raw!r}")
+    if not math.isfinite(value):
+        sys.exit(f"{name} must be a finite number, got {raw!r}")
+    return value
+
+
 def main() -> None:
     metric = os.environ["METRIC"]
-    threshold = float(os.environ["THRESHOLD"])
+    threshold = _finite(os.environ["THRESHOLD"], "THRESHOLD")
     corpus = os.environ["CORPUS"]
     top_k = int(os.environ["TOP_K"])
     baseline = _load_json(os.environ["BASELINE_PATH"])
@@ -54,6 +70,12 @@ def main() -> None:
         new_value = strategy_result.get(metric)
         if new_value is None:
             failures.append(f"{strategy}: {metric} missing from the fresh run")
+            continue
+        if not math.isfinite(new_value):
+            # Every comparison against NaN is false, so an unusable number made
+            # the gate pass rather than fail. A gate that cannot read its own
+            # input has to say so.
+            failures.append(f"{strategy}: {metric} read {new_value!r}, which is not a number")
             continue
         drop = baseline_value - new_value
         status = "REGRESSION" if drop > threshold else "ok"

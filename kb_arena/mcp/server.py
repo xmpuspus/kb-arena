@@ -269,24 +269,15 @@ async def start_benchmark(
     async def _run() -> None:
         job.status = "running"
         try:
-            import contextlib
-            import sys
-
             from kb_arena.benchmark.runner import run_benchmark
 
-            # The runner prints its run id, its progress and its summary to
-            # stdout. On a stdio server stdout carries JSON-RPC, so that text
-            # lands between messages and the client fails to parse the stream.
-            # Everything the runner says goes to stderr for the length of the
-            # run, where a client reads it as a log.
-            with contextlib.redirect_stdout(sys.stderr):
-                job.run_id = await run_benchmark(
-                    corpus=corpus,
-                    strategy=strategy,
-                    tier=tier,
-                    split=split,
-                    top_k=top_k,
-                )
+            job.run_id = await run_benchmark(
+                corpus=corpus,
+                strategy=strategy,
+                tier=tier,
+                split=split,
+                top_k=top_k,
+            )
             job.status = "completed"
         except Exception as exc:
             # The job registry is the only place this failure is visible, so
@@ -429,8 +420,35 @@ async def export_evidence(corpus: str, run_id: str) -> dict:
     return {"written": True, "path": str(path), "citable": bundle["citable"], "bundle": bundle}
 
 
+def send_console_output_to_stderr() -> None:
+    """Point every Rich console in this process at stderr.
+
+    On a stdio server, stdout carries JSON-RPC and nothing else. The runner and
+    the CLI print run ids, progress and summaries through Rich, and that text
+    landed between protocol messages and broke the client's parser.
+
+    An earlier fix wrapped each job in `redirect_stdout`, and that was wrong for
+    a different reason: it changes process-global state, so two concurrent jobs
+    finishing out of order restored protocol stdout while the other was still
+    printing. This is set once, at startup, and never restored, which is the
+    honest shape: nothing in this process may write to stdout except the
+    protocol.
+    """
+    import sys
+
+    from rich.console import Console
+
+    from kb_arena import cli as cli_module
+    from kb_arena.benchmark import runner as runner_module
+
+    for module in (runner_module, cli_module):
+        if hasattr(module, "console"):
+            module.console = Console(file=sys.stderr)
+
+
 def main() -> None:
     """Entry point for `python -m kb_arena.mcp.server`."""
+    send_console_output_to_stderr()
     server.run(transport="stdio")
 
 
