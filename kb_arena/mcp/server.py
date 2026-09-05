@@ -199,17 +199,26 @@ _TASKS: dict[str, object] = {}
 _MAX_JOBS = 200
 
 
+_FINISHED = ("completed", "failed")
+
+
 def _trim_jobs() -> None:
-    """Drop the oldest job once the registry grows past its cap.
+    """Drop the oldest FINISHED job once the registry grows past its cap.
 
     A stdio server can run for a long session. Without a cap, a caller that
-    starts many jobs and never reads their status would grow this dict
-    forever.
+    starts many jobs and never reads their status would grow this dict forever.
+
+    A running job is never dropped. The first version evicted by age alone, so
+    a burst of new jobs made a running benchmark unreachable while it kept
+    consuming resources and writing results. The cap bounds what the server
+    remembers, and it must never bound it by forgetting live work.
     """
     while len(_JOBS) > _MAX_JOBS:
-        oldest = next(iter(_JOBS))
-        _JOBS.pop(oldest, None)
-        _TASKS.pop(oldest, None)
+        stale = next((jid for jid, job in _JOBS.items() if job.status in _FINISHED), None)
+        if stale is None:
+            return
+        _JOBS.pop(stale, None)
+        _TASKS.pop(stale, None)
 
 
 @server.tool()
@@ -239,6 +248,13 @@ async def start_benchmark(
             if name.strip() not in known:
                 raise ValueError(f"unknown strategy: {name.strip()!r}")
 
+    running = sum(1 for job in _JOBS.values() if job.status not in _FINISHED)
+    if running >= _MAX_JOBS:
+        raise ValueError(
+            f"{running} benchmark jobs are already running, which is the cap. "
+            f"Poll `job_status` and start another when one finishes."
+        )
+
     job_id = uuid4().hex[:8]
     job = _Job(
         job_id=job_id,
@@ -253,15 +269,24 @@ async def start_benchmark(
     async def _run() -> None:
         job.status = "running"
         try:
+            import contextlib
+            import sys
+
             from kb_arena.benchmark.runner import run_benchmark
 
-            job.run_id = await run_benchmark(
-                corpus=corpus,
-                strategy=strategy,
-                tier=tier,
-                split=split,
-                top_k=top_k,
-            )
+            # The runner prints its run id, its progress and its summary to
+            # stdout. On a stdio server stdout carries JSON-RPC, so that text
+            # lands between messages and the client fails to parse the stream.
+            # Everything the runner says goes to stderr for the length of the
+            # run, where a client reads it as a log.
+            with contextlib.redirect_stdout(sys.stderr):
+                job.run_id = await run_benchmark(
+                    corpus=corpus,
+                    strategy=strategy,
+                    tier=tier,
+                    split=split,
+                    top_k=top_k,
+                )
             job.status = "completed"
         except Exception as exc:
             # The job registry is the only place this failure is visible, so

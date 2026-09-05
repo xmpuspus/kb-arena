@@ -9,6 +9,7 @@ passing tool call over the wire. No test calls a real model or database:
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -19,6 +20,8 @@ from mcp.server.mcpserver.exceptions import ToolError  # noqa: E402
 from kb_arena.mcp import server as mcp_server  # noqa: E402
 from kb_arena.models.benchmark import AnswerRecord, BenchmarkResult, Score  # noqa: E402
 from kb_arena.settings import settings  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[1]
 
 TOOL_NAMES = {
     "list_corpora",
@@ -283,13 +286,24 @@ async def test_compare_raises_when_a_result_file_is_missing(tmp_path, monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_compare_against_the_committed_aws_compute_run():
+async def test_compare_against_the_committed_aws_compute_run(committed_results):
     """A real, read-only pair from the repository's own committed results."""
     result = await mcp_server.server.call_tool(
         "compare", {"corpus": "aws-compute", "a": "bm25", "b": "naive_vector"}
     )
     payload = _content(result)
     assert payload["n_paired"] > 0
+
+
+@pytest.fixture
+def committed_results(monkeypatch):
+    """Point `results_path` at the repository's own committed results.
+
+    These two tests read what the repository ships. Reading the ambient setting
+    made them depend on whichever earlier test last pointed it somewhere else,
+    and in a full run that is a tmp directory holding nothing.
+    """
+    monkeypatch.setattr(settings, "results_path", str(ROOT / "results"))
 
 
 # ── get_manifest ──
@@ -317,7 +331,9 @@ async def test_get_manifest_raises_when_the_result_file_is_missing(tmp_path, mon
 
 
 @pytest.mark.asyncio
-async def test_get_manifest_on_a_legacy_file_reports_an_empty_manifest_not_a_fabricated_one():
+async def test_get_manifest_on_a_legacy_file_reports_an_empty_manifest_not_a_fabricated_one(
+    committed_results,
+):
     """The committed top-level aws-compute results predate manifests (schema v1)."""
     result = await mcp_server.server.call_tool(
         "get_manifest", {"corpus": "aws-compute", "strategy": "bm25"}
@@ -369,3 +385,60 @@ async def test_export_evidence_refuses_an_invalid_run_id(tmp_path, monkeypatch):
         await mcp_server.server.call_tool(
             "export_evidence", {"corpus": "demo", "run_id": "../../etc"}
         )
+
+
+# ── the stdio stream and the job registry ──
+
+
+@pytest.mark.asyncio
+async def test_the_runner_never_writes_to_the_protocol_stream(monkeypatch, capsys):
+    """stdout carries JSON-RPC on a stdio server, and the runner prints to it.
+
+    Its run id, its progress and its summary landed between messages, and the
+    client then failed to parse the stream.
+    """
+
+    async def noisy_run(**kwargs):
+        print("Run ID: deadbeef")
+        return "deadbeef"
+
+    monkeypatch.setattr("kb_arena.benchmark.runner.run_benchmark", noisy_run)
+    monkeypatch.setattr(settings, "results_path", str(ROOT / "results"))
+
+    started = await mcp_server.server.call_tool(
+        "start_benchmark", {"corpus": "aws-compute", "strategy": "bm25"}
+    )
+    job_id = _content(started)["job_id"]
+    await mcp_server._TASKS[job_id]
+
+    captured = capsys.readouterr()
+    assert "Run ID" not in captured.out
+    assert "Run ID" in captured.err
+    assert mcp_server._JOBS[job_id].status == "completed"
+
+
+def test_the_registry_cap_never_forgets_a_running_job():
+    """Evicting by age alone made a live benchmark unreachable while it ran on."""
+    from datetime import UTC, datetime
+
+    from kb_arena.mcp.server import _JOBS, _MAX_JOBS, _Job, _trim_jobs
+
+    prior = dict(_JOBS)
+    _JOBS.clear()
+    try:
+        now = datetime.now(UTC).isoformat()
+        _JOBS["live"] = _Job(
+            job_id="live", corpus="c", strategy="bm25", status="running", created_at=now
+        )
+        for i in range(_MAX_JOBS + 5):
+            _JOBS[f"done{i}"] = _Job(
+                job_id=f"done{i}", corpus="c", strategy="bm25", status="completed", created_at=now
+            )
+
+        _trim_jobs()
+
+        assert "live" in _JOBS
+        assert len(_JOBS) == _MAX_JOBS
+    finally:
+        _JOBS.clear()
+        _JOBS.update(prior)

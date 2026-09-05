@@ -37,7 +37,7 @@ dependencies = [
     "fastapi==0.141.1",
     "starlette==1.4.1",
     "uvicorn[standard]==0.34.0",
-    "sse-starlette==2.2.1",
+    "sse-starlette==3.4.10",
     "openai==2.24.0",
     "tiktoken==0.14.0",
     "httpx==0.28.1",
