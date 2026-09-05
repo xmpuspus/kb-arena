@@ -10,6 +10,7 @@ they take a plain MagicMock/fake table.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 import types
 from dataclasses import dataclass, field
@@ -192,15 +193,18 @@ def test_lancedb_upsert_and_delete_forward_the_ids(lancedb_store):
 
 
 def test_vectorstores_import_pulls_no_optional_sdk():
-    """Every optional adapter's SDK import is lazy — confirms I-02's own rule."""
-    for module_name in ("qdrant_client", "psycopg", "lancedb"):
-        sys.modules.pop(module_name, None)
+    """Every optional adapter's SDK import is lazy — confirms I-02's own rule.
 
-    import importlib
-
-    import kb_arena.vectorstores as vectorstores_module
-
-    importlib.reload(vectorstores_module)
-
-    loaded = {name.split(".")[0] for name in sys.modules}
-    assert loaded.isdisjoint({"qdrant_client", "psycopg", "lancedb"})
+    Runs in a fresh interpreter. This test file's own module-level imports
+    already put kb_arena.vectorstores in this process's sys.modules, so a
+    reload here would hit import caches and prove nothing.
+    """
+    code = (
+        "import kb_arena.vectorstores, sys; "
+        "print(sorted(m for m in sys.modules "
+        "if m.split('.')[0] in {'qdrant_client', 'psycopg', 'lancedb'}))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip() == "[]"
