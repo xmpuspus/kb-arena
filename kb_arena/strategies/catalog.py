@@ -21,6 +21,11 @@ class StrategySpec:
     experimental: bool = False
     optional_extra: str | None = None
     required_modules: tuple[str, ...] = ()
+    # Whether the strategy calls the embedding provider to answer a query. BM25
+    # is lexical and calls nothing, so a bm25-only run needs no API key. The
+    # command used to ask for one anyway, which made the documented
+    # "needs no API key" run fail on a fresh checkout.
+    needs_embeddings: bool = True
 
 
 STRATEGY_CATALOG: tuple[StrategySpec, ...] = (
@@ -31,7 +36,7 @@ STRATEGY_CATALOG: tuple[StrategySpec, ...] = (
     StrategySpec("hybrid", "Hybrid", "hybrid"),
     StrategySpec("raptor", "RAPTOR", "hierarchical"),
     StrategySpec("pageindex", "PageIndex", "hierarchical"),
-    StrategySpec("bm25", "BM25", "lexical"),
+    StrategySpec("bm25", "BM25", "lexical", needs_embeddings=False),
     StrategySpec(
         "rerank_vector",
         "Rerank Vector",
@@ -110,3 +115,16 @@ def public_catalog(loaded_names: Collection[str]) -> list[dict]:
             record.update(status="unavailable", unavailable_reason="Not loaded by this runtime.")
         records.append(record)
     return records
+
+
+def selection_needs_embeddings(selection: str) -> bool:
+    """Whether a `--strategies` selection calls the embedding provider.
+
+    `all` and any unknown name count as needing embeddings, because refusing a
+    key the run turns out to need fails later and deeper than refusing it here.
+    """
+    names = [n.strip() for n in (selection or "all").split(",") if n.strip()]
+    if not names or "all" in names:
+        return True
+    by_name = {spec.name: spec for spec in STRATEGY_CATALOG}
+    return any(name not in by_name or by_name[name].needs_embeddings for name in names)

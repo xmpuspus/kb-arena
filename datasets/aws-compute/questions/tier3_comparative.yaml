@@ -2,6 +2,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "How do Lambda, ECS Fargate, and EKS Fargate compare for running containerized microservices?"
   ground_truth:
     answer: >
@@ -36,6 +38,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What are the differences between EC2 Reserved Instances, Savings Plans, and Spot Instances for cost optimization?"
   ground_truth:
     answer: >
@@ -72,6 +76,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "How do ALB, NLB, and Gateway Load Balancer (GWLB) differ in use case and architecture?"
   ground_truth:
     answer: >
@@ -108,6 +114,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "How do ECS and EKS compare for container orchestration in a greenfield microservices project?"
   ground_truth:
     answer: >
@@ -143,6 +151,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "How does Lambda Standard Workflow in Step Functions compare to Express Workflow?"
   ground_truth:
     answer: >
@@ -176,6 +186,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do EC2 Auto Scaling target tracking, step scaling, and predictive scaling
     policies compare in their approach to scaling?
@@ -214,6 +226,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "How do Lambda container images compare to ZIP deployment packages in terms of size limits and cold start behavior?"
   ground_truth:
     answer: >
@@ -243,13 +257,14 @@
       - "250 MB"
     must_not_claim:
       - "container images have worse cold starts for large images"
-      - "containers cannot use Lambda layers"
     max_tokens: 300
 
 - id: "compute-t3-008"
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "How do Elastic Beanstalk, App Runner, and Lightsail compare for deploying a web application with minimal operational overhead?"
   ground_truth:
     answer: >
@@ -286,6 +301,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "How do EC2 instance store (ephemeral storage) and EBS volumes differ for EC2 data persistence?"
   ground_truth:
     answer: >
@@ -321,13 +338,15 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do Lambda@Edge and CloudFront Functions compare for executing logic
     at CloudFront edge locations?
   ground_truth:
     answer: >
       CloudFront Functions: run at all 400+ CloudFront PoPs, sub-millisecond execution,
-      JavaScript only (ES5.1), maximum 10 ms CPU time and 2 MB code size, no network calls
+      JavaScript only (ES5.1), about 1 ms of CPU time and a 10 KB code size limit, no network calls
       allowed, no file system access. Triggered at viewer request and viewer response events
       only. Free tier available; very low cost (~$0.10 per million invocations). Best for:
       URL rewrites, header manipulation, simple A/B redirects, basic auth. Lambda@Edge: runs
@@ -359,6 +378,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do ECS rolling deployments and AWS CodeDeploy Blue/Green deployments
     for ECS differ in risk and rollback capabilities?
@@ -367,9 +388,13 @@
       ECS Rolling Deployment: default deployment strategy. ECS replaces tasks incrementally
       based on minimumHealthyPercent and maximumPercent settings. For example, 50/200 means
       ECS stops 50% of old tasks and starts 50% new tasks, then continues. If new tasks fail
-      health checks, deployment stops but already-replaced tasks remain on the new version —
-      rollback requires a new deployment of the previous task definition. No automatic rollback
-      to 100% old version possible mid-deployment. Fast and simple. Blue/Green with CodeDeploy:
+      health checks, the deployment stops and already-replaced tasks stay on the new version.
+      ECS gives a rolling deployment two automatic rollback paths, and both are opt-in. The
+      deployment circuit breaker rolls the service back to the last completed task definition
+      when the deployment fails its health checks. Deployment alarms roll it back when a named
+      CloudWatch alarm fires during the deployment, and they work whether or not the circuit
+      breaker is on. With neither turned on, rollback needs a new deployment of the previous
+      task definition. Fast and simple. Blue/Green with CodeDeploy:
       deploys 100% of new tasks alongside old tasks, validates with health checks, then shifts
       traffic via ALB listener rules. During the bake period both versions coexist. Automatic
       rollback repoints ALB listener rule back to Blue (old) target group instantly — old tasks
@@ -396,6 +421,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "How do AWS Batch and Step Functions compare for orchestrating complex multi-step data processing pipelines?"
   ground_truth:
     answer: >
@@ -432,6 +459,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do EC2 placement groups (Cluster, Spread, and Partition) differ in their
     hardware distribution and use case suitability?
@@ -461,14 +490,15 @@
       - "Cluster"
       - "Spread"
     must_not_claim:
-      - "Spread placement groups span multiple AZs"
-      - "Cluster groups span multiple racks"
+      - "Cluster placement groups span multiple Availability Zones"
     max_tokens: 300
 
 - id: "compute-t3-014"
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do Lambda Provisioned Concurrency and Lambda SnapStart differ as
     strategies for eliminating cold start latency?
@@ -507,6 +537,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "How do EC2 Classic Load Balancer, ALB, and NLB differ and when was Classic Load Balancer deprecated?"
   ground_truth:
     answer: >

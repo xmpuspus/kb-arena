@@ -19,6 +19,11 @@ from kb_arena.benchmark.atomic import atomic_write_text
 
 BUNDLE_VERSION = 1
 
+# A manifest that carries a fingerprint nobody can read. It is not a question
+# set, and it is not absence either, so it needs a name of its own. Dropping it
+# let a valid sibling manifest stand in for a malformed one.
+UNREADABLE_QUESTION_SET = "<unreadable>"
+
 
 def _python_identity() -> dict:
     return {
@@ -46,6 +51,9 @@ def build_bundle(
     review: dict,
     corpus: str,
     seed: int,
+    question_set_fingerprint: str = "",
+    review_question_set: str = "",
+    review_split: str = "all",
     notes: str = "",
 ) -> dict:
     """The record that travels with a committed run.
@@ -53,6 +61,13 @@ def build_bundle(
     `command` is what a reader types to repeat this. `review` is the verdict
     from `review_summary`, and it decides whether the bundle calls itself
     citable evidence or a development signal.
+
+    The bundle records two question sets, because they are two different
+    facts. `question_set_fingerprint` is the set the RUN measured, read from the
+    run's own manifest. `review_question_set` is the set the review verdict ran
+    over, hashed from the corpus at bundle time, and `review_split` says which
+    split that was. A bundle that records only one of them proves nothing: the
+    earlier version copied the run's value and then compared it to the run.
     """
     return {
         "bundle_version": BUNDLE_VERSION,
@@ -67,6 +82,9 @@ def build_bundle(
             "platform": platform.platform(),
         },
         "seed": seed,
+        "question_set_fingerprint": question_set_fingerprint,
+        "review_question_set": review_question_set,
+        "review_split": review_split,
         "review": review,
         # The claim the bundle makes about itself, stated rather than implied.
         "citable": bool(review.get("publishable")),
@@ -100,6 +118,19 @@ def check_bundle(bundle: dict, root: Path) -> list[str]:
     if not bundle.get("results"):
         problems.append("no result files, so the bundle describes nothing")
     review = bundle.get("review") or {}
+    if bundle.get("citable") and not bundle.get("question_set_fingerprint"):
+        problems.append(
+            "calls itself citable and names no question set, so nobody can tell "
+            "whether the review covers the questions the run scored"
+        )
+    for name in bundle.get("results") or []:
+        problem = _question_set_problem(bundle, root / name, name)
+        if problem:
+            problems.append(problem)
+    if bundle.get("citable"):
+        live = _live_review(bundle.get("corpus"), bundle.get("review_split"))
+        problems.extend(_measurement_problems(bundle, root, live))
+        problems.extend(_review_scope_problems(bundle, live))
     if bundle.get("citable") and not review.get("publishable"):
         problems.append("calls itself citable while its own review verdict refuses")
     if not bundle.get("citable") and not bundle.get("why_not_citable"):
@@ -109,6 +140,325 @@ def check_bundle(bundle: dict, root: Path) -> list[str]:
         if not env.get(field):
             problems.append(f"environment records no {field}")
     return problems
+
+
+def _manifests_in(path: Path) -> list | None:
+    """Every manifest entry a result file carries, or None when it carries none.
+
+    An entry that is not a dict stays in the list. It is a broken manifest, and
+    the readers below turn it into the unreadable marker.
+    """
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    # This function discards nothing, and that is the point. Three review
+    # rounds found the same defect at three depths: a bad fingerprint dropped,
+    # then a bad entry under `manifests` dropped, then a bad `manifest` key
+    # dropped. Each time a readable sibling spoke for the whole file. A present
+    # key always contributes one entry, whatever its value, and the readers
+    # below turn a non-record entry into the unreadable marker.
+    candidates: list = []
+    if "manifests" in data:
+        manifests = data["manifests"]
+        if isinstance(manifests, dict):
+            candidates.extend(manifests.values())
+        else:
+            candidates.append(manifests)
+    if "manifest" in data:
+        candidates.append(data["manifest"])
+    if not candidates:
+        return None
+    return candidates
+
+
+def question_sets_in(path: Path) -> list[str] | None:
+    """The question sets a result file says it measured, or None when it cannot say.
+
+    None and an empty list are different answers. None means the file is
+    unreadable or carries no manifest, so it proves nothing about its own
+    provenance. An empty list means it carries a manifest that names no set.
+    """
+    entries = _manifests_in(path)
+    if entries is None:
+        return None
+    found = []
+    for entry in entries:
+        stored = entry.get("question_set_fingerprint") if isinstance(entry, dict) else None
+        # A fingerprint that is null, blank, or not a string names no set. The
+        # earlier version asked only whether it was truthy, so every one of
+        # those values skipped the comparison and passed as if it matched. A
+        # later version dropped the bad entry, which let a valid manifest in the
+        # same file stand in for it. Name it instead.
+        if isinstance(stored, str) and stored.strip():
+            found.append(stored)
+        else:
+            found.append(UNREADABLE_QUESTION_SET)
+    return found
+
+
+def question_splits_in(path: Path) -> list[str]:
+    """The question splits a result file says it scored, one per manifest.
+
+    An entry that names no split reads as an empty string, so a caller can see
+    that the manifests disagree instead of reading a default as a fact.
+    """
+    entries = _manifests_in(path) or []
+    out = []
+    for entry in entries:
+        stored = entry.get("question_split") if isinstance(entry, dict) else None
+        out.append(stored.strip() if isinstance(stored, str) and stored.strip() else "")
+    return out
+
+
+def _question_set_problem(bundle: dict, path: Path, name: str) -> str:
+    """Why a result file fails to back the question set the bundle names.
+
+    A review verdict is a statement about a set of questions. Editing one
+    question changes the set and leaves the verdict describing something else.
+    """
+    named = bundle.get("question_set_fingerprint")
+    citable = bool(bundle.get("citable"))
+    sets = question_sets_in(path) if path.exists() else None
+    if sets is None:
+        if citable:
+            return f"{name} carries no manifest, so it cannot say which questions it scored"
+        return ""
+    if not sets:
+        if citable:
+            return f"{name} names no question set, so its provenance is unproven"
+        return ""
+    if UNREADABLE_QUESTION_SET in sets:
+        if citable:
+            return (
+                f"{name} carries a manifest whose question set fingerprint nobody can "
+                f"read, and a readable manifest beside it does not stand in for that one"
+            )
+        return ""
+    if not named:
+        return ""
+    off = [s for s in sets if s != named]
+    if off:
+        return (
+            f"{name} measured question set {off[0]}, and the bundle names {named}. "
+            f"The review verdict describes a different set of questions."
+        )
+    return ""
+
+
+def _measurement_problems(bundle: dict, root: Path, live) -> list[str]:
+    """Why a citable bundle holds no measurement to cite.
+
+    A run whose every query failed still writes a full summary, and every mean
+    in it reads `0.0`. The review verdict says the questions are sound, which is
+    a statement about the corpus and not about the run. So a bundle over an
+    outage passed as evidence for a row of zeros.
+
+    The pair of counts also tells a whole run from a partial one. A run that
+    scored 60 of 75 read as a 75-question run, and the review verdict then
+    covered 15 questions nobody measured.
+    """
+    corpus = bundle.get("corpus")
+    if not isinstance(corpus, str) or not corpus.strip():
+        return []
+    # How many questions the review covers. Without this, a manifest that named
+    # 1 question and a summary that scored 1 agreed with each other, and the
+    # bundle still carried the fingerprint of all 75 reviewed ones.
+    reviewed = len(live[2]) if live else None
+    problems = []
+    for name in bundle.get("results") or []:
+        path = root / name
+        if not path.exists():
+            continue
+        scored, expected = measurement_in(path, corpus)
+        if expected is not None and reviewed is not None and expected != reviewed:
+            problems.append(
+                f"{name} names {expected} questions in its manifest, and the review "
+                f"covers {reviewed}. The run is not over the set the bundle claims."
+            )
+            continue
+        if scored is None:
+            problems.append(f"{name} does not say how many questions it scored")
+        elif scored == 0:
+            problems.append(f"{name} scored no questions, so it holds no measurement")
+        elif expected is None:
+            problems.append(f"{name} does not say how many questions it set out to score")
+        elif scored != expected:
+            problems.append(
+                f"{name} scored {scored} of the {expected} questions its manifest names, "
+                f"so the review verdict covers questions this run did not measure"
+            )
+    return problems
+
+
+def _live_review(corpus, split) -> tuple[str, dict, list] | None:
+    """The fingerprint, the review verdict, and the questions on disk now.
+
+    Both come from one read, because they are two statements about the same set.
+    None means the questions cannot be read, so nothing about them is provable.
+
+    The catch is broad on purpose. A checker that crashes tells a reader less
+    than one that reports a problem, and `load_questions` raises more than it
+    documents: a question file holding a bare scalar reaches `for entry in raw`
+    and raises TypeError, which no named exception here would have caught.
+    """
+    if not isinstance(corpus, str) or not corpus.strip():
+        return None
+    if not isinstance(split, str) or not split.strip():
+        return None
+    from kb_arena.benchmark.manifest import question_set_fingerprint
+    from kb_arena.benchmark.questions import load_questions
+    from kb_arena.benchmark.review import review_summary
+
+    try:
+        questions = load_questions(corpus, split=split)
+    except Exception:
+        return None
+    return question_set_fingerprint(questions), review_summary(questions), questions
+
+
+def is_bundle_result(path: Path, corpus: str) -> bool:
+    """Whether a file in a run directory is one of this corpus's measurements.
+
+    A run directory holds more than measurements. It holds the bundle, the run
+    record, a report, and a comparison whose name carries two strategies and a
+    metric. Naming those one at a time cost three rounds, and the comparison
+    ended it: its name varies, so no fixed list catches it.
+
+    Deciding by the file's contents failed too, twice. A rule that asked for a
+    manifest dropped a plugin result that was truncated, and then dropped one
+    that simply carried no manifest. Both left the bundle in silence while the
+    remaining results still read as citable.
+
+    So the rule reads the name against the corpus the bundle names. The lab
+    writes one file with one name. Every other result is `<corpus>_<strategy>`,
+    which a plugin strategy satisfies as well as a built-in one. A comparison is
+    `compare_...`, so it fails on the corpus, and it never needed a name of its
+    own.
+    """
+    if path.suffix != ".json":
+        return False
+    if path.name == "retriever_lab.json":
+        return True
+    return bool(corpus) and path.name.startswith(f"{corpus}_")
+
+
+def measurement_in(path: Path, corpus: str) -> tuple[int | None, int | None]:
+    """How many questions a result scored, and how many its manifest names.
+
+    A run whose every query failed still writes a summary, and every mean in it
+    reads `0.0`. So the scored count is the only field that tells a measurement
+    from an outage, and the pair tells a whole run from a partial one. Two
+    writers produce a result: the lab keys a strategy summary under its corpus,
+    and a benchmark result carries its scored rows. A file that states neither
+    count says nothing, and a citable bundle over it is refused.
+    """
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError, ValueError):
+        return None, None
+    if not isinstance(data, dict):
+        return None, None
+    manifests = data.get("manifests")
+    manifest = manifests.get(corpus) if isinstance(manifests, dict) else data.get("manifest")
+    expected = manifest.get("question_count") if isinstance(manifest, dict) else None
+    return _scored_in(data, corpus), expected if _is_count(expected) else None
+
+
+def _is_count(value) -> bool:
+    """A usable count is a whole number, and `True` is not one."""
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _scored_in(data: dict, corpus: str) -> int | None:
+    """The weakest strategy's scored count, because the bundle covers them all.
+
+    The first version took the maximum, and the comment beside it named the very
+    defect the maximum causes. One strategy that scored every question then
+    spoke for a sibling that scored none, and the bundle cited a table with an
+    outage in it. The weakest row decides, so a failed sibling cannot hide.
+    """
+    corpora = data.get("corpora")
+    if isinstance(corpora, dict):
+        summaries = corpora.get(corpus)
+        if not isinstance(summaries, dict) or not summaries:
+            return None
+        counts = [s.get("questions") if isinstance(s, dict) else None for s in summaries.values()]
+        if not all(_is_count(c) for c in counts):
+            return None
+        return min(counts)
+    records = data.get("records")
+    if isinstance(records, list):
+        # A record marked `is_error` is a question the run failed to score. The
+        # row exists, so counting the list counted an outage as a measurement.
+        return sum(1 for r in records if isinstance(r, dict) and not r.get("is_error"))
+    return None
+
+
+def _review_scope_problems(bundle: dict, live) -> list[str]:
+    """Why a citable bundle fails to prove that its review covers the run.
+
+    The earlier guard read the fingerprint out of the run, stored it in the
+    bundle, and then compared the stored value to the run. That compares a value
+    to a copy of itself, so it passed for every run, including a run over a
+    question set nobody reviewed. Two separate facts must agree here: the set
+    the run measured, and the set the review verdict ran over.
+
+    One case stays unprovable, and the answer is to refuse it. A `--tier 1`
+    benchmark run scores a subset and records `question_split: all`, so its
+    manifest cannot tell that subset apart from a corpus somebody edited.
+    """
+    named = bundle.get("question_set_fingerprint")
+    covered = bundle.get("review_question_set")
+    split = bundle.get("review_split")
+    if not isinstance(covered, str) or not covered.strip():
+        return ["calls itself citable and does not say which question set its review covers"]
+    if named and named != covered:
+        return [
+            f"the run measured question set {named} and the review covers {covered}. "
+            f"The review verdict describes a different set of questions. A "
+            f"tier-filtered run records no tier in its manifest, so a bundle over "
+            f"one lands here too, and refusing it is the honest answer."
+        ]
+    if live is None:
+        return [
+            f"calls itself citable, and split {split!r} of corpus "
+            f"{bundle.get('corpus')!r} cannot be read, so nobody can recheck the verdict"
+        ]
+    live_set, live_review, _ = live
+    if live_set != covered:
+        return [
+            f"the questions on disk now measure {live_set} and the review covered "
+            f"{covered}. Somebody changed a question after this bundle was written."
+        ]
+    # The set matched, which says WHICH questions. It says nothing about the
+    # verdict over them. The stored review is data in the bundle, so a hand
+    # edit that keeps `publishable` and flips every count used to pass here.
+    stored = bundle.get("review") or {}
+    if not live_review.get("publishable"):
+        return [
+            "calls itself citable, and the questions it names do not support that. "
+            + "; ".join(_live_blockers(bundle.get("corpus"), split))
+        ]
+    if stored.get("counts") != live_review.get("counts"):
+        return [
+            f"records the review counts {stored.get('counts')!r} and the questions "
+            f"it names count {live_review.get('counts')!r}"
+        ]
+    return []
+
+
+def _live_blockers(corpus, split) -> list[str]:
+    """Why the questions on disk do not support a citable claim."""
+    from kb_arena.benchmark.questions import load_questions
+    from kb_arena.benchmark.review import publication_blockers
+
+    try:
+        return publication_blockers(load_questions(corpus, split=split))
+    except Exception:
+        return ["the questions cannot be read"]
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover - thin wrapper

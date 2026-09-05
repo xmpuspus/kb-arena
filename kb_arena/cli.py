@@ -1576,9 +1576,12 @@ def retriever_lab(
     import asyncio as _asyncio
 
     from kb_arena.benchmark.retriever_lab import run_retriever_lab
+    from kb_arena.strategies.catalog import selection_needs_embeddings
 
     _validate_unit_interval(min_recall, "--min-recall")
-    _preflight(needs_embeddings=True)
+    # The ceiling diagnostic ranks over the naive_vector pool, so forcing it
+    # needs embeddings whatever the strategy selection is.
+    _preflight(needs_embeddings=selection_needs_embeddings(strategies) or bool(ceiling_k))
     exit_code = _asyncio.run(
         run_retriever_lab(corpus, strategies, top_k, min_recall, ceiling_k or None, split=split)
     )
@@ -1647,6 +1650,33 @@ def quantum_diagnostics(
     console.print(f"[green]Written {out_path}[/green]")
 
 
+def _run_scope(results, root) -> tuple[str, str]:
+    """The question set and the split the run measured, from its own result files.
+
+    Every result in one run scores the same questions, so they agree. When they
+    do not, the run is not one measurement and the bundle names no set, which
+    makes `check_bundle` refuse a citable claim over it. An unreadable
+    fingerprint counts as a disagreement for the same reason.
+    """
+    from kb_arena.benchmark.evidence import (
+        UNREADABLE_QUESTION_SET,
+        question_sets_in,
+        question_splits_in,
+    )
+
+    sets: set[str] = set()
+    splits: set[str] = set()
+    for path in results:
+        full = root / path if not path.is_absolute() else path
+        sets.update(question_sets_in(full) or [])
+        splits.update(question_splits_in(full))
+    fingerprint = ""
+    if len(sets) == 1 and UNREADABLE_QUESTION_SET not in sets:
+        fingerprint = next(iter(sets))
+    split = next(iter(splits)) if len(splits) == 1 else ""
+    return fingerprint, split
+
+
 @app.command(name="evidence")
 def evidence_command(
     corpus: str = typer.Option("", "--corpus", help="Corpus the run scored"),
@@ -1662,7 +1692,13 @@ def evidence_command(
     import json as _json
     from pathlib import Path as _Path
 
-    from kb_arena.benchmark.evidence import build_bundle, check_bundle, write_bundle
+    from kb_arena.benchmark.evidence import (
+        build_bundle,
+        check_bundle,
+        is_bundle_result,
+        write_bundle,
+    )
+    from kb_arena.benchmark.manifest import question_set_fingerprint
     from kb_arena.benchmark.questions import load_questions
     from kb_arena.benchmark.review import review_summary
     from kb_arena.settings import settings as _settings
@@ -1702,9 +1738,19 @@ def evidence_command(
     # path a reader can follow from the repository root.
     results = []
     for found in sorted(run_dir.glob("*.json")):
+        # A run directory holds more than measurements: the bundle itself, the
+        # run record, a report, and a comparison whose name varies. Naming them
+        # one at a time cost three rounds, so this asks what a result IS.
+        if not is_bundle_result(found, corpus):
+            continue
         resolved = found.resolve()
         results.append(resolved.relative_to(root) if root in resolved.parents else found)
-    questions = load_questions(corpus)
+
+    # The review verdict is a statement about a set of questions, so it has to
+    # run over the split the run scored. Reading the whole corpus here gave a
+    # holdout run a verdict over questions it never touched.
+    run_set, run_split = _run_scope(results, root)
+    questions = load_questions(corpus, split=run_split or "all")
     review = review_summary(questions)
 
     bundle = build_bundle(
@@ -1713,7 +1759,24 @@ def evidence_command(
         review=review,
         corpus=corpus,
         seed=_settings.run_seed,
+        # Two facts, not one. The first is what the run measured, read from its
+        # own manifest. The second is what the review verdict covers, hashed
+        # from the corpus now. `check_bundle` refuses a citable bundle when they
+        # differ, or when the corpus moves after this bundle is written.
+        question_set_fingerprint=run_set,
+        review_question_set=question_set_fingerprint(questions),
+        review_split=run_split or "all",
     )
+    # The write path used to announce a citable run without reading its own
+    # checker. So `kb-arena evidence` printed "citable" for a bundle that
+    # `kb-arena evidence --check` then rejected. Nothing false lands on disk now.
+    problems = check_bundle(bundle, root)
+    if problems:
+        console.print("[red]This run does not back a bundle, so none was written.[/red]")
+        for problem in problems:
+            console.print(f"[red]  {problem}[/red]")
+        raise typer.Exit(1)
+
     path = write_bundle(run_dir, bundle)
     console.print(f"[green]{path}[/green]")
     if bundle["citable"]:

@@ -30,7 +30,10 @@ THIN_EVIDENCE_RUNS = 3
 UNRECORDED_SEED = "unrecorded"
 UNRECORDED_VERSION = UNRECORDED_BUILD
 
-# Files a run writes beside its results. None of them is one.
+# Files a run writes beside its results. None of them is one. `kb-arena
+# evidence` needed the same answer and a fixed name list could not give it, so
+# it asks `evidence.is_bundle_result` what a result IS instead. This list stays
+# here because the shape check below is already loose enough to need it.
 _NON_RESULT_NAMES = frozenset(
     {
         "summary.json",
@@ -38,6 +41,7 @@ _NON_RESULT_NAMES = frozenset(
         "optimize.json",
         "run.json",
         "arena_state.json",
+        "evidence.json",
     }
 )
 

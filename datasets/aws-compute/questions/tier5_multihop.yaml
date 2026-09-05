@@ -2,6 +2,8 @@
   tier: 5
   type: multihop
   hops: 5
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How would you architect a globally distributed, highly available serverless API using
     Lambda, API Gateway, DynamoDB Global Tables, CloudFront, and Route 53 — covering
@@ -55,6 +57,8 @@
   tier: 5
   type: multihop
   hops: 4
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do EKS Pod Identity (IRSA), Karpenter node autoscaling, EBS CSI driver, and
     Kubernetes PersistentVolumeClaims work together to automatically provision
@@ -105,6 +109,8 @@
   tier: 5
   type: multihop
   hops: 4
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do Lambda, Step Functions, ECS Fargate, and SQS work together in a
     cost-optimized image processing pipeline that handles bursty traffic,
@@ -117,15 +123,17 @@
       message attributes (bucket, key, job metadata). Lambda exits after enqueuing — no
       long-running compute. SQS decouples the burst (hundreds of uploads/second) from the
       processing layer. DLQ configured on SQS for messages that fail after maxReceiveCount.
-      2. Orchestration (Step Functions Express Workflow): an EventBridge Pipe or Lambda
-      polling SQS triggers a Step Functions Express Workflow per job. The workflow handles
+      2. Orchestration (Step Functions Standard Workflow): an EventBridge Pipe or Lambda
+      polling SQS triggers a Step Functions Standard Workflow per job. Standard and not
+      Express, because this pipeline waits for the Fargate task. Express workflows support
+      neither the `.sync` service integrations nor `.waitForTaskToken`. The workflow handles
       job state: parallel preprocessing steps (thumbnail generation via Lambda for small files),
       then conditional routing — if file > 100 MB, submit to ECS Fargate; else process in
       Lambda. Choice state checks file size attribute. 3. Heavy processing (ECS Fargate):
       Step Functions invokes an ECS RunTask API call (SDK integration, no Lambda shim needed).
       Fargate task downloads the file from S3, processes it (e.g., video transcode, image
       ML inference), uploads results, then exits. Fargate scales to zero when idle — no idle
-      instance cost. Step Functions waits for task completion via the .sync:2 integration
+      instance cost. Step Functions waits for task completion via the ecs:runTask.sync integration
       (polling ECS task status) or SendTaskSuccess with task token injected as container
       environment variable. 4. Failure handling: ECS tasks that fail update Step Functions via
       SendTaskFailure. The Catch state routes to a compensation Lambda that marks the job as
@@ -157,6 +165,8 @@
   tier: 5
   type: multihop
   hops: 4
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do EC2 Auto Scaling, ALB, CloudFront, and Route 53 work together to
     implement a multi-region active-passive failover for a stateful web application,
@@ -208,6 +218,8 @@
   tier: 5
   type: multihop
   hops: 4
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do ECS Fargate, AWS App Mesh, AWS Cloud Map, and X-Ray work together
     to implement a service mesh with distributed tracing for microservices?
@@ -258,6 +270,8 @@
   tier: 5
   type: multihop
   hops: 5
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do AWS Batch, Step Functions, S3, Lambda, and EC2 Spot instances work together
     in a genomics secondary analysis pipeline — covering job submission, data staging,
@@ -271,7 +285,7 @@
       SUBMITTED. 2. Orchestration (Step Functions Standard Workflow): the state machine defines
       the pipeline DAG: alignment (BWA-MEM job) → variant calling (GATK HaplotypeCaller) →
       annotation → QC metrics. Each stage is a Task state calling the AWS Batch SubmitJob
-      API via SDK integration (.sync:2 waits for Batch job completion). Parallel Map state
+      API via the batch:submitJob.sync integration, which waits for the Batch job to finish. Parallel Map state
       submits per-chromosome variant calling jobs concurrently (up to 23 parallel Batch jobs
       per sample). Catch states handle Batch job failures: on FAILED status, Step Functions
       retries up to 2 times (for transient Spot interruptions), then routes to a notification
@@ -316,6 +330,8 @@
   tier: 5
   type: multihop
   hops: 4
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do EKS, Karpenter, Graviton instances, and Spot interruption handling work
     together to minimize compute costs for a mixed CPU-architecture Kubernetes workload?
@@ -365,6 +381,8 @@
   tier: 5
   type: multihop
   hops: 5
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do Lambda, EventBridge, SNS, SQS, and Step Functions work together to implement
     an event-driven orchestration system with fan-out, aggregation, and at-least-once

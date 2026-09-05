@@ -77,8 +77,8 @@ results/*.json
 results/run_*/
 # One named run is committed on purpose, as the reproducible example a reader
 # checks instead of trusting. Everything else a user generates stays ignored.
-!results/run_59b5b60d/
-!results/run_59b5b60d/**
+!results/run_b84eba57/
+!results/run_b84eba57/**
 !results/aws-compute_*.json
 !results/.gitkeep
 

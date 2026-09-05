@@ -23,12 +23,24 @@ def count_statuses(records) -> dict[str, int]:
     return counts
 
 
+# A scored record names the field `question_review_status`, because it carries the
+# question's status alongside its own. A `Question` names the same thing
+# `review_status`. Both reach this module: the runner passes records and
+# `kb-arena evidence` passes questions. Reading one name only made every
+# question read as `unspecified`, so a corpus whose questions were all reviewed
+# still wrote `citable: false`.
+_FIELDS = ("question_review_status", "review_status")
+
+
 def _status_of(record) -> str:
-    if isinstance(record, dict):
-        status = record.get("question_review_status", UNSPECIFIED)
-    else:
-        status = getattr(record, "question_review_status", UNSPECIFIED)
-    return status if status in STATUSES else UNSPECIFIED
+    for field in _FIELDS:
+        if isinstance(record, dict):
+            status = record.get(field)
+        else:
+            status = getattr(record, field, None)
+        if status is not None:
+            return status if status in STATUSES else UNSPECIFIED
+    return UNSPECIFIED
 
 
 def review_summary(records) -> dict:
