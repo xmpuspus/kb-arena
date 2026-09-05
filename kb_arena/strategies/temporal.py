@@ -78,11 +78,18 @@ def _document_metadata(doc: Document) -> dict[str, Any]:
 
 
 def _validate_as_of(as_of: str) -> str:
+    """The date, normalised to `YYYY-MM-DD` for the comparison below.
+
+    The comparison is lexicographic against stored `effective_date` strings,
+    which are hyphenated. `date.fromisoformat` also accepts the compact form,
+    and returning that text unchanged compared `20240601` against `2024-01-01`
+    and picked the wrong version. Normalising makes both forms answer alike.
+    """
     try:
-        date.fromisoformat(as_of)
+        parsed = date.fromisoformat(as_of)
     except ValueError as exc:
         raise ValueError(f"as_of must be an ISO date (YYYY-MM-DD), got {as_of!r}.") from exc
-    return as_of
+    return parsed.isoformat()
 
 
 def _current_versions(metas: list[dict[str, Any]], as_of: str | None) -> dict[str, tuple[int, str]]:

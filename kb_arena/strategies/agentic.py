@@ -162,6 +162,8 @@ class AgenticStrategy(Strategy):
         iterations_used = 0
         llm_calls_used = 0
         stop_reason = "judge_satisfied"
+        spent_tokens = 0
+        spent_cost = 0.0
         retrieval_ms = 0.0
 
         while True:
@@ -182,6 +184,8 @@ class AgenticStrategy(Strategy):
                 query=question, context=context, system_prompt=JUDGE_SYSTEM_PROMPT
             )
             llm_calls_used += 1
+            spent_tokens += judge_resp.total_tokens
+            spent_cost += judge_resp.cost_usd
             enough, refined_query = _parse_judge_decision(judge_resp.text)
             if enough:
                 stop_reason = "judge_satisfied"
@@ -215,8 +219,13 @@ class AgenticStrategy(Strategy):
             "stop_reason": stop_reason,
         }
 
+        # Every LLM call this query made counts, not only the last one. A judge
+        # round costs real tokens, and reporting the answer alone undercounted
+        # the run and let it walk past the cost cap.
+        spent_tokens += resp.total_tokens
+        spent_cost += resp.cost_usd
         latency_ms = self._record_metrics(
-            start, tokens=resp.total_tokens, cost=resp.cost_usd, sources=sources
+            start, tokens=spent_tokens, cost=spent_cost, sources=sources
         )
         return AnswerResult(
             answer=resp.text,
@@ -226,6 +235,6 @@ class AgenticStrategy(Strategy):
             latency_ms=latency_ms,
             retrieval_latency_ms=retrieval_ms,
             generation_latency_ms=gen_ms,
-            tokens_used=resp.total_tokens,
-            cost_usd=resp.cost_usd,
+            tokens_used=spent_tokens,
+            cost_usd=spent_cost,
         )

@@ -207,8 +207,14 @@ class LightRAGStrategy(Strategy):
         )
         sources = list(dict.fromkeys(c.doc_id for c in ranked if c.doc_id))
 
-        local_text = "\n".join(c.content for c in local_chunks) or "No local neighborhood match."
-        global_text = "\n".join(c.content for c in global_chunks) or "No global community match."
+        # The prompt reads the ranked chunks, never the two branch lists. Those
+        # lists hold more than `top_k` between them, so a model answering from
+        # a chunk the trace never reported made a claim nobody can check
+        # against the sources the run recorded.
+        kept_local = [c for c in ranked if c.metadata.get("retrieval_mode") == "local"]
+        kept_global = [c for c in ranked if c.metadata.get("retrieval_mode") == "global"]
+        local_text = "\n".join(c.content for c in kept_local) or "No local neighborhood match."
+        global_text = "\n".join(c.content for c in kept_global) or "No global community match."
         context = f"Local neighborhood:\n{local_text}\n\nGlobal community summary:\n{global_text}"
 
         llm = self._get_llm()

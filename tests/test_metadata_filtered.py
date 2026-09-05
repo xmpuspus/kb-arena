@@ -131,3 +131,27 @@ async def test_unknown_classification_raises_instead_of_falling_open(
 
     collection = mock_chroma_client.get_or_create_collection.return_value
     collection.query.assert_not_called()
+
+
+def test_a_tag_holding_the_separator_is_refused_at_write_time():
+    """A comma inside a tag split one access label into two.
+
+    A document tagged `legal,finance` then passed a `finance` filter it never
+    carried. An access rule that admits by accident is the defect this strategy
+    exists to prevent, so the writer refuses the separator.
+    """
+    from kb_arena.models.document import Document
+    from kb_arena.strategies.metadata_filtered import _tags
+
+    doc = Document(id="d1", corpus="c", title="t", source="s", metadata={"tags": ["legal,finance"]})
+
+    with pytest.raises(ValueError, match="cannot contain"):
+        _tags(doc)
+
+
+def test_an_empty_tag_string_matches_no_allowed_tag():
+    """`"".split(",")` gives `[""]`, and an empty label must match nothing."""
+    from kb_arena.strategies.metadata_filtered import _matches_tags
+
+    assert not _matches_tags({"tags_csv": ""}, frozenset({""}))
+    assert not _matches_tags({}, frozenset({"finance"}))

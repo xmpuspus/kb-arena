@@ -89,3 +89,15 @@ async def test_unparseable_as_of_raises_instead_of_falling_open(
 
     collection = mock_chroma_client.get_or_create_collection.return_value
     collection.query.assert_not_called()
+
+
+def test_a_compact_iso_date_picks_the_same_version_as_the_hyphenated_one():
+    """The comparison is lexicographic against hyphenated `effective_date` values.
+
+    `date.fromisoformat` also accepts `20240601`, and returning that text
+    unchanged compared it against `2024-01-01` and picked the December version.
+    """
+    from kb_arena.strategies.temporal import _validate_as_of
+
+    assert _validate_as_of("20240601") == "2024-06-01"
+    assert _validate_as_of("2024-06-01") == "2024-06-01"

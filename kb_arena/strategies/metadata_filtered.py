@@ -83,8 +83,27 @@ def _classification(doc: Document) -> str:
     return value if value in CLASSIFICATION_LEVELS else "restricted"
 
 
+# Chroma metadata values are scalar, so the tags travel as one string. A comma
+# separates them, so a tag holding one splits into two access labels.
+TAG_SEPARATOR = ","
+
+
 def _tags(doc: Document) -> str:
-    return ",".join(sorted(str(t) for t in doc.metadata.get("tags", [])))
+    """Every tag on a document, joined by the separator the reader splits on.
+
+    A tag holding the separator is refused rather than stored. Storing it split
+    into two access labels, so a document tagged `legal,finance` passed a
+    `finance` filter it never carried. An access rule that admits by accident
+    is the one defect this strategy exists to prevent.
+    """
+    tags = sorted(str(t) for t in doc.metadata.get("tags", []))
+    bad = [tag for tag in tags if TAG_SEPARATOR in tag]
+    if bad:
+        raise ValueError(
+            f"a tag cannot contain {TAG_SEPARATOR!r}, and {bad[0]!r} does. "
+            f"Rename it, because storing it would split one tag into two."
+        )
+    return TAG_SEPARATOR.join(tags)
 
 
 def _document_metadata(doc: Document) -> dict[str, Any]:
@@ -141,7 +160,8 @@ def _scalar_where(access_filter: AccessFilter) -> dict[str, Any] | None:
 
 
 def _matches_tags(metadata: dict[str, Any], allowed_tags: frozenset[str]) -> bool:
-    doc_tags = set(metadata.get("tags_csv", "").split(","))
+    stored = metadata.get("tags_csv", "")
+    doc_tags = {tag for tag in str(stored).split(TAG_SEPARATOR) if tag}
     return bool(doc_tags & allowed_tags)
 
 

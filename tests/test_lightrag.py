@@ -160,3 +160,41 @@ async def test_query_without_a_driver_returns_mock_data_not_a_fabricated_answer(
 
     assert result.mock is True
     assert "not connected" in result.answer.lower()
+
+
+@pytest.mark.asyncio
+async def test_the_prompt_reads_only_the_chunks_the_trace_reports():
+    """The prompt used to read both branch lists, which hold more than `top_k`.
+
+    A model answering from a chunk the trace never reported makes a claim
+    nobody can check against the sources the run recorded.
+    """
+    strategy = LightRAGStrategy(neo4j_driver=object())
+    strategy._local_retrieval = AsyncMock(return_value=_local_records())
+    strategy._global_retrieval = AsyncMock(return_value=_global_records())
+    strategy._llm = AsyncMock()
+    strategy._llm.generate = AsyncMock(
+        return_value=LLMResponse(text="answer", input_tokens=10, output_tokens=5, cost_usd=0.001)
+    )
+
+    result = await strategy.query("What is aws.lambda?", top_k=1)
+
+    reported = [chunk.content for chunk in result.retrieval.retrieved]
+    context = strategy._llm.generate.call_args.kwargs["context"]
+
+    assert len(reported) == 1
+    assert reported[0] in context
+    strategy_all = LightRAGStrategy(neo4j_driver=object())
+    strategy_all._local_retrieval = AsyncMock(return_value=_local_records())
+    strategy_all._global_retrieval = AsyncMock(return_value=_global_records())
+    strategy_all._llm = AsyncMock()
+    strategy_all._llm.generate = AsyncMock(
+        return_value=LLMResponse(text="answer", input_tokens=10, output_tokens=5, cost_usd=0.001)
+    )
+    everything = await strategy_all.query("What is aws.lambda?", top_k=10)
+    all_chunks = [chunk.content for chunk in everything.retrieval.retrieved]
+
+    dropped = [text for text in all_chunks if text not in reported]
+    assert dropped, "the fixture must hold more chunks than top_k, or this proves nothing"
+    for text in dropped:
+        assert text not in context

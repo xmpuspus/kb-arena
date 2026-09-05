@@ -1347,3 +1347,43 @@ async def test_graph_build_stream_can_reconnect_after_client_disconnect():
         api._graph_build_tasks.pop(build_id, None)
         api._graph_build_queues.pop(build_id, None)
         api._graph_build_subscribers.discard(build_id)
+
+
+def test_every_api_supported_strategy_has_a_runtime_instance(monkeypatch):
+    """`api_supported` is a promise the lifespan has to keep.
+
+    `agentic` and `lightrag` were catalogued as supported and never registered,
+    so `/chat` answered 400 unknown_strategy for both.
+    """
+    import chromadb
+    import neo4j
+
+    from kb_arena.chatbot.api import app
+    from kb_arena.llm import client as llm_client_module
+    from kb_arena.settings import settings
+    from kb_arena.strategies.catalog import STRATEGY_CATALOG
+
+    def fake_persistent_client(*args, **kwargs):
+        return MagicMock()
+
+    def no_neo4j(*args, **kwargs):
+        raise AssertionError("demo mode must not connect to Neo4j")
+
+    prior_demo_mode = settings.demo_mode
+    monkeypatch.setattr(settings, "demo_mode", True)
+    monkeypatch.setattr(chromadb, "PersistentClient", fake_persistent_client)
+    monkeypatch.setattr(neo4j.AsyncGraphDatabase, "driver", no_neo4j)
+    monkeypatch.setattr(llm_client_module, "LLMClient", lambda *a, **k: MagicMock())
+
+    try:
+        with TestClient(app):
+            registered = set(app.state.strategies)
+    finally:
+        settings.demo_mode = prior_demo_mode
+
+    # A strategy behind an optional extra registers only when the extra is
+    # installed, which is a separate promise the catalog already records.
+    optional = {spec.name for spec in STRATEGY_CATALOG if spec.optional_extra}
+    promised = {spec.name for spec in STRATEGY_CATALOG if spec.api_supported} - optional
+
+    assert promised <= registered, sorted(promised - registered)

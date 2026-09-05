@@ -97,3 +97,30 @@ def test_construction_rejects_a_budget_below_one():
         AgenticStrategy(max_iterations=0)
     with pytest.raises(ValueError):
         AgenticStrategy(max_llm_calls=0)
+
+
+@pytest.mark.asyncio
+async def test_every_llm_call_counts_toward_the_reported_cost(mock_chroma_client):
+    """Only the final answer used to count, so the cost cap undercounted a run.
+
+    A judge round costs real tokens. A run reporting the answer alone read as
+    one call, and it walked past a cap several calls ago.
+    """
+    strategy = AgenticStrategy(chroma_client=mock_chroma_client, max_iterations=2, max_llm_calls=3)
+    strategy._llm = AsyncMock()
+    strategy._llm.generate = AsyncMock(
+        side_effect=[
+            LLMResponse(
+                text=json.dumps({"enough": True, "refined_query": ""}),
+                input_tokens=60,
+                output_tokens=40,
+                cost_usd=1.0,
+            ),
+            LLMResponse(text="final answer", input_tokens=10, output_tokens=5, cost_usd=0.01),
+        ]
+    )
+
+    result = await strategy.query("What does json.loads do?")
+
+    assert result.cost_usd == pytest.approx(1.01)
+    assert result.tokens_used == 115

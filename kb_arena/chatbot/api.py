@@ -221,11 +221,13 @@ async def lifespan(app: FastAPI):
     """Initialize all services. Store on app.state. (Pattern 11 from PLAN.md)"""
     from kb_arena.chatbot.router import IntentRouter
     from kb_arena.llm.client import LLMClient
+    from kb_arena.strategies.agentic import AgenticStrategy
     from kb_arena.strategies.bm25 import BM25Strategy
     from kb_arena.strategies.contextual_vector import ContextualVectorStrategy
     from kb_arena.strategies.hybrid import HybridStrategy
     from kb_arena.strategies.hyde import HydeStrategy
     from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
+    from kb_arena.strategies.lightrag import LightRAGStrategy
     from kb_arena.strategies.metadata_filtered import MetadataFilteredStrategy
     from kb_arena.strategies.multi_query import MultiQueryStrategy
     from kb_arena.strategies.naive_vector import NaiveVectorStrategy
@@ -345,6 +347,8 @@ async def lifespan(app: FastAPI):
         "qiss": QISSStrategy(chroma_client=chroma, llm_client=llm),
         "hyde": HydeStrategy(chroma_client=chroma, llm_client=llm),
         "multi_query": MultiQueryStrategy(chroma_client=chroma, llm_client=llm),
+        "agentic": AgenticStrategy(chroma_client=chroma, llm_client=llm),
+        "lightrag": LightRAGStrategy(neo4j_driver=app.state.neo4j),
     }
 
     from kb_arena.strategies.catalog import STRATEGY_CATALOG, missing_optional_modules
