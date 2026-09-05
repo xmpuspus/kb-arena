@@ -31,6 +31,9 @@ uv.lock
 # Data stores
 neo4j_data/
 chroma_data/
+# Default local databases the vector-store adapters create under the cwd.
+.chroma/
+.lancedb/
 
 # Node / Frontend
 node_modules/

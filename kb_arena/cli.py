@@ -886,8 +886,8 @@ def run(
                 graph_available = False
                 console.print(
                     f"[yellow]build-graph failed: {exc}\n"
-                    "Continuing with vector strategies. "
-                    "Re-run with Neo4j running to enable knowledge_graph + hybrid.[/yellow]"
+                    "Continuing with vector strategies. Re-run with Neo4j running to "
+                    "enable knowledge_graph + lightrag + hybrid.[/yellow]"
                 )
                 # Graceful degradation: don't mark stage done so future --resume retries.
                 return False
@@ -929,7 +929,9 @@ def run(
     benchmark_strategies = "all"
     if not graph_available:
         benchmark_strategies = ",".join(
-            name for name in default_strategy_names() if name not in {"knowledge_graph", "hybrid"}
+            name
+            for name in default_strategy_names()
+            if name not in {"knowledge_graph", "hybrid", "lightrag"}
         )
 
     benchmark_checkpoint = {"benchmark_strategies": benchmark_strategies}
@@ -1292,7 +1294,7 @@ def health(
     if not neo4j_ok:
         console.print(
             "              [dim]Run: docker compose up neo4j -d"
-            " (needed for graph + hybrid strategies)[/dim]"
+            " (needed for graph, lightrag, and hybrid strategies)[/dim]"
         )
     if chroma_collections > 0:
         console.print(f"    ChromaDB: [green]{chroma_collections} collection(s)[/green]")

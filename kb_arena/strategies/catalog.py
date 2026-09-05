@@ -33,10 +33,50 @@ STRATEGY_CATALOG: tuple[StrategySpec, ...] = (
     StrategySpec("contextual_vector", "Contextual Vector", "dense"),
     StrategySpec("qna_pairs", "Q&A Pairs", "generated index"),
     StrategySpec("knowledge_graph", "Knowledge Graph", "graph"),
+    # A degraded (Neo4j-unreachable) query returns mock=True, and the benchmark
+    # runner treats a mock result as a failure. Unlike knowledge_graph/hybrid,
+    # lightrag stays out of `all` so a fresh checkout without Neo4j can still
+    # run the default benchmark end to end.
+    StrategySpec(
+        "lightrag",
+        "LightRAG",
+        "local + global graph",
+        default_benchmark=False,
+        experimental=True,
+    ),
     StrategySpec("hybrid", "Hybrid", "hybrid"),
     StrategySpec("raptor", "RAPTOR", "hierarchical"),
     StrategySpec("pageindex", "PageIndex", "hierarchical"),
     StrategySpec("bm25", "BM25", "lexical", needs_embeddings=False),
+    # Both push their filter into the Chroma query instead of cutting a fixed
+    # top_k after the fact, so they need embeddings the way naive_vector does.
+    # Both stay OUT of the default set. No corpus here carries the
+    # `classification`, `tags`, `document_family` or `version` fields they
+    # read, and no call site passes a filter or an `as_of` date. So under
+    # `--strategies all` today they retrieve exactly what naive_vector
+    # retrieves. The report would print three matching rows, and the arena
+    # would gain two entrants that are the baseline under another name.
+    StrategySpec(
+        "metadata_filtered",
+        "Metadata Filtered",
+        "access-aware dense",
+        default_benchmark=False,
+        # NOT api_supported. `/chat` carries no access fields, so the API could
+        # only construct this with an empty `AccessFilter`, which allows
+        # everything. A strategy whose whole purpose is refusing documents must
+        # not be reachable through a route that cannot say what to refuse. That
+        # is the fail-open shape, and an access rule that fails open is worse
+        # than no access rule, because it reads as one.
+        api_supported=False,
+        experimental=True,
+    ),
+    StrategySpec(
+        "temporal",
+        "Temporal",
+        "version-aware dense",
+        default_benchmark=False,
+        experimental=True,
+    ),
     StrategySpec(
         "rerank_vector",
         "Rerank Vector",
@@ -54,6 +94,46 @@ STRATEGY_CATALOG: tuple[StrategySpec, ...] = (
         experimental=True,
         optional_extra="quantum",
         required_modules=("qiskit", "qiskit_aer", "sklearn"),
+    ),
+    # HyDE calls the LLM once to rewrite the query, before it calls naive_vector.
+    # Multi-Query calls the LLM once per sub-query on top of that. Both add real
+    # LLM cost to every question in a benchmark run, so both stay out of the
+    # default set on purpose. That is a cost decision, not a sign of unfinished work.
+    StrategySpec("hyde", "HyDE", "query rewrite", default_benchmark=False, experimental=True),
+    StrategySpec(
+        "multi_query",
+        "Multi-Query",
+        "multi-query fusion",
+        default_benchmark=False,
+        experimental=True,
+    ),
+    StrategySpec(
+        "late_interaction",
+        "Late Interaction",
+        "token-level dense",
+        default_benchmark=False,
+        optional_extra="late-interaction",
+        required_modules=("transformers", "torch"),
+    ),
+    StrategySpec(
+        "splade",
+        "SPLADE",
+        "learned sparse",
+        default_benchmark=False,
+        optional_extra="splade",
+        required_modules=("transformers", "torch"),
+        needs_embeddings=False,
+    ),
+    # The retrieve-judge-refine loop costs several LLM calls per question, so it
+    # stays out of the default `all` benchmark: an unbounded loop over 75
+    # questions is a bill, not a benchmark run. It carries no recall claim over
+    # the other strategies yet, so it is marked experimental like qiss/sqr.
+    StrategySpec(
+        "agentic",
+        "Agentic",
+        "iterative",
+        default_benchmark=False,
+        experimental=True,
     ),
 )
 

@@ -18,6 +18,7 @@ from collections import OrderedDict
 from kb_arena.llm.client import LLMClient
 from kb_arena.models.benchmark import Constraints, GroundTruth, Score
 from kb_arena.settings import settings
+from kb_arena.telemetry import traced_span
 
 logger = logging.getLogger(__name__)
 
@@ -220,6 +221,9 @@ async def _evaluate_uncached(
     question_text: str = "",
     context_chunks: list[str] | None = None,
     reference_free: bool = False,
+    strategy: str = "",
+    corpus: str = "",
+    top_k: int | None = None,
 ) -> Score:
     """Multi-pass evaluation.
 
@@ -258,12 +262,13 @@ async def _evaluate_uncached(
     # Pass 4: LLM-as-judge (skip in reference-free mode)
     if not reference_free:
         try:
-            resp = await tracked_llm.judge(
-                answer=answer,
-                reference=ground_truth.answer,
-                system_prompt=JUDGE_SYSTEM_PROMPT,
-                question=question_text,
-            )
+            with traced_span("kb_arena.judge", strategy=strategy, corpus=corpus, top_k=top_k):
+                resp = await tracked_llm.judge(
+                    answer=answer,
+                    reference=ground_truth.answer,
+                    system_prompt=JUDGE_SYSTEM_PROMPT,
+                    question=question_text,
+                )
             parsed = _parse_verdict(resp.text)
             required = {"accuracy", "completeness", "faithfulness"}
             missing = required - parsed.keys()
@@ -334,8 +339,16 @@ async def evaluate(
     question_text: str = "",
     context_chunks: list[str] | None = None,
     reference_free: bool = False,
+    strategy: str = "",
+    corpus: str = "",
+    top_k: int | None = None,
 ) -> Score:
-    """Evaluate once per unique input and share concurrent judge work."""
+    """Evaluate once per unique input and share concurrent judge work.
+
+    strategy/corpus/top_k only label the judge span for tracing; they never
+    join cache_payload below, so two strategies that produce the same
+    answer for the same question still share one judge call.
+    """
     cache_payload = {
         "answer": answer,
         "ground_truth": ground_truth.model_dump(mode="json"),
@@ -378,6 +391,9 @@ async def evaluate(
                 question_text=question_text,
                 context_chunks=context_chunks,
                 reference_free=reference_free,
+                strategy=strategy,
+                corpus=corpus,
+                top_k=top_k,
             )
         )
         _eval_inflight[inflight_key] = task

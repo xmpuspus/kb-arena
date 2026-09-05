@@ -82,11 +82,18 @@ async def _retrieve_only(
         raise RetrievalExecutionError(
             "strategy 'pageindex' is not supported in zero-LLM Retriever Lab runs"
         )
+    # The span belongs to the shared call, not to one strategy. Placing it
+    # inside `naive_vector` gave that one strategy a `kb_arena.retrieval` span
+    # and left bm25, the graph strategies and every other one with none, so a
+    # trace of a full run showed one row of eleven.
+    from kb_arena.telemetry import traced_span
+
     try:
-        if corpus == "all":
-            result = await strategy.query(question_text, top_k=top_k)
-        else:
-            result = await strategy.query(question_text, top_k=top_k, corpus=corpus)
+        with traced_span("kb_arena.retrieval", strategy=strategy.name, corpus=corpus, top_k=top_k):
+            if corpus == "all":
+                result = await strategy.query(question_text, top_k=top_k)
+            else:
+                result = await strategy.query(question_text, top_k=top_k, corpus=corpus)
     except Exception as exc:
         raise RetrievalExecutionError(
             f"strategy {strategy.name!r} failed to retrieve for {question_text!r}: {exc}"

@@ -24,13 +24,21 @@ export const STRATEGIES = [
   "contextual_vector",
   "qna_pairs",
   "knowledge_graph",
+  "lightrag",
   "hybrid",
   "raptor",
   "pageindex",
   "bm25",
+  "metadata_filtered",
+  "temporal",
   "rerank_vector",
   "qiss",
   "sqr",
+  "hyde",
+  "multi_query",
+  "late_interaction",
+  "splade",
+  "agentic",
 ] as const;
 
 export type Strategy = (typeof STRATEGIES)[number];
@@ -40,13 +48,21 @@ export const STRATEGY_LABELS: Record<Strategy, string> = {
   contextual_vector: "Contextual Vector",
   qna_pairs: "QnA Pairs",
   knowledge_graph: "Knowledge Graph",
+  lightrag: "LightRAG",
   hybrid: "Hybrid",
   raptor: "RAPTOR",
   pageindex: "PageIndex",
   bm25: "BM25",
+  metadata_filtered: "Metadata Filtered",
+  temporal: "Temporal",
   rerank_vector: "Rerank Vector",
   qiss: "QISS (quantum)",
   sqr: "SQR (optional quantum)",
+  hyde: "HyDE",
+  multi_query: "Multi-Query",
+  late_interaction: "Late Interaction",
+  splade: "SPLADE",
+  agentic: "Agentic (experimental)",
 };
 
 export const STRATEGY_COLORS: Record<Strategy, string> = {
@@ -54,13 +70,21 @@ export const STRATEGY_COLORS: Record<Strategy, string> = {
   contextual_vector: "#3b82f6",
   qna_pairs: "#8b5cf6",
   knowledge_graph: "#22c55e",
+  lightrag: "#16a34a",
   hybrid: "#f59e0b",
   raptor: "#ef4444",
   pageindex: "#ec4899",
   bm25: "#0ea5e9",
+  metadata_filtered: "#84cc16",
+  temporal: "#06b6d4",
   rerank_vector: "#14b8a6",
   qiss: "#6366f1",
   sqr: "#a855f7",
+  hyde: "#eab308",
+  multi_query: "#06b6d4",
+  late_interaction: "#0d9488",
+  splade: "#d946ef",
+  agentic: "#d946ef",
 };
 
 export const TIER_INFO: Record<number, { label: string; description: string }> = {
@@ -100,6 +124,8 @@ export const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
     "Generates question-answer pairs at index time and retrieves against those pairs instead of only source chunks.",
   knowledge_graph:
     "Extracts entities and relationships into Neo4j, then queries the graph through intent-matched Cypher templates.",
+  lightrag:
+    "Reads the same Neo4j graph two ways: a local entity neighborhood walk and a global community summary, and labels which one produced each chunk.",
   hybrid:
     "Routes by intent between vector and graph paths, then uses reciprocal rank fusion when both paths contribute.",
   raptor:
@@ -108,12 +134,26 @@ export const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
     "Builds a hierarchical tree from document structure and uses model-guided traversal without an embedding index.",
   bm25:
     "Uses BM25 keyword matching as a keyless lexical baseline with no embeddings or graph service.",
+  metadata_filtered:
+    "Applies an access filter (tags, owner, classification, doc ID allow-list) inside retrieval, so a restricted chunk never reaches the ranked list.",
+  temporal:
+    "Prefers each document's newest version and supports an as-of date, so a superseded chunk never outranks its replacement.",
   rerank_vector:
     "Naive Vector retrieves a wide candidate pool, then a cross-encoder reranker (BGE, Cohere, or Voyage) rescores and keeps the top-k for a measured latency-quality tradeoff.",
   qiss:
     "Rescores dense candidates with a pure-NumPy state-fidelity calculation and offers an experimental multi-query mode.",
   sqr:
     "Experimental Qiskit Aer SWAP-test reranker. It is excluded from the default benchmark and needs the optional quantum dependency group.",
+  hyde:
+    "Asks the model for a hypothetical answer and embeds that instead of the question before retrieving over naive_vector.",
+  multi_query:
+    "Asks the model for several sub-queries, retrieves each over naive_vector, and fuses the ranked lists with Reciprocal Rank Fusion.",
+  late_interaction:
+    "ColBERT-style reranker that keeps one embedding per token and scores by MaxSim instead of a single pooled vector. Needs the optional late-interaction dependency group.",
+  splade:
+    "Expands a query into weighted vocabulary terms and scores against its own sparse term-weight index. Needs the optional splade dependency group.",
+  agentic:
+    "Retrieves, judges whether the context is enough, and retrieves again with a refined query, under a hard iteration and LLM-call budget. Excluded from the default benchmark because it costs several LLM calls per question.",
 };
 
 export interface StrategyCatalogRecord {
@@ -144,15 +184,47 @@ export const DEFAULT_BENCHMARK_STRATEGIES: readonly Strategy[] = [
   "qiss",
 ] as const;
 
+// This fallback is what the browser shows when `/api/strategies` cannot be
+// reached. It mirrors `kb_arena/strategies/catalog.py`, and the parity tests
+// fail when the two disagree.
+const EXPERIMENTAL_STRATEGIES: readonly Strategy[] = [
+  "metadata_filtered",
+  "temporal",
+  "qiss",
+  "sqr",
+  "hyde",
+  "multi_query",
+  "agentic",
+  "lightrag",
+] as const;
+
+const STRATEGY_EXTRAS: Partial<Record<Strategy, string>> = {
+  rerank_vector: "rerank",
+  sqr: "quantum",
+  late_interaction: "late-interaction",
+  splade: "splade",
+};
+
+const STRATEGY_REQUIRED_MODULES: Partial<Record<Strategy, string[]>> = {
+  rerank_vector: ["sentence_transformers"],
+  sqr: ["qiskit", "qiskit_aer", "sklearn"],
+  late_interaction: ["transformers", "torch"],
+  splade: ["transformers", "torch"],
+};
+
 export const DEFAULT_STRATEGY_CATALOG: StrategyCatalogRecord[] = STRATEGIES.map((name) => ({
   name,
   label: STRATEGY_LABELS[name],
   architecture: name === "bm25" ? "lexical" : "retrieval",
   default_benchmark: DEFAULT_BENCHMARK_STRATEGIES.includes(name),
   api_supported: true,
-  experimental: name === "qiss" || name === "sqr",
-  optional_extra: name === "sqr" ? "quantum" : null,
-  required_modules: name === "sqr" ? ["qiskit", "qiskit_aer", "sklearn"] : [],
+  // A chain of ternaries drifted from the backend every time a strategy
+  // landed, and it already misreported rerank_vector's extra as null. These
+  // two maps carry the same values `STRATEGY_CATALOG` does, so a reader sees
+  // one list per fact instead of a condition per strategy.
+  experimental: EXPERIMENTAL_STRATEGIES.includes(name),
+  optional_extra: STRATEGY_EXTRAS[name] ?? null,
+  required_modules: STRATEGY_REQUIRED_MODULES[name] ?? [],
   status: "unknown",
   unavailable_reason: "Runtime status unavailable.",
 }));

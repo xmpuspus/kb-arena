@@ -10,6 +10,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
 from kb_arena.models.document import Document
 from kb_arena.settings import settings
+from kb_arena.strategies.agentic import AgenticStrategy
 from kb_arena.strategies.bm25 import BM25Strategy
 from kb_arena.strategies.catalog import (
     STRATEGY_CATALOG,
@@ -18,7 +19,12 @@ from kb_arena.strategies.catalog import (
 )
 from kb_arena.strategies.contextual_vector import ContextualVectorStrategy
 from kb_arena.strategies.hybrid import HybridStrategy
+from kb_arena.strategies.hyde import HydeStrategy
 from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
+from kb_arena.strategies.late_interaction import LateInteractionStrategy
+from kb_arena.strategies.lightrag import LightRAGStrategy
+from kb_arena.strategies.metadata_filtered import MetadataFilteredStrategy
+from kb_arena.strategies.multi_query import MultiQueryStrategy
 from kb_arena.strategies.naive_vector import NaiveVectorStrategy
 from kb_arena.strategies.pageindex import PageIndexStrategy
 from kb_arena.strategies.qna_pairs import QnAPairStrategy
@@ -26,6 +32,8 @@ from kb_arena.strategies.quantum.qiss import QISSStrategy
 from kb_arena.strategies.quantum.sqr import SQRStrategy
 from kb_arena.strategies.raptor import RaptorStrategy
 from kb_arena.strategies.rerank_vector import RerankVectorStrategy
+from kb_arena.strategies.splade import SPLADEStrategy
+from kb_arena.strategies.temporal import TemporalStrategy
 
 logger = logging.getLogger(__name__)
 _console = Console()
@@ -35,13 +43,21 @@ STRATEGY_REGISTRY: dict[str, type] = {
     "contextual_vector": ContextualVectorStrategy,
     "qna_pairs": QnAPairStrategy,
     "knowledge_graph": KnowledgeGraphStrategy,
+    "lightrag": LightRAGStrategy,
     "hybrid": HybridStrategy,
     "raptor": RaptorStrategy,
     "pageindex": PageIndexStrategy,
     "bm25": BM25Strategy,
+    "metadata_filtered": MetadataFilteredStrategy,
+    "temporal": TemporalStrategy,
     "rerank_vector": RerankVectorStrategy,
     "qiss": QISSStrategy,
     "sqr": SQRStrategy,
+    "hyde": HydeStrategy,
+    "multi_query": MultiQueryStrategy,
+    "late_interaction": LateInteractionStrategy,
+    "splade": SPLADEStrategy,
+    "agentic": AgenticStrategy,
 }
 
 # Optional-dependency strategies: name -> (modules required, extra name).
@@ -101,20 +117,34 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
         "raptor",
         "pageindex",
         "bm25",
+        "metadata_filtered",
+        "temporal",
         "qiss",
         "sqr",
+        "hyde",
+        "multi_query",
+        "splade",
     )
     if strategy != "all" and strategy not in buildable_names:
         raise ValueError(f"Unknown build strategy: {strategy}")
-    target_names = buildable_names if strategy == "all" else (strategy,)
+    # splade builds its own term-weight index and needs the optional [splade]
+    # extra to do it, unlike qiss/sqr, which only rebuild the naive_vector
+    # collection they wrap. So "all" must not fail on a plain install, splade
+    # is a build target only when a caller names it explicitly.
+    all_names = tuple(name for name in buildable_names if name != "splade")
+    target_names = all_names if strategy == "all" else (strategy,)
 
     chroma_strategies = {
         "naive_vector",
         "contextual_vector",
         "qna_pairs",
         "raptor",
+        "metadata_filtered",
+        "temporal",
         "qiss",
         "sqr",
+        "hyde",
+        "multi_query",
     }
     chroma = (
         chromadb.PersistentClient(path=settings.chroma_path)
@@ -139,8 +169,8 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
         instance._llm = llm
         return instance
 
-    # qiss/sqr build through the naive_vector collection they wrap, so building
-    # them is idempotent with the dense index.
+    # qiss/sqr/hyde/multi_query build through the naive_vector collection they
+    # wrap, so building them is idempotent with the dense index.
     factories = {
         "naive_vector": lambda: NaiveVectorStrategy(chroma_client=chroma),
         "contextual_vector": _contextual,
@@ -148,8 +178,13 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
         "raptor": _raptor,
         "pageindex": _pageindex,
         "bm25": BM25Strategy,
+        "metadata_filtered": lambda: MetadataFilteredStrategy(chroma_client=chroma),
+        "temporal": lambda: TemporalStrategy(chroma_client=chroma),
         "qiss": lambda: QISSStrategy(chroma_client=chroma),
         "sqr": lambda: SQRStrategy(chroma_client=chroma),
+        "hyde": lambda: HydeStrategy(chroma_client=chroma),
+        "multi_query": lambda: MultiQueryStrategy(chroma_client=chroma),
+        "splade": SPLADEStrategy,
     }
     targets = {name: factories[name]() for name in target_names}
 
@@ -234,26 +269,39 @@ def get_strategy(name: str):
                 f"Install with: {optional_install_command(spec)}"
             )
 
-    # No-dependency strategies
-    if name in ("pageindex", "bm25"):
+    # No-dependency strategies. splade builds its own term-weight index, so it
+    # needs no ChromaDB client, the same as bm25.
+    if name in ("pageindex", "bm25", "splade"):
         return cls()
 
-    # Vector-backed strategies need a ChromaDB client. qiss/sqr wrap naive_vector
-    # for coarse retrieval (like rerank_vector) and rerank the same Chroma index.
+    # Vector-backed strategies need a ChromaDB client. qiss/sqr/hyde/multi_query
+    # wrap naive_vector (like rerank_vector) and query the same Chroma index.
+    # Vector-backed strategies need a ChromaDB client. qiss/sqr/late_interaction
+    # wrap naive_vector for coarse retrieval (like rerank_vector) and rerank the
+    # same Chroma index.
+    # Vector-backed strategies need a ChromaDB client. qiss/sqr/agentic wrap
+    # naive_vector for coarse retrieval (like rerank_vector) and read or rerank
+    # the same Chroma index.
     if name in (
         "naive_vector",
         "contextual_vector",
         "qna_pairs",
         "raptor",
+        "metadata_filtered",
+        "temporal",
         "rerank_vector",
         "qiss",
         "sqr",
+        "hyde",
+        "multi_query",
+        "late_interaction",
+        "agentic",
     ):
         chroma = chromadb.PersistentClient(path=settings.chroma_path)
         return cls(chroma_client=chroma)
 
     # Graph-backed strategies need an async Neo4j driver
-    if name == "knowledge_graph":
+    if name in ("knowledge_graph", "lightrag"):
         try:
             driver = AsyncGraphDatabase.driver(
                 settings.neo4j_uri,
@@ -293,13 +341,21 @@ __all__ = [
     "ContextualVectorStrategy",
     "QnAPairStrategy",
     "KnowledgeGraphStrategy",
+    "LightRAGStrategy",
     "HybridStrategy",
     "RaptorStrategy",
     "PageIndexStrategy",
     "BM25Strategy",
+    "MetadataFilteredStrategy",
+    "TemporalStrategy",
     "RerankVectorStrategy",
     "QISSStrategy",
     "SQRStrategy",
+    "HydeStrategy",
+    "MultiQueryStrategy",
+    "LateInteractionStrategy",
+    "SPLADEStrategy",
+    "AgenticStrategy",
     "build_vector_indexes",
     "load_documents",
 ]

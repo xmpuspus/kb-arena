@@ -1,0 +1,10 @@
+{
+  "corpus": "aws-compute",
+  "metric": "mean_recall_at_k",
+  "top_k": 5,
+  "strategies": {
+    "bm25": 0.274582
+  },
+  "recorded_from": "kb-arena 0.10.0, kb-arena retriever-lab --corpus aws-compute --strategies bm25 --top-k 5 --min-recall 0, 75 questions",
+  "note": "CI regression reference only. Not a published benchmark claim."
+}

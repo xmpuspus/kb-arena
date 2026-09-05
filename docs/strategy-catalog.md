@@ -45,6 +45,20 @@ vector-free comparison for well-structured documents.
 Ranks by lexical term matching without embeddings. It is the keyless baseline and often remains
 competitive when identifiers and exact terms dominate.
 
+### Metadata Filtered
+
+Applies an access filter, tags, owner, classification, and a document ID allow-list, inside
+retrieval. Scalar fields go into the Chroma `where` clause. Tags go into a Python check against an
+over-fetched candidate pool, then the result is cut to top_k. A chunk outside the filter never
+reaches the ranked list. An unknown classification level raises instead of allowing or denying
+everything by guess.
+
+### Temporal
+
+Prefers the newest eligible version of each document family and accepts an as-of date. Once a
+newer eligible version is present among the candidates, every chunk from an older version is
+dropped, so a superseded chunk cannot outrank its replacement. An unparseable as-of date raises.
+
 ### Rerank Vector
 
 Retrieves a wider dense candidate set and rescores it with BGE, Cohere, or Voyage. Compare the
@@ -56,6 +70,15 @@ installing the selected backend.
 
 ## Experimental methods
 
+### LightRAG
+
+Reads the same Neo4j graph as Knowledge Graph, through two paths at once. Local retrieval walks the
+one-hop neighborhood of entities matched in the question. Global retrieval groups fulltext-matched
+candidates into a community by their shared neighbor links, then reads the community's member names
+and descriptions as a summary. Every retrieved chunk records which path produced it. It is excluded
+from the default benchmark because a degraded (Neo4j-unreachable) result fails the benchmark run,
+unlike knowledge_graph and hybrid, which still carry that same risk in the default set today.
+
 ### QISS
 
 Reranks dense candidates with pure NumPy state-fidelity calculations. Its single-query score is a
@@ -65,6 +88,38 @@ monotonic transform of cosine similarity, so a recall gain needs a separate mult
 
 Reduces embeddings to a power-of-two dimension, amplitude-encodes them, and runs a Qiskit Aer
 SWAP-test circuit. It is excluded from the default benchmark and needs `kb-arena[quantum]`.
+
+### HyDE
+
+Asks the LLM for a hypothetical answer to the question, then retrieves Naive Vector's index with
+that hypothetical answer instead of the question text. It is excluded from the default benchmark
+because the rewrite step adds one LLM call per query.
+
+### Multi-Query
+
+Asks the LLM for several sub-queries, retrieves Naive Vector's index once per sub-query, and fuses
+the ranked chunk lists with Reciprocal Rank Fusion. It is excluded from the default benchmark
+because each sub-query adds an LLM call per query.
+### Late Interaction
+
+Keeps one embedding per token instead of one pooled vector per passage, then reranks Naive Vector
+candidates by MaxSim: for every query token, the best cosine match among the passage tokens,
+averaged across query tokens. It is excluded from the default benchmark and needs
+`kb-arena[late-interaction]`.
+
+### SPLADE
+
+Expands a query and each indexed passage into a weighted set of vocabulary terms, then scores a
+query against a passage by the dot product of their term weights. It builds and reads its own
+term-weight index, so it needs no embedding provider. It is excluded from the default benchmark and
+needs `kb-arena[splade]`.
+### Agentic
+
+Retrieves, then asks the LLM whether the gathered context already answers the question, and
+retrieves again with a refined query when it does not. A maximum iteration count and a maximum
+LLM-call count are set at construction time and enforced every round, so the loop always stops even
+when the judge keeps asking for another round. It is excluded from the default benchmark because it
+costs several LLM calls per question.
 
 The experiments answer research questions about operators and overhead. They do not define KB
 Arena's main product category.

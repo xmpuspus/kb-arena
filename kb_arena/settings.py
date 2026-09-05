@@ -94,6 +94,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "text"  # text | json
 
+    # OpenTelemetry tracing (needs the `otel` extra). Off by default, so the
+    # core install and every code path work with the extra absent. See
+    # kb_arena/telemetry.py for what a span may and may not carry.
+    otel_enabled: bool = False
+
     # Server
     host: str = "127.0.0.1"
     port: int = 8000
@@ -144,6 +149,18 @@ class Settings(BaseSettings):
     sqr_fanout: int = 4
     sqr_n_qubits: int = 4  # amplitude-encode into 2^n_qubits dims (4 -> 16)
     sqr_shots: int = 0  # 0 = exact statevector (benchmark default); >0 = sampled SWAP test
+
+    # Multi-Query (#13) — sub-queries to ask the LLM for before fusing with RRF.
+    multi_query_n: int = 3
+    # Strategy 12: late interaction, a ColBERT-style MaxSim reranker over
+    # naive_vector candidates. Needs the optional [late-interaction] extra.
+    late_interaction_fanout: int = 4
+    late_interaction_model: str = "colbert-ir/colbertv2.0"
+
+    # Strategy 13: SPLADE, learned sparse retrieval over its own term-weight
+    # index. Needs the optional [splade] extra.
+    splade_model: str = "naver/splade-cocondenser-ensembledistil"
+    splade_top_terms: int = 256
 
     # Paths
     # The seed a run records and sets. Two runs that differ only by seed are
