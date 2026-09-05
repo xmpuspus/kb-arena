@@ -7,10 +7,23 @@ it in and `import kb_arena.vectorstores` stays free of it.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 from kb_arena.vectorstores.base import VectorMatch, VectorStore
+
+# Qdrant takes an unsigned integer or a UUID as a point id, and a chunk id is
+# neither. Hashing the chunk id into a UUID keeps the mapping deterministic
+# across processes, and the payload carries the original so a caller reads back
+# the id it wrote. Passing the chunk id straight through raised
+# "Point id c1 is not a valid UUID" against a real server.
+_POINT_NAMESPACE = uuid.UUID("6f0f4d8e-9c4a-5a2b-9a2e-4b6b8f2c1d70")
+_CHUNK_ID_FIELD = "chunk_id"
+
+
+def _point_id(chunk_id: str) -> str:
+    return str(uuid.uuid5(_POINT_NAMESPACE, chunk_id))
 
 
 def _install_hint() -> str:
@@ -68,9 +81,13 @@ class QdrantVectorStore(VectorStore):
 
         points = [
             PointStruct(
-                id=ids[i],
+                id=_point_id(ids[i]),
                 vector=list(embeddings[i]),
-                payload={"document": documents[i], **dict(metadatas[i])},
+                payload={
+                    "document": documents[i],
+                    _CHUNK_ID_FIELD: ids[i],
+                    **dict(metadatas[i]),
+                },
             )
             for i in range(len(ids))
         ]
@@ -91,16 +108,23 @@ class QdrantVectorStore(VectorStore):
         )
         return [
             VectorMatch(
-                id=str(point.id),
+                id=str(point.payload.get(_CHUNK_ID_FIELD) or point.id),
                 document=str(point.payload.get("document", "")),
-                metadata={key: value for key, value in point.payload.items() if key != "document"},
+                metadata={
+                    key: value
+                    for key, value in point.payload.items()
+                    if key not in ("document", _CHUNK_ID_FIELD)
+                },
                 distance=float(point.score),
             )
             for point in response.points
         ]
 
     def delete(self, ids: Sequence[str]) -> None:
-        self._client.delete(collection_name=self._collection_name, points_selector=list(ids))
+        self._client.delete(
+            collection_name=self._collection_name,
+            points_selector=[_point_id(chunk_id) for chunk_id in ids],
+        )
 
     def count(self, where: Mapping[str, str] | None = None) -> int:
         result = self._client.count(

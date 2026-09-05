@@ -23,7 +23,13 @@ import httpx
 from pydantic import BaseModel, Field, ValidationError
 
 from kb_arena.exceptions import RetrieverContractError
-from kb_arena.ingest.parsers.web import SSRFBlocked, _PinnedClient, _validate_url
+from kb_arena.ingest.parsers.web import (
+    ResponseTooLargeError,
+    SSRFBlocked,
+    _PinnedClient,
+    _read_capped,
+    _validate_url,
+)
 from kb_arena.models.document import Document
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.strategies.base import AnswerResult, Strategy, validate_top_k
@@ -126,11 +132,18 @@ class HTTPRetrieverStrategy(Strategy):
                     f"{self.endpoint_url}: total time budget of {self.total_budget_s}s "
                     "is already spent"
                 )
-            return min(self.request_timeout_s, remaining)
+            allowance = min(self.request_timeout_s, remaining)
+            # Reserve it now. Reading the remainder and charging it later let
+            # two concurrent callers each see one whole second of a one-second
+            # budget, and the pair then spent two. Strategy instances are
+            # shared across requests, so this is the ordinary case.
+            self._spent_s += allowance
+            return allowance
 
-    def _charge_budget(self, elapsed_s: float) -> None:
+    def _charge_budget(self, elapsed_s: float, allowance: float) -> None:
+        """Settle a reservation against the time the call actually took."""
         with self._spend_lock:
-            self._spent_s += elapsed_s
+            self._spent_s += elapsed_s - allowance
 
     def _fetch_chunks(self, question: str, top_k: int, corpus: str) -> list[RetrievedChunkPayload]:
         """POST the query, validate the reply, and return its chunks.
@@ -147,20 +160,33 @@ class HTTPRetrieverStrategy(Strategy):
         try:
             client.pins[host] = _validate_url(self.endpoint_url)
             payload = RetrieverQueryRequest(query=question, top_k=top_k, corpus=corpus)
-            response = client.post(
+            # `client.post` buffers and decompresses the whole body before any
+            # check runs, so a gzip bomb behind a compliant-looking endpoint
+            # exhausts memory for a `top_k` of 1. `send` with `stream=True`
+            # hands back the response before the body, and `_read_capped`
+            # counts raw and decoded bytes on the way in. Same cap, same
+            # reader the web fetcher already uses.
+            request = client.build_request(
+                "POST",
                 self.endpoint_url,
                 json=payload.model_dump(),
                 timeout=request_timeout,
-                follow_redirects=False,
             )
+            response = client.send(request, stream=True, follow_redirects=False)
+            try:
+                response._content = _read_capped(response, self.endpoint_url)
+            finally:
+                response.close()
         except SSRFBlocked:
             raise
+        except ResponseTooLargeError as exc:
+            raise RetrieverContractError(f"{self.endpoint_url}: {exc}") from exc
         except httpx.TimeoutException as exc:
             raise RetrieverContractError(
                 f"{self.endpoint_url}: no reply within {request_timeout:.1f}s"
             ) from exc
         finally:
-            self._charge_budget(time.perf_counter() - request_start)
+            self._charge_budget(time.perf_counter() - request_start, request_timeout)
 
         if response.status_code >= 300:
             raise RetrieverContractError(

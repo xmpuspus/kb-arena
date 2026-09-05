@@ -13,7 +13,9 @@ from __future__ import annotations
 import subprocess
 import sys
 import types
+import uuid
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -155,15 +157,47 @@ def test_chroma_upsert_and_delete_forward_the_ids(chroma_store):
     assert collection.delete.call_args.kwargs["ids"] == ["c1", "c2"]
 
 
-def test_qdrant_upsert_and_delete_forward_the_ids(qdrant_store):
+def test_qdrant_maps_a_chunk_id_to_a_uuid_and_keeps_the_original(qdrant_store):
+    """Qdrant takes an unsigned integer or a UUID, and a chunk id is neither.
+
+    Forwarding the chunk id raised "Point id c1 is not a valid UUID" against a
+    real server. The mapping is deterministic, so two processes agree, and the
+    payload carries the original so a caller reads back the id it wrote.
+    """
+    from kb_arena.vectorstores.qdrant_store import _CHUNK_ID_FIELD, _point_id
+
     store, client = qdrant_store
 
     store.upsert(["c1"], ["doc one"], [[0.1, 0.2, 0.3]], [{"source_doc_id": "d1"}])
-    points = client.upsert.call_args.kwargs["points"]
-    assert [point.id for point in points] == ["c1"]
+    [point] = client.upsert.call_args.kwargs["points"]
+
+    assert point.id == _point_id("c1") != "c1"
+    assert uuid.UUID(point.id).version == 5
+    assert point.payload[_CHUNK_ID_FIELD] == "c1"
 
     store.delete(["c1", "c2"])
-    assert client.delete.call_args.kwargs["points_selector"] == ["c1", "c2"]
+    assert client.delete.call_args.kwargs["points_selector"] == [
+        _point_id("c1"),
+        _point_id("c2"),
+    ]
+
+
+def test_a_qdrant_match_reads_back_the_chunk_id_the_caller_wrote(qdrant_store):
+    """The uuid is storage, and the caller never sees it."""
+    from kb_arena.vectorstores.qdrant_store import _CHUNK_ID_FIELD, _point_id
+
+    store, client = qdrant_store
+    point = SimpleNamespace(
+        id=_point_id("c1"),
+        payload={"document": "doc one", _CHUNK_ID_FIELD: "c1", "source_doc_id": "d1"},
+        score=0.25,
+    )
+    client.query_points.return_value = SimpleNamespace(points=[point])
+
+    [match] = store.query([0.1, 0.2, 0.3], top_k=1)
+
+    assert match.id == "c1"
+    assert match.metadata == {"source_doc_id": "d1"}
 
 
 def test_pgvector_upsert_and_delete_forward_the_ids(pgvector_store):
