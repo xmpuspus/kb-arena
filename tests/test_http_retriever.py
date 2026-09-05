@@ -255,3 +255,16 @@ def test_the_request_asks_for_an_unencoded_body(monkeypatch):
     _strategy(handler)._fetch_chunks("q", top_k=2, corpus="all")
 
     assert seen["accept-encoding"] == "identity"
+
+
+def test_a_client_with_no_pin_table_is_refused_by_name(monkeypatch):
+    """The pin table is what dials the address the SSRF check resolved.
+
+    A plain `httpx.Client` has none, so the call crashed on the attribute
+    instead of saying it is the wrong client.
+    """
+    monkeypatch.setattr(socket, "getaddrinfo", _answers("93.184.216.34"))
+    strategy = HTTPRetrieverStrategy("https://retriever.example.com/query", client=httpx.Client())
+
+    with pytest.raises(RetrieverContractError, match="pinned client"):
+        strategy._fetch_chunks("q", top_k=1, corpus="all")

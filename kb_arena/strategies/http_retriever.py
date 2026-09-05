@@ -188,6 +188,16 @@ class HTTPRetrieverStrategy(Strategy):
 
         request_start = time.perf_counter()
         try:
+            if not hasattr(client, "pins"):
+                # The pin table is what makes the socket dial the address the
+                # SSRF check resolved. A plain `httpx.Client` has none, so it
+                # crashed on the attribute instead of saying it is the wrong
+                # client. Refusing names the requirement.
+                raise RetrieverContractError(
+                    f"{self.endpoint_url}: this strategy needs a pinned client, and the one "
+                    f"it got carries no pin table. Pass a `_PinnedClient`, or pass none and "
+                    f"let it build one."
+                )
             client.pins[host] = _validate_url(self.endpoint_url)
             payload = RetrieverQueryRequest(query=question, top_k=top_k, corpus=corpus)
             # `client.post` buffers and decompresses the whole body before any

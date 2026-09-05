@@ -294,3 +294,26 @@ def test_a_failed_pgvector_statement_leaves_the_connection_usable(pgvector_store
         store.upsert(["c1"], ["doc"], [[0.1, 0.2]], [{}])
 
     conn.rollback.assert_called_once()
+
+
+def test_a_qdrant_score_becomes_a_distance(qdrant_store):
+    """Qdrant answers a similarity, and the interface promises a distance.
+
+    Passing the score through inverted the order, so a consumer sorting
+    `VectorMatch.distance` ascending promoted the worse match.
+    """
+    from kb_arena.vectorstores.qdrant_store import _CHUNK_ID_FIELD
+
+    store, client = qdrant_store
+    client.query_points.return_value = SimpleNamespace(
+        points=[
+            SimpleNamespace(id="a", payload={"document": "near", _CHUNK_ID_FIELD: "c1"}, score=1.0),
+            SimpleNamespace(id="b", payload={"document": "far", _CHUNK_ID_FIELD: "c2"}, score=0.0),
+        ]
+    )
+
+    near, far = store.query([0.1, 0.2, 0.3], top_k=2)
+
+    assert near.distance == 0.0
+    assert far.distance == 1.0
+    assert sorted([near, far], key=lambda m: m.distance)[0].document == "near"

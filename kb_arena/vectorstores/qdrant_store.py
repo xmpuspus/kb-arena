@@ -119,7 +119,11 @@ class QdrantVectorStore(VectorStore):
                     for key, value in point.payload.items()
                     if key not in ("document", _CHUNK_ID_FIELD)
                 },
-                distance=float(point.score),
+                # Qdrant answers a SIMILARITY, higher for a better match, and
+                # `VectorMatch.distance` is lower-is-better like every other
+                # adapter here. Passing the score through inverted the order,
+                # so a consumer sorting ascending promoted the worse match.
+                distance=1.0 - float(point.score),
             )
             for point in response.points
         ]
