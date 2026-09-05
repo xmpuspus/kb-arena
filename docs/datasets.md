@@ -49,6 +49,45 @@ crag is download-only under its licence, and .../datasets/crag is inside the
 repository. Point --destination outside the checkout.
 ```
 
+## The adapters this repository ships
+
+| Adapter | Licence | Revision pin | Note |
+|---|---|---|---|
+| `crag` | CC-BY-NC-4.0 | `v1.0.0` | Non-commercial. Never vendored. |
+| `multihop-rag` | ODC-BY-1.0 | commit `71ac0d0b` | News corpus plus multi-hop questions. |
+| `frames` | Apache-2.0 | commit `58d9fb63` | Questions over Wikipedia pages, no separate corpus file. |
+| `bright` | CC-BY-4.0 | commit `3066d29c` | Twelve reasoning domains, chunked article ids. |
+| `beir-scifact` | ODC-BY-1.0 (corpus), CC-BY-4.0 (claims) | zip md5 `5f7d1de6` | One BEIR slice, licensed by its own source, not by BEIR. |
+| `miracl` | CC-BY-SA-4.0 | corpus commit `d921ec7e`, topics commit `5be20db9` | Sixteen Wikipedia-language slices. Packaging is tagged Apache-2.0, but the passage text is Wikipedia's, so its licence is what is recorded. |
+| `longbench-v2` | Apache-2.0 | commit `2b48e494` | Long-context multiple choice, one inline context per question. |
+
+Every adapter above is download-only, the same as `crag`. Fetching the data,
+whatever the licence allows, stays the user's own act. Each adapter's
+`build` refuses and names the source, the pinned revision, and the licence.
+
+Revisions marked "commit" are the dataset's own Hugging Face repository
+commit hash, read from that repository's own API. `beir-scifact` pins the
+md5 its own BEIR README names for `scifact.zip`, because that corpus zip
+carries no software release tag of its own; a package version tag such as
+`v2.2.0` would name the BEIR pip package, not the zip's bytes. None of these
+values is `latest`, `main`, or invented.
+
+**BEIR covers one slice on purpose.** BEIR repackages many source
+collections and does not relicense them, so each slice needs its own
+confirmed licence. Only `scifact` publishes its terms directly, in
+`allenai/scifact`'s own `LICENSE.md`. NFCorpus publishes no licence on its
+homepage. TREC-COVID's source corpus, CORD-19, tags licence per document,
+from `cc0` to `no-cc`, so no single licence describes it. FiQA and Quora's
+original terms could not be confirmed from a page this project could read.
+Those five are left out, rather than shipped with a guessed licence.
+
+**MIRACL's `license` field names the corpus, not the package.** MIRACL's
+own Hugging Face card tags its packaging Apache-2.0. The passage text in
+every language slice is drawn from Wikipedia, which Wikipedia itself
+licenses CC BY-SA 4.0. A run scores against the passage text, so that is the
+licence recorded, and the packaging licence is named in the attribution
+field instead.
+
 ## Adding an adapter
 
 Subclass `DatasetAdapter`, provide `name`, `manifest_template` and `build`, and
