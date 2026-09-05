@@ -213,7 +213,17 @@ def _commit_problem(sha, root: Path) -> str:
     # `False` is git saying no. `None` is git failing to answer, a timeout or
     # an OS error, and merging the two would reject a valid bundle over one
     # transient failure.
-    if _run_git(root, "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}") is False:
+    # A shallow clone holds `origin/main` and almost none of its history, so an
+    # object it lacks says nothing about whether the default branch holds it.
+    # `actions/checkout` fetches one commit, so this is CI's ordinary state, and
+    # the first version turned main red on all three Python jobs.
+    #
+    # The skip covers only the MISSING object. A commit the clone does hold
+    # still gets its ancestry asked, because a shallow clone that holds a commit
+    # and cannot reach it from `origin/main` is telling the truth about it.
+    if _run_git(
+        root, "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}"
+    ) is False and not _is_shallow(root):
         # This IS a repository and it does not hold that object. Reading that
         # as "cannot answer" turned the exact failure this check exists to
         # catch into a pass: `git merge-base` exits 128 on an unknown object,
@@ -230,6 +240,33 @@ def _commit_problem(sha, root: Path) -> str:
         f"The repository squash-merges, so a branch commit never reaches the default "
         f"branch, and a reader cannot check out the code this run measured."
     )
+
+
+def _is_shallow(root: Path) -> bool:
+    """Whether this checkout holds only a slice of the history.
+
+    `actions/checkout` fetches one commit by default, so a shallow clone is the
+    ordinary case in CI rather than a corner one.
+    """
+    import subprocess
+
+    try:
+        done = subprocess.run(
+            ["git", "rev-parse", "--is-shallow-repository"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=root,
+        )
+    except (OSError, subprocess.SubprocessError):
+        # A failure answers "shallow", which suppresses the missing-object
+        # refusal. That is deliberate, and it follows the rule the rest of this
+        # function follows: no verdict without evidence. Not knowing whether the
+        # history is truncated means not knowing whether a missing object means
+        # anything, and the other reading refuses a valid bundle every time this
+        # one command times out. That failure already turned main red once.
+        return True
+    return done.returncode != 0 or done.stdout.strip() == "true"
 
 
 def _default_branch_head(root: Path) -> str | None:

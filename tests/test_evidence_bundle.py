@@ -1204,3 +1204,52 @@ def test_a_git_sha_that_is_not_a_commit_never_reaches_git(bad):
     from kb_arena.benchmark.evidence import _commit_problem
 
     assert "where a commit belongs" in _commit_problem(bad, ROOT)
+
+
+def test_the_commit_check_stays_silent_on_a_shallow_clone(tmp_path):
+    """`actions/checkout` fetches one commit, so a shallow clone is CI's normal state.
+
+    A shallow clone holds `origin/main` as a ref and almost none of its history,
+    so an object it lacks says nothing about the default branch. The first
+    version reported the committed run as missing on all three Python jobs and
+    turned main red.
+    """
+    import subprocess
+
+    from kb_arena.benchmark.evidence import _commit_problem, _is_shallow
+
+    def git(*args, cwd=tmp_path):
+        return subprocess.run(
+            ["git", *args], cwd=cwd, capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+    source = tmp_path / "source"
+    source.mkdir()
+    git("init", "-q", "-b", "main", cwd=source)
+    git("config", "user.email", "t@example.com", cwd=source)
+    git("config", "user.name", "t", cwd=source)
+    for i in range(3):
+        (source / "a.txt").write_text(f"{i}\n")
+        git("add", "a.txt", cwd=source)
+        git("commit", "-qm", f"commit {i}", cwd=source)
+    oldest = git("rev-list", "--max-parents=0", "HEAD", cwd=source)
+
+    shallow = tmp_path / "shallow"
+    git("clone", "-q", "--depth", "1", f"file://{source}", str(shallow))
+
+    assert _is_shallow(shallow) is True
+    assert _is_shallow(source) is False
+    # The shallow clone does not hold the first commit, and it must not say so.
+    assert _commit_problem(oldest, shallow) == ""
+
+    # The skip covers only a MISSING object. A commit the clone does hold and
+    # cannot reach from `origin/main` is a commit it is telling the truth about.
+    # The clone inherits no identity, and CI configures none globally.
+    git("config", "user.email", "t@example.com", cwd=shallow)
+    git("config", "user.name", "t", cwd=shallow)
+    (shallow / "b.txt").write_text("x\n")
+    git("add", "b.txt", cwd=shallow)
+    git("commit", "-qm", "local only", cwd=shallow)
+    local = git("rev-parse", "HEAD", cwd=shallow)
+
+    assert "not on" in _commit_problem(local, shallow)
