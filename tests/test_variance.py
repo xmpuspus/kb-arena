@@ -858,3 +858,41 @@ def test_a_lab_run_with_no_manifest_still_loads_and_is_not_comparable():
     assert flat[0]["manifest"] == {}
     [row] = variance.spread_report(flat, metrics=("mean_recall_at_k",))
     assert row["comparable"] is False
+
+
+def test_a_lab_run_that_stopped_early_never_joins_one_that_finished():
+    """An incomplete run scored fewer questions, so it is a different sample."""
+    manifest = _manifest(code_version="0.11.0", git_sha="a" * 40)
+    whole = variance._flatten_lab_run(
+        {
+            "run_id": "a",
+            "status": "complete",
+            "corpora": {"c": {"bm25": {"mean_recall_at_k": 0.2}}},
+            "manifests": {"c": manifest},
+        },
+        None,
+    )
+    stopped = variance._flatten_lab_run(
+        {
+            "run_id": "b",
+            "status": "halted",
+            "corpora": {"c": {"bm25": {"mean_recall_at_k": 0.9}}},
+            "manifests": {"c": manifest},
+        },
+        None,
+    )
+
+    rows = variance.spread_report(whole + stopped, metrics=("mean_recall_at_k",))
+
+    assert len(rows) == 2, "a halted run must not average with a complete one"
+    assert {r["compatibility_key"].endswith("-halted") for r in rows} == {True, False}
+
+
+def test_an_unreadable_lab_file_is_lost_evidence(tmp_path, monkeypatch):
+    """It was skipped as scratch, so a corrupt run vanished from the sample."""
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    (tmp_path / "run_a").mkdir()
+    (tmp_path / "run_a" / "retriever_lab.json").write_text("{truncated")
+
+    with pytest.raises(variance.RunsUnreadableError, match="malformed JSON"):
+        variance.load_runs()

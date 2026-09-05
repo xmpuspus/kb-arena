@@ -35,7 +35,6 @@ _NON_RESULT_NAMES = frozenset(
         "summary.json",
         "report.json",
         "optimize.json",
-        "retriever_lab.json",
         "run.json",
         "arena_state.json",
     }
@@ -107,7 +106,12 @@ def group_by_key(runs: list[dict]) -> dict[tuple[str, str, str], list[dict]]:
 
     grouped: dict[tuple[str, str, str], list[dict]] = {}
     for run in runs:
-        key = (str(run.get("corpus", "")), str(run.get("strategy", "")), compatibility_key(run))
+        key = (
+            str(run.get("corpus", "")),
+            str(run.get("strategy", "")),
+            # A lab run that did not finish never joins one that did.
+            compatibility_key(run) + _status_suffix(run),
+        )
         grouped.setdefault(key, []).append(run)
     return grouped
 
@@ -285,6 +289,14 @@ def _looks_like_a_result(path: Path) -> bool:
     return bool(corpus) and bool(strategy) and path.name not in _NON_RESULT_NAMES
 
 
+def _status_suffix(run: dict) -> str:
+    """An incomplete run carries its status, so it groups on its own."""
+    status = run.get("lab_status")
+    if status in (None, "complete"):
+        return ""
+    return f"-{status}"
+
+
 def _flatten_lab_run(data: dict, corpus: str | None) -> list[dict]:
     """One Retriever Lab file as one record per corpus and strategy.
 
@@ -295,6 +307,10 @@ def _flatten_lab_run(data: dict, corpus: str | None) -> list[dict]:
     manifests = data.get("manifests")
     manifests = manifests if isinstance(manifests, dict) else {}
     run_id = str(data.get("run_id", ""))
+    # A lab run records whether it finished. One that stopped early scored fewer
+    # questions, so averaging it with a complete run reports a smaller sample as
+    # the same measurement. The status rides into the grouping key.
+    status = str(data.get("status", "unknown"))
     flat: list[dict] = []
     for corpus_name, strategies in (data.get("corpora") or {}).items():
         if corpus and corpus_name != corpus:
@@ -312,6 +328,7 @@ def _flatten_lab_run(data: dict, corpus: str | None) -> list[dict]:
                     "run_id": run_id,
                     "manifest": manifests.get(corpus_name, {}),
                     "source": "retriever_lab",
+                    "lab_status": status,
                 }
             )
     return flat
