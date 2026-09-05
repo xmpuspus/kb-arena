@@ -71,6 +71,24 @@ def test_traced_span_never_carries_question_or_document_text(monkeypatch):
     assert set(span.attributes.keys()) == {"provider"}
 
 
+def test_a_failing_span_records_no_exception_text(monkeypatch):
+    """A provider's error can echo its request body, which can be the question
+    or the document text that was embedded. The span must not repeat it.
+    """
+    provider, exporter = _in_memory_provider()
+    monkeypatch.setattr(settings, "otel_enabled", True)
+    monkeypatch.setattr(telemetry, "_tracer_provider", lambda: provider)
+
+    with pytest.raises(RuntimeError):
+        with telemetry.traced_span("kb_arena.embedding", provider="openai"):
+            raise RuntimeError("Embedding failed: input was 'lambda cold start docs'")
+
+    span = exporter.get_finished_spans()[0]
+    assert span.events == ()
+    assert span.status.description is None
+    assert span.status.status_code.name == "ERROR"
+
+
 def test_traced_span_is_a_no_op_when_tracing_is_off(monkeypatch):
     monkeypatch.setattr(settings, "otel_enabled", False)
     ran = False

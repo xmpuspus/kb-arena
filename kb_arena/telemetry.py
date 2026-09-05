@@ -61,8 +61,20 @@ def traced_span(name: str, **attributes: Any) -> Iterator[None]:
         yield
         return
     tracer = provider.get_tracer(_TRACER_NAME)
-    with tracer.start_as_current_span(name) as span:
+    # record_exception and set_status_on_exception default to True and would
+    # copy str(exc) onto the span. A provider's error can echo the request
+    # body, so that text can carry the question or the document it embedded.
+    # A failure still marks the span ERROR; it just carries no message.
+    with tracer.start_as_current_span(
+        name, record_exception=False, set_status_on_exception=False
+    ) as span:
         for key, value in attributes.items():
             if value is not None:
                 span.set_attribute(key, value)
-        yield
+        try:
+            yield
+        except BaseException:
+            from opentelemetry import trace
+
+            span.set_status(trace.StatusCode.ERROR)
+            raise
