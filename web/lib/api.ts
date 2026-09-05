@@ -229,6 +229,31 @@ export const DEFAULT_STRATEGY_CATALOG: StrategyCatalogRecord[] = STRATEGIES.map(
   unavailable_reason: "Runtime status unavailable.",
 }));
 
+export type StrategyGroup = "baseline" | "advanced" | "experimental";
+
+export const STRATEGY_GROUP_ORDER: readonly StrategyGroup[] = [
+  "baseline",
+  "advanced",
+  "experimental",
+];
+
+export const STRATEGY_GROUP_LABELS: Record<StrategyGroup, string> = {
+  baseline: "Baseline",
+  advanced: "Advanced",
+  experimental: "Experimental",
+};
+
+// A strategy's group comes from the same two catalog facts the backend
+// already reports (`experimental`, `optional_extra`), not from a name list.
+// A picker keyed off a name list misses the next strategy the day it lands.
+export function strategyGroup(
+  record: Pick<StrategyCatalogRecord, "experimental" | "optional_extra">
+): StrategyGroup {
+  if (record.experimental) return "experimental";
+  if (record.optional_extra) return "advanced";
+  return "baseline";
+}
+
 export interface CorpusInfo {
   value: string;
   label: string;
