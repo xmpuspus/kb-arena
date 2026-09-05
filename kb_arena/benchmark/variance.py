@@ -31,9 +31,10 @@ UNRECORDED_SEED = "unrecorded"
 UNRECORDED_VERSION = UNRECORDED_BUILD
 
 # Files a run writes beside its results. None of them is one. `kb-arena
-# evidence` reads the same set, because a bundle that lists `run.json` as a
-# result asks it for a manifest it never carries.
-NON_RESULT_NAMES = frozenset(
+# evidence` needed the same answer and a fixed name list could not give it, so
+# it asks `evidence.is_bundle_result` what a result IS instead. This list stays
+# here because the shape check below is already loose enough to need it.
+_NON_RESULT_NAMES = frozenset(
     {
         "summary.json",
         "report.json",
@@ -368,7 +369,7 @@ def _looks_like_a_result(path: Path) -> bool:
     if "_" not in stem:
         return False
     corpus, _, strategy = stem.partition("_")
-    return bool(corpus) and bool(strategy) and path.name not in NON_RESULT_NAMES
+    return bool(corpus) and bool(strategy) and path.name not in _NON_RESULT_NAMES
 
 
 def _lab_sample_suffix(run: dict) -> str:
