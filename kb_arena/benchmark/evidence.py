@@ -16,13 +16,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from kb_arena.benchmark.atomic import atomic_write_text
+from kb_arena.benchmark.result_schema import (
+    UNREADABLE_QUESTION_SET,
+    LabRun,
+    read_result_file,
+)
 
 BUNDLE_VERSION = 1
-
-# A manifest that carries a fingerprint nobody can read. It is not a question
-# set, and it is not absence either, so it needs a name of its own. Dropping it
-# let a valid sibling manifest stand in for a malformed one.
-UNREADABLE_QUESTION_SET = "<unreadable>"
 
 
 def _python_identity() -> dict:
@@ -142,38 +142,6 @@ def check_bundle(bundle: dict, root: Path) -> list[str]:
     return problems
 
 
-def _manifests_in(path: Path) -> list | None:
-    """Every manifest entry a result file carries, or None when it carries none.
-
-    An entry that is not a dict stays in the list. It is a broken manifest, and
-    the readers below turn it into the unreadable marker.
-    """
-    try:
-        data = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError, ValueError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    # This function discards nothing, and that is the point. Three review
-    # rounds found the same defect at three depths: a bad fingerprint dropped,
-    # then a bad entry under `manifests` dropped, then a bad `manifest` key
-    # dropped. Each time a readable sibling spoke for the whole file. A present
-    # key always contributes one entry, whatever its value, and the readers
-    # below turn a non-record entry into the unreadable marker.
-    candidates: list = []
-    if "manifests" in data:
-        manifests = data["manifests"]
-        if isinstance(manifests, dict):
-            candidates.extend(manifests.values())
-        else:
-            candidates.append(manifests)
-    if "manifest" in data:
-        candidates.append(data["manifest"])
-    if not candidates:
-        return None
-    return candidates
-
-
 def question_sets_in(path: Path) -> list[str] | None:
     """The question sets a result file says it measured, or None when it cannot say.
 
@@ -181,22 +149,10 @@ def question_sets_in(path: Path) -> list[str] | None:
     unreadable or carries no manifest, so it proves nothing about its own
     provenance. An empty list means it carries a manifest that names no set.
     """
-    entries = _manifests_in(path)
-    if entries is None:
+    record = read_result_file(path)
+    if record is None or not record.entries:
         return None
-    found = []
-    for entry in entries:
-        stored = entry.get("question_set_fingerprint") if isinstance(entry, dict) else None
-        # A fingerprint that is null, blank, or not a string names no set. The
-        # earlier version asked only whether it was truthy, so every one of
-        # those values skipped the comparison and passed as if it matched. A
-        # later version dropped the bad entry, which let a valid manifest in the
-        # same file stand in for it. Name it instead.
-        if isinstance(stored, str) and stored.strip():
-            found.append(stored)
-        else:
-            found.append(UNREADABLE_QUESTION_SET)
-    return found
+    return [entry.names_a_question_set for entry in record.entries]
 
 
 def question_splits_in(path: Path) -> list[str]:
@@ -205,12 +161,8 @@ def question_splits_in(path: Path) -> list[str]:
     An entry that names no split reads as an empty string, so a caller can see
     that the manifests disagree instead of reading a default as a fact.
     """
-    entries = _manifests_in(path) or []
-    out = []
-    for entry in entries:
-        stored = entry.get("question_split") if isinstance(entry, dict) else None
-        out.append(stored.strip() if isinstance(stored, str) and stored.strip() else "")
-    return out
+    record = read_result_file(path)
+    return [entry.question_split for entry in (record.entries if record else [])]
 
 
 def _question_set_problem(bundle: dict, path: Path, name: str) -> str:
@@ -272,7 +224,7 @@ def _measurement_problems(bundle: dict, root: Path, live) -> list[str]:
         path = root / name
         if not path.exists():
             continue
-        scored, expected = measurement_in(path, corpus)
+        scored, expected, why = measurement_in(path, corpus)
         if expected is not None and reviewed is not None and expected != reviewed:
             problems.append(
                 f"{name} names {expected} questions in its manifest, and the review "
@@ -280,7 +232,10 @@ def _measurement_problems(bundle: dict, root: Path, live) -> list[str]:
             )
             continue
         if scored is None:
-            problems.append(f"{name} does not say how many questions it scored")
+            # The reader already decided this, and it says why. An earlier check
+            # took the summary at its word, so emptying the per-question rows
+            # left the bundle reading as citable.
+            problems.append(f"{name} {why}")
         elif scored == 0:
             problems.append(f"{name} scored no questions, so it holds no measurement")
         elif expected is None:
@@ -345,56 +300,28 @@ def is_bundle_result(path: Path, corpus: str) -> bool:
     return bool(corpus) and path.name.startswith(f"{corpus}_")
 
 
-def measurement_in(path: Path, corpus: str) -> tuple[int | None, int | None]:
-    """How many questions a result scored, and how many its manifest names.
+def measurement_in(path: Path, corpus: str) -> tuple[int | None, int | None, str]:
+    """What a result proved it scored, what its manifest names, and why it proved nothing.
 
     A run whose every query failed still writes a summary, and every mean in it
     reads `0.0`. So the scored count is the only field that tells a measurement
-    from an outage, and the pair tells a whole run from a partial one. Two
-    writers produce a result: the lab keys a strategy summary under its corpus,
-    and a benchmark result carries its scored rows. A file that states neither
-    count says nothing, and a citable bundle over it is refused.
+    from an outage, and the pair tells a whole run from a partial one.
+
+    The proven count comes from the per-question rows, never from the summary
+    alone. The third value carries the reader's own verdict, so a caller cannot
+    read the count while ignoring the reason it is missing. That split is what
+    let a summary the reader had already called unusable back a citable bundle.
     """
-    try:
-        data = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError, ValueError):
-        return None, None
-    if not isinstance(data, dict):
-        return None, None
-    manifests = data.get("manifests")
-    manifest = manifests.get(corpus) if isinstance(manifests, dict) else data.get("manifest")
-    expected = manifest.get("question_count") if isinstance(manifest, dict) else None
-    return _scored_in(data, corpus), expected if _is_count(expected) else None
-
-
-def _is_count(value) -> bool:
-    """A usable count is a whole number, and `True` is not one."""
-    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
-
-
-def _scored_in(data: dict, corpus: str) -> int | None:
-    """The weakest strategy's scored count, because the bundle covers them all.
-
-    The first version took the maximum, and the comment beside it named the very
-    defect the maximum causes. One strategy that scored every question then
-    spoke for a sibling that scored none, and the bundle cited a table with an
-    outage in it. The weakest row decides, so a failed sibling cannot hide.
-    """
-    corpora = data.get("corpora")
-    if isinstance(corpora, dict):
-        summaries = corpora.get(corpus)
-        if not isinstance(summaries, dict) or not summaries:
-            return None
-        counts = [s.get("questions") if isinstance(s, dict) else None for s in summaries.values()]
-        if not all(_is_count(c) for c in counts):
-            return None
-        return min(counts)
-    records = data.get("records")
-    if isinstance(records, list):
-        # A record marked `is_error` is a question the run failed to score. The
-        # row exists, so counting the list counted an outage as a measurement.
-        return sum(1 for r in records if isinstance(r, dict) and not r.get("is_error"))
-    return None
+    record = read_result_file(path)
+    if record is None:
+        return None, None, "cannot be read"
+    if isinstance(record, LabRun):
+        manifest = record.manifests.get(corpus)
+        scored, why = record.scored_for(corpus)
+        return scored, manifest.question_count if manifest else None, why
+    expected = record.manifest.question_count if record.manifest else None
+    why = "" if record.scored is not None else "does not say how many questions it scored"
+    return record.scored, expected, why
 
 
 def _review_scope_problems(bundle: dict, live) -> list[str]:

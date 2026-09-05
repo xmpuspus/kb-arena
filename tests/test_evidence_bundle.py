@@ -8,7 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from kb_arena.benchmark.evidence import BUNDLE_VERSION, build_bundle, check_bundle
+from kb_arena.benchmark.evidence import (
+    BUNDLE_VERSION,
+    _measurement_problems,
+    build_bundle,
+    check_bundle,
+)
 from kb_arena.benchmark.review import review_summary
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -266,6 +271,26 @@ def _reviewed_corpus(tmp_path, monkeypatch, name="split-demo"):
     return name
 
 
+def _rows(corpus: str, strategy: str, scored: int, errors: int = 0) -> list[dict]:
+    """The per-question rows a real Retriever Lab file always writes.
+
+    The scored count in a strategy summary is a claim, and these rows are its
+    witness. A fixture that omits them describes a file the lab never writes,
+    and a bundle over it is refused for that reason alone.
+    """
+    rows = [{"corpus": corpus, "strategy": strategy, "question_id": f"q{i}"} for i in range(scored)]
+    rows += [
+        {
+            "corpus": corpus,
+            "strategy": strategy,
+            "question_id": f"e{i}",
+            "execution_error": {"type": "RuntimeError", "message": "boom"},
+        }
+        for i in range(errors)
+    ]
+    return rows
+
+
 def test_a_split_filtered_run_stays_citable_because_its_manifest_names_the_split(
     tmp_path, monkeypatch
 ):
@@ -284,6 +309,7 @@ def test_a_split_filtered_run_stays_citable_because_its_manifest_names_the_split
         json.dumps(
             {
                 "corpora": {corpus: {"bm25": {"questions": 2, "execution_errors": 0}}},
+                "questions": _rows(corpus, "bm25", 2),
                 "manifests": {
                     corpus: {
                         "question_set_fingerprint": holdout,
@@ -328,6 +354,7 @@ def test_a_run_whose_every_query_failed_is_not_citable(tmp_path, monkeypatch):
                 "corpora": {
                     corpus: {"bm25": {"questions": 0, "execution_errors": 4}},
                 },
+                "questions": _rows(corpus, "bm25", 0, errors=4),
                 "manifests": {
                     corpus: {
                         "question_set_fingerprint": fingerprint,
@@ -576,6 +603,7 @@ def test_a_partial_run_does_not_read_as_a_whole_one(tmp_path, monkeypatch):
         json.dumps(
             {
                 "corpora": {corpus: {"bm25": {"questions": 3, "execution_errors": 1}}},
+                "questions": _rows(corpus, "bm25", 3, errors=1),
                 "manifests": {
                     corpus: {
                         "question_set_fingerprint": fingerprint,
@@ -647,6 +675,7 @@ def test_a_strategy_that_scored_everything_does_not_speak_for_one_that_failed(
                         "naive_vector": {"questions": 0, "execution_errors": 4},
                     }
                 },
+                "questions": _rows(corpus, "bm25", 4) + _rows(corpus, "naive_vector", 0, errors=4),
                 "manifests": {
                     corpus: {
                         "question_set_fingerprint": fingerprint,
@@ -800,3 +829,126 @@ def test_a_manifest_that_names_fewer_questions_than_the_review_covers_is_refused
     problems = check_bundle(bundle, tmp_path)
 
     assert any("names 1 questions in its manifest" in p for p in problems), problems
+
+
+def test_a_summary_count_with_no_rows_behind_it_cannot_back_a_citable_bundle(tmp_path, monkeypatch):
+    """N-94. `check_bundle` took the strategy summary at its word.
+
+    Emptying the per-question rows and leaving the summary and the manifest
+    alone left the bundle reading as complete, while `variance` flagged the same
+    file as an unproven sample. The count and the rows are one fact now.
+    """
+    data = json.loads((COMMITTED / "retriever_lab.json").read_text())
+    data["questions"] = []
+    run = tmp_path / "results" / "run_norows"
+    run.mkdir(parents=True)
+    (run / "retriever_lab.json").write_text(json.dumps(data))
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    bundle = {**bundle, "results": ["results/run_norows/retriever_lab.json"]}
+
+    problems = check_bundle(bundle, tmp_path)
+
+    assert any("no question rows behind that count" in p for p in problems), problems
+
+
+def test_the_committed_bundle_still_checks_out_against_its_own_run():
+    """The rewrite must not refuse the run the repository ships as its evidence."""
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    root = COMMITTED.parent.parent
+
+    assert check_bundle(bundle, root) == []
+
+
+def _lab_body(**over) -> str:
+    body = {
+        "corpora": {"c": {"bm25": {"questions": 1}}},
+        "manifests": {"c": {"question_count": 1}},
+        "questions": [{"corpus": "c", "strategy": "bm25", "question_id": "q1"}],
+    }
+    body.update(over)
+    return json.dumps(body)
+
+
+@pytest.mark.parametrize(
+    "case,body",
+    [
+        # A container that is not a list used to reach `for row in ...` and raise
+        # TypeError. A checker that crashes tells a reader less than one that
+        # answers "nothing proves this".
+        ("a question container that is not a list", _lab_body(questions=42)),
+        # The reader records the lost strategy, and an earlier version of
+        # `scored_for` looked only at the strategies that survived. The sibling
+        # that read fine then spoke for the whole corpus.
+        (
+            "a sibling strategy the file lost",
+            _lab_body(corpora={"c": {"bm25": {"questions": 1}, "plugin": None}}),
+        ),
+        # `scored` used to return the row count while the record's own verdict
+        # said the count was unproven. Two facts where there is one.
+        (
+            "a summary count that is not a number",
+            _lab_body(corpora={"c": {"bm25": {"questions": "oops"}}}),
+        ),
+        (
+            "a summary count the rows contradict",
+            _lab_body(corpora={"c": {"bm25": {"questions": 0}}}),
+        ),
+        (
+            "a question row whose id nobody can read",
+            _lab_body(questions=[{"corpus": "c", "strategy": "bm25", "question_id": None}]),
+        ),
+        # One question repeated twice is not two questions.
+        (
+            "one question id repeated",
+            _lab_body(
+                corpora={"c": {"bm25": {"questions": 2}}},
+                manifests={"c": {"question_count": 2}},
+                questions=[
+                    {"corpus": "c", "strategy": "bm25", "question_id": "q1"},
+                    {"corpus": "c", "strategy": "bm25", "question_id": "q1"},
+                ],
+            ),
+        ),
+    ],
+)
+def test_a_lab_file_that_proves_no_count_refuses_the_measurement(case, body, tmp_path):
+    """Every one of these answered a number, or crashed, before the schema landed."""
+    run = tmp_path / "results" / "run_x"
+    run.mkdir(parents=True)
+    (run / "retriever_lab.json").write_text(body)
+    bundle = {"corpus": "c", "results": ["results/run_x/retriever_lab.json"]}
+
+    problems = _measurement_problems(bundle, tmp_path, None)
+
+    assert len(problems) == 1, f"{case}: {problems}"
+    assert problems[0].startswith("results/run_x/retriever_lab.json "), problems
+
+
+def test_a_strategy_that_scored_too_many_questions_is_not_hidden_by_a_sibling(tmp_path):
+    """The minimum let an overshoot pass behind a sibling that matched.
+
+    One bundle claims one question set over every strategy in it. `bm25` scored
+    the one question the manifest names, and `plugin` scored two, so the two did
+    not measure one set. Comparing only the smaller count against the manifest
+    is the `<` versus `!=` defect N-67 fixed on the variance side.
+    """
+    run = tmp_path / "results" / "run_over"
+    run.mkdir(parents=True)
+    (run / "retriever_lab.json").write_text(
+        json.dumps(
+            {
+                "corpora": {"c": {"bm25": {"questions": 1}, "plugin": {"questions": 2}}},
+                "manifests": {"c": {"question_count": 1}},
+                "questions": [
+                    {"corpus": "c", "strategy": "bm25", "question_id": "q1"},
+                    {"corpus": "c", "strategy": "plugin", "question_id": "q1"},
+                    {"corpus": "c", "strategy": "plugin", "question_id": "q2"},
+                ],
+            }
+        )
+    )
+    bundle = {"corpus": "c", "results": ["results/run_over/retriever_lab.json"]}
+
+    problems = _measurement_problems(bundle, tmp_path, None)
+
+    assert any("scored 1 and 2 questions" in p for p in problems), problems
