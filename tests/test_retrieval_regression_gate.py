@@ -13,6 +13,16 @@ from pathlib import Path
 import pytest
 import yaml
 
+
+def _released_version() -> str:
+    """The version in `pyproject.toml`, the one place it lives."""
+    import tomllib
+
+    return tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text())[
+        "project"
+    ]["version"]
+
+
 ROOT = Path(__file__).resolve().parents[1]
 ACTION_DIR = ROOT / ".github" / "actions" / "retrieval-regression-gate"
 SHA_PIN = re.compile(r"^[^@]+@[0-9a-f]{40}$")
@@ -58,7 +68,10 @@ def test_action_declares_the_inputs_the_gate_needs() -> None:
         assert inputs[name]["required"] is True, f"{name} must be required"
 
     assert inputs["top-k"]["default"] == "5"
-    assert inputs["kb-arena-version"]["default"] == "0.10.0"
+    # The default tracks the released version. A caller who omits the
+    # input must get the release this action shipped with, not the one
+    # before it.
+    assert inputs["kb-arena-version"]["default"] == _released_version()
     # pypi is the safe default for an external consumer; a caller gating its
     # own PR on its own retrieval code opts into checkout explicitly.
     assert inputs["install-from"]["default"] == "pypi"

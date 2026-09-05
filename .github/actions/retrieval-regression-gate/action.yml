@@ -32,7 +32,7 @@ inputs:
   kb-arena-version:
     description: Pinned kb-arena version to install from PyPI.
     required: false
-    default: "0.10.0"
+    default: "0.11.0"
   install-from:
     description: >-
       Install kb-arena from pypi (the pinned kb-arena-version) or from the
