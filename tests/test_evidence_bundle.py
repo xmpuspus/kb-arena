@@ -1082,3 +1082,21 @@ def test_the_command_names_every_plugin_module_the_run_loaded(monkeypatch):
     command = _command_for("c", "all", 0, "", False, 5)
 
     assert command[-2:] == ["--strategy-module", "my_pkg.my_strategy"]
+
+
+def test_a_legacy_benchmark_result_names_the_settings_it_recorded():
+    """A replay at the default top_k measures something else than a run at 10.
+
+    A result written before the runner recorded its command may still record
+    the settings it ran under, and naming them beats leaving it to the defaults.
+    """
+    from kb_arena.cli import _derived_command
+
+    recorded = _derived_command(
+        {"corpus": "c", "strategy": "bm25", "config_snapshot": {"top_k": 10, "run_seed": 7}}
+    )
+    silent = _derived_command({"corpus": "c", "strategy": "bm25", "config_snapshot": {}})
+
+    assert recorded[recorded.index("--top-k") + 1] == "10"
+    assert recorded[recorded.index("--seed") + 1] == "7"
+    assert "--top-k" not in silent, "a result that records nothing must not gain a value"

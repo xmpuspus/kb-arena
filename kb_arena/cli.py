@@ -1721,6 +1721,16 @@ def _derived_command(data: dict) -> list[str]:
     if not strategy:
         return []
     command = ["kb-arena", "benchmark", "--corpus", corpus, "--strategy", strategy]
+    # A result written before the runner recorded its command may still record
+    # the settings it ran under. Naming them beats leaving a replay to the
+    # defaults, and a result that records neither gets neither flag rather than
+    # an invented value.
+    snapshot = data.get("config_snapshot")
+    snapshot = snapshot if isinstance(snapshot, dict) else {}
+    for flag, key in (("--top-k", "top_k"), ("--seed", "run_seed")):
+        value = snapshot.get(key)
+        if isinstance(value, int) and not isinstance(value, bool):
+            command += [flag, str(value)]
     split = (data.get("manifest") or {}).get("question_split")
     if isinstance(split, str) and split and split != "all":
         command += ["--split", split]
