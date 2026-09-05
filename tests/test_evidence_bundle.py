@@ -189,3 +189,69 @@ def test_writing_a_bundle_still_asks_for_the_corpus_and_the_run():
 
     assert result.returncode == 2
     assert "--run-id" in result.stdout
+
+
+@pytest.mark.parametrize("bad", [None, "", False, 0, [], {}, "   "])
+def test_a_fingerprint_nobody_can_read_never_passes_as_a_match(tmp_path, bad):
+    """The guard asked whether the stored value was truthy, so null skipped it.
+
+    A value that names no question set is not a match. Reading it as one let a
+    citable bundle pass without proving its review covers the run.
+    """
+    run = tmp_path / "results" / "run_x"
+    run.mkdir(parents=True)
+    data = json.loads((COMMITTED / "retriever_lab.json").read_text())
+    data["manifests"]["aws-compute"]["question_set_fingerprint"] = bad
+    (run / "retriever_lab.json").write_text(json.dumps(data))
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    bundle = {**bundle, "results": ["results/run_x/retriever_lab.json"]}
+
+    assert check_bundle(bundle, tmp_path), f"a fingerprint of {bad!r} proves nothing"
+
+
+def test_a_result_with_no_manifest_never_backs_a_citable_bundle(tmp_path):
+    """A file that cannot say which questions it scored cannot support a citation."""
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / "legacy.json").write_text(json.dumps({"corpus": "c", "strategy": "bm25"}))
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    bundle = {**bundle, "results": ["results/legacy.json"]}
+
+    problems = check_bundle(bundle, tmp_path)
+
+    assert any("carries no manifest" in p for p in problems), problems
+
+
+def test_a_filtered_run_is_not_rejected_for_scoring_a_subset(tmp_path):
+    """`--tier 1` and `--split holdout` score a subset on purpose.
+
+    The bundle used to hash every question in the corpus, so it named a set no
+    filtered run could match, and `--check` refused every one of them.
+    """
+    from kb_arena.benchmark.manifest import question_set_fingerprint
+    from kb_arena.benchmark.questions import load_questions
+
+    subset = question_set_fingerprint([q for q in load_questions("aws-compute") if q.tier == 1])
+    run = tmp_path / "results" / "run_t1"
+    run.mkdir(parents=True)
+    data = json.loads((COMMITTED / "retriever_lab.json").read_text())
+    data["manifests"]["aws-compute"]["question_set_fingerprint"] = subset
+    (run / "retriever_lab.json").write_text(json.dumps(data))
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    bundle = {
+        **bundle,
+        "results": ["results/run_t1/retriever_lab.json"],
+        "question_set_fingerprint": subset,
+    }
+
+    assert check_bundle(bundle, tmp_path) == []
+
+
+def test_the_bundle_never_lists_itself_as_one_of_the_run_results():
+    """Listing it made a second `kb-arena evidence` write a different bundle.
+
+    The bundle also carries no manifest, so it could never back its own claim.
+    """
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+
+    assert not any(name.endswith("evidence.json") for name in bundle["results"]), bundle["results"]

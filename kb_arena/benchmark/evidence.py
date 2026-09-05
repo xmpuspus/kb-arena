@@ -112,9 +112,9 @@ def check_bundle(bundle: dict, root: Path) -> list[str]:
             "whether the review covers the questions the run scored"
         )
     for name in bundle.get("results") or []:
-        stale = _stale_question_set(bundle, root / name)
-        if stale:
-            problems.append(stale)
+        problem = _question_set_problem(bundle, root / name, name)
+        if problem:
+            problems.append(problem)
     if bundle.get("citable") and not review.get("publishable"):
         problems.append("calls itself citable while its own review verdict refuses")
     if not bundle.get("citable") and not bundle.get("why_not_citable"):
@@ -126,32 +126,62 @@ def check_bundle(bundle: dict, root: Path) -> list[str]:
     return problems
 
 
-def _stale_question_set(bundle: dict, path: Path) -> str:
-    """Whether a result file measured a different question set than the bundle names.
+def question_sets_in(path: Path) -> list[str] | None:
+    """The question sets a result file says it measured, or None when it cannot say.
 
-    A review verdict is a statement about a set of questions. Editing one
-    question changes the set and leaves the verdict describing something else.
-    Without this the bundle keeps saying citable over a run of other questions.
+    None and an empty list are different answers. None means the file is
+    unreadable or carries no manifest, so it proves nothing about its own
+    provenance. An empty list means it carries a manifest that names no set.
     """
-    named = bundle.get("question_set_fingerprint")
-    if not named or not path.exists():
-        return ""
     try:
         data = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
-        return ""
+    except (OSError, json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
     manifests = data.get("manifests")
     manifest = data.get("manifest")
     candidates = list(manifests.values()) if isinstance(manifests, dict) else []
     if isinstance(manifest, dict):
         candidates.append(manifest)
-    for found in candidates:
-        stored = found.get("question_set_fingerprint") if isinstance(found, dict) else None
-        if stored and stored != named:
-            return (
-                f"{path.name} measured question set {stored}, and the bundle names "
-                f"{named}. The review verdict describes a different set of questions."
-            )
+    if not candidates:
+        return None
+    found = []
+    for entry in candidates:
+        stored = entry.get("question_set_fingerprint") if isinstance(entry, dict) else None
+        # A fingerprint that is null, blank, or not a string names no set. The
+        # earlier version asked only whether it was truthy, so every one of
+        # those values skipped the comparison and passed as if it matched.
+        if isinstance(stored, str) and stored.strip():
+            found.append(stored)
+    return found
+
+
+def _question_set_problem(bundle: dict, path: Path, name: str) -> str:
+    """Why a result file fails to back the question set the bundle names.
+
+    A review verdict is a statement about a set of questions. Editing one
+    question changes the set and leaves the verdict describing something else.
+    """
+    named = bundle.get("question_set_fingerprint")
+    citable = bool(bundle.get("citable"))
+    sets = question_sets_in(path) if path.exists() else None
+    if sets is None:
+        if citable:
+            return f"{name} carries no manifest, so it cannot say which questions it scored"
+        return ""
+    if not sets:
+        if citable:
+            return f"{name} names no question set, so its provenance is unproven"
+        return ""
+    if not named:
+        return ""
+    off = [s for s in sets if s != named]
+    if off:
+        return (
+            f"{name} measured question set {off[0]}, and the bundle names {named}. "
+            f"The review verdict describes a different set of questions."
+        )
     return ""
 
 

@@ -1650,6 +1650,22 @@ def quantum_diagnostics(
     console.print(f"[green]Written {out_path}[/green]")
 
 
+def _run_question_set(results, root) -> str:
+    """The question set the run measured, from its own result files.
+
+    Every result in one run scores the same questions, so they agree. When they
+    do not, the run is not one measurement and the bundle names no set, which
+    makes `check_bundle` refuse a citable claim over it.
+    """
+    from kb_arena.benchmark.evidence import question_sets_in
+
+    seen: set[str] = set()
+    for path in results:
+        found = question_sets_in(root / path if not path.is_absolute() else path)
+        seen.update(found or [])
+    return seen.pop() if len(seen) == 1 else ""
+
+
 @app.command(name="evidence")
 def evidence_command(
     corpus: str = typer.Option("", "--corpus", help="Corpus the run scored"),
@@ -1705,9 +1721,13 @@ def evidence_command(
     # path a reader can follow from the repository root.
     results = []
     for found in sorted(run_dir.glob("*.json")):
+        # The bundle is not one of the run's results. Listing it makes a second
+        # `kb-arena evidence` write a different bundle than the first, and the
+        # bundle carries no manifest, so it can never back its own claim.
+        if found.name == "evidence.json":
+            continue
         resolved = found.resolve()
         results.append(resolved.relative_to(root) if root in resolved.parents else found)
-    from kb_arena.benchmark.manifest import question_set_fingerprint
 
     questions = load_questions(corpus)
     review = review_summary(questions)
@@ -1718,9 +1738,11 @@ def evidence_command(
         review=review,
         corpus=corpus,
         seed=_settings.run_seed,
-        # The review is a verdict about these questions. Recording the set lets
-        # `--check` refuse the bundle after somebody edits one of them.
-        question_set_fingerprint=question_set_fingerprint(questions),
+        # The set the RUN measured, read from its own manifest, and not the set
+        # the corpus holds today. A `--tier 1` or `--split holdout` run scores a
+        # subset on purpose, and hashing the whole corpus here would make
+        # `--check` refuse every filtered run.
+        question_set_fingerprint=_run_question_set(results, root),
     )
     path = write_bundle(run_dir, bundle)
     console.print(f"[green]{path}[/green]")
