@@ -1049,3 +1049,19 @@ def test_every_result_in_a_multi_strategy_run_records_one_command():
     assert everything[everything.index("--strategy") + 1] == "all"
     assert one[one.index("--strategy") + 1] == "bm25"
     assert "--seed" in everything, "a replay without the seed measures something else"
+
+
+def test_the_command_names_ragas_when_the_run_used_it(monkeypatch):
+    """RAGAS adds four LLM calls per question and four metric columns.
+
+    A replay without it measures a smaller thing, so a command that omits it
+    does not reproduce the run.
+    """
+    from kb_arena.benchmark.runner import _command_for
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(settings, "benchmark_enable_ragas", True)
+    assert "--ragas" in _command_for("c", "bm25", 0, "", False, 5)
+
+    monkeypatch.setattr(settings, "benchmark_enable_ragas", False)
+    assert "--ragas" not in _command_for("c", "bm25", 0, "", False, 5)

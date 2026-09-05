@@ -674,6 +674,12 @@ def _command_for(
         "--seed",
         str(settings.run_seed),
     ]
+    # RAGAS adds four LLM calls per question and four metric columns, so a
+    # replay without it measures a smaller thing. The flag reaches the run
+    # through settings, not through this function's arguments, so it is read
+    # here rather than passed.
+    if settings.benchmark_enable_ragas:
+        command.append("--ragas")
     if tier:
         command += ["--tier", str(tier)]
     if split:
