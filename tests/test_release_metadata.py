@@ -414,3 +414,20 @@ def test_every_ci_job_has_a_timeout() -> None:
 
     missing = [name for name, job in workflow["jobs"].items() if not job.get("timeout-minutes")]
     assert not missing, f"these jobs have no timeout: {sorted(missing)}"
+
+
+def test_the_backend_job_fetches_the_tags_its_version_guard_reads() -> None:
+    """The guard reads `git tag --list`, and the default checkout fetches none.
+
+    So it returned early on every CI job and proved nothing, which is exactly
+    where it is supposed to work.
+    """
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text())
+    checkout = next(
+        step
+        for step in workflow["jobs"]["backend"]["steps"]
+        if "actions/checkout" in str(step.get("uses", ""))
+    )
+
+    assert checkout["with"]["fetch-tags"] is True
+    assert checkout["with"]["fetch-depth"] == 0
