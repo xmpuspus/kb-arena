@@ -45,6 +45,20 @@ vector-free comparison for well-structured documents.
 Ranks by lexical term matching without embeddings. It is the keyless baseline and often remains
 competitive when identifiers and exact terms dominate.
 
+### Metadata Filtered
+
+Applies an access filter, tags, owner, classification, and a document ID allow-list, inside
+retrieval. Scalar fields go into the Chroma `where` clause. Tags go into a Python check against an
+over-fetched candidate pool, then the result is cut to top_k. A chunk outside the filter never
+reaches the ranked list. An unknown classification level raises instead of allowing or denying
+everything by guess.
+
+### Temporal
+
+Prefers the newest eligible version of each document family and accepts an as-of date. Once a
+newer eligible version is present among the candidates, every chunk from an older version is
+dropped, so a superseded chunk cannot outrank its replacement. An unparseable as-of date raises.
+
 ### Rerank Vector
 
 Retrieves a wider dense candidate set and rescores it with BGE, Cohere, or Voyage. Compare the
