@@ -1065,3 +1065,20 @@ def test_the_command_names_ragas_when_the_run_used_it(monkeypatch):
 
     monkeypatch.setattr(settings, "benchmark_enable_ragas", False)
     assert "--ragas" not in _command_for("c", "bm25", 0, "", False, 5)
+
+
+def test_the_command_names_every_plugin_module_the_run_loaded(monkeypatch):
+    """A run that loaded a plugin cannot be repeated without the same import.
+
+    The command said nothing about it, so a bundle could call itself citable
+    while its own reproduction command failed in a fresh process. The value is
+    an importable module name, so a reader who installs that package replays it.
+    """
+    from kb_arena import strategies as strategies_module
+    from kb_arena.benchmark.runner import _command_for
+
+    monkeypatch.setattr(strategies_module, "LOADED_PLUGIN_MODULES", ["my_pkg.my_strategy"])
+
+    command = _command_for("c", "all", 0, "", False, 5)
+
+    assert command[-2:] == ["--strategy-module", "my_pkg.my_strategy"]

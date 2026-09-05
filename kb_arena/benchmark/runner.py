@@ -680,6 +680,13 @@ def _command_for(
     # here rather than passed.
     if settings.benchmark_enable_ragas:
         command.append("--ragas")
+    # A run that loaded a plugin strategy cannot be repeated without the same
+    # import, and the command said nothing about it. The value is an importable
+    # module name, so a reader who installs that package can replay the run.
+    from kb_arena.strategies import LOADED_PLUGIN_MODULES
+
+    for module_path in LOADED_PLUGIN_MODULES:
+        command += ["--strategy-module", module_path]
     if tier:
         command += ["--tier", str(tier)]
     if split:
