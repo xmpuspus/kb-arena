@@ -1043,8 +1043,8 @@ def test_every_result_in_a_multi_strategy_run_records_one_command():
     """
     from kb_arena.benchmark.runner import _command_for
 
-    everything = _command_for("aws-compute", "all", 0, "", False, 5)
-    one = _command_for("aws-compute", "bm25", 0, "", False, 5)
+    everything = _command_for("aws-compute", "all", 0, "", False, 5, True)
+    one = _command_for("aws-compute", "bm25", 0, "", False, 5, True)
 
     assert everything[everything.index("--strategy") + 1] == "all"
     assert one[one.index("--strategy") + 1] == "bm25"
@@ -1061,10 +1061,10 @@ def test_the_command_names_ragas_when_the_run_used_it(monkeypatch):
     from kb_arena.settings import settings
 
     monkeypatch.setattr(settings, "benchmark_enable_ragas", True)
-    assert "--ragas" in _command_for("c", "bm25", 0, "", False, 5)
+    assert "--ragas" in _command_for("c", "bm25", 0, "", False, 5, True)
 
     monkeypatch.setattr(settings, "benchmark_enable_ragas", False)
-    assert "--ragas" not in _command_for("c", "bm25", 0, "", False, 5)
+    assert "--ragas" not in _command_for("c", "bm25", 0, "", False, 5, True)
 
 
 def test_the_command_names_every_plugin_module_the_run_loaded(monkeypatch):
@@ -1079,7 +1079,7 @@ def test_the_command_names_every_plugin_module_the_run_loaded(monkeypatch):
 
     monkeypatch.setattr(strategies_module, "LOADED_PLUGIN_MODULES", ["my_pkg.my_strategy"])
 
-    command = _command_for("c", "all", 0, "", False, 5)
+    command = _command_for("c", "all", 0, "", False, 5, True)
 
     assert command[-2:] == ["--strategy-module", "my_pkg.my_strategy"]
 
@@ -1100,3 +1100,11 @@ def test_a_legacy_benchmark_result_names_the_settings_it_recorded():
     assert recorded[recorded.index("--top-k") + 1] == "10"
     assert recorded[recorded.index("--seed") + 1] == "7"
     assert "--top-k" not in silent, "a result that records nothing must not gain a value"
+
+
+def test_a_serial_run_names_the_flag_that_made_it_serial():
+    """Serial and parallel schedule requests differently, and latency is reported."""
+    from kb_arena.benchmark.runner import _command_for
+
+    assert "--no-parallel" in _command_for("c", "bm25", 0, "", False, 5, False)
+    assert "--no-parallel" not in _command_for("c", "bm25", 0, "", False, 5, True)

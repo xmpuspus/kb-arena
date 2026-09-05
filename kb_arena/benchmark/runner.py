@@ -647,6 +647,7 @@ def _command_for(
     split: str,
     reference_free: bool,
     top_k: int,
+    parallel: bool,
 ) -> list[str]:
     """The `kb-arena benchmark` command that repeats this result.
 
@@ -693,6 +694,11 @@ def _command_for(
         command += ["--split", split]
     if reference_free:
         command.append("--reference-free")
+    # Serial and parallel schedule requests differently, and the benchmark
+    # reports latency. Only the non-default is named, so the ordinary command
+    # stays short.
+    if not parallel:
+        command.append("--no-parallel")
     return command
 
 
@@ -851,7 +857,9 @@ async def run_benchmark(
                         strategy=strat.name,
                         run_id=run_id,
                         timestamp=timestamp,
-                        command=_command_for(corp, strategy, tier, split, reference_free, top_k),
+                        command=_command_for(
+                            corp, strategy, tier, split, reference_free, top_k, parallel
+                        ),
                         config_snapshot=config_snap,
                         schema_version=SCHEMA_VERSION,
                         judge_provider=judge_provider_of(manifest),
@@ -938,7 +946,9 @@ async def run_benchmark(
                         strategy=strat.name,
                         run_id=run_id,
                         timestamp=timestamp,
-                        command=_command_for(corp, strategy, tier, split, reference_free, top_k),
+                        command=_command_for(
+                            corp, strategy, tier, split, reference_free, top_k, parallel
+                        ),
                         config_snapshot=config_snap,
                         schema_version=SCHEMA_VERSION,
                         judge_provider=judge_provider_of(manifest),
