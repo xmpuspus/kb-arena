@@ -23,57 +23,25 @@ TARGET_DATE = str(
 )
 
 
-def test_the_version_is_not_one_already_released() -> None:
-    """The other test proves the surfaces agree, and agreement alone is cheap.
-
-    A coordinated revert to a shipped version satisfies it, and so does a
-    changelog-order check: deleting the top entry leaves the previous release
-    at the top, still sorting above the one below it.
-
-    The tags are what say which versions shipped. A version carrying a tag is a
-    version already released, so a branch claiming it is either a revert or a
-    re-cut. Naming the expected version here instead would be a copy every
-    release has to edit in step, which is what this file already got wrong once.
-
-    The tag on the release commit itself is correct, and CI runs on the pushed
-    tag, so the question is WHERE the tag points rather than whether it exists.
-
-    Silent when git cannot answer: a source archive has no tags, and refusing
-    there would fail a check that has no evidence.
-    """
-    import subprocess
-
-    try:
-        done = subprocess.run(
-            ["git", "tag", "--list"], cwd=ROOT, capture_output=True, text=True, timeout=5
-        )
-    except (OSError, subprocess.SubprocessError):
-        return
-    if done.returncode != 0:
-        return
-    released = {line.strip().lstrip("v") for line in done.stdout.splitlines() if line.strip()}
-    if TARGET_VERSION not in released:
-        return
-
-    # The tag exists. That is correct on the release commit itself, and wrong
-    # anywhere else: CI runs on the pushed tag too, and refusing there would
-    # fail the release's own suite. So the question is WHERE the tag points.
-    tagged = subprocess.run(
-        ["git", "rev-list", "-n", "1", f"v{TARGET_VERSION}"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-    )
-    here = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True)
-    if tagged.returncode != 0 or here.returncode != 0:
-        return
-
-    assert tagged.stdout.strip() == here.stdout.strip(), (
-        f"v{TARGET_VERSION} already points at {tagged.stdout.strip()[:12]}, so this "
-        f"branch either reverts the version or re-cuts a released one"
-    )
-
-
+# There is no released-version guard here, and that is a decision rather than an
+# omission. A reviewer asked for one: the check below proves the surfaces agree
+# with each other, and agreement alone would pass a coordinated revert to a
+# shipped version. Three mechanisms were tried and each broke something real.
+#
+#   - A changelog-order check passes the revert, because deleting the top entry
+#     leaves the previous release at the top, still sorting above the one below.
+#   - "The version carries no tag" fails the release's own suite, because CI
+#     runs on the pushed tag.
+#   - "The tag points at HEAD" fails every ordinary pull request after a
+#     release, because the repository legitimately sits at the released version
+#     until the next bump.
+#
+# The last one is the reason the class has no mechanical answer: a tree at
+# version 0.11.0 after v0.11.0 shipped is the normal state, and it is
+# indistinguishable from a revert without naming the expected version. Naming it
+# is the copy this file already got wrong once, which is what PR 62 removed from
+# the dependency pins. So the check proves what it can prove, and the release
+# checklist carries the rest.
 def test_release_metadata_is_aligned() -> None:
     citation = yaml.safe_load((ROOT / "CITATION.cff").read_text())
     changelog = (ROOT / "CHANGELOG.md").read_text()
@@ -414,20 +382,3 @@ def test_every_ci_job_has_a_timeout() -> None:
 
     missing = [name for name, job in workflow["jobs"].items() if not job.get("timeout-minutes")]
     assert not missing, f"these jobs have no timeout: {sorted(missing)}"
-
-
-def test_the_backend_job_fetches_the_tags_its_version_guard_reads() -> None:
-    """The guard reads `git tag --list`, and the default checkout fetches none.
-
-    So it returned early on every CI job and proved nothing, which is exactly
-    where it is supposed to work.
-    """
-    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text())
-    checkout = next(
-        step
-        for step in workflow["jobs"]["backend"]["steps"]
-        if "actions/checkout" in str(step.get("uses", ""))
-    )
-
-    assert checkout["with"]["fetch-tags"] is True
-    assert checkout["with"]["fetch-depth"] == 0
