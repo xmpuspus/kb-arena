@@ -1741,7 +1741,7 @@ def evidence_command(
         # A run directory holds more than measurements: the bundle itself, the
         # run record, a report, and a comparison whose name varies. Naming them
         # one at a time cost three rounds, so this asks what a result IS.
-        if not is_bundle_result(found):
+        if not is_bundle_result(found, corpus):
             continue
         resolved = found.resolve()
         results.append(resolved.relative_to(root) if root in resolved.parents else found)

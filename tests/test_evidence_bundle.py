@@ -456,6 +456,7 @@ def test_a_readable_manifest_does_not_stand_in_for_a_broken_one(tmp_path):
     [
         ("retriever_lab.json", True),
         ("aws-compute_bm25.json", True),
+        ("aws-compute_my_plugin.json", True),
         ("evidence.json", False),
         ("run.json", False),
         ("summary.json", False),
@@ -469,24 +470,29 @@ def test_only_a_measurement_goes_into_a_bundle(tmp_path, name, kept):
 
     `summary.json`, then `evidence.json`, then `run.json`, then a comparison
     whose name carries two strategies and a metric. A deny-list cannot hold a
-    name that varies, so the rule asks what a result is.
+    name that varies, so the rule reads the name against the corpus.
     """
     from kb_arena.benchmark.evidence import is_bundle_result
 
     path = tmp_path / name
     path.write_text(json.dumps({"corpus": "aws-compute"}))
 
-    assert is_bundle_result(path) is kept
+    assert is_bundle_result(path, "aws-compute") is kept
 
 
-def test_a_plugin_result_stays_in_the_bundle_because_it_carries_a_manifest(tmp_path):
-    """A plugin strategy is not in the catalog, so the name rule alone drops it."""
+def test_a_plugin_result_stays_in_the_bundle_whatever_it_holds(tmp_path):
+    """A plugin strategy is not in the catalog, and its result is still a result.
+
+    Deciding by contents dropped it twice: once truncated, once carrying no
+    manifest. Both times it left in silence and the rest still read as citable.
+    The corpus prefix identifies it, so its contents cannot hide it.
+    """
     from kb_arena.benchmark.evidence import is_bundle_result
 
-    path = tmp_path / "aws-compute_my_plugin.json"
-    path.write_text(json.dumps({"manifest": {"question_set_fingerprint": "abc"}}))
-
-    assert is_bundle_result(path) is True
+    for body in ("{", json.dumps({"records": []}), json.dumps({"manifest": {}})):
+        path = tmp_path / "aws-compute_my_plugin.json"
+        path.write_text(body)
+        assert is_bundle_result(path, "aws-compute") is True, body
 
 
 def test_the_bundle_never_lists_itself_as_one_of_the_run_results():
@@ -716,10 +722,10 @@ def test_a_corrupt_result_never_vanishes_from_a_bundle(tmp_path):
     """
     from kb_arena.benchmark.evidence import is_bundle_result
 
-    for name in ("aws-compute_my_plugin.json", "aws-compute_bm25.json", "notes.json"):
+    for name in ("aws-compute_my_plugin.json", "aws-compute_bm25.json", "retriever_lab.json"):
         path = tmp_path / name
         path.write_text("{")
-        assert is_bundle_result(path) is True, name
+        assert is_bundle_result(path, "aws-compute") is True, name
 
 
 def test_a_run_holding_a_corrupt_result_writes_no_bundle(tmp_path, monkeypatch):
@@ -747,3 +753,50 @@ def test_a_run_holding_a_corrupt_result_writes_no_bundle(tmp_path, monkeypatch):
     problems = check_bundle(bundle, tmp_path)
 
     assert any("carries no manifest" in p for p in problems), problems
+
+
+def test_a_manifest_that_names_fewer_questions_than_the_review_covers_is_refused(
+    tmp_path, monkeypatch
+):
+    """The counts agreed with each other and with nothing else.
+
+    A manifest naming 1 question and a summary scoring 1 matched, and the bundle
+    still carried the fingerprint of every reviewed question. So a one-question
+    run read as covering the whole reviewed set.
+    """
+    from kb_arena.benchmark.manifest import question_set_fingerprint
+    from kb_arena.benchmark.questions import load_questions
+
+    corpus = _reviewed_corpus(tmp_path, monkeypatch)
+    questions = load_questions(corpus)
+    fingerprint = question_set_fingerprint(questions)
+    run = tmp_path / "results" / "run_thin"
+    run.mkdir(parents=True)
+    (run / "retriever_lab.json").write_text(
+        json.dumps(
+            {
+                "corpora": {corpus: {"bm25": {"questions": 1, "execution_errors": 0}}},
+                "manifests": {
+                    corpus: {
+                        "question_set_fingerprint": fingerprint,
+                        "question_split": "all",
+                        "question_count": 1,
+                    }
+                },
+            }
+        )
+    )
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    bundle = {
+        **bundle,
+        "corpus": corpus,
+        "results": ["results/run_thin/retriever_lab.json"],
+        "question_set_fingerprint": fingerprint,
+        "review_question_set": fingerprint,
+        "review_split": "all",
+        "review": review_summary(questions),
+    }
+
+    problems = check_bundle(bundle, tmp_path)
+
+    assert any("names 1 questions in its manifest" in p for p in problems), problems

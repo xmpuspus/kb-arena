@@ -128,8 +128,9 @@ def check_bundle(bundle: dict, root: Path) -> list[str]:
         if problem:
             problems.append(problem)
     if bundle.get("citable"):
-        problems.extend(_measurement_problems(bundle, root))
-        problems.extend(_review_scope_problems(bundle))
+        live = _live_review(bundle.get("corpus"), bundle.get("review_split"))
+        problems.extend(_measurement_problems(bundle, root, live))
+        problems.extend(_review_scope_problems(bundle, live))
     if bundle.get("citable") and not review.get("publishable"):
         problems.append("calls itself citable while its own review verdict refuses")
     if not bundle.get("citable") and not bundle.get("why_not_citable"):
@@ -247,7 +248,7 @@ def _question_set_problem(bundle: dict, path: Path, name: str) -> str:
     return ""
 
 
-def _measurement_problems(bundle: dict, root: Path) -> list[str]:
+def _measurement_problems(bundle: dict, root: Path, live) -> list[str]:
     """Why a citable bundle holds no measurement to cite.
 
     A run whose every query failed still writes a full summary, and every mean
@@ -262,12 +263,22 @@ def _measurement_problems(bundle: dict, root: Path) -> list[str]:
     corpus = bundle.get("corpus")
     if not isinstance(corpus, str) or not corpus.strip():
         return []
+    # How many questions the review covers. Without this, a manifest that named
+    # 1 question and a summary that scored 1 agreed with each other, and the
+    # bundle still carried the fingerprint of all 75 reviewed ones.
+    reviewed = len(live[2]) if live else None
     problems = []
     for name in bundle.get("results") or []:
         path = root / name
         if not path.exists():
             continue
         scored, expected = measurement_in(path, corpus)
+        if expected is not None and reviewed is not None and expected != reviewed:
+            problems.append(
+                f"{name} names {expected} questions in its manifest, and the review "
+                f"covers {reviewed}. The run is not over the set the bundle claims."
+            )
+            continue
         if scored is None:
             problems.append(f"{name} does not say how many questions it scored")
         elif scored == 0:
@@ -282,8 +293,8 @@ def _measurement_problems(bundle: dict, root: Path) -> list[str]:
     return problems
 
 
-def _live_review(corpus, split) -> tuple[str, dict] | None:
-    """The fingerprint and the review verdict of the questions on disk now.
+def _live_review(corpus, split) -> tuple[str, dict, list] | None:
+    """The fingerprint, the review verdict, and the questions on disk now.
 
     Both come from one read, because they are two statements about the same set.
     None means the questions cannot be read, so nothing about them is provable.
@@ -305,44 +316,33 @@ def _live_review(corpus, split) -> tuple[str, dict] | None:
         questions = load_questions(corpus, split=split)
     except Exception:
         return None
-    return question_set_fingerprint(questions), review_summary(questions)
+    return question_set_fingerprint(questions), review_summary(questions), questions
 
 
-def is_bundle_result(path: Path) -> bool:
-    """Whether a file in a run directory is one of the run's measurements.
+def is_bundle_result(path: Path, corpus: str) -> bool:
+    """Whether a file in a run directory is one of this corpus's measurements.
 
     A run directory holds more than measurements. It holds the bundle, the run
     record, a report, and a comparison whose name carries two strategies and a
-    metric. A name deny-list cannot catch the last one, because the name varies,
-    and the third file of that class already cost a round.
+    metric. Naming those one at a time cost three rounds, and the comparison
+    ended it: its name varies, so no fixed list catches it.
 
-    So this is an allow-list with three clauses. The lab writes one file with
-    one name. A benchmark result is `<corpus>_<strategy>.json` for a strategy in
-    the catalog. A plugin strategy is not in the catalog, so a file that carries
-    a manifest counts as well, which is the record a bundle needs from it.
+    Deciding by the file's contents failed too, twice. A rule that asked for a
+    manifest dropped a plugin result that was truncated, and then dropped one
+    that simply carried no manifest. Both left the bundle in silence while the
+    remaining results still read as citable.
 
-    A file nobody can parse counts too. The third clause reads the file, so a
-    truncated plugin result answered no and vanished from the bundle, while the
-    same truncation in a built-in result was caught by name and refused. A run
-    that half-wrote a file needs a person to look, not a quieter bundle.
+    So the rule reads the name against the corpus the bundle names. The lab
+    writes one file with one name. Every other result is `<corpus>_<strategy>`,
+    which a plugin strategy satisfies as well as a built-in one. A comparison is
+    `compare_...`, so it fails on the corpus, and it never needed a name of its
+    own.
     """
-    from kb_arena.strategies.catalog import STRATEGY_CATALOG
-
+    if path.suffix != ".json":
+        return False
     if path.name == "retriever_lab.json":
         return True
-    if any(path.name.endswith(f"_{spec.name}.json") for spec in STRATEGY_CATALOG):
-        return True
-    if _manifests_in(path):
-        return True
-    return not _is_readable_json(path)
-
-
-def _is_readable_json(path: Path) -> bool:
-    try:
-        json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError, ValueError):
-        return False
-    return True
+    return bool(corpus) and path.name.startswith(f"{corpus}_")
 
 
 def measurement_in(path: Path, corpus: str) -> tuple[int | None, int | None]:
@@ -397,7 +397,7 @@ def _scored_in(data: dict, corpus: str) -> int | None:
     return None
 
 
-def _review_scope_problems(bundle: dict) -> list[str]:
+def _review_scope_problems(bundle: dict, live) -> list[str]:
     """Why a citable bundle fails to prove that its review covers the run.
 
     The earlier guard read the fingerprint out of the run, stored it in the
@@ -422,13 +422,12 @@ def _review_scope_problems(bundle: dict) -> list[str]:
             f"tier-filtered run records no tier in its manifest, so a bundle over "
             f"one lands here too, and refusing it is the honest answer."
         ]
-    live = _live_review(bundle.get("corpus"), split)
     if live is None:
         return [
             f"calls itself citable, and split {split!r} of corpus "
             f"{bundle.get('corpus')!r} cannot be read, so nobody can recheck the verdict"
         ]
-    live_set, live_review = live
+    live_set, live_review, _ = live
     if live_set != covered:
         return [
             f"the questions on disk now measure {live_set} and the review covered "
