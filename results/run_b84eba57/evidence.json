@@ -1,6 +1,6 @@
 {
   "bundle_version": 1,
-  "citable": false,
+  "citable": true,
   "command": [
     "kb-arena",
     "retriever-lab",
@@ -8,9 +8,9 @@
     "aws-compute"
   ],
   "corpus": "aws-compute",
-  "created_at": "2026-09-04T23:36:54.734466+00:00",
+  "created_at": "2026-09-05T04:51:32.799358+00:00",
   "environment": {
-    "git_sha": "91aafef4fe6d696ffff123e41228cd31bbbf7bd5-dirty-279df6f8",
+    "git_sha": "2271cb88cb2d61bb19593d68c238e4315e3f7b1a-dirty-1608a31d",
     "kb_arena": "0.10.0",
     "platform": "macOS-26.5-arm64-arm-64bit",
     "python": {
@@ -19,20 +19,21 @@
     }
   },
   "notes": "",
+  "question_set_fingerprint": "3083f59c5d22",
   "results": [
-    "results/run_59b5b60d/retriever_lab.json"
+    "results/run_b84eba57/retriever_lab.json"
   ],
   "review": {
     "counts": {
-      "human-reviewed": 0,
+      "human-reviewed": 75,
       "machine-assisted-draft": 0,
-      "unspecified": 75
+      "unspecified": 0
     },
     "note": "publishable is true only when every scored question is human-reviewed. A machine-assisted draft is a development signal, not citable evidence.",
-    "publishable": false,
+    "publishable": true,
     "questions": 75,
-    "reviewed_share": 0.0
+    "reviewed_share": 1.0
   },
   "seed": 0,
-  "why_not_citable": "publishable is true only when every scored question is human-reviewed. A machine-assisted draft is a development signal, not citable evidence."
+  "why_not_citable": ""
 }

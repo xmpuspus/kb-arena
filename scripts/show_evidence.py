@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 def main() -> int:
-    path = Path(sys.argv[1] if len(sys.argv) > 1 else "results/run_59b5b60d/evidence.json")
+    path = Path(sys.argv[1] if len(sys.argv) > 1 else "results/run_b84eba57/evidence.json")
     bundle = json.loads(path.read_text())
     print(f"citable:   {bundle['citable']}")
     if not bundle["citable"]:

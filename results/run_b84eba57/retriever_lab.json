@@ -1,6 +1,6 @@
 {
-  "run_id": "59b5b60d",
-  "timestamp": "2026-09-04T23:36:22.583694+00:00",
+  "run_id": "b84eba57",
+  "timestamp": "2026-09-05T04:51:18.796765+00:00",
   "top_k": 5,
   "ceiling_k": 20,
   "question_split": "all",
@@ -111,7 +111,7 @@
       "schema_version": 2,
       "corpus": "aws-compute",
       "question_split": "all",
-      "question_set_fingerprint": "3aecce3d26b1",
+      "question_set_fingerprint": "3083f59c5d22",
       "qrels_fingerprint": "f5611e2a779c",
       "generation": {
         "provider": "anthropic",
@@ -123,8 +123,8 @@
       },
       "judge": null,
       "embedding": {
-        "provider": "bge",
-        "model": "BAAI/bge-large-en-v1.5"
+        "provider": "openai",
+        "model": "text-embedding-3-large"
       },
       "chunk": {
         "tokens": 512,
@@ -146,8 +146,8 @@
       },
       "question_count": 75,
       "code_version": "0.10.0",
-      "git_sha": "91aafef4fe6d696ffff123e41228cd31bbbf7bd5-dirty-8e5b35c1",
-      "compatibility_key": "4810cd3ae8d8"
+      "git_sha": "2271cb88cb2d61bb19593d68c238e4315e3f7b1a-dirty-1608a31d",
+      "compatibility_key": "c216172ca8a3"
     }
   },
   "status": "complete",
@@ -367,8 +367,8 @@
       "ndcg_at_k": 0.6508205185601091,
       "fallback_doc_level": false,
       "hits": [
-        "ecs-fargate::amazon-ecs-and-aws-fargate",
-        "ecs-fargate::fargate-launch-type"
+        "ecs-fargate::fargate-launch-type",
+        "ecs-fargate::amazon-ecs-and-aws-fargate"
       ],
       "match_classes": {
         "strict": 2,
@@ -898,8 +898,8 @@
       "ndcg_at_k": 1.0,
       "fallback_doc_level": false,
       "hits": [
-        "ecs-fargate::services",
-        "lambda-overview::synchronous-invocation"
+        "lambda-overview::synchronous-invocation",
+        "ecs-fargate::services"
       ],
       "match_classes": {
         "strict": 2,
@@ -1574,8 +1574,8 @@
       "ndcg_at_k": 0.38356636737133565,
       "fallback_doc_level": false,
       "hits": [
-        "ecs-fargate::amazon-ecs-and-aws-fargate",
-        "ecs-fargate::services"
+        "ecs-fargate::services",
+        "ecs-fargate::amazon-ecs-and-aws-fargate"
       ],
       "match_classes": {
         "strict": 2,
@@ -2313,8 +2313,8 @@
       "ndcg_at_k": 0.3973220069685352,
       "fallback_doc_level": false,
       "hits": [
-        "lambda-overview::asynchronous-invocation",
-        "lambda-overview::execution-role"
+        "lambda-overview::execution-role",
+        "lambda-overview::asynchronous-invocation"
       ],
       "match_classes": {
         "strict": 2,
@@ -2848,8 +2848,8 @@
       "ndcg_at_k": 0.36005461457723403,
       "fallback_doc_level": false,
       "hits": [
-        "ecs-fargate::amazon-ecs-and-aws-fargate",
-        "ecs-fargate::services"
+        "ecs-fargate::services",
+        "ecs-fargate::amazon-ecs-and-aws-fargate"
       ],
       "match_classes": {
         "strict": 2,
@@ -3051,10 +3051,10 @@
       "ndcg_at_k": 0.830419897363192,
       "fallback_doc_level": false,
       "hits": [
-        "ecs-fargate::task-execution-role",
         "ecs-fargate::task-role",
-        "ecs-fargate::amazon-ecs-and-aws-fargate",
-        "ecs-fargate::integration-with-other-services"
+        "ecs-fargate::task-execution-role",
+        "ecs-fargate::integration-with-other-services",
+        "ecs-fargate::amazon-ecs-and-aws-fargate"
       ],
       "match_classes": {
         "strict": 4,
@@ -3924,8 +3924,8 @@
       "ndcg_at_k": 0.787702056960637,
       "fallback_doc_level": false,
       "hits": [
-        "ecs-fargate::task-execution-role",
         "ecs-fargate::task-role",
+        "ecs-fargate::task-execution-role",
         "ecs-fargate::integration-with-other-services"
       ],
       "match_classes": {
@@ -3994,8 +3994,8 @@
       "ndcg_at_k": 0.48522855511632257,
       "fallback_doc_level": false,
       "hits": [
-        "ecs-fargate::services",
-        "ecs-fargate::integration-with-other-services"
+        "ecs-fargate::integration-with-other-services",
+        "ecs-fargate::services"
       ],
       "match_classes": {
         "strict": 2,
@@ -4063,9 +4063,9 @@
       "ndcg_at_k": 0.8318724637288826,
       "fallback_doc_level": false,
       "hits": [
-        "lambda-overview::execution-role",
         "lambda-overview::vpc-configuration",
-        "lambda-overview::vpc-and-internet-access"
+        "lambda-overview::vpc-and-internet-access",
+        "lambda-overview::execution-role"
       ],
       "match_classes": {
         "strict": 3,
@@ -4669,9 +4669,9 @@
       "fallback_doc_level": false,
       "hits": [
         "api-gateway::stages-and-deployment",
+        "lambda-overview::stream-based-polling",
         "api-gateway::amazon-api-gateway",
-        "api-gateway::rest-api",
-        "lambda-overview::stream-based-polling"
+        "api-gateway::rest-api"
       ],
       "match_classes": {
         "strict": 4,
@@ -4805,8 +4805,8 @@
       "ndcg_at_k": 0.7227265726449519,
       "fallback_doc_level": false,
       "hits": [
-        "lambda-overview::aws-lambda",
         "lambda-overview::vpc-and-internet-access",
+        "lambda-overview::aws-lambda",
         "ecs-fargate::services"
       ],
       "match_classes": {
@@ -4941,9 +4941,9 @@
       "ndcg_at_k": 0.7227265726449519,
       "fallback_doc_level": false,
       "hits": [
-        "ecs-fargate::amazon-ecs-and-aws-fargate",
+        "ecs-fargate::integration-with-other-services",
         "ecs-fargate::services",
-        "ecs-fargate::integration-with-other-services"
+        "ecs-fargate::amazon-ecs-and-aws-fargate"
       ],
       "match_classes": {
         "strict": 3,

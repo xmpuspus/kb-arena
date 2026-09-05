@@ -35,7 +35,7 @@ is, and refuses to say what it is not.
   settings differ from the first run.
 - Added named decision profiles to the report: accuracy-first, balanced,
   latency-bound and cost-bound.
-- Added one committed reproducible run at `results/run_59b5b60d`, which needs no
+- Added one committed reproducible run at `results/run_b84eba57`, which needs no
   API key to repeat.
 - Added generated references for the commands, the routes and the settings, with
   a test that fails when one is stale.

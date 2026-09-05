@@ -269,7 +269,7 @@ itself citable while its own review says otherwise, and one that is not citable
 and does not say why.
 
 The committed example lives at
-[`results/run_59b5b60d`](https://github.com/xmpuspus/kb-arena/tree/main/results/run_59b5b60d).
+[`results/run_b84eba57`](https://github.com/xmpuspus/kb-arena/tree/main/results/run_b84eba57).
 It needs no API key to repeat.
 
 ## Public datasets

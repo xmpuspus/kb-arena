@@ -10,7 +10,7 @@ import pytest
 from kb_arena.benchmark.evidence import BUNDLE_VERSION, build_bundle, check_bundle
 
 ROOT = Path(__file__).resolve().parents[1]
-COMMITTED = ROOT / "results" / "run_59b5b60d"
+COMMITTED = ROOT / "results" / "run_b84eba57"
 
 
 def _bundle(**overrides) -> dict:
@@ -92,13 +92,46 @@ def test_the_committed_run_is_complete():
     assert bundle["bundle_version"] == BUNDLE_VERSION
 
 
-def test_the_committed_run_does_not_claim_to_be_citable():
-    """All 75 questions carry no review status, and the bundle says so."""
+def test_the_committed_run_claims_exactly_what_its_own_review_supports():
+    """The bundle must never claim more than its review verdict allows.
+
+    The earlier version of this test pinned `citable is False`, which was the
+    truth while the corpus carried no review status. Pinning the value instead
+    of the rule made the test fail for a correct change. The rule is that the
+    claim and the verdict agree, whichever way they point.
+    """
     bundle = json.loads((COMMITTED / "evidence.json").read_text())
 
-    assert bundle["citable"] is False
-    assert bundle["why_not_citable"]
-    assert bundle["review"]["counts"]["human-reviewed"] == 0
+    assert bundle["citable"] == bundle["review"]["publishable"]
+    if bundle["citable"]:
+        assert bundle["review"]["counts"]["machine-assisted-draft"] == 0
+        assert bundle["review"]["counts"]["unspecified"] == 0
+        assert not bundle["why_not_citable"]
+    else:
+        assert bundle["why_not_citable"]
+
+
+def test_the_committed_bundle_passes_its_own_checker():
+    """A committed bundle nobody checks is a record asserting itself.
+
+    `check_bundle` covers the question set too, so this fails when the run
+    measured questions the review verdict does not describe.
+    """
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+
+    assert check_bundle(bundle, ROOT) == []
+
+
+def test_the_committed_run_names_the_question_set_its_review_covers():
+    """A review is a verdict about a set of questions, so the bundle names the set."""
+    from kb_arena.benchmark.manifest import question_set_fingerprint
+    from kb_arena.benchmark.questions import load_questions
+
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+
+    assert bundle["question_set_fingerprint"] == question_set_fingerprint(
+        load_questions(bundle["corpus"])
+    ), "the corpus changed and the committed run no longer measures it"
 
 
 def test_the_committed_run_carries_a_readme_that_states_both_halves():
@@ -107,8 +140,8 @@ def test_the_committed_run_carries_a_readme_that_states_both_halves():
 
     assert "Repeat it" in readme
     assert "What this run does NOT show" in readme
-    assert "citable: false" in readme
-    assert "Only a human can do that" in readme
+    assert "does not rank retrieval architectures" in readme
+    assert "cannot answer most of its own questions" in readme
 
 
 def test_the_check_command_the_readme_documents_runs_as_written():

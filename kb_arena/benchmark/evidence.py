@@ -46,6 +46,7 @@ def build_bundle(
     review: dict,
     corpus: str,
     seed: int,
+    question_set_fingerprint: str = "",
     notes: str = "",
 ) -> dict:
     """The record that travels with a committed run.
@@ -53,6 +54,10 @@ def build_bundle(
     `command` is what a reader types to repeat this. `review` is the verdict
     from `review_summary`, and it decides whether the bundle calls itself
     citable evidence or a development signal.
+
+    `question_set_fingerprint` is the corpus the review describes. A review is a
+    statement about a set of questions, so a bundle that records the verdict and
+    not the question set can call a run citable after somebody edits a question.
     """
     return {
         "bundle_version": BUNDLE_VERSION,
@@ -67,6 +72,7 @@ def build_bundle(
             "platform": platform.platform(),
         },
         "seed": seed,
+        "question_set_fingerprint": question_set_fingerprint,
         "review": review,
         # The claim the bundle makes about itself, stated rather than implied.
         "citable": bool(review.get("publishable")),
@@ -100,6 +106,15 @@ def check_bundle(bundle: dict, root: Path) -> list[str]:
     if not bundle.get("results"):
         problems.append("no result files, so the bundle describes nothing")
     review = bundle.get("review") or {}
+    if bundle.get("citable") and not bundle.get("question_set_fingerprint"):
+        problems.append(
+            "calls itself citable and names no question set, so nobody can tell "
+            "whether the review covers the questions the run scored"
+        )
+    for name in bundle.get("results") or []:
+        stale = _stale_question_set(bundle, root / name)
+        if stale:
+            problems.append(stale)
     if bundle.get("citable") and not review.get("publishable"):
         problems.append("calls itself citable while its own review verdict refuses")
     if not bundle.get("citable") and not bundle.get("why_not_citable"):
@@ -109,6 +124,35 @@ def check_bundle(bundle: dict, root: Path) -> list[str]:
         if not env.get(field):
             problems.append(f"environment records no {field}")
     return problems
+
+
+def _stale_question_set(bundle: dict, path: Path) -> str:
+    """Whether a result file measured a different question set than the bundle names.
+
+    A review verdict is a statement about a set of questions. Editing one
+    question changes the set and leaves the verdict describing something else.
+    Without this the bundle keeps saying citable over a run of other questions.
+    """
+    named = bundle.get("question_set_fingerprint")
+    if not named or not path.exists():
+        return ""
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return ""
+    manifests = data.get("manifests")
+    manifest = data.get("manifest")
+    candidates = list(manifests.values()) if isinstance(manifests, dict) else []
+    if isinstance(manifest, dict):
+        candidates.append(manifest)
+    for found in candidates:
+        stored = found.get("question_set_fingerprint") if isinstance(found, dict) else None
+        if stored and stored != named:
+            return (
+                f"{path.name} measured question set {stored}, and the bundle names "
+                f"{named}. The review verdict describes a different set of questions."
+            )
+    return ""
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover - thin wrapper

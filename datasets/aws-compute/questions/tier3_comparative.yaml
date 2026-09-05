@@ -389,10 +389,12 @@
       based on minimumHealthyPercent and maximumPercent settings. For example, 50/200 means
       ECS stops 50% of old tasks and starts 50% new tasks, then continues. If new tasks fail
       health checks, the deployment stops and already-replaced tasks stay on the new version.
-      Turning on the ECS deployment circuit breaker adds automatic rollback: on a failed
-      deployment ECS rolls the service back to the last completed task definition. Without the
-      circuit breaker, rollback needs a new deployment of the previous task definition. Fast
-      and simple. Blue/Green with CodeDeploy:
+      ECS gives a rolling deployment two automatic rollback paths, and both are opt-in. The
+      deployment circuit breaker rolls the service back to the last completed task definition
+      when the deployment fails its health checks. Deployment alarms roll it back when a named
+      CloudWatch alarm fires during the deployment, and they work whether or not the circuit
+      breaker is on. With neither turned on, rollback needs a new deployment of the previous
+      task definition. Fast and simple. Blue/Green with CodeDeploy:
       deploys 100% of new tasks alongside old tasks, validates with health checks, then shifts
       traffic via ALB listener rules. During the bake period both versions coexist. Automatic
       rollback repoints ALB listener rule back to Blue (old) target group instantly — old tasks

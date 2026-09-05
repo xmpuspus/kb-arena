@@ -1576,9 +1576,12 @@ def retriever_lab(
     import asyncio as _asyncio
 
     from kb_arena.benchmark.retriever_lab import run_retriever_lab
+    from kb_arena.strategies.catalog import selection_needs_embeddings
 
     _validate_unit_interval(min_recall, "--min-recall")
-    _preflight(needs_embeddings=True)
+    # The ceiling diagnostic ranks over the naive_vector pool, so forcing it
+    # needs embeddings whatever the strategy selection is.
+    _preflight(needs_embeddings=selection_needs_embeddings(strategies) or bool(ceiling_k))
     exit_code = _asyncio.run(
         run_retriever_lab(corpus, strategies, top_k, min_recall, ceiling_k or None, split=split)
     )
@@ -1704,6 +1707,8 @@ def evidence_command(
     for found in sorted(run_dir.glob("*.json")):
         resolved = found.resolve()
         results.append(resolved.relative_to(root) if root in resolved.parents else found)
+    from kb_arena.benchmark.manifest import question_set_fingerprint
+
     questions = load_questions(corpus)
     review = review_summary(questions)
 
@@ -1713,6 +1718,9 @@ def evidence_command(
         review=review,
         corpus=corpus,
         seed=_settings.run_seed,
+        # The review is a verdict about these questions. Recording the set lets
+        # `--check` refuse the bundle after somebody edits one of them.
+        question_set_fingerprint=question_set_fingerprint(questions),
     )
     path = write_bundle(run_dir, bundle)
     console.print(f"[green]{path}[/green]")

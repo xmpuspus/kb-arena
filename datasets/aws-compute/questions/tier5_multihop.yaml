@@ -123,8 +123,10 @@
       message attributes (bucket, key, job metadata). Lambda exits after enqueuing — no
       long-running compute. SQS decouples the burst (hundreds of uploads/second) from the
       processing layer. DLQ configured on SQS for messages that fail after maxReceiveCount.
-      2. Orchestration (Step Functions Express Workflow): an EventBridge Pipe or Lambda
-      polling SQS triggers a Step Functions Express Workflow per job. The workflow handles
+      2. Orchestration (Step Functions Standard Workflow): an EventBridge Pipe or Lambda
+      polling SQS triggers a Step Functions Standard Workflow per job. Standard and not
+      Express, because this pipeline waits for the Fargate task. Express workflows support
+      neither the `.sync` service integrations nor `.waitForTaskToken`. The workflow handles
       job state: parallel preprocessing steps (thumbnail generation via Lambda for small files),
       then conditional routing — if file > 100 MB, submit to ECS Fargate; else process in
       Lambda. Choice state checks file size attribute. 3. Heavy processing (ECS Fargate):
