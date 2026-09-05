@@ -200,6 +200,13 @@ def _commit_problem(sha, root: Path) -> str:
             f"calls itself citable and records {sha[:24]!r} where a commit belongs, "
             f"so nobody can get the code back"
         )
+    if _is_shallow(root):
+        # A shallow clone holds `origin/main` as a ref and almost none of its
+        # history, so an object it does not have says nothing about whether the
+        # default branch holds it. Every CI checkout is shallow by default, and
+        # the first version reported the committed run as missing on all three
+        # Python jobs.
+        return ""
     head = _default_branch_head(root)
     if head is None:
         # Not a repository at all, so there is nothing to check the commit
@@ -230,6 +237,27 @@ def _commit_problem(sha, root: Path) -> str:
         f"The repository squash-merges, so a branch commit never reaches the default "
         f"branch, and a reader cannot check out the code this run measured."
     )
+
+
+def _is_shallow(root: Path) -> bool:
+    """Whether this checkout holds only a slice of the history.
+
+    `actions/checkout` fetches one commit by default, so a shallow clone is the
+    ordinary case in CI rather than a corner one.
+    """
+    import subprocess
+
+    try:
+        done = subprocess.run(
+            ["git", "rev-parse", "--is-shallow-repository"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=root,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return True
+    return done.returncode != 0 or done.stdout.strip() == "true"
 
 
 def _default_branch_head(root: Path) -> str | None:
