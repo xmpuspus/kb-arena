@@ -356,6 +356,39 @@ async def _retrieval_ceiling(
     }
 
 
+def _command_for(
+    corpus: str,
+    strategies_filter: str,
+    top_k: int,
+    min_recall: float,
+    split: str,
+    ceiling_k: int | None,
+) -> list[str]:
+    """The `kb-arena retriever-lab` command that repeats this run.
+
+    Built from the arguments, not from `sys.argv`. An argv record carries
+    however the operator happened to start Python, and it can name a module
+    path a reader does not have. These flags are the whole input.
+    """
+    command = [
+        "kb-arena",
+        "retriever-lab",
+        "--corpus",
+        corpus,
+        "--strategies",
+        strategies_filter,
+        "--top-k",
+        str(top_k),
+        "--min-recall",
+        str(min_recall),
+    ]
+    if split:
+        command += ["--split", split]
+    if ceiling_k:
+        command += ["--ceiling-k", str(ceiling_k)]
+    return command
+
+
 async def run_retriever_lab(
     corpus: str = "all",
     strategies_filter: str = "all",
@@ -374,6 +407,9 @@ async def run_retriever_lab(
 
     run_id = uuid4().hex[:8]
     timestamp = datetime.now(UTC).isoformat()
+    # Keep what the caller asked for. The line below replaces `ceiling_k` with
+    # the effective value, and the command must name the flag the caller passed.
+    ceiling_arg = ceiling_k
     ceiling_requested = ceiling_k is not None
     ceiling_k = ceiling_k if ceiling_k and ceiling_k > top_k else top_k * 4
 
@@ -392,6 +428,12 @@ async def run_retriever_lab(
     overall: dict = {
         "run_id": run_id,
         "timestamp": timestamp,
+        # The command that produced this run, built from the arguments it got.
+        # `kb-arena evidence` used to rebuild a command out of the corpus name
+        # alone, so the bundle for a bm25-only run told a reader to run eleven
+        # strategies. A record whose command does not repeat the run repeats
+        # nothing.
+        "command": _command_for(corpus, strategies_filter, top_k, min_recall, split, ceiling_arg),
         "top_k": top_k,
         "ceiling_k": ceiling_k,
         "question_split": split or "all",

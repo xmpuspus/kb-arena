@@ -207,6 +207,13 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
     )
 
 
+# Every plugin module this process loaded, in the order it loaded them. A run
+# using a plugin strategy cannot be repeated without the same import, so the
+# recorded command has to name it. The path is an importable module name, not a
+# file on one machine, so a reader who installs that package can replay it.
+LOADED_PLUGIN_MODULES: list[str] = []
+
+
 def register_plugin_strategy(module_path: str) -> None:
     """Import a user module and register its Strategy subclass.
 
@@ -236,6 +243,8 @@ def register_plugin_strategy(module_path: str) -> None:
     cls = candidates[0]
     name = getattr(cls, "name", module_path.split(".")[-1])
     STRATEGY_REGISTRY[name] = cls
+    if module_path not in LOADED_PLUGIN_MODULES:
+        LOADED_PLUGIN_MODULES.append(module_path)
     logger.info("Registered plugin strategy: %s from %s", name, module_path)
 
 
@@ -324,6 +333,7 @@ def get_strategy(name: str):
 
 
 __all__ = [
+    "LOADED_PLUGIN_MODULES",
     "STRATEGY_REGISTRY",
     "STRATEGY_CATALOG",
     "get_strategy",

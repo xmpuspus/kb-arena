@@ -952,3 +952,159 @@ def test_a_strategy_that_scored_too_many_questions_is_not_hidden_by_a_sibling(tm
     problems = _measurement_problems(bundle, tmp_path, None)
 
     assert any("scored 1 and 2 questions" in p for p in problems), problems
+
+
+def test_the_bundle_records_the_command_that_repeats_the_run():
+    """The command used to be built from the corpus name and nothing else.
+
+    So the bundle for a bm25-only run told a reader to run every strategy,
+    which needs an API key and measures something else. The recorded command
+    now names the strategies the run measured and the top_k it used.
+    """
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    run = json.loads((COMMITTED / "retriever_lab.json").read_text())
+    measured = sorted(run["corpora"]["aws-compute"])
+
+    assert bundle["command"][:2] == ["kb-arena", "retriever-lab"]
+    assert "--strategies" in bundle["command"]
+    named = bundle["command"][bundle["command"].index("--strategies") + 1]
+    assert sorted(named.split(",")) == measured
+    assert "--top-k" in bundle["command"]
+    assert bundle["command"][bundle["command"].index("--top-k") + 1] == str(run["top_k"])
+
+
+def test_a_run_that_records_no_command_and_names_no_strategy_backs_no_bundle(tmp_path):
+    """A file that cannot say what it measured cannot say how to repeat it either."""
+    from kb_arena.cli import _run_command
+
+    run = tmp_path / "results" / "run_x"
+    run.mkdir(parents=True)
+    (run / "retriever_lab.json").write_text(json.dumps({"corpora": {}, "top_k": 5}))
+
+    assert _run_command([Path("results/run_x/retriever_lab.json")], tmp_path) == []
+
+
+def test_two_results_that_disagree_about_the_command_name_none(tmp_path):
+    """Two commands is not one run, so the bundle claims neither."""
+    from kb_arena.cli import _run_command
+
+    run = tmp_path / "results" / "run_x"
+    run.mkdir(parents=True)
+    (run / "a_bm25.json").write_text(
+        json.dumps({"command": ["kb-arena", "benchmark", "--corpus", "a"]})
+    )
+    (run / "a_naive_vector.json").write_text(
+        json.dumps({"command": ["kb-arena", "benchmark", "--corpus", "b"]})
+    )
+    paths = [Path("results/run_x/a_bm25.json"), Path("results/run_x/a_naive_vector.json")]
+
+    assert _run_command(paths, tmp_path) == []
+
+
+def test_a_benchmark_result_backs_a_bundle_the_way_a_lab_run_does():
+    """A benchmark result records no `corpora`, so the lab derivation misses it.
+
+    Before this, `kb-arena evidence` over a benchmark run exited 1 and wrote
+    nothing, because no result in it could name a command.
+    """
+    from kb_arena.cli import _derived_command
+
+    derived = _derived_command(
+        {"corpus": "a", "strategy": "bm25", "manifest": {"question_split": "holdout"}}
+    )
+
+    assert derived[:2] == ["kb-arena", "benchmark"]
+    assert derived[-2:] == ["--split", "holdout"]
+
+
+def test_the_derived_command_keeps_a_ceiling_the_run_did_not_default_to():
+    """The lab replaces a missing `--ceiling-k` with `top_k * 4`.
+
+    So only a value that differs proves the caller passed the flag. Dropping it
+    let a replay skip the retrieval-ceiling diagnostic instead of repeating it.
+    """
+    from kb_arena.cli import _derived_command
+
+    run = {"corpora": {"a": {"bm25": {}}}, "top_k": 5, "question_split": "all"}
+
+    passed = _derived_command({**run, "ceiling_k": 100})
+    defaulted = _derived_command({**run, "ceiling_k": 20})
+
+    assert passed[-2:] == ["--ceiling-k", "100"]
+    assert "--ceiling-k" not in defaulted
+
+
+def test_every_result_in_a_multi_strategy_run_records_one_command():
+    """The command recorded the RESOLVED strategy, so a `--strategy all` run
+    wrote a different command per result file.
+
+    `_run_command` then found no single command and `kb-arena evidence` refused
+    to write a bundle at all, for the most ordinary invocation there is.
+    """
+    from kb_arena.benchmark.runner import _command_for
+
+    everything = _command_for("aws-compute", "all", 0, "", False, 5, True)
+    one = _command_for("aws-compute", "bm25", 0, "", False, 5, True)
+
+    assert everything[everything.index("--strategy") + 1] == "all"
+    assert one[one.index("--strategy") + 1] == "bm25"
+    assert "--seed" in everything, "a replay without the seed measures something else"
+
+
+def test_the_command_names_ragas_when_the_run_used_it(monkeypatch):
+    """RAGAS adds four LLM calls per question and four metric columns.
+
+    A replay without it measures a smaller thing, so a command that omits it
+    does not reproduce the run.
+    """
+    from kb_arena.benchmark.runner import _command_for
+    from kb_arena.settings import settings
+
+    monkeypatch.setattr(settings, "benchmark_enable_ragas", True)
+    assert "--ragas" in _command_for("c", "bm25", 0, "", False, 5, True)
+
+    monkeypatch.setattr(settings, "benchmark_enable_ragas", False)
+    assert "--ragas" not in _command_for("c", "bm25", 0, "", False, 5, True)
+
+
+def test_the_command_names_every_plugin_module_the_run_loaded(monkeypatch):
+    """A run that loaded a plugin cannot be repeated without the same import.
+
+    The command said nothing about it, so a bundle could call itself citable
+    while its own reproduction command failed in a fresh process. The value is
+    an importable module name, so a reader who installs that package replays it.
+    """
+    from kb_arena import strategies as strategies_module
+    from kb_arena.benchmark.runner import _command_for
+
+    monkeypatch.setattr(strategies_module, "LOADED_PLUGIN_MODULES", ["my_pkg.my_strategy"])
+
+    command = _command_for("c", "all", 0, "", False, 5, True)
+
+    assert command[-2:] == ["--strategy-module", "my_pkg.my_strategy"]
+
+
+def test_a_legacy_benchmark_result_names_the_settings_it_recorded():
+    """A replay at the default top_k measures something else than a run at 10.
+
+    A result written before the runner recorded its command may still record
+    the settings it ran under, and naming them beats leaving it to the defaults.
+    """
+    from kb_arena.cli import _derived_command
+
+    recorded = _derived_command(
+        {"corpus": "c", "strategy": "bm25", "config_snapshot": {"top_k": 10, "run_seed": 7}}
+    )
+    silent = _derived_command({"corpus": "c", "strategy": "bm25", "config_snapshot": {}})
+
+    assert recorded[recorded.index("--top-k") + 1] == "10"
+    assert recorded[recorded.index("--seed") + 1] == "7"
+    assert "--top-k" not in silent, "a result that records nothing must not gain a value"
+
+
+def test_a_serial_run_names_the_flag_that_made_it_serial():
+    """Serial and parallel schedule requests differently, and latency is reported."""
+    from kb_arena.benchmark.runner import _command_for
+
+    assert "--no-parallel" in _command_for("c", "bm25", 0, "", False, 5, False)
+    assert "--no-parallel" not in _command_for("c", "bm25", 0, "", False, 5, True)

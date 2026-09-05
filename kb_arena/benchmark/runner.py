@@ -643,6 +643,68 @@ def _config_snapshot(
     }
 
 
+def _command_for(
+    corpus: str,
+    strategy: str,
+    tier: int,
+    split: str,
+    reference_free: bool,
+    top_k: int,
+    parallel: bool,
+) -> list[str]:
+    """The `kb-arena benchmark` command that repeats this result.
+
+    Built from the arguments, not from `sys.argv`. An argv record carries
+    however the operator happened to start Python, and it can name a module
+    path a reader does not have.
+    """
+    from kb_arena.settings import settings
+
+    command = [
+        "kb-arena",
+        "benchmark",
+        "--corpus",
+        corpus,
+        # The caller's own argument, not the resolved strategy name. Recording
+        # the resolved name gave every result in a `--strategy all` run a
+        # different command, and `kb-arena evidence` then found no single one
+        # and refused to write a bundle at all.
+        "--strategy",
+        strategy,
+        "--top-k",
+        str(top_k),
+        # The seed decides the bootstrap resampling and lands in every
+        # manifest, so a replay without it measures something else.
+        "--seed",
+        str(settings.run_seed),
+    ]
+    # RAGAS adds four LLM calls per question and four metric columns, so a
+    # replay without it measures a smaller thing. The flag reaches the run
+    # through settings, not through this function's arguments, so it is read
+    # here rather than passed.
+    if settings.benchmark_enable_ragas:
+        command.append("--ragas")
+    # A run that loaded a plugin strategy cannot be repeated without the same
+    # import, and the command said nothing about it. The value is an importable
+    # module name, so a reader who installs that package can replay the run.
+    from kb_arena.strategies import LOADED_PLUGIN_MODULES
+
+    for module_path in LOADED_PLUGIN_MODULES:
+        command += ["--strategy-module", module_path]
+    if tier:
+        command += ["--tier", str(tier)]
+    if split:
+        command += ["--split", split]
+    if reference_free:
+        command.append("--reference-free")
+    # Serial and parallel schedule requests differently, and the benchmark
+    # reports latency. Only the non-default is named, so the ordinary command
+    # stays short.
+    if not parallel:
+        command.append("--no-parallel")
+    return command
+
+
 async def run_benchmark(
     corpus: str = "all",
     strategy: str = "all",
@@ -798,6 +860,9 @@ async def run_benchmark(
                         strategy=strat.name,
                         run_id=run_id,
                         timestamp=timestamp,
+                        command=_command_for(
+                            corp, strategy, tier, split, reference_free, top_k, parallel
+                        ),
                         config_snapshot=config_snap,
                         schema_version=SCHEMA_VERSION,
                         judge_provider=judge_provider_of(manifest),
@@ -884,6 +949,9 @@ async def run_benchmark(
                         strategy=strat.name,
                         run_id=run_id,
                         timestamp=timestamp,
+                        command=_command_for(
+                            corp, strategy, tier, split, reference_free, top_k, parallel
+                        ),
                         config_snapshot=config_snap,
                         schema_version=SCHEMA_VERSION,
                         judge_provider=judge_provider_of(manifest),
