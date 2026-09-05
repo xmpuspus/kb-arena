@@ -124,3 +124,51 @@ async def test_every_llm_call_counts_toward_the_reported_cost(mock_chroma_client
 
     assert result.cost_usd == pytest.approx(1.01)
     assert result.tokens_used == 115
+
+
+@pytest.mark.asyncio
+async def test_a_refined_round_keeps_the_better_score_for_a_repeated_chunk(mock_chroma_client):
+    """`setdefault` kept the first round's score for a chunk the refinement re-found.
+
+    The final sort then demoted the strongest result the refinement produced,
+    which is the whole reason to refine.
+    """
+    from kb_arena.models.retrieval import RetrievedChunk
+
+    strategy = AgenticStrategy(chroma_client=mock_chroma_client, max_iterations=2, max_llm_calls=3)
+    strategy._llm = AsyncMock()
+    strategy._llm.generate = AsyncMock(side_effect=[_not_enough(), _not_enough(), _answer()])
+
+    rounds = [
+        [
+            RetrievedChunk(
+                chunk_id="c1",
+                doc_id="d1",
+                content="x",
+                score=0.1,
+                rank=1,
+                source_strategy="agentic",
+            )
+        ],
+        [
+            RetrievedChunk(
+                chunk_id="c1",
+                doc_id="d1",
+                content="x",
+                score=0.9,
+                rank=1,
+                source_strategy="agentic",
+            )
+        ],
+    ]
+
+    async def next_round(*args, **kwargs):
+        """The next round's chunks, repeating the last one after the list runs out."""
+        return rounds.pop(0) if len(rounds) > 1 else rounds[0]
+
+    strategy._retrieve = next_round
+
+    result = await strategy.query("What does json.loads do?")
+
+    [kept] = result.retrieval.retrieved
+    assert kept.score == pytest.approx(0.9)

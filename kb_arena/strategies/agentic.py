@@ -169,7 +169,13 @@ class AgenticStrategy(Strategy):
         while True:
             retrieve_t0 = time.perf_counter()
             for chunk in await self._retrieve(query_text, top_k, corpus):
-                collected.setdefault(chunk.chunk_id, chunk)
+                # A refined query can retrieve a chunk the first round already
+                # saw, and score it higher. `setdefault` kept the first score,
+                # and the final sort then demoted the strongest result the
+                # refinement found, which is the whole point of refining.
+                seen = collected.get(chunk.chunk_id)
+                if seen is None or (chunk.score or 0.0) > (seen.score or 0.0):
+                    collected[chunk.chunk_id] = chunk
             retrieval_ms += (time.perf_counter() - retrieve_t0) * 1000
             iterations_used += 1
 

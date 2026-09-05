@@ -23,6 +23,7 @@ from typing import Any
 
 import numpy as np
 
+from kb_arena.benchmark.atomic import atomic_write_text
 from kb_arena.models.document import Document
 from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
 from kb_arena.settings import settings
@@ -189,7 +190,11 @@ class SPLADEStrategy(Strategy):
                 # through str() on write and int() on read.
                 "terms": [{str(term): w for term, w in tv.items()} for tv in terms],
             }
-            index_path.write_text(json.dumps(payload, ensure_ascii=False))
+            # A plain write truncates the live file first, so a query landing
+            # mid-write read half a document, and the JSON error then became
+            # the "index not built" answer. A rebuild is invisible to a reader
+            # now: the file it opens is either the old one or the new one.
+            atomic_write_text(index_path, json.dumps(payload, ensure_ascii=False))
             log.info("SPLADE index built for %s: %d passages", corpus, len(passages["texts"]))
 
         combined_texts: list[str] = []

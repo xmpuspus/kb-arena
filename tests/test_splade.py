@@ -6,6 +6,8 @@ so these run in core CI. `[splade]` is exercised only through a mocked encoder.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -104,3 +106,17 @@ async def test_splade_builds_and_queries_its_own_index(tmp_path, monkeypatch, mo
     assert kept[0].content == "c1 text"
     assert kept[0].chunk_id == "doc1::s1"
     assert kept[0].doc_id == "doc1"
+
+
+def test_the_index_is_published_atomically():
+    """A plain write truncates the live file, so a reader saw half a document.
+
+    The JSON error then became the "index not built" answer, so a rebuild race
+    was benchmarked as a strategy result.
+    """
+    source = Path(__file__).resolve().parents[1] / "kb_arena/strategies/splade.py"
+
+    body = source.read_text()
+
+    assert "atomic_write_text(index_path" in body
+    assert "index_path.write_text(" not in body
