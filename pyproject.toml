@@ -73,6 +73,13 @@ otel = [
 # work. Lazy-imported everywhere in the core install, so the CLI and API stay
 # usable without it; install with `pip install 'kb-arena[mcp]'`.
 mcp = ["mcp==2.1.1"]
+# Optional VectorStore adapters (kb_arena/vectorstores/). ChromaDB stays the
+# core default. Each one is lazy-imported, so the core install stays free of
+# them until a corpus selects one. They are pinned exactly, the way every other
+# extra here is, so two installs of one release resolve to one set of versions.
+qdrant = ["qdrant-client==1.16.1"]
+pgvector = ["psycopg[binary]==3.2.10"]
+lancedb = ["lancedb==0.26.0"]
 
 [project.scripts]
 kb-arena = "kb_arena.cli:app"
