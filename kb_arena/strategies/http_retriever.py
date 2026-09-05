@@ -278,11 +278,18 @@ class HTTPRetrieverStrategy(Strategy):
         start = self._start_timer()
 
         retrieval_start = time.perf_counter()
-        # The deadline lives HERE, not inside the HTTP call. Two review rounds
-        # found it missing one layer down: first the body read, then the wait
+        # The deadline lives HERE, not inside the HTTP call. Three review
+        # rounds found it missing one layer down: the body read, then the wait
         # for headers, and httpx restarts its own timeout on every socket read
         # in both. A caller-side bound covers connect, headers and body at
-        # once, and no future layer inside httpx can slip under it.
+        # once, and no layer inside httpx can slip under it.
+        #
+        # What this bound does NOT do, stated rather than implied: cancelling
+        # `to_thread` unblocks the caller and leaves the worker thread running.
+        # The run continues, which is the contract, but that thread holds an
+        # executor slot until its own socket timeout fires. Closing that hole
+        # needs an async HTTP client, and the SSRF guard this reuses is a sync
+        # one. Writing a second guard is the worse trade. N-102 carries it.
         allowance = self._reserve_budget()
         try:
             payloads = await asyncio.wait_for(
