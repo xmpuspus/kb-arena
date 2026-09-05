@@ -16,6 +16,7 @@ on disk differ, so a stale reference cannot merge.
 from __future__ import annotations
 
 import sys
+import textwrap
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -143,6 +144,195 @@ def _settings_fields() -> list[tuple[str, str, str]]:
     return sorted(rows)
 
 
+def _strategy_notes() -> dict[str, str]:
+    """What each strategy does, keyed by `StrategySpec.name`.
+
+    `STRATEGY_CATALOG` gives a name, a label, an architecture, and the flags
+    that decide default-benchmark and API status. It carries no prose about
+    what a strategy does or why it sits outside the default set, so that
+    explanation lives here instead of in a hand-maintained doc.
+    """
+    return {
+        "naive_vector": (
+            "Chunks documents, embeds each chunk, and ranks by cosine similarity. Use "
+            "it as the dense baseline."
+        ),
+        "contextual_vector": (
+            "Adds parent headings and document context before embedding. Compare it "
+            "with Naive Vector to measure whether local context resolves ambiguous "
+            "terms."
+        ),
+        "qna_pairs": (
+            "Generates likely questions and answers at index time, then retrieves "
+            "those pairs. It can do well on recurring questions but may miss novel "
+            "phrasing and has extra index-time cost."
+        ),
+        "knowledge_graph": (
+            "Extracts entities and relationships into Neo4j and retrieves through "
+            "graph query templates. It is most relevant when a question depends on "
+            "explicit links across topics."
+        ),
+        "lightrag": (
+            "Reads the same Neo4j graph as Knowledge Graph, through two paths at "
+            "once. Local retrieval walks the one-hop neighborhood of entities matched "
+            "in the question. Global retrieval groups fulltext-matched candidates "
+            "into a community by their shared neighbor links, then reads the "
+            "community's member names and descriptions as a summary. Every retrieved "
+            "chunk records which path produced it. It is excluded from the default "
+            "benchmark because a degraded (Neo4j-unreachable) result fails the "
+            "benchmark run, unlike knowledge_graph and hybrid, which still carry that "
+            "same risk in the default set today."
+        ),
+        "hybrid": (
+            "Routes by intent and combines vector and graph passages with "
+            "Reciprocal Rank Fusion. Report its added latency and graph dependency "
+            "with its quality result."
+        ),
+        "raptor": (
+            "Builds recursive summaries above the source chunks and retrieves "
+            "across tree levels. It targets broad or cross-document questions."
+        ),
+        "pageindex": (
+            "Builds a hierarchy from document structure and uses an LLM to traverse "
+            "it. It gives a vector-free comparison for well-structured documents."
+        ),
+        "bm25": (
+            "Ranks by lexical term matching without embeddings. It is the keyless "
+            "baseline and often remains competitive when identifiers and exact "
+            "terms dominate."
+        ),
+        "metadata_filtered": (
+            "Applies an access filter, tags, owner, classification, and a document "
+            "ID allow-list, inside retrieval. Scalar fields go into the Chroma "
+            "`where` clause. Tags go into a Python check against an over-fetched "
+            "candidate pool, then the result is cut to top_k. A chunk outside the "
+            "filter never reaches the ranked list. An unknown classification level "
+            "raises instead of allowing or denying everything by guess."
+        ),
+        "temporal": (
+            "Prefers the newest eligible version of each document family and "
+            "accepts an as-of date. Once a newer eligible version is present among "
+            "the candidates, every chunk from an older version is dropped, so a "
+            "superseded chunk cannot outrank its replacement. An unparseable as-of "
+            "date raises."
+        ),
+        "rerank_vector": (
+            "Retrieves a wider dense candidate set and rescores it with BGE, "
+            "Cohere, or Voyage. Compare the quality lift with its latency and "
+            "provider cost. BGE is the default. For Cohere or Voyage, install "
+            "`cohere` or `voyageai`, set `KB_ARENA_RERANKER_BACKEND` to `cohere` or "
+            "`voyage`, and set `KB_ARENA_COHERE_API_KEY` or "
+            "`KB_ARENA_VOYAGE_API_KEY`. Run the strategy explicitly after "
+            "installing the selected backend."
+        ),
+        "qiss": (
+            "Reranks dense candidates with pure NumPy state-fidelity calculations. "
+            "Its single-query score is a monotonic transform of cosine similarity, "
+            "so a recall gain needs a separate multi-query operator."
+        ),
+        "sqr": (
+            "Reduces embeddings to a power-of-two dimension, amplitude-encodes "
+            "them, and runs a Qiskit Aer SWAP-test circuit."
+        ),
+        "hyde": (
+            "Asks the LLM for a hypothetical answer to the question, then "
+            "retrieves Naive Vector's index with that hypothetical answer instead "
+            "of the question text."
+        ),
+        "multi_query": (
+            "Asks the LLM for several sub-queries, retrieves Naive Vector's index "
+            "once per sub-query, and fuses the ranked chunk lists with Reciprocal "
+            "Rank Fusion."
+        ),
+        "late_interaction": (
+            "Keeps one embedding per token instead of one pooled vector per "
+            "passage, then reranks Naive Vector candidates by MaxSim: for every "
+            "query token, the best cosine match among the passage tokens, averaged "
+            "across query tokens."
+        ),
+        "splade": (
+            "Expands a query and each indexed passage into a weighted set of "
+            "vocabulary terms, then scores a query against a passage by the dot "
+            "product of their term weights. It builds and reads its own "
+            "term-weight index, so it needs no embedding provider."
+        ),
+        "agentic": (
+            "Retrieves, then asks the LLM whether the gathered context already "
+            "answers the question, and retrieves again with a refined query when "
+            "it does not. A maximum iteration count and a maximum LLM-call count "
+            "are set at construction time and enforced every round, so the loop "
+            "always stops even when the judge keeps asking for another round."
+        ),
+    }
+
+
+def _strategy_facts(spec) -> list[str]:
+    """Short facts the catalog itself can state, so they cannot drift from it."""
+    facts = [
+        f"Architecture: {spec.architecture}",
+        f"In the default benchmark: {'yes' if spec.default_benchmark else 'no'}",
+    ]
+    if spec.experimental:
+        facts.append("Experimental: available for research, with no general performance claim")
+    if spec.optional_extra:
+        facts.append(f"Needs `pip install 'kb-arena[{spec.optional_extra}]'`")
+    if not spec.api_supported:
+        facts.append("Not reachable through the API")
+    if not spec.needs_embeddings:
+        facts.append("Calls no embedding provider")
+    return facts
+
+
+def render_strategy_catalog() -> str:
+    from kb_arena.strategies.catalog import STRATEGY_CATALOG
+
+    notes = _strategy_notes()
+    lines = [
+        GENERATED,
+        "",
+        "# Strategy catalog",
+        "",
+        "`kb_arena.strategies.catalog` is the source for built-in strategy names, "
+        "default benchmark status, experiment labels, and optional dependencies. "
+        "`GET /strategies` adds the loaded status for the current API process.",
+        "",
+        "Entries appear in the catalog's own order. The first entry is the dense "
+        "baseline every other strategy compares against.",
+        "",
+    ]
+    for spec in STRATEGY_CATALOG:
+        note = notes.get(spec.name)
+        if note is None:
+            raise RuntimeError(
+                f"docs/strategy-catalog.md has no note for {spec.name!r}. "
+                "Add one to _strategy_notes() in scripts/generate_reference.py."
+            )
+        lines += [f"## {spec.label}", ""]
+        lines += textwrap.wrap(note, width=88)
+        lines.append("")
+        for fact in _strategy_facts(spec):
+            lines.append(f"- {fact}")
+        lines.append("")
+    lines += [
+        "## Runtime states",
+        "",
+        "The following terms are distinct:",
+        "",
+        "- Registered: implemented in the installed package.",
+        "- Default: included when a benchmark uses `all`.",
+        "- Loaded: instantiated by the current API process.",
+        "- Optional: needs an extra dependency group.",
+        "- Experimental: available for research, with no general performance claim.",
+        "",
+        "The experimental entries answer research questions about operators and "
+        "overhead. They do not define the main product category of KB Arena.",
+        "",
+        "Read `GET /strategies` for the loaded status of each strategy. Do not infer "
+        "it from a fixed number.",
+    ]
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def render_cli() -> str:
     lines = [
         GENERATED,
@@ -206,6 +396,7 @@ TARGETS = {
     "docs/reference-cli.md": render_cli,
     "docs/reference-http.md": render_api,
     "docs/reference-environment.md": render_settings,
+    "docs/strategy-catalog.md": render_strategy_catalog,
 }
 
 
