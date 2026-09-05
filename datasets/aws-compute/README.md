@@ -1,4 +1,4 @@
-# aws-compute: 75 reviewed questions over 1,549 words, and 58 of them the corpus cannot answer
+# aws-compute has 75 reviewed questions over 1,549 words, and cannot answer 58 of them
 
 The corpus KB Arena ships as its worked example. Three AWS documents, 75
 questions across five difficulty tiers, and chunk-level ground truth for 35 of
@@ -9,17 +9,17 @@ Read the coverage section before you read any number this corpus produces.
 ## What the review status covers
 
 Every question carries `review_status: human-reviewed` and
-`reviewed_by: "Xavier Puspus"`. Three facts back that:
+`reviewed_by: "Xavier Puspus"`. Three facts back that label.
 
 - Xavier wrote the questions and their answer keys. He committed them in
   `3b644b5` on 2026-03-02.
 - On 2026-09-05 every answer key got a line-by-line check against AWS behaviour
   and against the three source documents. The check used three review models
   and each finding was read back against the file before anybody changed it.
-- That check found six wrong keys out of 75. All six are corrected. Xavier
-  confirmed the review.
+- That check found six wrong keys out of 75. I corrected all six. Xavier
+  authorized this review pass.
 
-The six corrections:
+The six corrections follow.
 
 | Question | What was wrong |
 |---|---|
@@ -32,7 +32,7 @@ The six corrections:
 
 The label covers the answer key. It says a person stands behind each question
 and its expected answer. It says nothing about how well any strategy answers
-them, and nothing about whether this corpus contains the answer.
+them, and nothing about whether this corpus has the answer.
 
 `kb-arena` reads the field through `kb_arena/benchmark/review.py`. A result is
 `publishable` only when every question it scored is `human-reviewed`.
@@ -45,13 +45,13 @@ answer. The answer is 17.
 | Verdict | Count | What it means |
 |---|---|---|
 | Correct and covered | 11 | The key is right and a source document holds the facts |
-| Correct, not covered | 58 | The key is right and no source document holds the facts |
+| Correct, uncovered | 58 | The key is right and no source document holds the facts |
 | Wrong, now corrected | 6 | The key stated something false about AWS |
 
 The keys cite 107 distinct AWS documentation URLs, covering EKS, Batch, Step
 Functions, App Runner, Lightsail, CloudFront, Route 53, DynamoDB, RDS and more.
 This corpus holds three of those subjects. So the questions were written against
-a much larger body of documentation than the corpus contains.
+a much larger body of documentation than the corpus has.
 
 That is why 40 of the 75 carry an empty list in `expected_chunks.yaml`. No chunk
 in this corpus answers them.
@@ -64,17 +64,17 @@ end to end. Do not use it to rank retrieval architectures.
 ## How this corpus differs from nist-800-171-r3
 
 The NIST corpus carries `review_status: machine-assisted-draft` and
-`reviewed_by: "Codex draft pass"`. Nobody has checked those answer keys, so a
+`reviewed_by: "Codex draft pass"`. Nobody checked those answer keys, so a
 result over them is a development signal and never citable. That label stays
 until a person reviews them.
 
-Two corpora, two honest labels. The gate is what makes the difference readable.
+Two corpora, two correct labels. The gate is what makes the difference readable.
 
 ## Layout
 
 | Path | What it holds |
 |---|---|
-| `raw/` | Three source documents: Lambda, API Gateway, ECS and Fargate |
+| `raw/` | Three source documents. Lambda, API Gateway, ECS and Fargate |
 | `processed/` | Parsed JSONL and the BM25 index a run builds |
 | `questions/tier1_factoid.yaml` | 20 single-fact questions |
 | `questions/tier2_procedural.yaml` | 20 step-sequence questions |

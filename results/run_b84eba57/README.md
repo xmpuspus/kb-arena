@@ -1,4 +1,4 @@
-# Committed run b84eba57: BM25 reaches Recall@5 of 0.275 on 75 reviewed questions
+# Committed run b84eba57 puts BM25 at Recall@5 of 0.275 over 75 reviewed questions
 
 One bounded, repeatable retrieval run on the built-in `aws-compute` corpus, kept
 in the repository so a reader can check the numbers rather than trust them.
@@ -42,7 +42,7 @@ repeats before it reports a standard deviation.
 Run 59b5b60d measured question set `3aecce3d26b1`. On 2026-09-05 a review of all
 75 answer keys found six wrong ones and corrected them, which changed the set to
 `3083f59c5d22`. The old run then described questions the corpus no longer held.
-`kb-arena evidence --check` refuses that now, by name:
+`kb-arena evidence --check` refuses that now, and it names both values.
 
 > the run measured question set 3aecce3d26b1 and the review covers 3083f59c5d22.
 > The review verdict describes a different set of questions.

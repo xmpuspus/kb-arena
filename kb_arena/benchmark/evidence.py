@@ -140,8 +140,12 @@ def check_bundle(bundle: dict, root: Path) -> list[str]:
     return problems
 
 
-def _manifests_in(path: Path) -> list[dict] | None:
-    """Every manifest a result file carries, or None when it carries none."""
+def _manifests_in(path: Path) -> list | None:
+    """Every manifest entry a result file carries, or None when it carries none.
+
+    An entry that is not a dict stays in the list. It is a broken manifest, and
+    the readers below turn it into the unreadable marker.
+    """
     try:
         data = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError, ValueError):
@@ -155,7 +159,10 @@ def _manifests_in(path: Path) -> list[dict] | None:
         candidates.append(manifest)
     if not candidates:
         return None
-    return [entry for entry in candidates if isinstance(entry, dict)]
+    # A non-dict entry is a broken manifest, not an absent one. Dropping it here
+    # moved the same hole one layer up: a readable sibling entry then spoke for
+    # the whole file. It maps to the unreadable marker instead.
+    return candidates
 
 
 def question_sets_in(path: Path) -> list[str] | None:
@@ -170,7 +177,7 @@ def question_sets_in(path: Path) -> list[str] | None:
         return None
     found = []
     for entry in entries:
-        stored = entry.get("question_set_fingerprint")
+        stored = entry.get("question_set_fingerprint") if isinstance(entry, dict) else None
         # A fingerprint that is null, blank, or not a string names no set. The
         # earlier version asked only whether it was truthy, so every one of
         # those values skipped the comparison and passed as if it matched. A
@@ -192,7 +199,7 @@ def question_splits_in(path: Path) -> list[str]:
     entries = _manifests_in(path) or []
     out = []
     for entry in entries:
-        stored = entry.get("question_split")
+        stored = entry.get("question_split") if isinstance(entry, dict) else None
         out.append(stored.strip() if isinstance(stored, str) and stored.strip() else "")
     return out
 

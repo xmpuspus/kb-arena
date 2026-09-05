@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -356,3 +357,46 @@ def test_the_bundle_never_lists_itself_as_one_of_the_run_results():
     bundle = json.loads((COMMITTED / "evidence.json").read_text())
 
     assert not any(name.endswith("evidence.json") for name in bundle["results"]), bundle["results"]
+
+
+def test_a_manifest_entry_that_is_not_a_record_never_passes_as_absent(tmp_path):
+    """The first fix dropped a bad fingerprint. The second dropped a bad entry.
+
+    Both moved the same hole one layer up, so a readable sibling entry spoke for
+    the whole file. Every entry that is not a record reads as unreadable now.
+    """
+    run = tmp_path / "results" / "run_null"
+    run.mkdir(parents=True)
+    data = json.loads((COMMITTED / "retriever_lab.json").read_text())
+    data["manifests"]["other"] = None
+    (run / "retriever_lab.json").write_text(json.dumps(data))
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    bundle = {**bundle, "results": ["results/run_null/retriever_lab.json"]}
+
+    problems = check_bundle(bundle, tmp_path)
+
+    assert any("nobody can read" in p for p in problems), problems
+
+
+def test_writing_a_bundle_refuses_what_checking_it_would_reject(tmp_path, monkeypatch):
+    """The write path announced a citable run without reading its own checker."""
+    import subprocess
+
+    results = tmp_path / "results" / "run_stale"
+    results.mkdir(parents=True)
+    data = json.loads((COMMITTED / "retriever_lab.json").read_text())
+    data["manifests"]["aws-compute"]["question_set_fingerprint"] = "3aecce3d26b1"
+    (results / "retriever_lab.json").write_text(json.dumps(data))
+
+    result = subprocess.run(
+        ["python3", "-m", "kb_arena.cli", "evidence"]
+        + ["--corpus", "aws-compute", "--run-id", "stale"],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+        env={**os.environ, "KB_ARENA_RESULTS_PATH": str(tmp_path / "results")},
+    )
+
+    assert result.returncode == 1, result.stdout
+    assert "does not back a bundle" in result.stdout
+    assert not (results / "evidence.json").exists(), "a rejected bundle must not land on disk"

@@ -1765,6 +1765,16 @@ def evidence_command(
         review_question_set=question_set_fingerprint(questions),
         review_split=run_split or "all",
     )
+    # The write path used to announce a citable run without reading its own
+    # checker. So `kb-arena evidence` printed "citable" for a bundle that
+    # `kb-arena evidence --check` then rejected. Nothing false lands on disk now.
+    problems = check_bundle(bundle, root)
+    if problems:
+        console.print("[red]This run does not back a bundle, so none was written.[/red]")
+        for problem in problems:
+            console.print(f"[red]  {problem}[/red]")
+        raise typer.Exit(1)
+
     path = write_bundle(run_dir, bundle)
     console.print(f"[green]{path}[/green]")
     if bundle["citable"]:
