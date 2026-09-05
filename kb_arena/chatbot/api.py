@@ -221,16 +221,21 @@ async def lifespan(app: FastAPI):
     """Initialize all services. Store on app.state. (Pattern 11 from PLAN.md)"""
     from kb_arena.chatbot.router import IntentRouter
     from kb_arena.llm.client import LLMClient
+    from kb_arena.strategies.agentic import AgenticStrategy
     from kb_arena.strategies.bm25 import BM25Strategy
     from kb_arena.strategies.contextual_vector import ContextualVectorStrategy
     from kb_arena.strategies.hybrid import HybridStrategy
+    from kb_arena.strategies.hyde import HydeStrategy
     from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
+    from kb_arena.strategies.lightrag import LightRAGStrategy
+    from kb_arena.strategies.multi_query import MultiQueryStrategy
     from kb_arena.strategies.naive_vector import NaiveVectorStrategy
     from kb_arena.strategies.pageindex import PageIndexStrategy
     from kb_arena.strategies.qna_pairs import QnAPairStrategy
     from kb_arena.strategies.quantum.qiss import QISSStrategy
     from kb_arena.strategies.raptor import RaptorStrategy
     from kb_arena.strategies.rerank_vector import RerankVectorStrategy
+    from kb_arena.strategies.temporal import TemporalStrategy
 
     # Detect zero-config demo: if no API keys are configured AND we're not on Ollama,
     # auto-enable demo_mode so /chat etc. return 503 instead of crashing on the
@@ -295,8 +300,8 @@ async def lifespan(app: FastAPI):
                     await driver.close()
                 app.state.neo4j_error = str(exc)
                 logger.warning(
-                    "Neo4j not available at %s (%s); knowledge_graph and hybrid will use mock "
-                    "data. Run: docker compose up neo4j -d",
+                    "Neo4j not available at %s (%s); knowledge_graph, lightrag, and hybrid will "
+                    "use mock data. Run: docker compose up neo4j -d",
                     settings.neo4j_uri,
                     exc,
                 )
@@ -336,7 +341,12 @@ async def lifespan(app: FastAPI):
         "raptor": RaptorStrategy(chroma_client=chroma),
         "pageindex": PageIndexStrategy(),
         "bm25": BM25Strategy(),
+        "temporal": TemporalStrategy(chroma_client=chroma),
         "qiss": QISSStrategy(chroma_client=chroma, llm_client=llm),
+        "hyde": HydeStrategy(chroma_client=chroma, llm_client=llm),
+        "multi_query": MultiQueryStrategy(chroma_client=chroma, llm_client=llm),
+        "agentic": AgenticStrategy(chroma_client=chroma, llm_client=llm),
+        "lightrag": LightRAGStrategy(neo4j_driver=app.state.neo4j),
     }
 
     from kb_arena.strategies.catalog import STRATEGY_CATALOG, missing_optional_modules
@@ -352,6 +362,22 @@ async def lifespan(app: FastAPI):
         from kb_arena.strategies.quantum.sqr import SQRStrategy
 
         app.state.strategies["sqr"] = SQRStrategy(chroma_client=chroma, llm_client=llm)
+
+    late_interaction_spec = next(
+        spec for spec in STRATEGY_CATALOG if spec.name == "late_interaction"
+    )
+    if not missing_optional_modules(late_interaction_spec):
+        from kb_arena.strategies.late_interaction import LateInteractionStrategy
+
+        app.state.strategies["late_interaction"] = LateInteractionStrategy(
+            chroma_client=chroma, llm_client=llm
+        )
+
+    splade_spec = next(spec for spec in STRATEGY_CATALOG if spec.name == "splade")
+    if not missing_optional_modules(splade_spec):
+        from kb_arena.strategies.splade import SPLADEStrategy
+
+        app.state.strategies["splade"] = SPLADEStrategy()
 
     app.state.arena, app.state.arena_error = _build_arena(app.state.strategies)
 
@@ -1378,7 +1404,7 @@ async def readiness(request: Request) -> JSONResponse:
     ready = True
 
     # Neo4j: only required if a neo4j-dependent strategy is loaded
-    neo4j_strategies = {"knowledge_graph", "hybrid"}
+    neo4j_strategies = {"knowledge_graph", "lightrag", "hybrid"}
     loaded = set(request.app.state.strategies.keys())
     needs_neo4j = bool(loaded & neo4j_strategies)
 

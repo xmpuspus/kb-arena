@@ -43,6 +43,8 @@ Every setting, read from `kb_arena/settings.py`. Each takes the
 | `KB_ARENA_HOST` | `127.0.0.1` | - |
 | `KB_ARENA_JUDGE_MODEL` | `claude-opus-4-6` | - |
 | `KB_ARENA_JUDGE_PROVIDER` | `(empty)` | - |
+| `KB_ARENA_LATE_INTERACTION_FANOUT` | `4` | - |
+| `KB_ARENA_LATE_INTERACTION_MODEL` | `colbert-ir/colbertv2.0` | - |
 | `KB_ARENA_LLM_API_KEY` | `(empty)` | - |
 | `KB_ARENA_LLM_CALL_TIMEOUT_S` | `60.0` | - |
 | `KB_ARENA_LLM_MAX_ATTEMPTS` | `3` | - |
@@ -51,6 +53,7 @@ Every setting, read from `kb_arena/settings.py`. Each takes the
 | `KB_ARENA_LLM_STREAM_IDLE_TIMEOUT_S` | `60.0` | - |
 | `KB_ARENA_LOG_FORMAT` | `text` | - |
 | `KB_ARENA_LOG_LEVEL` | `INFO` | - |
+| `KB_ARENA_MULTI_QUERY_N` | `3` | - |
 | `KB_ARENA_NEO4J_DATABASE` | `neo4j` | - |
 | `KB_ARENA_NEO4J_PASSWORD` | `(empty)` | - |
 | `KB_ARENA_NEO4J_URI` | `bolt://localhost:7687` | - |
@@ -76,6 +79,8 @@ Every setting, read from `kb_arena/settings.py`. Each takes the
 | `KB_ARENA_RESULTS_PATH` | `./results` | - |
 | `KB_ARENA_RUN_SEED` | `0` | - |
 | `KB_ARENA_SESSION_TTL_MINUTES` | `30` | - |
+| `KB_ARENA_SPLADE_MODEL` | `naver/splade-cocondenser-ensembledistil` | - |
+| `KB_ARENA_SPLADE_TOP_TERMS` | `256` | - |
 | `KB_ARENA_SQR_FANOUT` | `4` | - |
 | `KB_ARENA_SQR_N_QUBITS` | `4` | - |
 | `KB_ARENA_SQR_SHOTS` | `0` | - |

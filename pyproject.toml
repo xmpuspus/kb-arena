@@ -60,6 +60,12 @@ rerank = ["sentence-transformers>=5.0,<6"]
 # (sqr, Qiskit Aer SWAP test + PCA reduction). Lazy-imported, so the core
 # install and CI stay light; install with `pip install 'kb-arena[quantum]'`.
 quantum = ["qiskit==2.5.2", "qiskit-aer==0.17.2", "scikit-learn==1.9.0"]
+# Strategy #12, late interaction (ColBERT-style MaxSim reranker over per-token
+# embeddings). Lazy-imported, so a plain install never pulls in torch.
+late-interaction = ["transformers==4.57.1", "torch==2.9.1"]
+# Strategy #13, SPLADE (learned sparse retrieval, term-weight expansion over a
+# masked-language model). Lazy-imported, so a plain install never pulls in torch.
+splade = ["transformers==4.57.1", "torch==2.9.1"]
 # Optional tracing (see kb_arena/telemetry.py). Lazy-imported, so the core
 # install and CI stay light; install with `pip install 'kb-arena[otel]'` and
 # set KB_ARENA_OTEL_ENABLED=true. The host process still configures the
