@@ -1244,6 +1244,9 @@ def test_the_commit_check_stays_silent_on_a_shallow_clone(tmp_path):
 
     # The skip covers only a MISSING object. A commit the clone does hold and
     # cannot reach from `origin/main` is a commit it is telling the truth about.
+    # The clone inherits no identity, and CI configures none globally.
+    git("config", "user.email", "t@example.com", cwd=shallow)
+    git("config", "user.name", "t", cwd=shallow)
     (shallow / "b.txt").write_text("x\n")
     git("add", "b.txt", cwd=shallow)
     git("commit", "-qm", "local only", cwd=shallow)
