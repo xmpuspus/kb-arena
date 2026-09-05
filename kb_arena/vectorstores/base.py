@@ -23,6 +23,24 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+def validate_top_k(top_k: int) -> int:
+    """One bound every adapter applies before a value reaches its backend.
+
+    A caller-controlled `top_k` reached Chroma's `n_results`, Qdrant's `limit`,
+    a SQL `LIMIT` and LanceDB's `limit()` unchecked, so one request could ask a
+    remote store for a billion rows. The strategies bound the same parameter
+    with `strategies.base.validate_top_k`, and this interface is a second door
+    into the same stores.
+    """
+    from kb_arena.strategies.base import MAX_RETRIEVAL_CANDIDATES
+
+    if isinstance(top_k, bool) or not isinstance(top_k, int):
+        raise ValueError("top_k must be an integer")
+    if not 1 <= top_k <= MAX_RETRIEVAL_CANDIDATES:
+        raise ValueError(f"top_k must be between 1 and {MAX_RETRIEVAL_CANDIDATES}")
+    return top_k
+
+
 class VectorMatch(BaseModel):
     """One result from VectorStore.query(), in the adapter's own rank order."""
 

@@ -391,3 +391,19 @@ def test_a_table_name_that_is_not_an_identifier_is_refused():
 
     with pytest.raises(ValueError, match="plain SQL identifier"):
         PgVectorStore(client=MagicMock(), table_name="kb_arena; DROP TABLE audit_log; --")
+
+
+@pytest.mark.parametrize(
+    "store_name", ["chroma_store", "qdrant_store", "pgvector_store", "lancedb_store"]
+)
+def test_every_adapter_bounds_top_k_before_it_reaches_the_backend(store_name, request):
+    """A caller-controlled `top_k` reached `n_results`, `limit` and `LIMIT` unchecked.
+
+    One request could ask a remote store for a billion rows. The strategies
+    bound the same parameter, and this interface is a second door into the same
+    stores.
+    """
+    store, _ = request.getfixturevalue(store_name)
+
+    with pytest.raises(ValueError, match="top_k"):
+        store.query([0.1, 0.2, 0.3], top_k=1_000_000_000)

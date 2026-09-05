@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from kb_arena.vectorstores.base import VectorMatch, VectorStore
+from kb_arena.vectorstores.base import VectorMatch, VectorStore, validate_top_k
 
 
 def _quote(value: str) -> str:
@@ -84,6 +84,7 @@ class LanceDBVectorStore(VectorStore):
         top_k: int,
         where: Mapping[str, str] | None = None,
     ) -> list[VectorMatch]:
+        validate_top_k(top_k)
         search = self._table.search(list(embedding)).limit(top_k)
         clause = _where_sql(where)
         if clause:

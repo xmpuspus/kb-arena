@@ -11,7 +11,7 @@ from typing import Any
 
 import chromadb
 
-from kb_arena.vectorstores.base import VectorMatch, VectorStore
+from kb_arena.vectorstores.base import VectorMatch, VectorStore, validate_top_k
 
 
 def _where_clause(where: Mapping[str, str] | None) -> dict[str, Any] | None:
@@ -56,6 +56,7 @@ class ChromaVectorStore(VectorStore):
         top_k: int,
         where: Mapping[str, str] | None = None,
     ) -> list[VectorMatch]:
+        validate_top_k(top_k)
         result = self._collection.query(
             query_embeddings=[list(embedding)],
             n_results=top_k,

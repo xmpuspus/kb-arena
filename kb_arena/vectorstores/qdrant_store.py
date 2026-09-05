@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from kb_arena.vectorstores.base import VectorMatch, VectorStore
+from kb_arena.vectorstores.base import VectorMatch, VectorStore, validate_top_k
 
 # Qdrant takes an unsigned integer or a UUID as a point id, and a chunk id is
 # neither. Hashing the chunk id into a UUID keeps the mapping deterministic
@@ -106,6 +106,7 @@ class QdrantVectorStore(VectorStore):
         top_k: int,
         where: Mapping[str, str] | None = None,
     ) -> list[VectorMatch]:
+        validate_top_k(top_k)
         response = self._client.query_points(
             collection_name=self._collection_name,
             query=list(embedding),
