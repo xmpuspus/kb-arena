@@ -140,7 +140,7 @@ def test_run_ingests_files_already_in_raw_directory(tmp_path, monkeypatch):
         ("vectors", "sample"),
         (
             "benchmark",
-            "naive_vector,contextual_vector,qna_pairs,raptor,pageindex,bm25,qiss",
+            "naive_vector,contextual_vector,qna_pairs,raptor,pageindex,bm25,metadata_filtered,temporal,qiss",
         ),
     ]
 
@@ -243,7 +243,7 @@ def test_run_new_explicit_docs_invalidate_downstream_checkpoints(tmp_path, monke
         f"ingest:{new_docs}",
         "vectors",
         "questions",
-        "benchmark:naive_vector,contextual_vector,qna_pairs,raptor,pageindex,bm25,qiss",
+        "benchmark:naive_vector,contextual_vector,qna_pairs,raptor,pageindex,bm25,metadata_filtered,temporal,qiss",
     ]
     state = json.loads((base / ".pipeline_state.json").read_text())
     assert state["ingest_source"] == str(new_docs)
@@ -278,7 +278,7 @@ def test_run_continues_after_graph_failure_without_checkpointing_it(tmp_path, mo
     assert calls == [
         "graph",
         "vectors",
-        "benchmark:naive_vector,contextual_vector,qna_pairs,raptor,pageindex,bm25,qiss",
+        "benchmark:naive_vector,contextual_vector,qna_pairs,raptor,pageindex,bm25,metadata_filtered,temporal,qiss",
     ]
     state_path = base / ".pipeline_state.json"
     state = json.loads(state_path.read_text())
@@ -317,7 +317,7 @@ def test_run_reruns_benchmark_when_graph_recovers(tmp_path, monkeypatch):
     assert first.exit_code == 0, first.stdout
     assert second.exit_code == 0, second.stdout
     assert benchmark_strategies == [
-        "naive_vector,contextual_vector,qna_pairs,raptor,pageindex,bm25,qiss",
+        "naive_vector,contextual_vector,qna_pairs,raptor,pageindex,bm25,metadata_filtered,temporal,qiss",
         "all",
     ]
     state = json.loads((base / ".pipeline_state.json").read_text())

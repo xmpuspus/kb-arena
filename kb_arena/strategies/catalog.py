@@ -37,6 +37,14 @@ STRATEGY_CATALOG: tuple[StrategySpec, ...] = (
     StrategySpec("raptor", "RAPTOR", "hierarchical"),
     StrategySpec("pageindex", "PageIndex", "hierarchical"),
     StrategySpec("bm25", "BM25", "lexical", needs_embeddings=False),
+    # Both push their filter into the Chroma query instead of cutting a fixed
+    # top_k after the fact, so they need embeddings the same way naive_vector
+    # does. Neither needs an optional extra, so they stay in the default set;
+    # a caller who passes no filter gets the same unfiltered dense retrieval
+    # as naive_vector, and the filtering behavior only shows up for a caller
+    # that asks for it.
+    StrategySpec("metadata_filtered", "Metadata Filtered", "access-aware dense"),
+    StrategySpec("temporal", "Temporal", "version-aware dense"),
     StrategySpec(
         "rerank_vector",
         "Rerank Vector",

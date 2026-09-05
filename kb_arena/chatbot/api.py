@@ -226,6 +226,7 @@ async def lifespan(app: FastAPI):
     from kb_arena.strategies.hybrid import HybridStrategy
     from kb_arena.strategies.hyde import HydeStrategy
     from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
+    from kb_arena.strategies.metadata_filtered import MetadataFilteredStrategy
     from kb_arena.strategies.multi_query import MultiQueryStrategy
     from kb_arena.strategies.naive_vector import NaiveVectorStrategy
     from kb_arena.strategies.pageindex import PageIndexStrategy
@@ -233,6 +234,7 @@ async def lifespan(app: FastAPI):
     from kb_arena.strategies.quantum.qiss import QISSStrategy
     from kb_arena.strategies.raptor import RaptorStrategy
     from kb_arena.strategies.rerank_vector import RerankVectorStrategy
+    from kb_arena.strategies.temporal import TemporalStrategy
 
     # Detect zero-config demo: if no API keys are configured AND we're not on Ollama,
     # auto-enable demo_mode so /chat etc. return 503 instead of crashing on the
@@ -338,6 +340,8 @@ async def lifespan(app: FastAPI):
         "raptor": RaptorStrategy(chroma_client=chroma),
         "pageindex": PageIndexStrategy(),
         "bm25": BM25Strategy(),
+        "metadata_filtered": MetadataFilteredStrategy(chroma_client=chroma),
+        "temporal": TemporalStrategy(chroma_client=chroma),
         "qiss": QISSStrategy(chroma_client=chroma, llm_client=llm),
         "hyde": HydeStrategy(chroma_client=chroma, llm_client=llm),
         "multi_query": MultiQueryStrategy(chroma_client=chroma, llm_client=llm),

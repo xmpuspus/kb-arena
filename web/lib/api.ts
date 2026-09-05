@@ -28,6 +28,8 @@ export const STRATEGIES = [
   "raptor",
   "pageindex",
   "bm25",
+  "metadata_filtered",
+  "temporal",
   "rerank_vector",
   "qiss",
   "sqr",
@@ -46,6 +48,8 @@ export const STRATEGY_LABELS: Record<Strategy, string> = {
   raptor: "RAPTOR",
   pageindex: "PageIndex",
   bm25: "BM25",
+  metadata_filtered: "Metadata Filtered",
+  temporal: "Temporal",
   rerank_vector: "Rerank Vector",
   qiss: "QISS (quantum)",
   sqr: "SQR (optional quantum)",
@@ -62,6 +66,8 @@ export const STRATEGY_COLORS: Record<Strategy, string> = {
   raptor: "#ef4444",
   pageindex: "#ec4899",
   bm25: "#0ea5e9",
+  metadata_filtered: "#84cc16",
+  temporal: "#06b6d4",
   rerank_vector: "#14b8a6",
   qiss: "#6366f1",
   sqr: "#a855f7",
@@ -114,6 +120,10 @@ export const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
     "Builds a hierarchical tree from document structure and uses model-guided traversal without an embedding index.",
   bm25:
     "Uses BM25 keyword matching as a keyless lexical baseline with no embeddings or graph service.",
+  metadata_filtered:
+    "Applies an access filter (tags, owner, classification, doc ID allow-list) inside retrieval, so a restricted chunk never reaches the ranked list.",
+  temporal:
+    "Prefers each document's newest version and supports an as-of date, so a superseded chunk never outranks its replacement.",
   rerank_vector:
     "Naive Vector retrieves a wide candidate pool, then a cross-encoder reranker (BGE, Cohere, or Voyage) rescores and keeps the top-k for a measured latency-quality tradeoff.",
   qiss:
@@ -151,6 +161,8 @@ export const DEFAULT_BENCHMARK_STRATEGIES: readonly Strategy[] = [
   "raptor",
   "pageindex",
   "bm25",
+  "metadata_filtered",
+  "temporal",
   "qiss",
 ] as const;
 

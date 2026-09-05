@@ -20,6 +20,7 @@ from kb_arena.strategies.contextual_vector import ContextualVectorStrategy
 from kb_arena.strategies.hybrid import HybridStrategy
 from kb_arena.strategies.hyde import HydeStrategy
 from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
+from kb_arena.strategies.metadata_filtered import MetadataFilteredStrategy
 from kb_arena.strategies.multi_query import MultiQueryStrategy
 from kb_arena.strategies.naive_vector import NaiveVectorStrategy
 from kb_arena.strategies.pageindex import PageIndexStrategy
@@ -28,6 +29,7 @@ from kb_arena.strategies.quantum.qiss import QISSStrategy
 from kb_arena.strategies.quantum.sqr import SQRStrategy
 from kb_arena.strategies.raptor import RaptorStrategy
 from kb_arena.strategies.rerank_vector import RerankVectorStrategy
+from kb_arena.strategies.temporal import TemporalStrategy
 
 logger = logging.getLogger(__name__)
 _console = Console()
@@ -41,6 +43,8 @@ STRATEGY_REGISTRY: dict[str, type] = {
     "raptor": RaptorStrategy,
     "pageindex": PageIndexStrategy,
     "bm25": BM25Strategy,
+    "metadata_filtered": MetadataFilteredStrategy,
+    "temporal": TemporalStrategy,
     "rerank_vector": RerankVectorStrategy,
     "qiss": QISSStrategy,
     "sqr": SQRStrategy,
@@ -105,6 +109,8 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
         "raptor",
         "pageindex",
         "bm25",
+        "metadata_filtered",
+        "temporal",
         "qiss",
         "sqr",
         "hyde",
@@ -119,6 +125,8 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
         "contextual_vector",
         "qna_pairs",
         "raptor",
+        "metadata_filtered",
+        "temporal",
         "qiss",
         "sqr",
         "hyde",
@@ -156,6 +164,8 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
         "raptor": _raptor,
         "pageindex": _pageindex,
         "bm25": BM25Strategy,
+        "metadata_filtered": lambda: MetadataFilteredStrategy(chroma_client=chroma),
+        "temporal": lambda: TemporalStrategy(chroma_client=chroma),
         "qiss": lambda: QISSStrategy(chroma_client=chroma),
         "sqr": lambda: SQRStrategy(chroma_client=chroma),
         "hyde": lambda: HydeStrategy(chroma_client=chroma),
@@ -246,6 +256,8 @@ def get_strategy(name: str):
         "contextual_vector",
         "qna_pairs",
         "raptor",
+        "metadata_filtered",
+        "temporal",
         "rerank_vector",
         "qiss",
         "sqr",
@@ -299,6 +311,8 @@ __all__ = [
     "RaptorStrategy",
     "PageIndexStrategy",
     "BM25Strategy",
+    "MetadataFilteredStrategy",
+    "TemporalStrategy",
     "RerankVectorStrategy",
     "QISSStrategy",
     "SQRStrategy",

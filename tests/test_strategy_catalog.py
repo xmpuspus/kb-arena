@@ -21,7 +21,7 @@ def test_catalog_matches_the_registered_strategy_order():
 def test_catalog_separates_registered_and_default_strategies():
     assert len(STRATEGY_CATALOG) == 13
     assert default_strategy_names() == tuple(STRATEGY_NAMES)
-    assert len(default_strategy_names()) == 9
+    assert len(default_strategy_names()) == 11
 
 
 def test_catalog_labels_quantum_strategies_as_experiments():

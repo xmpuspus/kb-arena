@@ -1,4 +1,8 @@
 {
+<<<<<<< HEAD
   "digest": "34afaa7b304ce8836111b52e17b13bd8cfdf7465aac24b33a33fe2370431dde4",
+=======
+  "digest": "22994d401767fbedcf1f51dd0158929368dc73085116c5137242c079a164e25c",
+>>>>>>> ed5fdbc (Add metadata-filtered and temporal retrieval strategies)
   "files": 38
 }
