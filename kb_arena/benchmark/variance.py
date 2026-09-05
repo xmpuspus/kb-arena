@@ -13,6 +13,7 @@ carry a spread.
 
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -201,15 +202,18 @@ def spread_report(runs: list[dict], metrics: tuple[str, ...] = ("accuracy_by_tie
     return rows
 
 
-def load_runs(corpus: str | None = None) -> list[dict]:
+def load_runs(corpus: str | None = None, *, failures: list[str] | None = None) -> list[dict]:
     """Every stored result, as the raw record, so the manifest survives.
 
     `--runs N` writes one directory per repeat, and the newest run also lands
     at the top level. The top-level copy duplicates a run id already read from
     its own directory, so it is counted once.
-    """
-    import json
 
+    Pass `failures` to collect the lab runs that recorded a failure and hold no
+    measurement. They belong to no corpus and no strategy, so they cannot take a
+    row, and a caller that never mentions them reports a spread over the runs
+    that happened to work.
+    """
     from kb_arena.settings import settings
 
     root = Path(settings.results_path)
@@ -247,7 +251,10 @@ def load_runs(corpus: str | None = None) -> list[dict]:
                 # corpus. Flattening it here is what lets `variance` read a lab
                 # run at all: before this, the loader skipped the file and the
                 # command answered "no run carries the metric".
-                for record in _flatten_lab_run(data, corpus):
+                flat = _flatten_lab_run(data, corpus)
+                if not flat and _lab_run_failed(data) and failures is not None:
+                    failures.append(f"{path}: {_lab_failure_reason(data)}")
+                for record in flat:
                     # A lab record takes the same identity check as a benchmark
                     # result. Two copies of one lab file are one measurement, and
                     # counting them twice would report a spread of zero over a
@@ -285,6 +292,29 @@ def load_runs(corpus: str | None = None) -> list[dict]:
 
 
 # A result file is `<corpus>_<strategy>.json`, and the strategies are known.
+def _lab_run_failed(data: dict) -> bool:
+    """Whether a lab file records a failure and holds no measurement.
+
+    The lab writes `status: incomplete` and an `execution_error` when it stops
+    before summarizing any corpus. The file then carries no corpus and no
+    strategy, so nothing about it can join a row.
+    """
+    if data.get("status") in (None, "complete"):
+        return False
+    return not (data.get("corpora") or {})
+
+
+def _lab_failure_reason(data: dict) -> str:
+    """What the lab recorded about why the run stopped."""
+    error = data.get("execution_error")
+    if isinstance(error, dict):
+        kind = str(error.get("type", "")).strip()
+        message = str(error.get("message", "")).strip()
+        if kind or message:
+            return f"{kind}: {message}" if kind and message else (kind or message)
+    return str(data.get("status", "incomplete"))
+
+
 def _looks_like_a_result(path: Path) -> bool:
     from kb_arena.strategies.catalog import STRATEGY_CATALOG
 
@@ -322,7 +352,13 @@ def _lab_sample_suffix(run: dict) -> str:
     """
     if run.get("source") != "retriever_lab":
         return ""
-    parts = []
+    # The lab stubs the LLM client for the whole run, so a strategy that calls
+    # the model (qiss decomposition, hybrid intent routing) retrieves
+    # differently than it does under `kb-arena benchmark`. The lab also always
+    # records `reference_free: True`, which a `--reference-free` benchmark
+    # records too, so the manifest core alone cannot tell the two apart. Without
+    # this the two averaged, and the gap between them read as noise.
+    parts = ["lab"]
     status = run.get("lab_status")
     if status not in (None, "complete"):
         parts.append(str(status))
@@ -354,10 +390,16 @@ def _lab_sample_suffix(run: dict) -> str:
 
 
 def _expected_question_count(run: dict) -> int | None:
-    """How many questions the run's manifest names, or None when it names none."""
+    """How many questions the run's manifest names, or None when it names none.
+
+    A count of zero or less is not a count. Passing it through makes
+    `scored < expected` false for every run, which drops the suffix and lets two
+    different question sets average together.
+    """
     manifest = run.get("manifest")
     count = manifest.get("question_count") if isinstance(manifest, dict) else None
-    return count if isinstance(count, int) and not isinstance(count, bool) else None
+    usable = isinstance(count, int) and not isinstance(count, bool) and count > 0
+    return count if usable else None
 
 
 def _flatten_lab_run(data: dict, corpus: str | None) -> list[dict]:
@@ -438,7 +480,9 @@ def _scored_question_ids(data: dict) -> dict[tuple[str, str], str]:
         if row.get("execution_error") is not None:
             continue
         pair = (str(row.get("corpus", "")), str(row.get("strategy", "")))
-        ids.setdefault(pair, []).append(str(row.get("question_id", "")))
+        # `str()` maps null to "None", the same text a real id of "None" gives,
+        # so two different question sets hashed alike. JSON keeps them apart.
+        ids.setdefault(pair, []).append(json.dumps(row.get("question_id")))
     return {pair: (len(v), question_digest(v)) for pair, v in ids.items()}
 
 

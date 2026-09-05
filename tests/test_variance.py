@@ -976,12 +976,15 @@ def test_two_lab_runs_over_the_same_questions_still_group():
     assert row["metrics"]["mean_recall_at_k"]["runs"] == 2
 
 
-def test_a_whole_lab_run_keys_the_same_as_its_manifest_says():
-    """A complete run must not drift away from the key its own manifest stores.
+def test_a_whole_lab_run_keys_on_its_manifest_key_plus_the_lab_marker():
+    """The grouping key is the manifest key plus what can be averaged with what.
 
-    The reader adds a suffix only for a short run, which is what the manifest
-    does for a benchmark result. A suffix on every run would leave a committed
-    lab file naming a key nobody groups under.
+    Those are two different questions and the manifest answers only the first.
+    A lab run and a `--reference-free` benchmark run write the same manifest
+    core, so the manifest key alone put them in one average.
+
+    A short run adds the count and the digest on top, which is the shape
+    `compatibility_key` already gives a short benchmark result.
     """
     from kb_arena.benchmark.manifest import compatibility_key
 
@@ -989,7 +992,40 @@ def test_a_whole_lab_run_keys_the_same_as_its_manifest_says():
 
     [(_, _, key)] = variance.group_by_key([run])
 
-    assert key == compatibility_key(run)
+    assert key == compatibility_key(run) + "-lab"
+    assert "partial" not in key, "the run scored every question its manifest names"
+
+
+def test_a_lab_run_never_averages_with_a_benchmark_run():
+    """The lab stubs the LLM client, so a strategy that calls the model differs.
+
+    Both write `reference_free: True` and both report `mean_recall_at_k`, so
+    the manifest core cannot separate them. Averaging a retrieval-only run with
+    a full benchmark run reports the gap between two pipelines as noise.
+    """
+    manifest = _manifest(code_version="0.11.0", git_sha="a" * 40, question_count=1)
+    bench = {
+        "corpus": "c",
+        "strategy": "bm25",
+        "run_id": "bench",
+        "manifest": manifest,
+        "mean_recall_at_k": 1.0,
+        "records": [{}],
+    }
+    lab = variance._flatten_lab_run(
+        {
+            "run_id": "lab",
+            "status": "complete",
+            "corpora": {"c": {"bm25": {"mean_recall_at_k": 0.0, "questions": 1}}},
+            "manifests": {"c": manifest},
+            "questions": [{"corpus": "c", "strategy": "bm25", "question_id": "q1"}],
+        },
+        None,
+    )
+
+    rows = variance.spread_report([bench] + lab, metrics=("mean_recall_at_k",))
+
+    assert len(rows) == 2, "a 1.0 and a 0.0 from two pipelines is not a spread"
 
 
 def test_a_lab_run_with_no_manifest_keeps_the_bare_legacy_key():
@@ -1330,3 +1366,100 @@ def test_a_corrupt_count_on_a_run_that_scored_questions_keeps_its_numbers():
     )
 
     assert variance._metric(run, "mean_recall_at_k") == pytest.approx(0.4)
+
+
+def test_a_null_question_id_never_hashes_like_the_text_none():
+    """`str(None)` gives "None", the same text a real id of "None" gives.
+
+    Two different question sets then carried one digest and averaged.
+    """
+    manifest = _manifest(code_version="0.11.0", git_sha="a" * 40, question_count=2)
+
+    def _run(run_id: str, recall: float, qid) -> list[dict]:
+        return variance._flatten_lab_run(
+            {
+                "run_id": run_id,
+                "status": "complete",
+                "corpora": {"c": {"bm25": {"mean_recall_at_k": recall, "questions": 1}}},
+                "manifests": {"c": manifest},
+                "questions": [{"corpus": "c", "strategy": "bm25", "question_id": qid}],
+            },
+            None,
+        )
+
+    rows = variance.spread_report(
+        _run("a", 0.2, None) + _run("b", 0.8, "None"), metrics=("mean_recall_at_k",)
+    )
+
+    assert len(rows) == 2, "a missing id and the text 'None' are not one question"
+
+
+def test_a_negative_question_count_never_merges_two_question_sets():
+    """A count of -1 makes `scored < expected` false, so the suffix disappeared.
+
+    Two runs over different questions then read as repeats of one experiment.
+    """
+    manifest = _manifest(code_version="0.11.0", git_sha="a" * 40, question_count=-1)
+
+    def _run(run_id: str, recall: float, qid: str) -> list[dict]:
+        return variance._flatten_lab_run(
+            {
+                "run_id": run_id,
+                "status": "complete",
+                "corpora": {"c": {"bm25": {"mean_recall_at_k": recall, "questions": 1}}},
+                "manifests": {"c": manifest},
+                "questions": [{"corpus": "c", "strategy": "bm25", "question_id": qid}],
+            },
+            None,
+        )
+
+    rows = variance.spread_report(
+        _run("a", 0.2, "q1") + _run("b", 0.8, "q2"), metrics=("mean_recall_at_k",)
+    )
+
+    assert len(rows) == 2, "-1 is not a question count"
+
+
+def test_a_lab_run_that_failed_before_any_corpus_is_reported_not_dropped(tmp_path, monkeypatch):
+    """It belongs to no corpus and no strategy, so it can take no row.
+
+    Saying nothing about it reports a spread over the repeats that worked.
+    """
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    good = tmp_path / "run_a" / "retriever_lab.json"
+    good.parent.mkdir(parents=True)
+    good.write_text(_lab_payload("a", 0.5))
+    bad = tmp_path / "run_b" / "retriever_lab.json"
+    bad.parent.mkdir(parents=True)
+    bad.write_text(
+        json.dumps(
+            {
+                "run_id": "b",
+                "status": "incomplete",
+                "execution_error": {"type": "TimeoutError", "message": "the graph never answered"},
+                "corpora": {},
+                "manifests": {},
+            }
+        )
+    )
+
+    failures: list[str] = []
+    runs = variance.load_runs(None, failures=failures)
+
+    assert len(runs) == 1, "the failed run holds no measurement"
+    assert len(failures) == 1
+    assert "TimeoutError" in failures[0]
+    assert "the graph never answered" in failures[0]
+
+
+def test_a_complete_lab_run_is_never_counted_as_a_failure(tmp_path, monkeypatch):
+    """The report must name real failures only, or the count stops meaning anything."""
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    good = tmp_path / "run_a" / "retriever_lab.json"
+    good.parent.mkdir(parents=True)
+    good.write_text(_lab_payload("a", 0.5))
+
+    failures: list[str] = []
+    variance.load_runs(None, failures=failures)
+
+    assert failures == []

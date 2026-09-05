@@ -1865,8 +1865,9 @@ def variance(
         spread_report,
     )
 
+    failed_runs: list[str] = []
     try:
-        runs = load_runs(corpus or None)
+        runs = load_runs(corpus or None, failures=failed_runs)
     except RunsUnreadableError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(1) from None
@@ -1938,6 +1939,14 @@ def variance(
         "A row groups by compatibility key, so two runs that measured different "
         "things never share a spread."
     )
+    if failed_runs:
+        # A failed run belongs to no corpus and no strategy, so it cannot take a
+        # row. Saying nothing about it would report a spread over the repeats
+        # that happened to work.
+        console.print(
+            f"[yellow]{len(failed_runs)} lab run(s) recorded a failure and carry no "
+            f"measurement, so no row counts them: " + "; ".join(failed_runs[:3]) + "[/yellow]"
+        )
     if incomparable:
         console.print(
             f"[yellow]{incomparable} row(s) are not comparable: the runs carry no "
