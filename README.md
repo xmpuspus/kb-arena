@@ -202,8 +202,8 @@ API reports loaded and unavailable strategies at `GET /strategies`.
 | RAPTOR | Hierarchical | Yes | Retrieves chunks and recursive summaries |
 | PageIndex | Hierarchical | Yes | Uses document structure and LLM tree traversal |
 | BM25 | Lexical | Yes | Keyless keyword baseline |
-| Metadata Filtered | Access-aware dense | Yes | Applies a tag, owner, classification, and doc ID filter inside retrieval |
-| Temporal | Version-aware dense | Yes | Prefers the newest document version and supports an as-of date |
+| Metadata Filtered | Access-aware dense | No | Applies a tag, owner, classification, and doc ID filter inside retrieval |
+| Temporal | Version-aware dense | No | Prefers the newest document version and supports an as-of date |
 | Rerank Vector | Reranked dense | No | The BGE backend uses `kb-arena[rerank]`. |
 | QISS | Experimental | Yes | Pure NumPy fidelity reranker over dense candidates |
 | SQR | Experimental | No | Qiskit Aer SWAP-test reranker, install `kb-arena[quantum]` |

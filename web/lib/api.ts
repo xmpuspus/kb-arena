@@ -181,10 +181,36 @@ export const DEFAULT_BENCHMARK_STRATEGIES: readonly Strategy[] = [
   "raptor",
   "pageindex",
   "bm25",
+  "qiss",
+] as const;
+
+// This fallback is what the browser shows when `/api/strategies` cannot be
+// reached. It mirrors `kb_arena/strategies/catalog.py`, and the parity tests
+// fail when the two disagree.
+const EXPERIMENTAL_STRATEGIES: readonly Strategy[] = [
   "metadata_filtered",
   "temporal",
   "qiss",
+  "sqr",
+  "hyde",
+  "multi_query",
+  "agentic",
+  "lightrag",
 ] as const;
+
+const STRATEGY_EXTRAS: Partial<Record<Strategy, string>> = {
+  rerank_vector: "rerank",
+  sqr: "quantum",
+  late_interaction: "late-interaction",
+  splade: "splade",
+};
+
+const STRATEGY_REQUIRED_MODULES: Partial<Record<Strategy, string[]>> = {
+  rerank_vector: ["sentence_transformers"],
+  sqr: ["qiskit", "qiskit_aer", "sklearn"],
+  late_interaction: ["transformers", "torch"],
+  splade: ["transformers", "torch"],
+};
 
 export const DEFAULT_STRATEGY_CATALOG: StrategyCatalogRecord[] = STRATEGIES.map((name) => ({
   name,
@@ -192,10 +218,13 @@ export const DEFAULT_STRATEGY_CATALOG: StrategyCatalogRecord[] = STRATEGIES.map(
   architecture: name === "bm25" ? "lexical" : "retrieval",
   default_benchmark: DEFAULT_BENCHMARK_STRATEGIES.includes(name),
   api_supported: true,
-  experimental: name === "qiss" || name === "sqr" || name === "hyde" || name === "multi_query",
-  experimental: name === "qiss" || name === "sqr" || name === "agentic" || name === "lightrag",
-  optional_extra: name === "sqr" ? "quantum" : null,
-  required_modules: name === "sqr" ? ["qiskit", "qiskit_aer", "sklearn"] : [],
+  // A chain of ternaries drifted from the backend every time a strategy
+  // landed, and it already misreported rerank_vector's extra as null. These
+  // two maps carry the same values `STRATEGY_CATALOG` does, so a reader sees
+  // one list per fact instead of a condition per strategy.
+  experimental: EXPERIMENTAL_STRATEGIES.includes(name),
+  optional_extra: STRATEGY_EXTRAS[name] ?? null,
+  required_modules: STRATEGY_REQUIRED_MODULES[name] ?? [],
   status: "unknown",
   unavailable_reason: "Runtime status unavailable.",
 }));

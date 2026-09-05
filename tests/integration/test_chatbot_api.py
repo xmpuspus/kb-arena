@@ -615,7 +615,7 @@ def test_strategies_returns_all_five(app_client):
 def test_strategies_returns_full_catalog_with_runtime_status(app_client):
     data = app_client.get("/strategies").json()
 
-    assert len(data["catalog"]) == 13
+    assert len(data["catalog"]) == 19
     by_name = {record["name"]: record for record in data["catalog"]}
     assert by_name["naive_vector"]["status"] == "loaded"
     assert by_name["bm25"]["status"] == "unavailable"
