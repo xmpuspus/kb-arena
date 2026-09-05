@@ -2,6 +2,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "How do Lambda, ECS Fargate, and EKS Fargate compare for running containerized microservices?"
   ground_truth:
     answer: >
@@ -36,6 +38,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What are the differences between EC2 Reserved Instances, Savings Plans, and Spot Instances for cost optimization?"
   ground_truth:
     answer: >
@@ -72,6 +76,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "How do ALB, NLB, and Gateway Load Balancer (GWLB) differ in use case and architecture?"
   ground_truth:
     answer: >
@@ -108,6 +114,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "How do ECS and EKS compare for container orchestration in a greenfield microservices project?"
   ground_truth:
     answer: >
@@ -143,6 +151,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "How does Lambda Standard Workflow in Step Functions compare to Express Workflow?"
   ground_truth:
     answer: >
@@ -176,6 +186,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do EC2 Auto Scaling target tracking, step scaling, and predictive scaling
     policies compare in their approach to scaling?
@@ -214,6 +226,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "How do Lambda container images compare to ZIP deployment packages in terms of size limits and cold start behavior?"
   ground_truth:
     answer: >
@@ -250,6 +264,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "How do Elastic Beanstalk, App Runner, and Lightsail compare for deploying a web application with minimal operational overhead?"
   ground_truth:
     answer: >
@@ -286,6 +302,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "How do EC2 instance store (ephemeral storage) and EBS volumes differ for EC2 data persistence?"
   ground_truth:
     answer: >
@@ -321,6 +339,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do Lambda@Edge and CloudFront Functions compare for executing logic
     at CloudFront edge locations?
@@ -359,6 +379,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do ECS rolling deployments and AWS CodeDeploy Blue/Green deployments
     for ECS differ in risk and rollback capabilities?
@@ -396,6 +418,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "How do AWS Batch and Step Functions compare for orchestrating complex multi-step data processing pipelines?"
   ground_truth:
     answer: >
@@ -432,6 +456,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do EC2 placement groups (Cluster, Spread, and Partition) differ in their
     hardware distribution and use case suitability?
@@ -469,6 +495,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do Lambda Provisioned Concurrency and Lambda SnapStart differ as
     strategies for eliminating cold start latency?
@@ -507,6 +535,8 @@
   tier: 3
   type: comparative
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "How do EC2 Classic Load Balancer, ALB, and NLB differ and when was Classic Load Balancer deprecated?"
   ground_truth:
     answer: >

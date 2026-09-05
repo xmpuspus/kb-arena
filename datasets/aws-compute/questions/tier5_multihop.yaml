@@ -2,6 +2,8 @@
   tier: 5
   type: multihop
   hops: 5
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How would you architect a globally distributed, highly available serverless API using
     Lambda, API Gateway, DynamoDB Global Tables, CloudFront, and Route 53 — covering
@@ -55,6 +57,8 @@
   tier: 5
   type: multihop
   hops: 4
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do EKS Pod Identity (IRSA), Karpenter node autoscaling, EBS CSI driver, and
     Kubernetes PersistentVolumeClaims work together to automatically provision
@@ -105,6 +109,8 @@
   tier: 5
   type: multihop
   hops: 4
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do Lambda, Step Functions, ECS Fargate, and SQS work together in a
     cost-optimized image processing pipeline that handles bursty traffic,
@@ -157,6 +163,8 @@
   tier: 5
   type: multihop
   hops: 4
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do EC2 Auto Scaling, ALB, CloudFront, and Route 53 work together to
     implement a multi-region active-passive failover for a stateful web application,
@@ -208,6 +216,8 @@
   tier: 5
   type: multihop
   hops: 4
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do ECS Fargate, AWS App Mesh, AWS Cloud Map, and X-Ray work together
     to implement a service mesh with distributed tracing for microservices?
@@ -258,6 +268,8 @@
   tier: 5
   type: multihop
   hops: 5
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do AWS Batch, Step Functions, S3, Lambda, and EC2 Spot instances work together
     in a genomics secondary analysis pipeline — covering job submission, data staging,
@@ -316,6 +328,8 @@
   tier: 5
   type: multihop
   hops: 4
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do EKS, Karpenter, Graviton instances, and Spot interruption handling work
     together to minimize compute costs for a mixed CPU-architecture Kubernetes workload?
@@ -365,6 +379,8 @@
   tier: 5
   type: multihop
   hops: 5
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do Lambda, EventBridge, SNS, SQS, and Step Functions work together to implement
     an event-driven orchestration system with fan-out, aggregation, and at-least-once

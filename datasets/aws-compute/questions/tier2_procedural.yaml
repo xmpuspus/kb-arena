@@ -2,6 +2,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do you configure an EC2 Auto Scaling group with a target tracking policy
     to maintain 50% CPU utilization?
@@ -37,6 +39,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do you deploy a containerized application on ECS Fargate with a
     load balancer and service auto scaling?
@@ -73,6 +77,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "How do you configure a Lambda function to access resources inside a VPC?"
   ground_truth:
     answer: >
@@ -106,6 +112,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do you set up a Step Functions state machine to orchestrate a Lambda
     function with retry logic and error handling?
@@ -141,6 +149,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do you configure EKS Cluster Autoscaler with managed node groups to
     automatically scale worker nodes?
@@ -176,6 +186,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do you configure EC2 Spot Instance interruption handling in an Auto Scaling group
     to minimize downtime?
@@ -212,6 +224,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do you configure Lambda to process SQS messages with batch processing
     and partial batch failure handling?
@@ -247,6 +261,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do you deploy a Blue/Green deployment on ECS using CodeDeploy to
     achieve zero-downtime releases?
@@ -282,6 +298,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do you configure CloudWatch Container Insights to monitor ECS tasks
     and set alarms on memory usage?
@@ -317,6 +335,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do you set up Lambda function URLs with IAM authentication to
     expose a function as an HTTPS endpoint?
@@ -351,6 +371,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do you deploy an application to AWS Elastic Beanstalk using a
     Dockerfile with environment variable configuration?
@@ -386,6 +408,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do you configure EC2 Instance Connect and Session Manager to provide
     secure shell access without opening port 22?
@@ -421,6 +445,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do you build an event-driven pipeline using S3 event notifications and
     Lambda to process uploaded files?
@@ -457,6 +483,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do you configure EC2 Image Builder to create a hardened Amazon Linux
     AMI with CIS benchmarks applied?
@@ -494,6 +522,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do you enable AWS Compute Optimizer and use its recommendations to
     right-size EC2 instances?
@@ -529,6 +559,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do you configure a Lambda function to use AWS Secrets Manager for
     database credentials with caching?
@@ -566,6 +598,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do you configure ALB to perform HTTPS termination and redirect
     HTTP traffic to HTTPS?
@@ -601,6 +635,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do you configure EC2 user data scripts to automatically bootstrap
     an instance with software on launch?
@@ -636,6 +672,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do you configure AWS Batch to process a large job array using Spot
     compute environments with automatic retry?
@@ -673,6 +711,8 @@
   tier: 2
   type: procedural
   hops: 2
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do you configure CloudWatch alarms and Auto Scaling to scale an ECS
     service based on SQS queue depth?

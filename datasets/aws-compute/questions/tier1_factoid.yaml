@@ -2,6 +2,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What is AWS Lambda and how does it execute code?"
   ground_truth:
     answer: >
@@ -30,6 +32,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What are EC2 instance types and how are they categorized?"
   ground_truth:
     answer: >
@@ -59,6 +63,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What is Amazon ECS and what launch types does it support?"
   ground_truth:
     answer: >
@@ -88,6 +94,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What is AWS Fargate and what does it eliminate compared to running containers on EC2?"
   ground_truth:
     answer: >
@@ -117,6 +125,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What is Amazon EKS and how does it differ from self-managed Kubernetes?"
   ground_truth:
     answer: >
@@ -146,6 +156,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What is EC2 Auto Scaling and what are its core scaling policies?"
   ground_truth:
     answer: >
@@ -176,6 +188,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What is AWS Elastic Beanstalk and what does it manage automatically?"
   ground_truth:
     answer: >
@@ -206,6 +220,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What is AWS Batch and what problem does it solve for batch computing workloads?"
   ground_truth:
     answer: >
@@ -236,6 +252,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What is AWS Step Functions and what types of state machines does it support?"
   ground_truth:
     answer: >
@@ -266,6 +284,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What is AWS App Runner and what type of applications is it designed for?"
   ground_truth:
     answer: >
@@ -295,6 +315,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What is Amazon Lightsail and who is its target audience?"
   ground_truth:
     answer: >
@@ -325,6 +347,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What is an Application Load Balancer (ALB) and what Layer does it operate at?"
   ground_truth:
     answer: >
@@ -354,6 +378,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What is the difference between EC2 On-Demand, Reserved, and Spot pricing models?"
   ground_truth:
     answer: >
@@ -385,6 +411,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What is Lambda's execution model and what happens during a cold start?"
   ground_truth:
     answer: >
@@ -415,6 +443,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What is ECS task definition and what key parameters does it specify?"
   ground_truth:
     answer: >
@@ -446,6 +476,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What is Lambda Layers and what purpose do they serve?"
   ground_truth:
     answer: >
@@ -476,6 +508,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What is AWS CloudWatch and what does it monitor for EC2 instances?"
   ground_truth:
     answer: >
@@ -507,6 +541,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What is an EKS managed node group and how does it differ from self-managed nodes?"
   ground_truth:
     answer: >
@@ -537,6 +573,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What is Lambda concurrency and what is the difference between reserved and provisioned concurrency?"
   ground_truth:
     answer: >
@@ -568,6 +606,8 @@
   tier: 1
   type: factoid
   hops: 1
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: "What is Network Load Balancer (NLB) and when should you choose it over ALB?"
   ground_truth:
     answer: >

@@ -2,6 +2,8 @@
   tier: 4
   type: relational
   hops: 3
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do IAM roles, VPC security groups, and EC2 instance profiles work together
     to grant an EC2 instance secure access to S3 and RDS?
@@ -44,6 +46,8 @@
   tier: 4
   type: relational
   hops: 3
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do ECS task roles, ECR image pulls, and Secrets Manager integrate to
     give containers the correct permissions without hardcoding credentials?
@@ -84,6 +88,8 @@
   tier: 4
   type: relational
   hops: 3
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do ALB target groups, ECS services, and CloudMap service discovery
     work together in a microservices architecture?
@@ -123,6 +129,8 @@
   tier: 4
   type: relational
   hops: 3
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do Lambda execution role, resource-based policies, and VPC endpoints
     work together to allow Lambda to call DynamoDB without internet access?
@@ -163,6 +171,8 @@
   tier: 4
   type: relational
   hops: 3
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do EKS OIDC provider, IRSA (IAM Roles for Service Accounts), and
     Kubernetes service accounts work together to give pods AWS permissions?
@@ -202,6 +212,8 @@
   tier: 4
   type: relational
   hops: 3
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do Step Functions, SQS, and Lambda work together to implement
     a distributed saga pattern for compensating transactions?
@@ -243,6 +255,8 @@
   tier: 4
   type: relational
   hops: 3
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do EC2 Auto Scaling lifecycle hooks, EventBridge, and Lambda work together
     to implement custom instance initialization and termination logic?
@@ -282,6 +296,8 @@
   tier: 4
   type: relational
   hops: 3
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do ECS cluster capacity providers, Auto Scaling groups, and managed scaling
     work together to reduce cluster costs with Spot instances?
@@ -321,6 +337,8 @@
   tier: 4
   type: relational
   hops: 3
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do Lambda function destinations, SQS dead-letter queues, and CloudWatch
     alarms work together to ensure reliable asynchronous Lambda processing?
@@ -361,6 +379,8 @@
   tier: 4
   type: relational
   hops: 3
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do EKS network policies, VPC CNI security groups for pods, and namespace
     RBAC work together to implement pod-level security isolation?
@@ -402,6 +422,8 @@
   tier: 4
   type: relational
   hops: 3
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do CloudWatch Application Signals, X-Ray distributed tracing, and Lambda
     Powertools work together to achieve full observability for a Lambda-based API?
@@ -444,6 +466,8 @@
   tier: 4
   type: relational
   hops: 3
+  review_status: human-reviewed
+  reviewed_by: "Xavier Puspus"
   question: >
     How do ECS task networking with awsvpc mode, Application Load Balancer, and
     AWS PrivateLink work together to expose an internal microservice securely?
