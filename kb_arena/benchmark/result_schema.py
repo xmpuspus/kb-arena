@@ -252,7 +252,26 @@ class LabRun(BaseModel):
         unproven = [r for r in rows if not r.proven]
         if unproven:
             return None, unproven[0].unproven_because
-        return min(r.row_count for r in rows), ""
+        counts = {r.row_count for r in rows}
+        # A strategy that scored nothing is the headline, and it decides before
+        # the disagreement below does. A caller reading a zero says the run
+        # holds no measurement, which is more use than saying the strategies
+        # differ.
+        if 0 in counts:
+            return 0, ""
+        # One bundle claims one question set over every strategy in it. Two
+        # strategies that scored different numbers did not measure one set, so
+        # there is no single count to compare against the manifest. Taking the
+        # minimum let a strategy that scored MORE than the manifest names pass
+        # behind a sibling that matched, which is the `<` versus `!=` defect
+        # N-67 fixed on the variance side.
+        if len(counts) > 1:
+            ranked = sorted(counts)
+            return None, (
+                f"holds strategies that scored {ranked[0]} and {ranked[-1]} questions, so "
+                f"no one count describes what the bundle covers"
+            )
+        return counts.pop(), ""
 
 
 class BenchmarkRun(BaseModel):

@@ -922,3 +922,33 @@ def test_a_lab_file_that_proves_no_count_refuses_the_measurement(case, body, tmp
 
     assert len(problems) == 1, f"{case}: {problems}"
     assert problems[0].startswith("results/run_x/retriever_lab.json "), problems
+
+
+def test_a_strategy_that_scored_too_many_questions_is_not_hidden_by_a_sibling(tmp_path):
+    """The minimum let an overshoot pass behind a sibling that matched.
+
+    One bundle claims one question set over every strategy in it. `bm25` scored
+    the one question the manifest names, and `plugin` scored two, so the two did
+    not measure one set. Comparing only the smaller count against the manifest
+    is the `<` versus `!=` defect N-67 fixed on the variance side.
+    """
+    run = tmp_path / "results" / "run_over"
+    run.mkdir(parents=True)
+    (run / "retriever_lab.json").write_text(
+        json.dumps(
+            {
+                "corpora": {"c": {"bm25": {"questions": 1}, "plugin": {"questions": 2}}},
+                "manifests": {"c": {"question_count": 1}},
+                "questions": [
+                    {"corpus": "c", "strategy": "bm25", "question_id": "q1"},
+                    {"corpus": "c", "strategy": "plugin", "question_id": "q1"},
+                    {"corpus": "c", "strategy": "plugin", "question_id": "q2"},
+                ],
+            }
+        )
+    )
+    bundle = {"corpus": "c", "results": ["results/run_over/retriever_lab.json"]}
+
+    problems = _measurement_problems(bundle, tmp_path, None)
+
+    assert any("scored 1 and 2 questions" in p for p in problems), problems
