@@ -35,6 +35,9 @@ def test_the_version_is_not_one_already_released() -> None:
     re-cut. Naming the expected version here instead would be a copy every
     release has to edit in step, which is what this file already got wrong once.
 
+    The tag on the release commit itself is correct, and CI runs on the pushed
+    tag, so the question is WHERE the tag points rather than whether it exists.
+
     Silent when git cannot answer: a source archive has no tags, and refusing
     there would fail a check that has no evidence.
     """
@@ -49,12 +52,25 @@ def test_the_version_is_not_one_already_released() -> None:
     if done.returncode != 0:
         return
     released = {line.strip().lstrip("v") for line in done.stdout.splitlines() if line.strip()}
-    if not released:
+    if TARGET_VERSION not in released:
         return
 
-    assert TARGET_VERSION not in released, (
-        f"{TARGET_VERSION} already carries a tag, so this branch either reverts the "
-        f"version or re-cuts a released one"
+    # The tag exists. That is correct on the release commit itself, and wrong
+    # anywhere else: CI runs on the pushed tag too, and refusing there would
+    # fail the release's own suite. So the question is WHERE the tag points.
+    tagged = subprocess.run(
+        ["git", "rev-list", "-n", "1", f"v{TARGET_VERSION}"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    here = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True)
+    if tagged.returncode != 0 or here.returncode != 0:
+        return
+
+    assert tagged.stdout.strip() == here.stdout.strip(), (
+        f"v{TARGET_VERSION} already points at {tagged.stdout.strip()[:12]}, so this "
+        f"branch either reverts the version or re-cuts a released one"
     )
 
 
