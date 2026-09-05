@@ -152,16 +152,23 @@ def _manifests_in(path: Path) -> list | None:
         return None
     if not isinstance(data, dict):
         return None
-    manifests = data.get("manifests")
-    manifest = data.get("manifest")
-    candidates = list(manifests.values()) if isinstance(manifests, dict) else []
-    if isinstance(manifest, dict):
-        candidates.append(manifest)
+    # This function discards nothing, and that is the point. Three review
+    # rounds found the same defect at three depths: a bad fingerprint dropped,
+    # then a bad entry under `manifests` dropped, then a bad `manifest` key
+    # dropped. Each time a readable sibling spoke for the whole file. A present
+    # key always contributes one entry, whatever its value, and the readers
+    # below turn a non-record entry into the unreadable marker.
+    candidates: list = []
+    if "manifests" in data:
+        manifests = data["manifests"]
+        if isinstance(manifests, dict):
+            candidates.extend(manifests.values())
+        else:
+            candidates.append(manifests)
+    if "manifest" in data:
+        candidates.append(data["manifest"])
     if not candidates:
         return None
-    # A non-dict entry is a broken manifest, not an absent one. Dropping it here
-    # moved the same hole one layer up: a readable sibling entry then spoke for
-    # the whole file. It maps to the unreadable marker instead.
     return candidates
 
 

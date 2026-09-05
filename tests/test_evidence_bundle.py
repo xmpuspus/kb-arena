@@ -359,16 +359,27 @@ def test_the_bundle_never_lists_itself_as_one_of_the_run_results():
     assert not any(name.endswith("evidence.json") for name in bundle["results"]), bundle["results"]
 
 
-def test_a_manifest_entry_that_is_not_a_record_never_passes_as_absent(tmp_path):
-    """The first fix dropped a bad fingerprint. The second dropped a bad entry.
+@pytest.mark.parametrize(
+    "edit",
+    [
+        pytest.param(lambda d: d["manifests"].update(other=None), id="null-entry"),
+        pytest.param(lambda d: d["manifests"].update(other=[]), id="list-entry"),
+        pytest.param(lambda d: d["manifests"].update(other="x"), id="string-entry"),
+        pytest.param(lambda d: d.update(manifest=None), id="null-singular-key"),
+        pytest.param(lambda d: d.update(manifest=7), id="number-singular-key"),
+    ],
+)
+def test_a_manifest_entry_that_is_not_a_record_never_passes_as_absent(tmp_path, edit):
+    """The same defect appeared at three depths, so the reader discards nothing.
 
-    Both moved the same hole one layer up, so a readable sibling entry spoke for
-    the whole file. Every entry that is not a record reads as unreadable now.
+    First a bad fingerprint was dropped. Then a bad entry under `manifests`.
+    Then a `manifest` key holding something other than a record. Each drop let a
+    readable sibling speak for the whole file. A present key always counts now.
     """
     run = tmp_path / "results" / "run_null"
     run.mkdir(parents=True)
     data = json.loads((COMMITTED / "retriever_lab.json").read_text())
-    data["manifests"]["other"] = None
+    edit(data)
     (run / "retriever_lab.json").write_text(json.dumps(data))
     bundle = json.loads((COMMITTED / "evidence.json").read_text())
     bundle = {**bundle, "results": ["results/run_null/retriever_lab.json"]}
