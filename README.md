@@ -247,6 +247,8 @@ kb-arena variance --corpus my-docs
 kb-arena evidence --corpus my-docs --run-id <id>
 ```
 
+![Spread across repeats](https://raw.githubusercontent.com/xmpuspus/kb-arena/main/docs/demo-variance.gif)
+
 `variance` groups runs by experiment and by build. Two runs from different
 commits measured different code, so it lists their values and reports no mean.
 Two runs is a range a reader can misread as a bound, so it says when a row rests
@@ -259,6 +261,8 @@ the seed beside the result. It also writes whether the run may be cited:
 "citable": false,
 "why_not_citable": "publishable is true only when every scored question is human-reviewed."
 ```
+
+![What a run says about itself](https://raw.githubusercontent.com/xmpuspus/kb-arena/main/docs/demo-evidence.gif)
 
 `kb-arena evidence --check <path>` reads a bundle back. It refuses one that calls
 itself citable while its own review says otherwise, and one that is not citable
