@@ -395,8 +395,9 @@
       assign a VPC security group directly to a pod (via SecurityGroupPolicy CRD). Traffic to/
       from that pod is enforced at the VPC level — can reference other security groups by ID.
       Required for pods that need to access AWS resources (RDS, ElastiCache) via security group
-      rules without CIDR-based rules. Uses ENI trunking (requires compatible instance types,
-      m5.large minimum). 3. Kubernetes RBAC: controls which users or service accounts can
+      rules without CIDR-based rules. Uses ENI trunking, which needs a supported Nitro
+      instance family (m5, c5, r5, m6g and similar). The t family does not support it at
+      any size. 3. Kubernetes RBAC: controls which users or service accounts can
       perform Kubernetes API actions (create pods, list secrets, exec into containers) within
       namespaces. Uses Roles/RoleBindings (namespace-scoped) and ClusterRoles/ClusterRoleBindings.
       These three layers are orthogonal: RBAC controls who can deploy/manage workloads, Network

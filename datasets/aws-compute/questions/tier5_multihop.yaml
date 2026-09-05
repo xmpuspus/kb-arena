@@ -131,7 +131,7 @@
       Step Functions invokes an ECS RunTask API call (SDK integration, no Lambda shim needed).
       Fargate task downloads the file from S3, processes it (e.g., video transcode, image
       ML inference), uploads results, then exits. Fargate scales to zero when idle — no idle
-      instance cost. Step Functions waits for task completion via the .sync:2 integration
+      instance cost. Step Functions waits for task completion via the ecs:runTask.sync integration
       (polling ECS task status) or SendTaskSuccess with task token injected as container
       environment variable. 4. Failure handling: ECS tasks that fail update Step Functions via
       SendTaskFailure. The Catch state routes to a compensation Lambda that marks the job as
@@ -283,7 +283,7 @@
       SUBMITTED. 2. Orchestration (Step Functions Standard Workflow): the state machine defines
       the pipeline DAG: alignment (BWA-MEM job) → variant calling (GATK HaplotypeCaller) →
       annotation → QC metrics. Each stage is a Task state calling the AWS Batch SubmitJob
-      API via SDK integration (.sync:2 waits for Batch job completion). Parallel Map state
+      API via the batch:submitJob.sync integration, which waits for the Batch job to finish. Parallel Map state
       submits per-chromosome variant calling jobs concurrently (up to 23 parallel Batch jobs
       per sample). Catch states handle Batch job failures: on FAILED status, Step Functions
       retries up to 2 times (for transient Spot interruptions), then routes to a notification

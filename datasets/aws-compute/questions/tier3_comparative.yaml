@@ -257,7 +257,6 @@
       - "250 MB"
     must_not_claim:
       - "container images have worse cold starts for large images"
-      - "containers cannot use Lambda layers"
     max_tokens: 300
 
 - id: "compute-t3-008"
@@ -347,7 +346,7 @@
   ground_truth:
     answer: >
       CloudFront Functions: run at all 400+ CloudFront PoPs, sub-millisecond execution,
-      JavaScript only (ES5.1), maximum 10 ms CPU time and 2 MB code size, no network calls
+      JavaScript only (ES5.1), about 1 ms of CPU time and a 10 KB code size limit, no network calls
       allowed, no file system access. Triggered at viewer request and viewer response events
       only. Free tier available; very low cost (~$0.10 per million invocations). Best for:
       URL rewrites, header manipulation, simple A/B redirects, basic auth. Lambda@Edge: runs
@@ -389,9 +388,11 @@
       ECS Rolling Deployment: default deployment strategy. ECS replaces tasks incrementally
       based on minimumHealthyPercent and maximumPercent settings. For example, 50/200 means
       ECS stops 50% of old tasks and starts 50% new tasks, then continues. If new tasks fail
-      health checks, deployment stops but already-replaced tasks remain on the new version —
-      rollback requires a new deployment of the previous task definition. No automatic rollback
-      to 100% old version possible mid-deployment. Fast and simple. Blue/Green with CodeDeploy:
+      health checks, the deployment stops and already-replaced tasks stay on the new version.
+      Turning on the ECS deployment circuit breaker adds automatic rollback: on a failed
+      deployment ECS rolls the service back to the last completed task definition. Without the
+      circuit breaker, rollback needs a new deployment of the previous task definition. Fast
+      and simple. Blue/Green with CodeDeploy:
       deploys 100% of new tasks alongside old tasks, validates with health checks, then shifts
       traffic via ALB listener rules. During the bake period both versions coexist. Automatic
       rollback repoints ALB listener rule back to Blue (old) target group instantly — old tasks
@@ -487,8 +488,7 @@
       - "Cluster"
       - "Spread"
     must_not_claim:
-      - "Spread placement groups span multiple AZs"
-      - "Cluster groups span multiple racks"
+      - "Cluster placement groups span multiple Availability Zones"
     max_tokens: 300
 
 - id: "compute-t3-014"
