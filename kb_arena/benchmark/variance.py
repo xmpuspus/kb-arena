@@ -343,6 +343,12 @@ def _is_for_corpus(path: Path, corpus: str | None) -> bool:
     """
     if not corpus:
         return True
+    if path.name == "retriever_lab.json":
+        # A lab file holds every corpus in one document, so a corpus-filtered
+        # report cannot rule it out by name. An unreadable one may hold the
+        # corpus being reported, and dropping it would shrink the sample in
+        # silence.
+        return True
     return path.stem.startswith(f"{corpus}_")
 
 

@@ -896,3 +896,13 @@ def test_an_unreadable_lab_file_is_lost_evidence(tmp_path, monkeypatch):
 
     with pytest.raises(variance.RunsUnreadableError, match="malformed JSON"):
         variance.load_runs()
+
+
+def test_an_unreadable_lab_run_stops_a_corpus_filtered_report(tmp_path, monkeypatch):
+    """A lab file holds every corpus, so its name cannot rule it out."""
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    (tmp_path / "run_a").mkdir()
+    (tmp_path / "run_a" / "retriever_lab.json").write_text("{truncated")
+
+    with pytest.raises(variance.RunsUnreadableError):
+        variance.load_runs("aws-compute")
