@@ -268,3 +268,18 @@ def test_a_client_with_no_pin_table_is_refused_by_name(monkeypatch):
 
     with pytest.raises(RetrieverContractError, match="pinned client"):
         strategy._fetch_chunks("q", top_k=1, corpus="all")
+
+
+def test_a_refused_connection_becomes_a_domain_error(monkeypatch):
+    """Only a timeout used to translate, so other httpx failures escaped.
+
+    A caller handling `StrategyError` as "the retriever is unavailable" never
+    saw them, and the arena answered 500 where it means 503.
+    """
+    monkeypatch.setattr(socket, "getaddrinfo", _answers("93.184.216.34"))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    with pytest.raises(RetrieverContractError, match="ConnectError"):
+        _strategy(handler)._fetch_chunks("q", top_k=1, corpus="all")

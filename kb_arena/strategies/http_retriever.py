@@ -241,6 +241,15 @@ class HTTPRetrieverStrategy(Strategy):
             raise RetrieverContractError(
                 f"{self.endpoint_url}: no reply within {request_timeout:.1f}s"
             ) from exc
+        except httpx.HTTPError as exc:
+            # Only a timeout used to become a domain error, so a refused
+            # connection, a TLS failure or a corrupt body left an httpx
+            # exception in flight. A caller handling `StrategyError` as "the
+            # retriever is unavailable" never saw it, and the arena answered
+            # 500 where it means 503.
+            raise RetrieverContractError(
+                f"{self.endpoint_url}: {type(exc).__name__}: {exc}"
+            ) from exc
         finally:
             self._charge_budget(time.perf_counter() - request_start, request_timeout)
 

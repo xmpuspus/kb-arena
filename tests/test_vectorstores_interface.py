@@ -87,6 +87,13 @@ def qdrant_store(monkeypatch):
     )
     client.query_points.return_value = types.SimpleNamespace(points=[point])
     client.count.return_value = types.SimpleNamespace(count=2)
+    # Cosine is Qdrant's default and the metric this project configures, so the
+    # fixture reports it. A test that needs another metric overrides it.
+    client.get_collection.return_value = types.SimpleNamespace(
+        config=types.SimpleNamespace(
+            params=types.SimpleNamespace(vectors=types.SimpleNamespace(distance="Cosine"))
+        )
+    )
     return QdrantVectorStore(client=client), client
 
 
@@ -317,3 +324,37 @@ def test_a_qdrant_score_becomes_a_distance(qdrant_store):
     assert near.distance == 0.0
     assert far.distance == 1.0
     assert sorted([near, far], key=lambda m: m.distance)[0].document == "near"
+
+
+def test_a_euclid_collection_keeps_its_scores_as_distances(qdrant_store):
+    """Qdrant's score means different things per collection metric.
+
+    Cosine and dot answer a similarity, higher for a better match. Euclid
+    answers a distance already. Subtracting every score from one reversed the
+    order on a Euclid collection, so sorting ascending picked the farther point.
+    """
+    from kb_arena.vectorstores.qdrant_store import _CHUNK_ID_FIELD
+
+    store, client = qdrant_store
+    client.get_collection.return_value = SimpleNamespace(
+        config=SimpleNamespace(params=SimpleNamespace(vectors=SimpleNamespace(distance="Euclid")))
+    )
+    client.query_points.return_value = SimpleNamespace(
+        points=[
+            SimpleNamespace(id="a", payload={"document": "near", _CHUNK_ID_FIELD: "c1"}, score=0.1),
+            SimpleNamespace(id="b", payload={"document": "far", _CHUNK_ID_FIELD: "c2"}, score=0.9),
+        ]
+    )
+
+    near, far = store.query([0.1, 0.2, 0.3], top_k=2)
+
+    assert near.distance == pytest.approx(0.1)
+    assert far.distance == pytest.approx(0.9)
+
+
+def test_an_unreadable_metric_reads_as_cosine(qdrant_store):
+    """Cosine is Qdrant's default and the one this project configures."""
+    store, client = qdrant_store
+    client.get_collection.side_effect = RuntimeError("no such collection")
+
+    assert store._as_distance(1.0) == pytest.approx(0.0)

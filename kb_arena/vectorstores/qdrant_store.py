@@ -69,6 +69,9 @@ class QdrantVectorStore(VectorStore):
             qdrant_client = _import_qdrant_client()
             self._client = qdrant_client.QdrantClient(url=url)
         self._collection_name = collection_name
+        # Read once, on the first query, because it costs a round trip and a
+        # collection's metric does not change under a live store.
+        self._similarity_metric: bool | None = None
 
     def upsert(
         self,
@@ -119,14 +122,36 @@ class QdrantVectorStore(VectorStore):
                     for key, value in point.payload.items()
                     if key not in ("document", _CHUNK_ID_FIELD)
                 },
-                # Qdrant answers a SIMILARITY, higher for a better match, and
-                # `VectorMatch.distance` is lower-is-better like every other
-                # adapter here. Passing the score through inverted the order,
-                # so a consumer sorting ascending promoted the worse match.
-                distance=1.0 - float(point.score),
+                distance=self._as_distance(float(point.score)),
             )
             for point in response.points
         ]
+
+    def _as_distance(self, score: float) -> float:
+        """One Qdrant score as the lower-is-better distance the interface promises.
+
+        What the score MEANS depends on the collection's configured metric.
+        Cosine and dot answer a similarity, higher for a better match. Euclid
+        and Manhattan answer a distance already. Assuming cosine and
+        subtracting from one reversed the order on a Euclid collection, so a
+        consumer sorting ascending picked the farther point.
+        """
+        if self._similarity_metric is None:
+            self._similarity_metric = self._read_metric()
+        return 1.0 - score if self._similarity_metric else score
+
+    def _read_metric(self) -> bool:
+        """Whether this collection's score is a similarity. Unknown reads as one.
+
+        Cosine is Qdrant's default and the one this project configures, so an
+        unreadable metric answers cosine rather than guessing the other way.
+        """
+        try:
+            info = self._client.get_collection(self._collection_name)
+            metric = str(info.config.params.vectors.distance).upper()
+        except Exception:
+            return True
+        return "COSINE" in metric or "DOT" in metric
 
     def delete(self, ids: Sequence[str]) -> None:
         self._client.delete(
