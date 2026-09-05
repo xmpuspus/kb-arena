@@ -390,31 +390,29 @@ async def test_export_evidence_refuses_an_invalid_run_id(tmp_path, monkeypatch):
 # ── the stdio stream and the job registry ──
 
 
-@pytest.mark.asyncio
-async def test_the_runner_never_writes_to_the_protocol_stream(monkeypatch, capsys):
+def test_the_runner_never_writes_to_the_protocol_stream():
     """stdout carries JSON-RPC on a stdio server, and the runner prints to it.
 
     Its run id, its progress and its summary landed between messages, and the
-    client then failed to parse the stream.
+    client then failed to parse the stream. An earlier fix wrapped each job in
+    `redirect_stdout`, which changes process-global state, so two jobs
+    finishing out of order restored protocol stdout while the other printed.
+    This is set once at startup and never restored.
     """
+    import sys
 
-    async def noisy_run(**kwargs):
-        print("Run ID: deadbeef")
-        return "deadbeef"
+    from kb_arena import cli as cli_module
+    from kb_arena.benchmark import runner as runner_module
+    from kb_arena.mcp.server import send_console_output_to_stderr
 
-    monkeypatch.setattr("kb_arena.benchmark.runner.run_benchmark", noisy_run)
-    monkeypatch.setattr(settings, "results_path", str(ROOT / "results"))
+    prior = (runner_module.console, cli_module.console)
+    try:
+        send_console_output_to_stderr()
 
-    started = await mcp_server.server.call_tool(
-        "start_benchmark", {"corpus": "aws-compute", "strategy": "bm25"}
-    )
-    job_id = _content(started)["job_id"]
-    await mcp_server._TASKS[job_id]
-
-    captured = capsys.readouterr()
-    assert "Run ID" not in captured.out
-    assert "Run ID" in captured.err
-    assert mcp_server._JOBS[job_id].status == "completed"
+        assert runner_module.console.file is sys.stderr
+        assert cli_module.console.file is sys.stderr
+    finally:
+        runner_module.console, cli_module.console = prior
 
 
 def test_the_registry_cap_never_forgets_a_running_job():
@@ -439,6 +437,44 @@ def test_the_registry_cap_never_forgets_a_running_job():
 
         assert "live" in _JOBS
         assert len(_JOBS) == _MAX_JOBS
+    finally:
+        _JOBS.clear()
+        _JOBS.update(prior)
+
+
+@pytest.mark.asyncio
+async def test_start_benchmark_bounds_top_k():
+    """A tool takes its number from the network, so it has to bound it."""
+    with pytest.raises(Exception, match="top_k"):
+        await mcp_server.server.call_tool(
+            "start_benchmark", {"corpus": "aws-compute", "strategy": "bm25", "top_k": 1_000_000_000}
+        )
+
+
+@pytest.mark.asyncio
+async def test_only_a_few_benchmarks_run_at_once():
+    """The registry cap bounds what the server remembers, not what it does.
+
+    Two hundred concurrent runs would exhaust the provider quota long before
+    they exhausted the dictionary.
+    """
+    from datetime import UTC, datetime
+
+    from kb_arena.mcp.server import _JOBS, _MAX_RUNNING_JOBS, _Job
+
+    prior = dict(_JOBS)
+    _JOBS.clear()
+    try:
+        now = datetime.now(UTC).isoformat()
+        for i in range(_MAX_RUNNING_JOBS):
+            _JOBS[f"r{i}"] = _Job(
+                job_id=f"r{i}", corpus="c", strategy="bm25", status="running", created_at=now
+            )
+
+        with pytest.raises(Exception, match="already running"):
+            await mcp_server.server.call_tool(
+                "start_benchmark", {"corpus": "aws-compute", "strategy": "bm25"}
+            )
     finally:
         _JOBS.clear()
         _JOBS.update(prior)

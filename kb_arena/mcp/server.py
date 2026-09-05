@@ -197,6 +197,10 @@ class _Job:
 _JOBS: dict[str, _Job] = {}
 _TASKS: dict[str, object] = {}
 _MAX_JOBS = 200
+# How many benchmarks may run at once. The registry cap bounds what the server
+# remembers, and this bounds what it does: 200 concurrent runs would exhaust
+# the provider quota long before it exhausted the dictionary.
+_MAX_RUNNING_JOBS = 4
 
 
 _FINISHED = ("completed", "failed")
@@ -237,6 +241,13 @@ async def start_benchmark(
     """
     import asyncio
 
+    # The same bound the strategies apply. A client asking for a billion
+    # chunks per question exhausts memory and provider quota, and a tool that
+    # takes a number from the network has to bound it.
+    from kb_arena.strategies.base import validate_top_k
+
+    validate_top_k(top_k)
+
     if corpus != "all":
         _corpus_dir(corpus)
 
@@ -249,7 +260,7 @@ async def start_benchmark(
                 raise ValueError(f"unknown strategy: {name.strip()!r}")
 
     running = sum(1 for job in _JOBS.values() if job.status not in _FINISHED)
-    if running >= _MAX_JOBS:
+    if running >= _MAX_RUNNING_JOBS:
         raise ValueError(
             f"{running} benchmark jobs are already running, which is the cap. "
             f"Poll `job_status` and start another when one finishes."
