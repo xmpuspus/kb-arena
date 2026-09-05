@@ -60,6 +60,13 @@ rerank = ["sentence-transformers>=5.0,<6"]
 # (sqr, Qiskit Aer SWAP test + PCA reduction). Lazy-imported, so the core
 # install and CI stay light; install with `pip install 'kb-arena[quantum]'`.
 quantum = ["qiskit==2.5.2", "qiskit-aer==0.17.2", "scikit-learn==1.9.0"]
+# Optional VectorStore adapters (kb_arena/vectorstores/). ChromaDB stays the
+# core default. Each one is lazy-imported, so the core install stays free of
+# them until a corpus selects one. They are pinned exactly, the way every other
+# extra here is, so two installs of one release resolve to one set of versions.
+qdrant = ["qdrant-client==1.16.1"]
+pgvector = ["psycopg[binary]==3.2.10"]
+lancedb = ["lancedb==0.26.0"]
 
 [project.scripts]
 kb-arena = "kb_arena.cli:app"
