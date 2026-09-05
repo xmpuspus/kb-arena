@@ -1171,3 +1171,24 @@ def test_the_check_stays_silent_when_git_cannot_answer(tmp_path):
     from kb_arena.benchmark.evidence import _commit_problem
 
     assert _commit_problem("0" * 40, tmp_path) == ""
+
+
+def test_a_transient_git_failure_is_not_read_as_a_missing_commit(tmp_path, monkeypatch):
+    """`False` is git saying no. `None` is git failing to answer at all.
+
+    Merging the two would reject a valid bundle over one timeout.
+    """
+    import subprocess
+
+    from kb_arena.benchmark import evidence
+
+    real = subprocess.run
+
+    def flaky(args, **kwargs):
+        if args[:2] == ["git", "rev-parse"] and "--verify" in args and "^{commit}" in args[-1]:
+            raise subprocess.TimeoutExpired(args, 5)
+        return real(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", flaky)
+
+    assert evidence._commit_problem("a" * 40, ROOT) == ""

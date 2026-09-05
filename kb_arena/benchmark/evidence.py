@@ -192,7 +192,15 @@ def _commit_problem(sha, root: Path) -> str:
         # Not a repository at all, so there is nothing to check the commit
         # against. A wheel install lands here, and silence is honest.
         return ""
-    if _run_git(root, "cat-file", "-e", f"{sha}^{{commit}}") is not True:
+    # `rev-parse --verify --quiet` and not `cat-file -e`: cat-file exits 128
+    # for an unknown object, the same code it uses for "not a repository", so
+    # the two are indistinguishable. Quiet rev-parse exits 1 for an object this
+    # repository does not hold and 128 only when it cannot answer at all.
+    #
+    # `False` is git saying no. `None` is git failing to answer, a timeout or
+    # an OS error, and merging the two would reject a valid bundle over one
+    # transient failure.
+    if _run_git(root, "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}") is False:
         # This IS a repository and it does not hold that object. Reading that
         # as "cannot answer" turned the exact failure this check exists to
         # catch into a pass: `git merge-base` exits 128 on an unknown object,
