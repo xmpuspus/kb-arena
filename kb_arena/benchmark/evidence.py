@@ -200,13 +200,6 @@ def _commit_problem(sha, root: Path) -> str:
             f"calls itself citable and records {sha[:24]!r} where a commit belongs, "
             f"so nobody can get the code back"
         )
-    if _is_shallow(root):
-        # A shallow clone holds `origin/main` as a ref and almost none of its
-        # history, so an object it does not have says nothing about whether the
-        # default branch holds it. Every CI checkout is shallow by default, and
-        # the first version reported the committed run as missing on all three
-        # Python jobs.
-        return ""
     head = _default_branch_head(root)
     if head is None:
         # Not a repository at all, so there is nothing to check the commit
@@ -220,7 +213,17 @@ def _commit_problem(sha, root: Path) -> str:
     # `False` is git saying no. `None` is git failing to answer, a timeout or
     # an OS error, and merging the two would reject a valid bundle over one
     # transient failure.
-    if _run_git(root, "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}") is False:
+    # A shallow clone holds `origin/main` and almost none of its history, so an
+    # object it lacks says nothing about whether the default branch holds it.
+    # `actions/checkout` fetches one commit, so this is CI's ordinary state, and
+    # the first version turned main red on all three Python jobs.
+    #
+    # The skip covers only the MISSING object. A commit the clone does hold
+    # still gets its ancestry asked, because a shallow clone that holds a commit
+    # and cannot reach it from `origin/main` is telling the truth about it.
+    if _run_git(
+        root, "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}"
+    ) is False and not _is_shallow(root):
         # This IS a repository and it does not hold that object. Reading that
         # as "cannot answer" turned the exact failure this check exists to
         # catch into a pass: `git merge-base` exits 128 on an unknown object,

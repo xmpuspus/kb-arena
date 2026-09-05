@@ -1241,3 +1241,12 @@ def test_the_commit_check_stays_silent_on_a_shallow_clone(tmp_path):
     assert _is_shallow(source) is False
     # The shallow clone does not hold the first commit, and it must not say so.
     assert _commit_problem(oldest, shallow) == ""
+
+    # The skip covers only a MISSING object. A commit the clone does hold and
+    # cannot reach from `origin/main` is a commit it is telling the truth about.
+    (shallow / "b.txt").write_text("x\n")
+    git("add", "b.txt", cwd=shallow)
+    git("commit", "-qm", "local only", cwd=shallow)
+    local = git("rev-parse", "HEAD", cwd=shallow)
+
+    assert "not on" in _commit_problem(local, shallow)
