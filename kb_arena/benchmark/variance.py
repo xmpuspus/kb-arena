@@ -254,9 +254,15 @@ def load_runs(corpus: str | None = None, *, failures: list[str] | None = None) -
                 # corpus. Flattening it here is what lets `variance` read a lab
                 # run at all: before this, the loader skipped the file and the
                 # command answered "no run carries the metric".
-                flat = _flatten_lab_run(data, corpus)
-                if not flat and failures is not None and _lab_run_is_lost(data, corpus):
-                    failures.append(f"{path}: {_lab_failure_reason(data)}")
+                unreadable_strategies: list[str] = []
+                flat = _flatten_lab_run(data, corpus, unreadable=unreadable_strategies)
+                if failures is not None:
+                    for name in unreadable_strategies:
+                        failures.append(f"{path}: {name} has no readable summary")
+                    # Only when nothing named the loss already. A file whose one
+                    # strategy is unreadable would otherwise be counted twice.
+                    if not flat and not unreadable_strategies and _lab_run_is_lost(data, corpus):
+                        failures.append(f"{path}: {_lab_failure_reason(data)}")
                 for record in flat:
                     # A lab record takes the same identity check as a benchmark
                     # result. Two copies of one lab file are one measurement, and
@@ -310,8 +316,14 @@ def _lab_run_is_lost(data: dict, corpus: str | None) -> bool:
     corpora = corpora if isinstance(corpora, dict) else {}
     # An empty map is not "this run belongs to another corpus". It is a run that
     # stopped before it could name any corpus, so it is lost evidence under
-    # every filter. Only a map that names other corpora rules the run out.
-    if corpus and corpora and corpus not in corpora:
+    # every filter.
+    #
+    # An incomplete run cannot rule itself out either. The writer adds a corpus
+    # summary only after it finishes that corpus, so a run over `a` and `b` that
+    # died inside `b` names only `a`. Reading that map as the full list hides the
+    # failure from a report about `b`.
+    finished = data.get("status") in (None, "complete")
+    if corpus and corpora and finished and corpus not in corpora:
         return False
     return True
 
@@ -416,7 +428,9 @@ def _expected_question_count(run: dict) -> int | None:
     return count if usable else None
 
 
-def _flatten_lab_run(data: dict, corpus: str | None) -> list[dict]:
+def _flatten_lab_run(
+    data: dict, corpus: str | None, *, unreadable: list[str] | None = None
+) -> list[dict]:
     """One Retriever Lab file as one record per corpus and strategy.
 
     The lab reports every strategy in a single run, and the rest of this module
@@ -438,6 +452,7 @@ def _flatten_lab_run(data: dict, corpus: str | None) -> list[dict]:
     status = str(data.get("status", "unknown"))
     scored_ids = _scored_question_ids(data)
     flat: list[dict] = []
+    unreadable_strategies: list[str] = []
     for corpus_name, strategies in (data.get("corpora") or {}).items():
         if corpus and corpus_name != corpus:
             continue
@@ -445,6 +460,10 @@ def _flatten_lab_run(data: dict, corpus: str | None) -> list[dict]:
             continue
         for strategy, metrics in strategies.items():
             if not isinstance(metrics, dict):
+                # A sibling strategy that read fine used to hide this one, since
+                # the file still yielded records and the loader only reports a
+                # file that yielded none. The strategy is lost on its own.
+                unreadable_strategies.append(f"{corpus_name}/{strategy}")
                 continue
             rows_scored, digest, unreadable_ids = scored_ids.get(
                 (corpus_name, strategy), (0, "none", False)
@@ -465,8 +484,10 @@ def _flatten_lab_run(data: dict, corpus: str | None) -> list[dict]:
             measured = metrics if (counted or rows_scored > 0) else {"questions": scored}
             # The rows outrank the summary. A count of 2 over one scored row is a
             # file contradicting itself, and taking the 2 would call the run
-            # whole and drop the digest that separates two question sets.
-            if usable and rows_scored and scored != rows_scored:
+            # whole and drop the digest that separates two question sets. A file
+            # with no rows at all is the same case: the count has no witness.
+            contradicted = usable and scored != rows_scored
+            if contradicted and rows_scored:
                 measured = {**measured, "questions": rows_scored}
             record = {
                 **measured,
@@ -482,9 +503,11 @@ def _flatten_lab_run(data: dict, corpus: str | None) -> list[dict]:
             # this record and another would be a number about two unknowns. The
             # key still separates what it can, and the group says it cannot be
             # read as a spread.
-            if unreadable_ids or not usable or (usable and rows_scored and scored != rows_scored):
+            if unreadable_ids or not usable or contradicted:
                 record["sample_unproven"] = True
             flat.append(record)
+    if unreadable is not None:
+        unreadable.extend(unreadable_strategies)
     return flat
 
 

@@ -819,6 +819,11 @@ def test_variance_reads_a_retriever_lab_run(tmp_path, monkeypatch):
                         }
                     },
                     "manifests": {"c": manifest},
+                    # And the per-question rows that back the count.
+                    "questions": [
+                        {"corpus": "c", "strategy": s, "question_id": "q1"}
+                        for s in ("bm25", "naive_vector")
+                    ],
                 }
             )
         )
@@ -1486,7 +1491,7 @@ def test_a_null_strategy_summary_is_reported_not_dropped(tmp_path, monkeypatch):
 
     assert len(runs) == 1
     assert len(failures) == 1
-    assert "no strategy summary could be read" in failures[0]
+    assert "c/bm25 has no readable summary" in failures[0], "the report names which one"
 
 
 def test_a_lab_run_for_another_corpus_is_not_called_a_failure(tmp_path, monkeypatch):
@@ -1626,3 +1631,109 @@ def test_two_lab_files_that_record_no_id_and_no_question_still_stay_apart(tmp_pa
     assert sum(r["runs"] for r in rows) == 2, "two files are two runs"
     assert all(r["comparable"] is False for r in rows)
     assert all("mean" not in r["metrics"]["mean_recall_at_k"] for r in rows)
+
+
+def test_a_summary_count_with_no_rows_behind_it_is_unproven():
+    """A count of 2 and an empty question list is a count with no witness.
+
+    The earlier guard asked whether any row existed, so an empty list skipped
+    the check entirely and two runs averaged.
+    """
+    manifest = _manifest(code_version="0.11.0", git_sha="a" * 40, question_count=2)
+
+    def _run(run_id: str, recall: float) -> list[dict]:
+        return variance._flatten_lab_run(
+            {
+                "run_id": run_id,
+                "status": "complete",
+                "corpora": {"c": {"bm25": {"mean_recall_at_k": recall, "questions": 2}}},
+                "manifests": {"c": manifest},
+                "questions": [],
+            },
+            None,
+        )
+
+    [row] = variance.spread_report(_run("a", 0.2) + _run("b", 0.8), metrics=("mean_recall_at_k",))
+
+    assert row["comparable"] is False
+    assert "mean" not in row["metrics"]["mean_recall_at_k"]
+
+
+def test_a_readable_sibling_strategy_never_hides_an_unreadable_one(tmp_path, monkeypatch):
+    """The file still yielded records, so the whole-file check could not see it."""
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    manifest = _manifest(code_version="0.11.0", git_sha="a" * 40, question_count=1)
+    path = tmp_path / "run_a" / "retriever_lab.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(
+            {
+                "run_id": "a",
+                "status": "complete",
+                "corpora": {
+                    "c": {"bm25": None, "naive_vector": {"mean_recall_at_k": 0.6, "questions": 1}}
+                },
+                "manifests": {"c": manifest},
+                "questions": [{"corpus": "c", "strategy": "naive_vector", "question_id": "q1"}],
+            }
+        )
+    )
+
+    failures: list[str] = []
+    runs = variance.load_runs("c", failures=failures)
+
+    assert len(runs) == 1, "only naive_vector could be read"
+    assert len(failures) == 1
+    assert "c/bm25" in failures[0]
+
+
+def test_an_incomplete_run_is_reported_for_a_corpus_it_never_reached(tmp_path, monkeypatch):
+    """The writer adds a corpus summary only after it finishes that corpus.
+
+    So a run over `a` and `b` that died inside `b` names only `a`. Reading that
+    map as the full list hid the failure from a report about `b`.
+    """
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    path = tmp_path / "run_a" / "retriever_lab.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(
+            {
+                "run_id": "a",
+                "status": "incomplete",
+                "execution_error": {"type": "TimeoutError", "message": "b never answered"},
+                "corpora": {"a": {"bm25": {"mean_recall_at_k": 0.3, "questions": 1}}},
+                "manifests": {"a": _manifest(code_version="0.11.0", git_sha="a" * 40)},
+                "questions": [{"corpus": "a", "strategy": "bm25", "question_id": "q1"}],
+            }
+        )
+    )
+
+    failures: list[str] = []
+    variance.load_runs("b", failures=failures)
+
+    assert len(failures) == 1, "an incomplete run cannot say which corpora it reached"
+    assert "b never answered" in failures[0]
+
+
+def test_a_complete_run_for_another_corpus_is_still_not_a_failure(tmp_path, monkeypatch):
+    """A finished run names every corpus it covered, so its map does rule it out."""
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    path = tmp_path / "run_a" / "retriever_lab.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(
+            {
+                "run_id": "a",
+                "status": "complete",
+                "corpora": {"a": {"bm25": {"mean_recall_at_k": 0.3, "questions": 1}}},
+                "manifests": {"a": _manifest(code_version="0.11.0", git_sha="a" * 40)},
+                "questions": [{"corpus": "a", "strategy": "bm25", "question_id": "q1"}],
+            }
+        )
+    )
+
+    failures: list[str] = []
+    variance.load_runs("b", failures=failures)
+
+    assert failures == []

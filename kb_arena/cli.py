@@ -1887,7 +1887,16 @@ def variance(
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(1) from None
     if not runs:
-        console.print("[yellow]No results found. Run `kb-arena benchmark` first.[/yellow]")
+        if failed_runs:
+            # "No results found" told a reader to run a benchmark. A run did
+            # happen, and it failed. Printing the advice would hide that.
+            console.print(
+                f"[red]{len(failed_runs)} run(s) failed and none produced a measurement: "
+                + "; ".join(failed_runs[:3])
+                + "[/red]"
+            )
+        else:
+            console.print("[yellow]No results found. Run `kb-arena benchmark` first.[/yellow]")
         raise typer.Exit(1)
 
     rows = spread_report(runs, metrics=(metric,))
