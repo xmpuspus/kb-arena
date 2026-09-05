@@ -1,0 +1,206 @@
+"""Interface tests: every VectorStore adapter, exercised with its client mocked.
+
+No test makes a real network or database call. qdrant-client, psycopg, and
+lancedb are optional extras (pyproject.toml) and are not installed here, so
+the Qdrant adapter's SDK-specific model classes (PointStruct, Filter, ...)
+are stood in for with a fake `qdrant_client` module registered in
+sys.modules. pgvector and LanceDB need no SDK classes for a mocked client, so
+they take a plain MagicMock/fake table.
+"""
+
+from __future__ import annotations
+
+import sys
+import types
+from dataclasses import dataclass, field
+from typing import Any
+from unittest.mock import MagicMock
+
+import pytest
+
+from kb_arena.vectorstores.base import VectorMatch
+from kb_arena.vectorstores.chroma_store import ChromaVectorStore
+from kb_arena.vectorstores.lancedb_store import LanceDBVectorStore
+from kb_arena.vectorstores.pgvector_store import PgVectorStore
+from kb_arena.vectorstores.qdrant_store import QdrantVectorStore
+
+# --- Chroma ---
+
+
+@pytest.fixture
+def chroma_store(mock_chroma_client):
+    collection = mock_chroma_client.get_or_create_collection.return_value
+    collection.query.return_value = {
+        "ids": [["c1"]],
+        "documents": [["doc one"]],
+        "metadatas": [[{"source_doc_id": "d1"}]],
+        "distances": [[0.1]],
+    }
+    collection.count.return_value = 2
+    return ChromaVectorStore(client=mock_chroma_client), collection
+
+
+# --- Qdrant (SDK stubbed via sys.modules, client itself mocked) ---
+
+
+@dataclass
+class _FakePointStruct:
+    id: str
+    vector: list
+    payload: dict
+
+
+@dataclass
+class _FakeMatchValue:
+    value: Any
+
+
+@dataclass
+class _FakeFieldCondition:
+    key: str
+    match: _FakeMatchValue
+
+
+@dataclass
+class _FakeFilter:
+    must: list = field(default_factory=list)
+
+
+@pytest.fixture
+def qdrant_store(monkeypatch):
+    fake_qdrant_client = types.ModuleType("qdrant_client")
+    fake_models = types.ModuleType("qdrant_client.models")
+    fake_models.PointStruct = _FakePointStruct
+    fake_models.Filter = _FakeFilter
+    fake_models.FieldCondition = _FakeFieldCondition
+    fake_models.MatchValue = _FakeMatchValue
+    fake_qdrant_client.models = fake_models
+    monkeypatch.setitem(sys.modules, "qdrant_client", fake_qdrant_client)
+    monkeypatch.setitem(sys.modules, "qdrant_client.models", fake_models)
+
+    client = MagicMock()
+    point = types.SimpleNamespace(
+        id="c1", payload={"document": "doc one", "source_doc_id": "d1"}, score=0.9
+    )
+    client.query_points.return_value = types.SimpleNamespace(points=[point])
+    client.count.return_value = types.SimpleNamespace(count=2)
+    return QdrantVectorStore(client=client), client
+
+
+# --- pgvector (plain SQL, no SDK model classes needed) ---
+
+
+@pytest.fixture
+def pgvector_store():
+    conn = MagicMock()
+    cursor = conn.cursor.return_value.__enter__.return_value
+    cursor.fetchall.return_value = [("c1", "doc one", {"source_doc_id": "d1"}, 0.1)]
+    cursor.fetchone.return_value = (2,)
+    return PgVectorStore(client=conn), conn
+
+
+# --- LanceDB (dict-based API, no SDK model classes needed) ---
+
+
+@pytest.fixture
+def lancedb_store():
+    table = MagicMock()
+    search_builder = table.search.return_value
+    search_builder.limit.return_value = search_builder
+    search_builder.where.return_value = search_builder
+    search_builder.to_list.return_value = [
+        {"id": "c1", "document": "doc one", "metadata": {"source_doc_id": "d1"}, "_distance": 0.1}
+    ]
+    table.count_rows.return_value = 2
+    merge_builder = table.merge_insert.return_value
+    merge_builder.when_matched_update_all.return_value = merge_builder
+    merge_builder.when_not_matched_insert_all.return_value = merge_builder
+    return LanceDBVectorStore(client=table), table
+
+
+ADAPTER_FIXTURES = ["chroma_store", "qdrant_store", "pgvector_store", "lancedb_store"]
+
+
+@pytest.mark.parametrize("fixture_name", ADAPTER_FIXTURES)
+def test_query_returns_a_ranked_list_of_vector_matches(fixture_name, request):
+    store, _ = request.getfixturevalue(fixture_name)
+
+    matches = store.query([0.1, 0.2, 0.3], top_k=1)
+
+    assert isinstance(matches, list)
+    assert len(matches) == 1
+    match = matches[0]
+    assert isinstance(match, VectorMatch)
+    assert match.id == "c1"
+    assert match.document == "doc one"
+    assert match.metadata.get("source_doc_id") == "d1"
+    assert isinstance(match.distance, float)
+
+
+@pytest.mark.parametrize("fixture_name", ADAPTER_FIXTURES)
+def test_count_returns_an_int(fixture_name, request):
+    store, _ = request.getfixturevalue(fixture_name)
+
+    assert store.count() == 2
+
+
+def test_chroma_upsert_and_delete_forward_the_ids(chroma_store):
+    store, collection = chroma_store
+
+    store.upsert(["c1"], ["doc one"], [[0.1, 0.2, 0.3]], [{"source_doc_id": "d1"}])
+    assert collection.upsert.call_args.kwargs["ids"] == ["c1"]
+
+    store.delete(["c1", "c2"])
+    assert collection.delete.call_args.kwargs["ids"] == ["c1", "c2"]
+
+
+def test_qdrant_upsert_and_delete_forward_the_ids(qdrant_store):
+    store, client = qdrant_store
+
+    store.upsert(["c1"], ["doc one"], [[0.1, 0.2, 0.3]], [{"source_doc_id": "d1"}])
+    points = client.upsert.call_args.kwargs["points"]
+    assert [point.id for point in points] == ["c1"]
+
+    store.delete(["c1", "c2"])
+    assert client.delete.call_args.kwargs["points_selector"] == ["c1", "c2"]
+
+
+def test_pgvector_upsert_and_delete_forward_the_ids(pgvector_store):
+    store, conn = pgvector_store
+    cursor = conn.cursor.return_value.__enter__.return_value
+
+    store.upsert(["c1"], ["doc one"], [[0.1, 0.2, 0.3]], [{"source_doc_id": "d1"}])
+    upsert_args = cursor.execute.call_args_list[0].args[1]
+    assert upsert_args[0] == "c1"
+
+    store.delete(["c1", "c2"])
+    delete_args = cursor.execute.call_args.args[1]
+    assert delete_args == (["c1", "c2"],)
+
+
+def test_lancedb_upsert_and_delete_forward_the_ids(lancedb_store):
+    store, table = lancedb_store
+    merge_builder = table.merge_insert.return_value
+
+    store.upsert(["c1"], ["doc one"], [[0.1, 0.2, 0.3]], [{"source_doc_id": "d1"}])
+    rows = merge_builder.execute.call_args.args[0]
+    assert rows[0]["id"] == "c1"
+
+    store.delete(["c1", "c2"])
+    where_clause = table.delete.call_args.args[0]
+    assert "'c1'" in where_clause and "'c2'" in where_clause
+
+
+def test_vectorstores_import_pulls_no_optional_sdk():
+    """Every optional adapter's SDK import is lazy — confirms I-02's own rule."""
+    for module_name in ("qdrant_client", "psycopg", "lancedb"):
+        sys.modules.pop(module_name, None)
+
+    import importlib
+
+    import kb_arena.vectorstores as vectorstores_module
+
+    importlib.reload(vectorstores_module)
+
+    loaded = {name.split(".")[0] for name in sys.modules}
+    assert loaded.isdisjoint({"qdrant_client", "psycopg", "lancedb"})
