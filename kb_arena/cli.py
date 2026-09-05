@@ -1649,8 +1649,8 @@ def quantum_diagnostics(
 
 @app.command(name="evidence")
 def evidence_command(
-    corpus: str = typer.Option(..., "--corpus", help="Corpus the run scored"),
-    run_id: str = typer.Option(..., "--run-id", help="Run to bundle, from results/run_<id>"),
+    corpus: str = typer.Option("", "--corpus", help="Corpus the run scored"),
+    run_id: str = typer.Option("", "--run-id", help="Run to bundle, from results/run_<id>"),
     check: str = typer.Option("", "--check", help="Check an existing evidence.json instead"),
 ):
     """Write, or check, the record that travels with a committed run.
@@ -1677,6 +1677,21 @@ def evidence_command(
             raise typer.Exit(1)
         console.print(f"[green]{path}: complete[/green]")
         return
+
+    # Required for writing, and meaningless for a check. Typer cannot say that,
+    # so the two options stay optional and the command says it here. As required
+    # options they made the documented `--check <path>` exit 2 on a missing
+    # `--corpus`, which is a document naming a command that does not run.
+    missing = [name for name, value in (("--corpus", corpus), ("--run-id", run_id)) if not value]
+    if missing:
+        console.print(
+            f"[red]{' and '.join(missing)} are needed to write a bundle. "
+            f"Pass --check <path> to read one instead.[/red]"
+            if len(missing) > 1
+            else f"[red]{missing[0]} is needed to write a bundle. "
+            f"Pass --check <path> to read one instead.[/red]"
+        )
+        raise typer.Exit(2)
 
     run_dir = _Path(_settings.results_path) / f"run_{run_id}"
     if not run_dir.is_dir():
@@ -1902,9 +1917,14 @@ def variance(
         table.add_column(column)
     thin = 0
     incomparable = 0
+    unread = 0
     for row in rows:
         spread = row["metrics"].get(metric)
         if not spread:
+            # No run in this group carries a reading. A group where every query
+            # failed lands here, and skipping it in silence leaves the table
+            # showing only the strategies that worked.
+            unread += row["runs"]
             continue
         if not row["comparable"]:
             incomparable += 1
@@ -1939,6 +1959,11 @@ def variance(
         "A row groups by compatibility key, so two runs that measured different "
         "things never share a spread."
     )
+    if unread:
+        console.print(
+            f"[yellow]{unread} run(s) carry no reading for {metric!r} and take no row. "
+            f"A strategy whose queries all failed reports no number, on purpose.[/yellow]"
+        )
     if failed_runs:
         # A failed run belongs to no corpus and no strategy, so it cannot take a
         # row. Saying nothing about it would report a spread over the repeats

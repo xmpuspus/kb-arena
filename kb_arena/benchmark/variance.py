@@ -252,7 +252,7 @@ def load_runs(corpus: str | None = None, *, failures: list[str] | None = None) -
                 # run at all: before this, the loader skipped the file and the
                 # command answered "no run carries the metric".
                 flat = _flatten_lab_run(data, corpus)
-                if not flat and _lab_run_failed(data) and failures is not None:
+                if not flat and failures is not None and _lab_run_is_lost(data, corpus):
                     failures.append(f"{path}: {_lab_failure_reason(data)}")
                 for record in flat:
                     # A lab record takes the same identity check as a benchmark
@@ -292,26 +292,34 @@ def load_runs(corpus: str | None = None, *, failures: list[str] | None = None) -
 
 
 # A result file is `<corpus>_<strategy>.json`, and the strategies are known.
-def _lab_run_failed(data: dict) -> bool:
-    """Whether a lab file records a failure and holds no measurement.
+def _lab_run_is_lost(data: dict, corpus: str | None) -> bool:
+    """Whether a lab file that yielded no record is lost evidence.
 
-    The lab writes `status: incomplete` and an `execution_error` when it stops
-    before summarizing any corpus. The file then carries no corpus and no
-    strategy, so nothing about it can join a row.
+    Two shapes yield nothing. A run that stopped before summarizing any corpus
+    writes `status: incomplete` and an empty `corpora`. A run whose strategy
+    summary is null or the wrong type still says `complete`, so the status alone
+    cannot find it.
+
+    A file that holds only other corpora is neither. A report about one corpus
+    must not name a run that belongs to another one.
     """
-    if data.get("status") in (None, "complete"):
+    corpora = data.get("corpora")
+    corpora = corpora if isinstance(corpora, dict) else {}
+    if corpus and corpus not in corpora:
         return False
-    return not (data.get("corpora") or {})
+    return True
 
 
 def _lab_failure_reason(data: dict) -> str:
-    """What the lab recorded about why the run stopped."""
+    """What the lab recorded about why the run holds no measurement."""
     error = data.get("execution_error")
     if isinstance(error, dict):
         kind = str(error.get("type", "")).strip()
         message = str(error.get("message", "")).strip()
         if kind or message:
             return f"{kind}: {message}" if kind and message else (kind or message)
+    if data.get("corpora"):
+        return "no strategy summary could be read"
     return str(data.get("status", "incomplete"))
 
 
@@ -471,6 +479,7 @@ def _scored_question_ids(data: dict) -> dict[tuple[str, str], str]:
     from kb_arena.benchmark.manifest import question_digest
 
     ids: dict[tuple[str, str], list[str]] = {}
+    unidentified: set[tuple[str, str]] = set()
     for row in data.get("questions") or []:
         if not isinstance(row, dict):
             continue
@@ -480,10 +489,23 @@ def _scored_question_ids(data: dict) -> dict[tuple[str, str], str]:
         if row.get("execution_error") is not None:
             continue
         pair = (str(row.get("corpus", "")), str(row.get("strategy", "")))
+        qid = row.get("question_id")
         # `str()` maps null to "None", the same text a real id of "None" gives,
         # so two different question sets hashed alike. JSON keeps them apart.
-        ids.setdefault(pair, []).append(json.dumps(row.get("question_id")))
-    return {pair: (len(v), question_digest(v)) for pair, v in ids.items()}
+        if not isinstance(qid, str) or not qid.strip():
+            # An id nobody can read names no question. Two runs that both refuse
+            # to name theirs are not known to have measured the same ones, so
+            # the digest carries the run and each one groups alone.
+            unidentified.add(pair)
+        ids.setdefault(pair, []).append(json.dumps(qid))
+    run_id = str(data.get("run_id", "")) or "unknown"
+    return {
+        pair: (
+            len(v),
+            f"unidentified-{run_id}" if pair in unidentified else question_digest(v),
+        )
+        for pair, v in ids.items()
+    }
 
 
 def _is_for_corpus(path: Path, corpus: str | None) -> bool:

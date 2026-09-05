@@ -1463,3 +1463,70 @@ def test_a_complete_lab_run_is_never_counted_as_a_failure(tmp_path, monkeypatch)
     variance.load_runs(None, failures=failures)
 
     assert failures == []
+
+
+def test_a_null_strategy_summary_is_reported_not_dropped(tmp_path, monkeypatch):
+    """The run says `complete`, so the status alone could not find it.
+
+    A file whose strategy summary is null yields no record. Dropping it in
+    silence reports a spread over the runs that stayed readable.
+    """
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    good = tmp_path / "run_a" / "retriever_lab.json"
+    good.parent.mkdir(parents=True)
+    good.write_text(_lab_payload("a", 0.2))
+    bad = tmp_path / "run_b" / "retriever_lab.json"
+    bad.parent.mkdir(parents=True)
+    bad.write_text(
+        json.dumps({"run_id": "b", "status": "complete", "corpora": {"c": {"bm25": None}}})
+    )
+
+    failures: list[str] = []
+    runs = variance.load_runs("c", failures=failures)
+
+    assert len(runs) == 1
+    assert len(failures) == 1
+    assert "no strategy summary could be read" in failures[0]
+
+
+def test_a_lab_run_for_another_corpus_is_not_called_a_failure(tmp_path, monkeypatch):
+    """A report about one corpus must not name a run that belongs to another."""
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    other = tmp_path / "run_b" / "retriever_lab.json"
+    other.parent.mkdir(parents=True)
+    other.write_text(
+        json.dumps(
+            {
+                "run_id": "b",
+                "status": "complete",
+                "corpora": {"other": {"bm25": {"mean_recall_at_k": 0.3, "questions": 1}}},
+            }
+        )
+    )
+
+    failures: list[str] = []
+    variance.load_runs("c", failures=failures)
+
+    assert failures == [], "the file holds another corpus, so it is not lost evidence"
+
+
+def test_two_runs_that_name_no_question_id_never_average():
+    """A null id names no question, so neither run can prove what it measured."""
+    manifest = _manifest(code_version="0.11.0", git_sha="a" * 40, question_count=2)
+
+    def _run(run_id: str, recall: float) -> list[dict]:
+        return variance._flatten_lab_run(
+            {
+                "run_id": run_id,
+                "status": "complete",
+                "corpora": {"c": {"bm25": {"mean_recall_at_k": recall, "questions": 1}}},
+                "manifests": {"c": manifest},
+                "questions": [{"corpus": "c", "strategy": "bm25", "question_id": None}],
+            },
+            None,
+        )
+
+    rows = variance.spread_report(_run("a", 0.2) + _run("b", 0.8), metrics=("mean_recall_at_k",))
+
+    assert len(rows) == 2, "neither run says which question it scored"
+    assert all("unidentified-" in r["compatibility_key"] for r in rows)
