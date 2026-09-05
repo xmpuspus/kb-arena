@@ -14,7 +14,10 @@ kb-arena evidence --corpus aws-compute --run-id <the id it prints>
 
 BM25 needs no API key and no embedding provider, so the run costs nothing.
 `evidence.json` records the package version, the commit, the Python build, the
-platform, the seed, the exact command, and the question set the review covers.
+platform, the seed, the exact command, and two question sets. One is the set the
+run measured, read from the run manifest. The other is the set the review
+verdict covers, hashed from the corpus. `--check` refuses a citable bundle when
+they differ, and when the questions on disk move away from the reviewed set.
 
 ## What this run shows
 
@@ -41,8 +44,8 @@ Run 59b5b60d measured question set `3aecce3d26b1`. On 2026-09-05 a review of all
 `3083f59c5d22`. The old run then described questions the corpus no longer held.
 `kb-arena evidence --check` refuses that now, by name:
 
-> retriever_lab.json measured question set 3aecce3d26b1, and the bundle names
-> 3083f59c5d22. The review verdict describes a different set of questions.
+> the run measured question set 3aecce3d26b1 and the review covers 3083f59c5d22.
+> The review verdict describes a different set of questions.
 
 Both runs report the same retrieval numbers, because the lab scores against
 `expected_chunks.yaml` and the corrections touched answer text and constraints.

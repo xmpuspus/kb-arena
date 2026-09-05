@@ -24,6 +24,8 @@ def main() -> int:
     print(f"seed:      {bundle['seed']}")
     counts = bundle["review"]["counts"]
     print(f"reviewed:  {counts['human-reviewed']} of {bundle['review']['questions']} questions")
+    print(f"run set:   {bundle['question_set_fingerprint']}")
+    print(f"review of: {bundle['review_question_set']}  split {bundle['review_split']}")
     return 0
 
 

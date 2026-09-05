@@ -222,29 +222,130 @@ def test_a_result_with_no_manifest_never_backs_a_citable_bundle(tmp_path):
     assert any("carries no manifest" in p for p in problems), problems
 
 
-def test_a_filtered_run_is_not_rejected_for_scoring_a_subset(tmp_path):
-    """`--tier 1` and `--split holdout` score a subset on purpose.
+def _run_with(tmp_path, name, *, fingerprint=None, split=None):
+    """A copy of the committed lab result, with its manifest edited."""
+    run = tmp_path / "results" / name
+    run.mkdir(parents=True)
+    data = json.loads((COMMITTED / "retriever_lab.json").read_text())
+    entry = data["manifests"]["aws-compute"]
+    if fingerprint is not None:
+        entry["question_set_fingerprint"] = fingerprint
+    if split is not None:
+        entry["question_split"] = split
+    (run / "retriever_lab.json").write_text(json.dumps(data))
+    return f"results/{name}/retriever_lab.json"
 
-    The bundle used to hash every question in the corpus, so it named a set no
-    filtered run could match, and `--check` refused every one of them.
+
+def test_a_split_filtered_run_stays_citable_because_its_manifest_names_the_split(tmp_path):
+    """`--split holdout` scores a subset on purpose, and its manifest says so.
+
+    So the review runs over that same split, and the two fingerprints agree.
+    """
+    from kb_arena.benchmark.manifest import question_set_fingerprint
+    from kb_arena.benchmark.questions import load_questions
+
+    holdout = question_set_fingerprint(load_questions("nist-800-171-r3", split="holdout"))
+    result = _run_with(tmp_path, "run_h", fingerprint=holdout, split="holdout")
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    bundle = {
+        **bundle,
+        "corpus": "nist-800-171-r3",
+        "results": [result],
+        "question_set_fingerprint": holdout,
+        "review_question_set": holdout,
+        "review_split": "holdout",
+    }
+
+    assert check_bundle(bundle, tmp_path) == []
+
+
+def test_a_tier_filtered_run_cannot_prove_that_its_review_covers_it(tmp_path):
+    """`--tier 1` scores a subset and records `question_split: all`.
+
+    Nothing in the manifest tells that subset apart from a corpus somebody
+    edited, so the check refuses the bundle instead of widening until it passes.
     """
     from kb_arena.benchmark.manifest import question_set_fingerprint
     from kb_arena.benchmark.questions import load_questions
 
     subset = question_set_fingerprint([q for q in load_questions("aws-compute") if q.tier == 1])
-    run = tmp_path / "results" / "run_t1"
-    run.mkdir(parents=True)
-    data = json.loads((COMMITTED / "retriever_lab.json").read_text())
-    data["manifests"]["aws-compute"]["question_set_fingerprint"] = subset
-    (run / "retriever_lab.json").write_text(json.dumps(data))
+    result = _run_with(tmp_path, "run_t1", fingerprint=subset)
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    bundle = {**bundle, "results": [result], "question_set_fingerprint": subset}
+
+    problems = check_bundle(bundle, tmp_path)
+
+    assert any("describes a different set of questions" in p for p in problems), problems
+
+
+def test_a_citable_bundle_that_names_no_reviewed_set_is_refused(tmp_path):
+    """The guard used to copy the run's fingerprint and compare it to the run.
+
+    That compares a value to a copy of itself. A bundle written by the old code
+    carries no `review_question_set`, so it can never prove the review covers it.
+    """
+    result = _run_with(tmp_path, "run_old")
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    bundle = {**bundle, "results": [result], "review_question_set": ""}
+
+    problems = check_bundle(bundle, tmp_path)
+
+    assert any("does not say which question set its review covers" in p for p in problems)
+
+
+def test_an_edited_question_stops_the_committed_bundle_from_reading_as_citable(tmp_path):
+    """A review verdict describes the questions as they were, not as they are.
+
+    The bundle records what the review covered, so a later edit to a question
+    moves the corpus fingerprint and the check says which two values differ.
+    """
+    stale = "0000deadbeef"
+    result = _run_with(tmp_path, "run_stale", fingerprint=stale)
     bundle = json.loads((COMMITTED / "evidence.json").read_text())
     bundle = {
         **bundle,
-        "results": ["results/run_t1/retriever_lab.json"],
-        "question_set_fingerprint": subset,
+        "results": [result],
+        "question_set_fingerprint": stale,
+        "review_question_set": stale,
     }
 
-    assert check_bundle(bundle, tmp_path) == []
+    problems = check_bundle(bundle, tmp_path)
+
+    assert any("Somebody changed a question" in p for p in problems), problems
+
+
+def test_a_citable_bundle_over_a_corpus_nobody_can_read_is_refused(tmp_path):
+    """No corpus on disk means no way to recheck the verdict."""
+    result = _run_with(tmp_path, "run_gone")
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    bundle = {**bundle, "corpus": "no-such-corpus", "results": [result]}
+
+    problems = check_bundle(bundle, tmp_path)
+
+    assert any("cannot be read" in p for p in problems), problems
+
+
+def test_a_readable_manifest_does_not_stand_in_for_a_broken_one(tmp_path):
+    """Bad fingerprints were dropped one by one, so a good sibling hid them."""
+    run = tmp_path / "results" / "run_pair"
+    run.mkdir(parents=True)
+    data = json.loads((COMMITTED / "retriever_lab.json").read_text())
+    good = data["manifests"]["aws-compute"]
+    data["manifests"]["other"] = {**good, "question_set_fingerprint": None}
+    (run / "retriever_lab.json").write_text(json.dumps(data))
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    bundle = {**bundle, "results": ["results/run_pair/retriever_lab.json"]}
+
+    problems = check_bundle(bundle, tmp_path)
+
+    assert any("nobody can read" in p for p in problems), problems
+
+
+def test_the_evidence_command_skips_every_file_a_run_writes_beside_its_results(tmp_path):
+    """`run.json` carries no manifest, so reading it refused a sound bundle."""
+    from kb_arena.benchmark.variance import NON_RESULT_NAMES
+
+    assert {"run.json", "evidence.json", "summary.json"} <= NON_RESULT_NAMES
 
 
 def test_the_bundle_never_lists_itself_as_one_of_the_run_results():

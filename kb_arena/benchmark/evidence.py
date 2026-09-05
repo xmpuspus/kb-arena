@@ -19,6 +19,11 @@ from kb_arena.benchmark.atomic import atomic_write_text
 
 BUNDLE_VERSION = 1
 
+# A manifest that carries a fingerprint nobody can read. It is not a question
+# set, and it is not absence either, so it needs a name of its own. Dropping it
+# let a valid sibling manifest stand in for a malformed one.
+UNREADABLE_QUESTION_SET = "<unreadable>"
+
 
 def _python_identity() -> dict:
     return {
@@ -47,6 +52,8 @@ def build_bundle(
     corpus: str,
     seed: int,
     question_set_fingerprint: str = "",
+    review_question_set: str = "",
+    review_split: str = "all",
     notes: str = "",
 ) -> dict:
     """The record that travels with a committed run.
@@ -55,9 +62,12 @@ def build_bundle(
     from `review_summary`, and it decides whether the bundle calls itself
     citable evidence or a development signal.
 
-    `question_set_fingerprint` is the corpus the review describes. A review is a
-    statement about a set of questions, so a bundle that records the verdict and
-    not the question set can call a run citable after somebody edits a question.
+    The bundle records two question sets, because they are two different
+    facts. `question_set_fingerprint` is the set the RUN measured, read from the
+    run's own manifest. `review_question_set` is the set the review verdict ran
+    over, hashed from the corpus at bundle time, and `review_split` says which
+    split that was. A bundle that records only one of them proves nothing: the
+    earlier version copied the run's value and then compared it to the run.
     """
     return {
         "bundle_version": BUNDLE_VERSION,
@@ -73,6 +83,8 @@ def build_bundle(
         },
         "seed": seed,
         "question_set_fingerprint": question_set_fingerprint,
+        "review_question_set": review_question_set,
+        "review_split": review_split,
         "review": review,
         # The claim the bundle makes about itself, stated rather than implied.
         "citable": bool(review.get("publishable")),
@@ -115,6 +127,8 @@ def check_bundle(bundle: dict, root: Path) -> list[str]:
         problem = _question_set_problem(bundle, root / name, name)
         if problem:
             problems.append(problem)
+    if bundle.get("citable"):
+        problems.extend(_review_scope_problems(bundle))
     if bundle.get("citable") and not review.get("publishable"):
         problems.append("calls itself citable while its own review verdict refuses")
     if not bundle.get("citable") and not bundle.get("why_not_citable"):
@@ -126,13 +140,8 @@ def check_bundle(bundle: dict, root: Path) -> list[str]:
     return problems
 
 
-def question_sets_in(path: Path) -> list[str] | None:
-    """The question sets a result file says it measured, or None when it cannot say.
-
-    None and an empty list are different answers. None means the file is
-    unreadable or carries no manifest, so it proves nothing about its own
-    provenance. An empty list means it carries a manifest that names no set.
-    """
+def _manifests_in(path: Path) -> list[dict] | None:
+    """Every manifest a result file carries, or None when it carries none."""
     try:
         data = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError, ValueError):
@@ -146,15 +155,46 @@ def question_sets_in(path: Path) -> list[str] | None:
         candidates.append(manifest)
     if not candidates:
         return None
+    return [entry for entry in candidates if isinstance(entry, dict)]
+
+
+def question_sets_in(path: Path) -> list[str] | None:
+    """The question sets a result file says it measured, or None when it cannot say.
+
+    None and an empty list are different answers. None means the file is
+    unreadable or carries no manifest, so it proves nothing about its own
+    provenance. An empty list means it carries a manifest that names no set.
+    """
+    entries = _manifests_in(path)
+    if entries is None:
+        return None
     found = []
-    for entry in candidates:
-        stored = entry.get("question_set_fingerprint") if isinstance(entry, dict) else None
+    for entry in entries:
+        stored = entry.get("question_set_fingerprint")
         # A fingerprint that is null, blank, or not a string names no set. The
         # earlier version asked only whether it was truthy, so every one of
-        # those values skipped the comparison and passed as if it matched.
+        # those values skipped the comparison and passed as if it matched. A
+        # later version dropped the bad entry, which let a valid manifest in the
+        # same file stand in for it. Name it instead.
         if isinstance(stored, str) and stored.strip():
             found.append(stored)
+        else:
+            found.append(UNREADABLE_QUESTION_SET)
     return found
+
+
+def question_splits_in(path: Path) -> list[str]:
+    """The question splits a result file says it scored, one per manifest.
+
+    An entry that names no split reads as an empty string, so a caller can see
+    that the manifests disagree instead of reading a default as a fact.
+    """
+    entries = _manifests_in(path) or []
+    out = []
+    for entry in entries:
+        stored = entry.get("question_split")
+        out.append(stored.strip() if isinstance(stored, str) and stored.strip() else "")
+    return out
 
 
 def _question_set_problem(bundle: dict, path: Path, name: str) -> str:
@@ -174,6 +214,13 @@ def _question_set_problem(bundle: dict, path: Path, name: str) -> str:
         if citable:
             return f"{name} names no question set, so its provenance is unproven"
         return ""
+    if UNREADABLE_QUESTION_SET in sets:
+        if citable:
+            return (
+                f"{name} carries a manifest whose question set fingerprint nobody can "
+                f"read, and a readable manifest beside it does not stand in for that one"
+            )
+        return ""
     if not named:
         return ""
     off = [s for s in sets if s != named]
@@ -183,6 +230,60 @@ def _question_set_problem(bundle: dict, path: Path, name: str) -> str:
             f"The review verdict describes a different set of questions."
         )
     return ""
+
+
+def _live_question_set(corpus, split) -> str | None:
+    """The fingerprint of the questions on disk now, or None when they cannot be read."""
+    if not isinstance(corpus, str) or not corpus.strip():
+        return None
+    if not isinstance(split, str) or not split.strip():
+        return None
+    from kb_arena.benchmark.manifest import question_set_fingerprint
+    from kb_arena.benchmark.questions import load_questions
+
+    try:
+        return question_set_fingerprint(load_questions(corpus, split=split))
+    except (OSError, ValueError):
+        return None
+
+
+def _review_scope_problems(bundle: dict) -> list[str]:
+    """Why a citable bundle fails to prove that its review covers the run.
+
+    The earlier guard read the fingerprint out of the run, stored it in the
+    bundle, and then compared the stored value to the run. That compares a value
+    to a copy of itself, so it passed for every run, including a run over a
+    question set nobody reviewed. Two separate facts must agree here: the set
+    the run measured, and the set the review verdict ran over.
+
+    One case stays unprovable, and the answer is to refuse it. A `--tier 1`
+    benchmark run scores a subset and records `question_split: all`, so its
+    manifest cannot tell that subset apart from a corpus somebody edited.
+    """
+    named = bundle.get("question_set_fingerprint")
+    covered = bundle.get("review_question_set")
+    split = bundle.get("review_split")
+    if not isinstance(covered, str) or not covered.strip():
+        return ["calls itself citable and does not say which question set its review covers"]
+    if named and named != covered:
+        return [
+            f"the run measured question set {named} and the review covers {covered}. "
+            f"The review verdict describes a different set of questions. A "
+            f"tier-filtered run records no tier in its manifest, so a bundle over "
+            f"one lands here too, and refusing it is the honest answer."
+        ]
+    live = _live_question_set(bundle.get("corpus"), split)
+    if live is None:
+        return [
+            f"calls itself citable, and split {split!r} of corpus "
+            f"{bundle.get('corpus')!r} cannot be read, so nobody can recheck the verdict"
+        ]
+    if live != covered:
+        return [
+            f"the questions on disk now measure {live} and the review covered {covered}. "
+            f"Somebody changed a question after this bundle was written."
+        ]
+    return []
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover - thin wrapper

@@ -1650,20 +1650,31 @@ def quantum_diagnostics(
     console.print(f"[green]Written {out_path}[/green]")
 
 
-def _run_question_set(results, root) -> str:
-    """The question set the run measured, from its own result files.
+def _run_scope(results, root) -> tuple[str, str]:
+    """The question set and the split the run measured, from its own result files.
 
     Every result in one run scores the same questions, so they agree. When they
     do not, the run is not one measurement and the bundle names no set, which
-    makes `check_bundle` refuse a citable claim over it.
+    makes `check_bundle` refuse a citable claim over it. An unreadable
+    fingerprint counts as a disagreement for the same reason.
     """
-    from kb_arena.benchmark.evidence import question_sets_in
+    from kb_arena.benchmark.evidence import (
+        UNREADABLE_QUESTION_SET,
+        question_sets_in,
+        question_splits_in,
+    )
 
-    seen: set[str] = set()
+    sets: set[str] = set()
+    splits: set[str] = set()
     for path in results:
-        found = question_sets_in(root / path if not path.is_absolute() else path)
-        seen.update(found or [])
-    return seen.pop() if len(seen) == 1 else ""
+        full = root / path if not path.is_absolute() else path
+        sets.update(question_sets_in(full) or [])
+        splits.update(question_splits_in(full))
+    fingerprint = ""
+    if len(sets) == 1 and UNREADABLE_QUESTION_SET not in sets:
+        fingerprint = next(iter(sets))
+    split = next(iter(splits)) if len(splits) == 1 else ""
+    return fingerprint, split
 
 
 @app.command(name="evidence")
@@ -1682,8 +1693,10 @@ def evidence_command(
     from pathlib import Path as _Path
 
     from kb_arena.benchmark.evidence import build_bundle, check_bundle, write_bundle
+    from kb_arena.benchmark.manifest import question_set_fingerprint
     from kb_arena.benchmark.questions import load_questions
     from kb_arena.benchmark.review import review_summary
+    from kb_arena.benchmark.variance import NON_RESULT_NAMES
     from kb_arena.settings import settings as _settings
 
     root = _Path.cwd()
@@ -1721,15 +1734,21 @@ def evidence_command(
     # path a reader can follow from the repository root.
     results = []
     for found in sorted(run_dir.glob("*.json")):
-        # The bundle is not one of the run's results. Listing it makes a second
-        # `kb-arena evidence` write a different bundle than the first, and the
-        # bundle carries no manifest, so it can never back its own claim.
-        if found.name == "evidence.json":
+        # A run writes several files beside its results, and none of them is
+        # one. `evidence.json` is the bundle itself, so listing it makes a
+        # second `kb-arena evidence` write a different bundle than the first.
+        # `run.json` is the run record. Neither carries a manifest, so asking
+        # either one for its question set refuses a bundle that is fine.
+        if found.name in NON_RESULT_NAMES:
             continue
         resolved = found.resolve()
         results.append(resolved.relative_to(root) if root in resolved.parents else found)
 
-    questions = load_questions(corpus)
+    # The review verdict is a statement about a set of questions, so it has to
+    # run over the split the run scored. Reading the whole corpus here gave a
+    # holdout run a verdict over questions it never touched.
+    run_set, run_split = _run_scope(results, root)
+    questions = load_questions(corpus, split=run_split or "all")
     review = review_summary(questions)
 
     bundle = build_bundle(
@@ -1738,11 +1757,13 @@ def evidence_command(
         review=review,
         corpus=corpus,
         seed=_settings.run_seed,
-        # The set the RUN measured, read from its own manifest, and not the set
-        # the corpus holds today. A `--tier 1` or `--split holdout` run scores a
-        # subset on purpose, and hashing the whole corpus here would make
-        # `--check` refuse every filtered run.
-        question_set_fingerprint=_run_question_set(results, root),
+        # Two facts, not one. The first is what the run measured, read from its
+        # own manifest. The second is what the review verdict covers, hashed
+        # from the corpus now. `check_bundle` refuses a citable bundle when they
+        # differ, or when the corpus moves after this bundle is written.
+        question_set_fingerprint=run_set,
+        review_question_set=question_set_fingerprint(questions),
+        review_split=run_split or "all",
     )
     path = write_bundle(run_dir, bundle)
     console.print(f"[green]{path}[/green]")
