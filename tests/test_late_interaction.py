@@ -110,3 +110,30 @@ async def test_late_interaction_query_reranks_by_maxsim(mock_chroma_client, mock
     assert kept[0].doc_id == "doc"
     assert kept[0].metadata["late_interaction_maxsim"] == pytest.approx(1.0, abs=1e-9)
     assert kept[0].score >= kept[1].score
+
+
+@pytest.mark.asyncio
+async def test_an_empty_candidate_set_still_answers_as_late_interaction(monkeypatch):
+    """The base result names `naive_vector`, so one strategy answered as another.
+
+    `/chat` reported `strategy_used: naive_vector` for a `late_interaction`
+    request, which makes a comparison tool report the wrong row.
+    """
+    from unittest.mock import AsyncMock
+
+    from kb_arena.models.retrieval import RetrievalTrace
+    from kb_arena.strategies.base import AnswerResult
+
+    strategy = LateInteractionStrategy()
+    strategy._base = AsyncMock()
+    strategy._base.query = AsyncMock(
+        return_value=AnswerResult(
+            answer="nothing found",
+            strategy="naive_vector",
+            retrieval=RetrievalTrace(query="q", retrieved=[], latency_ms=1.0, top_k=5),
+        )
+    )
+
+    result = await strategy.query("q", top_k=5)
+
+    assert result.strategy == "late_interaction"

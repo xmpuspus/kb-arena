@@ -198,3 +198,27 @@ async def test_the_prompt_reads_only_the_chunks_the_trace_reports():
     assert dropped, "the fixture must hold more chunks than top_k, or this proves nothing"
     for text in dropped:
         assert text not in context
+
+
+@pytest.mark.asyncio
+async def test_a_strong_global_chunk_is_not_discarded_by_a_full_local_list():
+    """Local chunks came first and the slice cut at `top_k`.
+
+    So a full local list discarded every global chunk, however relevant. The
+    global query still ran and still cost a round trip, and it contributed
+    nothing. RRF lets each path's own ranking decide.
+    """
+    strategy = LightRAGStrategy(neo4j_driver=object())
+    strategy._local_retrieval = AsyncMock(return_value=_local_records())
+    strategy._global_retrieval = AsyncMock(return_value=_global_records())
+    strategy._llm = AsyncMock()
+    strategy._llm.generate = AsyncMock(
+        return_value=LLMResponse(text="answer", input_tokens=10, output_tokens=5, cost_usd=0.001)
+    )
+
+    result = await strategy.query("What is aws.lambda?", top_k=3)
+
+    modes = [c.metadata["retrieval_mode"] for c in result.retrieval.retrieved]
+    assert "global" in modes, "the global path must reach the result, not only run"
+    # The chunk both paths returned scores highest, which is what RRF is for.
+    assert result.retrieval.retrieved[0].chunk_id == "graph:lambda-overview::aws-lambda"

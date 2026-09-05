@@ -23,9 +23,10 @@ import re
 import time
 
 from kb_arena.models.document import Document
-from kb_arena.models.retrieval import RetrievalTrace, RetrievedChunk
+from kb_arena.models.retrieval import RetrievalTrace
 from kb_arena.settings import settings
 from kb_arena.strategies.base import AnswerResult, Strategy, validate_top_k
+from kb_arena.strategies.hybrid import _reciprocal_rank_fusion
 from kb_arena.strategies.knowledge_graph import _mock_graph_context, _records_to_chunks
 
 # One-hop neighborhood of the matched entity, or the entity alone with no match.
@@ -195,10 +196,13 @@ class LightRAGStrategy(Strategy):
         for chunk in global_chunks:
             chunk.metadata["retrieval_mode"] = "global"
 
-        merged: dict[str, RetrievedChunk] = {}
-        for chunk in local_chunks + global_chunks:
-            merged.setdefault(chunk.chunk_id, chunk)
-        ranked = list(merged.values())[:top_k]
+        # Fuse the two paths instead of concatenating them. Local chunks came
+        # first and the slice cut at `top_k`, so a full local list discarded
+        # every global chunk however relevant it was. The global query still
+        # ran and still cost a round trip, and it contributed nothing. RRF
+        # takes each path's own ranking and lets a strong global chunk outrank
+        # a weak local one, which is the point of running both.
+        ranked = _reciprocal_rank_fusion([local_chunks, global_chunks])[:top_k]
         for i, chunk in enumerate(ranked):
             chunk.rank = i + 1
 

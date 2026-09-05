@@ -151,7 +151,10 @@ class LateInteractionStrategy(Strategy):
             list(candidate.retrieval.retrieved) if candidate.retrieval else []
         )
         if not chunks:
-            return candidate
+            # The base strategy's own result names `naive_vector`, so returning
+            # it made one strategy answer as another: `/chat` reported
+            # `strategy_used: naive_vector` for a late_interaction request.
+            return candidate.model_copy(update={"strategy": self.name})
 
         encoder = self._get_encoder()
         query_tokens = encoder.encode([question])[0]
