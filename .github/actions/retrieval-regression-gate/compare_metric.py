@@ -62,7 +62,21 @@ def main() -> None:
 
     by_strategy = run.get("corpora", {}).get(corpus, {})
     failures = []
+    # Every strategy the caller asked for has to be in the baseline. Walking
+    # the baseline alone meant a newly added strategy could regress, or vanish
+    # from the run, while the gate reported success over the ones it knew.
+    requested = [
+        name.strip() for name in os.environ.get("STRATEGIES", "").split(",") if name.strip()
+    ]
+    for name in requested:
+        if name not in baseline["strategies"]:
+            failures.append(f"{name}: the gate ran it and the baseline records no value for it")
     for strategy, baseline_value in baseline["strategies"].items():
+        if not isinstance(baseline_value, int | float) or not math.isfinite(baseline_value):
+            # Python's JSON parser accepts NaN, and every comparison against it
+            # is false, so a NaN baseline made the gate pass whatever the run did.
+            failures.append(f"{strategy}: the baseline records {baseline_value!r}, not a number")
+            continue
         strategy_result = by_strategy.get(strategy)
         if strategy_result is None:
             failures.append(f"{strategy}: missing from the fresh run")

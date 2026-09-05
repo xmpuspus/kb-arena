@@ -176,3 +176,67 @@ def test_a_threshold_that_is_not_a_number_refuses_instead_of_passing():
         with pytest.raises(SystemExit) as caught:
             compare_metric._finite(bad, "THRESHOLD")
         assert "THRESHOLD" in str(caught.value)
+
+
+def test_the_compare_step_receives_the_strategy_list():
+    """The gate walked the baseline alone, so a strategy the caller ran went unchecked.
+
+    A newly added strategy could regress, or vanish from the run, while the
+    gate reported success over the ones the baseline happened to name.
+    """
+    action = yaml.safe_load(
+        (
+            Path(__file__).resolve().parents[1]
+            / ".github/actions/retrieval-regression-gate/action.yml"
+        ).read_text()
+    )
+    compare = next(
+        step for step in action["runs"]["steps"] if "compare_metric.py" in step.get("run", "")
+    )
+
+    assert compare["env"]["STRATEGIES"] == "${{ inputs.strategies }}"
+
+
+def test_a_baseline_value_that_is_not_a_number_fails_the_gate():
+    """Python's JSON parser accepts NaN, and every comparison against it is false.
+
+    A NaN baseline made the gate pass whatever the run measured.
+    """
+    import json
+    import os
+    import sys
+    from unittest.mock import patch
+
+    sys.path.insert(
+        0,
+        str(Path(__file__).resolve().parents[1] / ".github/actions/retrieval-regression-gate"),
+    )
+    import compare_metric
+
+    baseline = {
+        "corpus": "c",
+        "metric": "mean_recall_at_k",
+        "top_k": 5,
+        "strategies": {"bm25": float("nan")},
+    }
+    run = {"corpora": {"c": {"bm25": {"mean_recall_at_k": 0.0}}}}
+    env = {
+        "METRIC": "mean_recall_at_k",
+        "THRESHOLD": "0.03",
+        "CORPUS": "c",
+        "TOP_K": "5",
+        "BASELINE_PATH": "baseline.json",
+        "KB_ARENA_RESULTS_PATH": "results",
+        "STRATEGIES": "bm25",
+    }
+
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch.object(compare_metric, "_load_json", lambda _p: baseline),
+        patch.object(compare_metric, "_load_run", lambda _p: run),
+        patch.object(json, "loads", json.loads),
+    ):
+        with pytest.raises(SystemExit) as caught:
+            compare_metric.main()
+
+    assert "not a number" in str(caught.value)

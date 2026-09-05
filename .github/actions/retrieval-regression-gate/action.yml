@@ -101,5 +101,8 @@ runs:
         THRESHOLD: ${{ inputs.threshold }}
         CORPUS: ${{ inputs.corpus }}
         TOP_K: ${{ inputs.top-k }}
+        # The gate must check every strategy the caller ran, not only the ones
+        # the baseline happens to name.
+        STRATEGIES: ${{ inputs.strategies }}
         KB_ARENA_RESULTS_PATH: ${{ runner.temp }}/kb-arena-regression-gate/${{ inputs.corpus }}
       run: python3 "${{ github.action_path }}/compare_metric.py"
