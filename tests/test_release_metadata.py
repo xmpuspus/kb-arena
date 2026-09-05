@@ -23,6 +23,41 @@ TARGET_DATE = str(
 )
 
 
+def test_the_version_is_not_one_already_released() -> None:
+    """The other test proves the surfaces agree, and agreement alone is cheap.
+
+    A coordinated revert to a shipped version satisfies it, and so does a
+    changelog-order check: deleting the top entry leaves the previous release
+    at the top, still sorting above the one below it.
+
+    The tags are what say which versions shipped. A version carrying a tag is a
+    version already released, so a branch claiming it is either a revert or a
+    re-cut. Naming the expected version here instead would be a copy every
+    release has to edit in step, which is what this file already got wrong once.
+
+    Silent when git cannot answer: a source archive has no tags, and refusing
+    there would fail a check that has no evidence.
+    """
+    import subprocess
+
+    try:
+        done = subprocess.run(
+            ["git", "tag", "--list"], cwd=ROOT, capture_output=True, text=True, timeout=5
+        )
+    except (OSError, subprocess.SubprocessError):
+        return
+    if done.returncode != 0:
+        return
+    released = {line.strip().lstrip("v") for line in done.stdout.splitlines() if line.strip()}
+    if not released:
+        return
+
+    assert TARGET_VERSION not in released, (
+        f"{TARGET_VERSION} already carries a tag, so this branch either reverts the "
+        f"version or re-cuts a released one"
+    )
+
+
 def test_release_metadata_is_aligned() -> None:
     citation = yaml.safe_load((ROOT / "CITATION.cff").read_text())
     changelog = (ROOT / "CHANGELOG.md").read_text()
