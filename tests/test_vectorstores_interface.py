@@ -358,3 +358,36 @@ def test_an_unreadable_metric_reads_as_cosine(qdrant_store):
     client.get_collection.side_effect = RuntimeError("no such collection")
 
     assert store._as_distance(1.0) == pytest.approx(0.0)
+
+
+def test_a_metric_lookup_that_fails_is_not_cached(qdrant_store):
+    """Caching a failed lookup fixed the wrong conversion in place for good.
+
+    One timeout would have made every later distance wrong on a Euclid
+    collection, even after the lookup started working again.
+    """
+    store, client = qdrant_store
+    client.get_collection.side_effect = RuntimeError("timed out")
+
+    store._as_distance(0.5)
+    assert store._similarity_metric is None
+
+    client.get_collection.side_effect = None
+    client.get_collection.return_value = SimpleNamespace(
+        config=SimpleNamespace(params=SimpleNamespace(vectors=SimpleNamespace(distance="Euclid")))
+    )
+
+    assert store._as_distance(0.1) == pytest.approx(0.1)
+
+
+def test_a_table_name_that_is_not_an_identifier_is_refused():
+    """A table cannot be a bound parameter, so the name reaches the statement whole.
+
+    A configured name carrying `; DROP TABLE ...` would change the statement.
+    """
+    from unittest.mock import MagicMock
+
+    from kb_arena.vectorstores.pgvector_store import PgVectorStore
+
+    with pytest.raises(ValueError, match="plain SQL identifier"):
+        PgVectorStore(client=MagicMock(), table_name="kb_arena; DROP TABLE audit_log; --")

@@ -137,20 +137,25 @@ class QdrantVectorStore(VectorStore):
         consumer sorting ascending picked the farther point.
         """
         if self._similarity_metric is None:
+            # A failed lookup is not an answer, so it is not cached. Caching it
+            # would fix the wrong metric in place for the life of the store
+            # after one timeout.
             self._similarity_metric = self._read_metric()
-        return 1.0 - score if self._similarity_metric else score
+        return 1.0 - score if self._similarity_metric is not False else score
 
-    def _read_metric(self) -> bool:
-        """Whether this collection's score is a similarity. Unknown reads as one.
+    def _read_metric(self) -> bool | None:
+        """Whether this collection's score is a similarity, or None when unreadable.
 
-        Cosine is Qdrant's default and the one this project configures, so an
-        unreadable metric answers cosine rather than guessing the other way.
+        None is not cached, so a lookup that timed out once does not fix the
+        wrong conversion in place for the life of the store. Until it reads,
+        the conversion assumes cosine, which is Qdrant's default and the metric
+        this project configures.
         """
         try:
             info = self._client.get_collection(self._collection_name)
             metric = str(info.config.params.vectors.distance).upper()
         except Exception:
-            return True
+            return None
         return "COSINE" in metric or "DOT" in metric
 
     def delete(self, ids: Sequence[str]) -> None:

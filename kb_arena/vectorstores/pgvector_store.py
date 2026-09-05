@@ -12,6 +12,7 @@ import entirely, so `import kb_arena.vectorstores` never pulls it in.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -36,6 +37,21 @@ def _where_sql(where: Mapping[str, str] | None) -> tuple[str, list[str]]:
     for key, value in where.items():
         params.extend((key, value))
     return " WHERE " + " AND ".join(clauses), params
+
+
+# A table name reaches the statement by interpolation, because a table cannot
+# be a bound parameter. So it has to be an identifier and nothing else: a
+# configured name carrying `; DROP TABLE ...` would change the statement.
+_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _identifier(name: str) -> str:
+    if not _IDENTIFIER.match(name or ""):
+        raise ValueError(
+            f"table_name must be a plain SQL identifier, got {name!r}. "
+            f"It is interpolated into every statement, so it cannot be quoted text."
+        )
+    return name
 
 
 class PgVectorStore(VectorStore):
@@ -80,7 +96,7 @@ class PgVectorStore(VectorStore):
                     "Install with: pip install 'kb-arena[pgvector]'"
                 ) from exc
             self._conn = psycopg.connect(dsn)
-        self._table = table_name
+        self._table = _identifier(table_name)
 
     def upsert(
         self,
