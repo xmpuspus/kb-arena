@@ -1,0 +1,36 @@
+name: Retrieval regression example
+
+# Demonstrates the reusable retrieval-regression-gate action against the
+# aws-compute corpus with the keyless bm25 strategy. Scoped to changes that
+# can move the metric, plus a manual run, so it does not fire on every PR.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "datasets/aws-compute/**"
+      - "kb_arena/strategies/**"
+      - "kb_arena/benchmark/retriever_lab.py"
+      - ".github/actions/retrieval-regression-gate/**"
+      - ".github/retrieval-baselines/aws-compute-bm25.json"
+  workflow_dispatch:
+
+jobs:
+  regression-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Gate on a BM25 recall regression
+        uses: ./.github/actions/retrieval-regression-gate
+        with:
+          corpus: aws-compute
+          corpus-path: datasets/aws-compute/raw
+          strategies: bm25
+          top-k: "5"
+          metric: mean_recall_at_k
+          baseline-path: .github/retrieval-baselines/aws-compute-bm25.json
+          threshold: "0.03"
+          # This repo gates its own PRs on their own retrieval code, not on
+          # the last released PyPI build. An external consumer leaves this
+          # input unset and gets the pinned kb-arena-version from PyPI.
+          install-from: checkout

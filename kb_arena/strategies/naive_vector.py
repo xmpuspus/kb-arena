@@ -26,6 +26,7 @@ from kb_arena.strategies.chroma_index import (
     run_to_completion,
 )
 from kb_arena.strategies.embeddings import get_embedding_function
+from kb_arena.telemetry import traced_span
 from kb_arena.tokenizer import detokenize, tokenize
 
 # Back-compat constants — kept for callers that import them directly. The live
@@ -157,7 +158,8 @@ class NaiveVectorStrategy(Strategy):
             "n_results": top_k,
             "include": ["documents", "metadatas", "distances"],
         }
-        results = await query_in_thread(collection, COLLECTION_NAME, corpus, query_kwargs)
+        with traced_span("kb_arena.retrieval", strategy=self.name, corpus=corpus, top_k=top_k):
+            results = await query_in_thread(collection, COLLECTION_NAME, corpus, query_kwargs)
         ids, chunks, metas, distances = parse_query_result(results)
         retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 

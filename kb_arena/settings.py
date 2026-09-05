@@ -94,6 +94,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "text"  # text | json
 
+    # OpenTelemetry tracing (needs the `otel` extra). Off by default, so the
+    # core install and every code path work with the extra absent. See
+    # kb_arena/telemetry.py for what a span may and may not carry.
+    otel_enabled: bool = False
+
     # Server
     host: str = "127.0.0.1"
     port: int = 8000

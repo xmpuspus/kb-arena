@@ -37,7 +37,7 @@ dependencies = [
     "fastapi==0.141.1",
     "starlette==1.4.1",
     "uvicorn[standard]==0.34.0",
-    "sse-starlette==2.2.1",
+    "sse-starlette==3.4.10",
     "openai==2.24.0",
     "tiktoken==0.14.0",
     "httpx==0.28.1",
@@ -60,6 +60,19 @@ rerank = ["sentence-transformers>=5.0,<6"]
 # (sqr, Qiskit Aer SWAP test + PCA reduction). Lazy-imported, so the core
 # install and CI stay light; install with `pip install 'kb-arena[quantum]'`.
 quantum = ["qiskit==2.5.2", "qiskit-aer==0.17.2", "scikit-learn==1.9.0"]
+# Optional tracing (see kb_arena/telemetry.py). Lazy-imported, so the core
+# install and CI stay light; install with `pip install 'kb-arena[otel]'` and
+# set KB_ARENA_OTEL_ENABLED=true. The host process still configures the
+# exporter, for example with `opentelemetry-instrument`.
+otel = [
+    "opentelemetry-api==1.40.0",
+    "opentelemetry-sdk==1.40.0",
+    "opentelemetry-exporter-otlp-proto-grpc==1.40.0",
+]
+# MCP server (kb_arena/mcp/): stdio tools for corpus, strategy, and benchmark
+# work. Lazy-imported everywhere in the core install, so the CLI and API stay
+# usable without it; install with `pip install 'kb-arena[mcp]'`.
+mcp = ["mcp==2.1.1"]
 # Optional VectorStore adapters (kb_arena/vectorstores/). ChromaDB stays the
 # core default. Each one is lazy-imported, so the core install stays free of
 # them until a corpus selects one. They are pinned exactly, the way every other
