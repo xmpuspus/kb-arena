@@ -58,6 +58,9 @@ def test_action_declares_the_inputs_the_gate_needs() -> None:
 
     assert inputs["top-k"]["default"] == "5"
     assert inputs["kb-arena-version"]["default"] == "0.10.0"
+    # pypi is the safe default for an external consumer; a caller gating its
+    # own PR on its own retrieval code opts into checkout explicitly.
+    assert inputs["install-from"]["default"] == "pypi"
 
 
 def test_no_step_interpolates_a_caller_input_straight_into_a_script() -> None:
@@ -111,6 +114,9 @@ def test_example_workflow_runs_a_real_corpus_against_a_stored_baseline() -> None
     assert with_block["baseline-path"] == ".github/retrieval-baselines/aws-compute-bm25.json"
     threshold = float(with_block["threshold"])
     assert threshold > 0, "a zero threshold fails on the smallest floating-point noise"
+    # This repo's own PRs must gate on the branch's retrieval code, not on the
+    # last released PyPI build, or a broken bm25 ranking change would pass.
+    assert with_block["install-from"] == "checkout"
 
 
 def test_referenced_baseline_file_exists_and_matches_the_example_workflow() -> None:

@@ -30,3 +30,7 @@ jobs:
           metric: mean_recall_at_k
           baseline-path: .github/retrieval-baselines/aws-compute-bm25.json
           threshold: "0.03"
+          # This repo gates its own PRs on their own retrieval code, not on
+          # the last released PyPI build. An external consumer leaves this
+          # input unset and gets the pinned kb-arena-version from PyPI.
+          install-from: checkout

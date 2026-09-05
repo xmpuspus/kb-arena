@@ -33,6 +33,13 @@ inputs:
     description: Pinned kb-arena version to install from PyPI.
     required: false
     default: "0.10.0"
+  install-from:
+    description: >-
+      Install kb-arena from pypi (the pinned kb-arena-version) or from the
+      caller's checkout. Use checkout to gate a PR on its own retrieval code;
+      pypi is the default for a consumer benchmarking with a released kb-arena.
+    required: false
+    default: "pypi"
 
 runs:
   using: composite
@@ -46,7 +53,13 @@ runs:
       shell: bash
       env:
         KB_ARENA_VERSION: ${{ inputs.kb-arena-version }}
-      run: pip install "kb-arena==$KB_ARENA_VERSION"
+        INSTALL_FROM: ${{ inputs.install-from }}
+      run: |
+        if [ "$INSTALL_FROM" = "checkout" ]; then
+          pip install .
+        else
+          pip install "kb-arena==$KB_ARENA_VERSION"
+        fi
 
     - name: Ingest the corpus
       shell: bash
@@ -72,7 +85,7 @@ runs:
         CORPUS: ${{ inputs.corpus }}
         STRATEGIES: ${{ inputs.strategies }}
         TOP_K: ${{ inputs.top-k }}
-        KB_ARENA_RESULTS_PATH: ${{ runner.temp }}/kb-arena-regression-gate
+        KB_ARENA_RESULTS_PATH: ${{ runner.temp }}/kb-arena-regression-gate/${{ inputs.corpus }}
       run: |
         kb-arena retriever-lab \
           --corpus "$CORPUS" \
@@ -88,5 +101,5 @@ runs:
         THRESHOLD: ${{ inputs.threshold }}
         CORPUS: ${{ inputs.corpus }}
         TOP_K: ${{ inputs.top-k }}
-        KB_ARENA_RESULTS_PATH: ${{ runner.temp }}/kb-arena-regression-gate
+        KB_ARENA_RESULTS_PATH: ${{ runner.temp }}/kb-arena-regression-gate/${{ inputs.corpus }}
       run: python3 "${{ github.action_path }}/compare_metric.py"

@@ -154,3 +154,60 @@ async def test_naive_vector_retrieval_is_traced(monkeypatch):
     assert retrieval_spans[0].attributes["corpus"] == "aws-compute"
     assert retrieval_spans[0].attributes["top_k"] == 3
     assert not any(isinstance(c, RetrievedChunk) for c in retrieval_spans[0].attributes.values())
+
+
+def test_embedding_retry_opens_a_span_naming_the_provider(monkeypatch):
+    """The shared _retry helper carries every network embedding provider's call."""
+    from kb_arena.strategies.embeddings import _retry
+
+    provider, exporter = _in_memory_provider()
+    monkeypatch.setattr(settings, "otel_enabled", True)
+    monkeypatch.setattr(telemetry, "_tracer_provider", lambda: provider)
+    monkeypatch.setattr(settings, "embedding_provider", "openai")
+
+    result = _retry(lambda: [[0.1, 0.2]])
+
+    assert result == [[0.1, 0.2]]
+    spans = [s for s in exporter.get_finished_spans() if s.name == "kb_arena.embedding"]
+    assert len(spans) == 1
+    assert spans[0].attributes["provider"] == "openai"
+    assert set(spans[0].attributes.keys()) == {"provider"}
+
+
+@pytest.mark.asyncio
+async def test_judge_call_opens_a_span_with_strategy_corpus_and_top_k(monkeypatch):
+    from kb_arena.benchmark.evaluator import evaluate
+    from kb_arena.llm.client import LLMResponse
+    from kb_arena.models.benchmark import Constraints, GroundTruth
+
+    class _FakeJudge:
+        async def judge(self, **kwargs):
+            return LLMResponse(
+                text='{"accuracy": 1.0, "completeness": 1.0, "faithfulness": 1.0}',
+                provider="openai",
+                model="gpt-4o",
+                cost_usd=0.0,
+            )
+
+    provider, exporter = _in_memory_provider()
+    monkeypatch.setattr(settings, "otel_enabled", True)
+    monkeypatch.setattr(telemetry, "_tracer_provider", lambda: provider)
+
+    await evaluate(
+        "answer",
+        GroundTruth(answer="answer"),
+        Constraints(),
+        sources=[],
+        llm=_FakeJudge(),
+        question_text="a question, never on the span",
+        strategy="naive_vector",
+        corpus="aws-compute",
+        top_k=5,
+    )
+
+    spans = [s for s in exporter.get_finished_spans() if s.name == "kb_arena.judge"]
+    assert len(spans) == 1
+    assert spans[0].attributes["strategy"] == "naive_vector"
+    assert spans[0].attributes["corpus"] == "aws-compute"
+    assert spans[0].attributes["top_k"] == 5
+    assert set(spans[0].attributes.keys()) == {"strategy", "corpus", "top_k"}
