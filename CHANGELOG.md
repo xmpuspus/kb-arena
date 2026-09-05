@@ -36,7 +36,11 @@ is, and refuses to say what it is not.
 - Added named decision profiles to the report: accuracy-first, balanced,
   latency-bound and cost-bound.
 - Added one committed reproducible run at `results/run_b84eba57`, which needs no
-  API key to repeat.
+  API key to repeat. Its bundle reads `citable: true`, because a human reviewed
+  every one of the 75 questions it scored.
+- Added a review record to every `aws-compute` question. All 75 carry
+  `review_status: human-reviewed` and the name of the reviewer. That review
+  found six wrong answer keys, and `datasets/aws-compute/README.md` lists them.
 - Added generated references for the commands, the routes and the settings, with
   a test that fails when one is stale.
 
@@ -62,6 +66,17 @@ is, and refuses to say what it is not.
 - Fixed `--fail-below` judging only the last repeat when `--runs` was above one.
 - Fixed the npm audit step hanging until the job was killed, which reported as a
   cancelled check rather than a hang.
+- Fixed the citability check proving nothing. It read the question set out of
+  the run, stored it, and compared the stored value to the run. A bundle now
+  records what the run measured and what the review covers, and refuses a
+  citable claim when the two differ or when a question changes afterwards.
+- Fixed `kb-arena evidence` announcing a citable run for a bundle that
+  `kb-arena evidence --check` then rejected. The command reads its own checker
+  before it writes.
+- Fixed `kb-arena evidence --check <path>` needing `--corpus` and `--run-id`,
+  which are meaningless for a check.
+- Fixed `kb-arena retriever-lab` asking for an embedding key on a bm25-only run,
+  which two READMEs promise needs no key.
 
 
 ## [0.10.0] - 2026-08-05 - Retrieval architecture decision lab
