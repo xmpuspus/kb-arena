@@ -97,6 +97,8 @@ conditions.
 - The fresh metric value is not a finite number.
 - `baseline_value - new_value` is greater than `threshold`, for any checked
   strategy. This is the regression check itself.
+- The results directory holds no `retriever_lab.json`, or more than one. The
+  gate compares one run, so it refuses rather than pick between two.
 
 When every check passes, the gate prints `Retrieval regression gate passed.`
 and exits zero.
@@ -138,6 +140,12 @@ jobs:
           threshold: "0.03"
           install-from: checkout
 ```
+
+This example is the workflow this repository runs on itself, so its paths point
+at files here. Change `corpus`, `corpus-path`, `baseline-path` and the `paths`
+filter to your own before you copy it. `install-from: checkout` gates the code
+in the pull request, and a caller outside this repository wants
+`install-from: pypi` instead, which gates against a released version.
 
 The `paths` filter scopes the workflow to changes that can move the metric,
 so it does not run on every pull request. `workflow_dispatch` lets you run it
