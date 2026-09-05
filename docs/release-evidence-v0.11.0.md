@@ -7,14 +7,22 @@ notes.
 
 ## The count, and what the count is not
 
-166 findings read `fixed`, and each one names a piece of code that a script
-finds in `origin/main`. The script is `verify_fixed.py` in the run directory: it
-greps the default branch for the name each row quotes, because this repository
-squash-merges and a branch SHA proves nothing about main.
+The 227 rows carry five statuses, and they add up:
 
-54 findings stay open. Most are enhancements rather than defects, and each open
-row states why it stayed open. Three are named in this document, because a
-reader deciding whether to trust a number needs them.
+| Status | Rows | What it means |
+|---|---|---|
+| fixed | 166 | The change is on `origin/main`, and a script proves it by name |
+| open | 54 | Not done. Most are enhancements, and each row states why it waits |
+| in-progress | 3 | Started and not finished |
+| checked | 3 | Investigated and found to need no change |
+| deferred | 1 | Deliberately out of scope, with the reason recorded |
+
+The script is `verify_fixed.py` in the run directory. It greps the default
+branch for the name each fixed row quotes, because this repository squash-merges
+and a branch SHA proves nothing about main. All 166 pass.
+
+Three open rows are named in this document, because a reader deciding whether to
+trust a number needs them.
 
 ## The one Critical and all thirteen High findings are closed
 
