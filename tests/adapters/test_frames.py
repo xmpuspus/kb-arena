@@ -8,7 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from kb_arena.adapters import ADAPTERS, ChecksumMismatchError
-from kb_arena.adapters.frames import FramesAdapter
+from kb_arena.adapters.frames import _LINK_COLUMNS, FramesAdapter
 
 
 def test_parse_question_keeps_only_the_filled_wikipedia_links():
@@ -73,3 +73,26 @@ def test_refuses_to_fetch_and_says_what_to_do_instead():
     message = str(refused.value)
     assert "download-only" in message
     assert "huggingface.co/datasets/google/frames-benchmark" in message
+
+
+def test_an_overflow_cell_holding_several_links_becomes_several_evidence_rows():
+    """The last link column is an overflow cell, and it holds comma-separated URLs.
+
+    Reading it as one URL made three Wikipedia pages into one `source_doc_id`
+    that resolves to nothing.
+    """
+    row = {
+        "Prompt": "q",
+        "Answer": "a",
+        "reasoning_types": "numerical",
+        "wikipedia_link_1": "https://en.wikipedia.org/wiki/A",
+        _LINK_COLUMNS[-1]: ("https://en.wikipedia.org/wiki/B, https://en.wikipedia.org/wiki/C"),
+    }
+
+    evidence = FramesAdapter.parse_question(row)["evidence"]
+
+    assert [e["source_doc_id"] for e in evidence] == [
+        "https://en.wikipedia.org/wiki/A",
+        "https://en.wikipedia.org/wiki/B",
+        "https://en.wikipedia.org/wiki/C",
+    ]

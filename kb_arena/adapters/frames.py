@@ -73,10 +73,14 @@ class FramesAdapter(DatasetAdapter):
         one document, with a single section, since the dataset names no passage
         inside the page. `source_doc_id` is the page URL.
         """
+        # The last column is an overflow cell, and it holds every link past the
+        # numbered ones, separated by commas. Reading the cell as one URL made
+        # three Wikipedia pages into one `source_doc_id` nothing resolves.
         evidence = [
             {"source_doc_id": link, "source_section_id": "0"}
             for column in _LINK_COLUMNS
-            if (link := raw.get(column))
+            for part in str(raw.get(column) or "").split(",")
+            if (link := part.strip())
         ]
         return {
             "question": raw["Prompt"],
