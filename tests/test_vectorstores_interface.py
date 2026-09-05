@@ -242,3 +242,17 @@ def test_vectorstores_import_pulls_no_optional_sdk():
         [sys.executable, "-c", code], capture_output=True, text=True, check=True
     )
     assert result.stdout.strip() == "[]"
+
+
+def test_lancedb_filters_before_the_vector_search(lancedb_store):
+    """LanceDB post-filters by default, so `top_k` rows become fewer than `top_k`.
+
+    The search would take the nearest `top_k` and the filter would then cut
+    them, which reads as a store holding less than it does. Every other adapter
+    filters first, and one interface promises one behaviour.
+    """
+    store, table = lancedb_store
+
+    store.query([0.1, 0.2, 0.3], top_k=5, where={"source_doc_id": "d1"})
+
+    assert table.search.return_value.where.call_args.kwargs == {"prefilter": True}

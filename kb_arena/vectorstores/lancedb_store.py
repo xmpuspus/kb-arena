@@ -87,7 +87,13 @@ class LanceDBVectorStore(VectorStore):
         search = self._table.search(list(embedding)).limit(top_k)
         clause = _where_sql(where)
         if clause:
-            search = search.where(clause)
+            # `prefilter=True` applies the filter BEFORE the vector search.
+            # LanceDB post-filters by default, so the search takes the nearest
+            # `top_k` rows and the filter then cuts them, which returns fewer
+            # than `top_k` and reads as a store with less in it. Every other
+            # adapter here filters first, and the interface promises one
+            # behaviour.
+            search = search.where(clause, prefilter=True)
         rows = search.to_list()
         return [
             VectorMatch(
