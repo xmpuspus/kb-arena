@@ -21,7 +21,7 @@ no provider key.
 | `metric` | yes | | Metric name from `retriever_lab.json` to compare, for example `mean_recall_at_k`. |
 | `baseline-path` | yes | | Path to the stored baseline JSON, relative to your checkout. |
 | `threshold` | yes | | Maximum allowed drop in the metric before the gate fails. |
-| `kb-arena-version` | no | `"0.10.0"` | Pinned kb-arena version to install from PyPI. |
+| `kb-arena-version` | no | `"0.11.0"` | Pinned kb-arena version to install from PyPI. |
 | `install-from` | no | `"pypi"` | Install kb-arena from `pypi` (the pinned version) or from your `checkout`. |
 
 Use `install-from: checkout` to gate a pull request on its own retrieval

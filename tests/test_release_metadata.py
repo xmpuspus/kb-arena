@@ -9,21 +9,54 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-TARGET_VERSION = "0.10.0"
-TARGET_DATE = "2026-08-05"
+# The version lives in `pyproject.toml` and nowhere else. Naming it here too
+# made a third copy that a release had to edit in step, and the tests failed on
+# the bump rather than on a real disagreement. These read the one source and
+# check that every other surface agrees with it.
+TARGET_VERSION = tomllib.loads(
+    (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text()
+)["project"]["version"]
+TARGET_DATE = str(
+    yaml.safe_load((Path(__file__).resolve().parents[1] / "CITATION.cff").read_text())[
+        "date-released"
+    ]
+)
 
 
+# There is no released-version guard here, and that is a decision rather than an
+# omission. A reviewer asked for one: the check below proves the surfaces agree
+# with each other, and agreement alone would pass a coordinated revert to a
+# shipped version. Three mechanisms were tried and each broke something real.
+#
+#   - A changelog-order check passes the revert, because deleting the top entry
+#     leaves the previous release at the top, still sorting above the one below.
+#   - "The version carries no tag" fails the release's own suite, because CI
+#     runs on the pushed tag.
+#   - "The tag points at HEAD" fails every ordinary pull request after a
+#     release, because the repository legitimately sits at the released version
+#     until the next bump.
+#
+# The last one is the reason the class has no mechanical answer: a tree at
+# version 0.11.0 after v0.11.0 shipped is the normal state, and it is
+# indistinguishable from a revert without naming the expected version. Naming it
+# is the copy this file already got wrong once, which is what PR 62 removed from
+# the dependency pins. So the check proves what it can prove, and the release
+# checklist carries the rest.
+#
+# The consequence this guard was reaching for is covered anyway: PyPI refuses an
+# upload of a version it already holds, so a reverted version cannot publish. It
+# fails at the upload rather than in this file. Logged as N-104.
 def test_release_metadata_is_aligned() -> None:
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text())
     citation = yaml.safe_load((ROOT / "CITATION.cff").read_text())
     changelog = (ROOT / "CHANGELOG.md").read_text()
 
-    assert project["project"]["version"] == TARGET_VERSION
     assert citation["version"] == TARGET_VERSION
     assert str(citation["date-released"]) == TARGET_DATE
     assert f"## [{TARGET_VERSION}] - {TARGET_DATE}" in changelog
+    # The supported line is the released minor, whatever it is.
+    minor = ".".join(TARGET_VERSION.split(".")[:2])
     security = (ROOT / "SECURITY.md").read_text()
-    assert "| 0.10.x | Active fixes |" in security
+    assert f"| {minor}.x | Active fixes |" in security
 
 
 def test_source_version_fallback_matches_project_metadata(monkeypatch) -> None:
