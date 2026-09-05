@@ -59,7 +59,7 @@ rerank = ["sentence-transformers>=5.0,<6"]
 # Quantum strategies #10 (qiss is pure-NumPy and needs nothing here) and #11
 # (sqr, Qiskit Aer SWAP test + PCA reduction). Lazy-imported, so the core
 # install and CI stay light; install with `pip install 'kb-arena[quantum]'`.
-quantum = ["qiskit==2.4.2", "qiskit-aer==0.17.2", "scikit-learn==1.9.0"]
+quantum = ["qiskit==2.5.2", "qiskit-aer==0.17.2", "scikit-learn==1.9.0"]
 
 [project.scripts]
 kb-arena = "kb_arena.cli:app"
