@@ -249,7 +249,11 @@ def load_runs(corpus: str | None = None, *, failures: list[str] | None = None) -
                 continue
             if not isinstance(data, dict):
                 continue
-            if "corpora" in data and "strategy" not in data:
+            # The lab writes one file, and its name is the only reliable mark.
+            # `summary.json` from `generate_report` also carries a `corpora` key
+            # and no `strategy`, so the shape alone counted it as a lab run and
+            # then reported it as one that failed.
+            if path.name == "retriever_lab.json":
                 # A Retriever Lab run holds every strategy in one file, keyed by
                 # corpus. Flattening it here is what lets `variance` read a lab
                 # run at all: before this, the loader skipped the file and the

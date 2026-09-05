@@ -1737,3 +1737,29 @@ def test_a_complete_run_for_another_corpus_is_still_not_a_failure(tmp_path, monk
     variance.load_runs("b", failures=failures)
 
     assert failures == []
+
+
+def test_a_report_summary_is_never_read_as_a_lab_run(tmp_path, monkeypatch):
+    """`summary.json` also holds a `corpora` key and no `strategy`.
+
+    The shape alone counted it as a lab run, and the report then said one run
+    carried no reading. The file name is the only reliable mark.
+    """
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    (tmp_path / "aws-compute_bm25.json").write_text(
+        json.dumps(
+            {
+                "corpus": "aws-compute",
+                "strategy": "bm25",
+                "mean_recall_at_k": 0.4,
+                "records": [{}],
+            }
+        )
+    )
+    (tmp_path / "summary.json").write_text(json.dumps({"corpora": {"aws-compute": {"docs": 10}}}))
+
+    failures: list[str] = []
+    runs = variance.load_runs(None, failures=failures)
+
+    assert len(runs) == 1, "the summary is not a run"
+    assert failures == [], "and it never failed"
