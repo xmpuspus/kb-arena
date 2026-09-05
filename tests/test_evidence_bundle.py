@@ -461,6 +461,7 @@ def test_a_readable_manifest_does_not_stand_in_for_a_broken_one(tmp_path):
         ("summary.json", False),
         ("compare_lab_bm25_vs_naive_vector_ndcg_at_k.json", False),
         ("notes.json", False),
+        ("compare_a_vs_b.json", False),
     ],
 )
 def test_only_a_measurement_goes_into_a_bundle(tmp_path, name, kept):
@@ -704,3 +705,45 @@ def test_a_benchmark_record_marked_as_an_error_is_not_a_measurement(tmp_path, mo
     problems = check_bundle(bundle, tmp_path)
 
     assert any("scored no questions" in p for p in problems), problems
+
+
+def test_a_corrupt_result_never_vanishes_from_a_bundle(tmp_path):
+    """A truncated plugin result answered no to the manifest clause and left.
+
+    The same truncation in a built-in result was caught by its name and refused.
+    So corruption hid one file and blocked another, and the quieter half is the
+    dangerous one: the bundle then described less than the run.
+    """
+    from kb_arena.benchmark.evidence import is_bundle_result
+
+    for name in ("aws-compute_my_plugin.json", "aws-compute_bm25.json", "notes.json"):
+        path = tmp_path / name
+        path.write_text("{")
+        assert is_bundle_result(path) is True, name
+
+
+def test_a_run_holding_a_corrupt_result_writes_no_bundle(tmp_path, monkeypatch):
+    """The corrupt file reaches the checker, which says it carries no manifest."""
+    from kb_arena.benchmark.manifest import question_set_fingerprint
+    from kb_arena.benchmark.questions import load_questions
+
+    corpus = _reviewed_corpus(tmp_path, monkeypatch)
+    questions = load_questions(corpus)
+    fingerprint = question_set_fingerprint(questions)
+    run = tmp_path / "results" / "run_torn"
+    run.mkdir(parents=True)
+    (run / f"{corpus}_my_plugin.json").write_text("{")
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    bundle = {
+        **bundle,
+        "corpus": corpus,
+        "results": [f"results/run_torn/{corpus}_my_plugin.json"],
+        "question_set_fingerprint": fingerprint,
+        "review_question_set": fingerprint,
+        "review_split": "all",
+        "review": review_summary(questions),
+    }
+
+    problems = check_bundle(bundle, tmp_path)
+
+    assert any("carries no manifest" in p for p in problems), problems

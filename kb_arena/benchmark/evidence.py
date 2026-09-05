@@ -320,6 +320,11 @@ def is_bundle_result(path: Path) -> bool:
     one name. A benchmark result is `<corpus>_<strategy>.json` for a strategy in
     the catalog. A plugin strategy is not in the catalog, so a file that carries
     a manifest counts as well, which is the record a bundle needs from it.
+
+    A file nobody can parse counts too. The third clause reads the file, so a
+    truncated plugin result answered no and vanished from the bundle, while the
+    same truncation in a built-in result was caught by name and refused. A run
+    that half-wrote a file needs a person to look, not a quieter bundle.
     """
     from kb_arena.strategies.catalog import STRATEGY_CATALOG
 
@@ -327,7 +332,17 @@ def is_bundle_result(path: Path) -> bool:
         return True
     if any(path.name.endswith(f"_{spec.name}.json") for spec in STRATEGY_CATALOG):
         return True
-    return bool(_manifests_in(path))
+    if _manifests_in(path):
+        return True
+    return not _is_readable_json(path)
+
+
+def _is_readable_json(path: Path) -> bool:
+    try:
+        json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError, ValueError):
+        return False
+    return True
 
 
 def measurement_in(path: Path, corpus: str) -> tuple[int | None, int | None]:
