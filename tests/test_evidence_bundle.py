@@ -17,7 +17,7 @@ from kb_arena.benchmark.evidence import (
 from kb_arena.benchmark.review import review_summary
 
 ROOT = Path(__file__).resolve().parents[1]
-COMMITTED = ROOT / "results" / "run_b84eba57"
+COMMITTED = ROOT / "results" / "run_422209dd"
 
 
 def _bundle(**overrides) -> dict:
@@ -1108,3 +1108,99 @@ def test_a_serial_run_names_the_flag_that_made_it_serial():
 
     assert "--no-parallel" in _command_for("c", "bm25", 0, "", False, 5, False)
     assert "--no-parallel" not in _command_for("c", "bm25", 0, "", False, 5, True)
+
+
+def test_a_citable_bundle_names_a_commit_on_the_default_branch(tmp_path):
+    """This repository squash-merges, so a branch commit never reaches main.
+
+    The bundle it shipped named `4120ce9`, which a fresh clone does not hold,
+    so the run was unrepeatable from its own record.
+    """
+    import subprocess
+
+    from kb_arena.benchmark.evidence import _commit_problem
+
+    def git(*args):
+        return subprocess.run(
+            ["git", *args], cwd=tmp_path, capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "t")
+    (tmp_path / "a.txt").write_text("one\n")
+    git("add", "a.txt")
+    git("commit", "-qm", "one")
+    on_main = git("rev-parse", "HEAD")
+    git("checkout", "-q", "-b", "side")
+    (tmp_path / "a.txt").write_text("two\n")
+    git("commit", "-qam", "two")
+    off_main = git("rev-parse", "HEAD")
+    git("checkout", "-q", "main")
+
+    assert _commit_problem(on_main, tmp_path) == ""
+    assert "not on" in _commit_problem(off_main, tmp_path)
+    assert _commit_problem(None, tmp_path).startswith("calls itself citable and records no commit")
+    # `git merge-base` exits 128 on an unknown object, and reading every
+    # non-1 code as unknowable turned the exact failure this check exists to
+    # catch into a pass.
+    assert "does not hold" in _commit_problem("0" * 40, tmp_path)
+
+
+def test_a_bundle_built_from_an_uncommitted_tree_is_refused():
+    """A dirty marker names a working tree nobody else has.
+
+    The run this repository shipped before this change carried
+    `fe4ae84...-dirty-eb62b749`, and no reader could get that tree back.
+    """
+    from kb_arena.benchmark.evidence import _commit_problem
+
+    with_hash = _commit_problem("fe4ae84d446af053e3f5696d42f76a4601a8dc9f-dirty-eb62b749", ROOT)
+    # `manifest.git_sha` writes the bare form when it cannot hash the diff.
+    bare = _commit_problem("fe4ae84d446af053e3f5696d42f76a4601a8dc9f-dirty", ROOT)
+
+    assert "uncommitted tree" in with_hash
+    assert "uncommitted tree" in bare
+
+
+def test_the_check_stays_silent_when_git_cannot_answer(tmp_path):
+    """A wheel install has no repository, and a shallow clone holds too little.
+
+    Silence there is honest, because the check has no evidence either way.
+    """
+    from kb_arena.benchmark.evidence import _commit_problem
+
+    assert _commit_problem("0" * 40, tmp_path) == ""
+
+
+def test_a_transient_git_failure_is_not_read_as_a_missing_commit(tmp_path, monkeypatch):
+    """`False` is git saying no. `None` is git failing to answer at all.
+
+    Merging the two would reject a valid bundle over one timeout.
+    """
+    import subprocess
+
+    from kb_arena.benchmark import evidence
+
+    real = subprocess.run
+
+    def flaky(args, **kwargs):
+        if args[:2] == ["git", "rev-parse"] and "--verify" in args and "^{commit}" in args[-1]:
+            raise subprocess.TimeoutExpired(args, 5)
+        return real(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", flaky)
+
+    assert evidence._commit_problem("a" * 40, ROOT) == ""
+
+
+@pytest.mark.parametrize("bad", ["--help", "HEAD", "../../etc/passwd", "abc", "0" * 39])
+def test_a_git_sha_that_is_not_a_commit_never_reaches_git(bad):
+    """The value comes out of a JSON file the reader did not write.
+
+    `--help` was read as an option rather than a commit, and git then answered
+    something the check took for silence.
+    """
+    from kb_arena.benchmark.evidence import _commit_problem
+
+    assert "where a commit belongs" in _commit_problem(bad, ROOT)

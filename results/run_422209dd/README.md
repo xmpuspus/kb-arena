@@ -1,4 +1,4 @@
-# Committed run b84eba57 puts BM25 at Recall@5 of 0.275 over 75 reviewed questions
+# Committed run 422209dd puts BM25 at Recall@5 of 0.275 over 75 reviewed questions
 
 One bounded, repeatable retrieval run on the built-in `aws-compute` corpus, kept
 in the repository so a reader can check the numbers rather than trust them.
@@ -37,7 +37,20 @@ its own questions. `datasets/aws-compute/README.md` gives the full count.
 **It carries no spread.** One run gives a point. `kb-arena variance` needs
 repeats before it reports a standard deviation.
 
-## Why this run replaced run 59b5b60d
+## Why this run replaced run b84eba57
+
+Run b84eba57 measured the same numbers and could not prove where they came
+from. Its bundle recorded `fe4ae84...-dirty-eb62b749`: a commit plus an
+unnamed diff, from a tree nobody else has. The run before it recorded
+`4120ce9`, a branch commit the squash merge erased, so a fresh clone did not
+hold it either.
+
+This run was made from a clean checkout of `be57fc3`, which is on `main`.
+`kb-arena evidence --check` refuses a citable bundle whose commit is not on the
+default branch, and refuses one built from an uncommitted tree, so neither can
+happen again in silence.
+
+## Why run b84eba57 replaced run 59b5b60d
 
 Run 59b5b60d measured question set `3aecce3d26b1`. On 2026-09-05 a review of all
 75 answer keys found six wrong ones and corrected them, which changed the set to
