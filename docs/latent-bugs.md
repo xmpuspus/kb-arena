@@ -80,3 +80,13 @@ nothing. The cap must count every fetch it starts.
 resolver's "try again later" code. `_scrape` catches that, logs a refusal, and returns an empty
 list. An outage and a source with no documents look the same to the operator. A retryable
 resolver error must surface as its own failure.
+
+## Open, found while adding the D-01 to D-06 dataset adapters
+
+### `kb-arena datasets` prints "may ship: yes" for an adapter its own code refuses to vendor
+
+`cli.py`'s `datasets_command` sets the "may ship" column from `template.redistributable`, which
+reads only the licence. `multihop-rag`, `frames`, `bright`, `beir-scifact`, `miracl`, and
+`longbench-v2` carry open licences, so that column prints "yes", while each adapter still sets
+`download_only = True` and its own `check_destination` refuses an in-repo destination. The column
+should read `download_only` instead of `redistributable`, or check both.
