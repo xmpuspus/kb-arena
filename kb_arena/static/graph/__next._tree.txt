@@ -1,6 +1,10 @@
 :HL["/_next/static/chunks/3uz79yylyutkr.css","style"]
 <<<<<<< HEAD
+<<<<<<< HEAD
 0:{"tree":{"name":"","param":null,"prefetchHints":4176,"slots":{"children":{"name":"graph","param":null,"prefetchHints":4192,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":4256,"slots":null}}}}},"staleTime":300,"buildId":"5K8qGX5YlHeKIFAK6qzFC"}
 =======
 0:{"tree":{"name":"","param":null,"prefetchHints":4176,"slots":{"children":{"name":"graph","param":null,"prefetchHints":4192,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":4256,"slots":null}}}}},"staleTime":300,"buildId":"UxOURKqMj7C10rk_RmquJ"}
 >>>>>>> ed5fdbc (Add metadata-filtered and temporal retrieval strategies)
+=======
+0:{"tree":{"name":"","param":null,"prefetchHints":4176,"slots":{"children":{"name":"graph","param":null,"prefetchHints":4192,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":4256,"slots":null}}}}},"staleTime":300,"buildId":"oQIrCsACQmhUAx1h-0Z_r"}
+>>>>>>> 918a5fd (Add late_interaction (ColBERT-style MaxSim) and splade (learned sparse) strategies)

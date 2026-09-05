@@ -361,6 +361,22 @@ async def lifespan(app: FastAPI):
 
         app.state.strategies["sqr"] = SQRStrategy(chroma_client=chroma, llm_client=llm)
 
+    late_interaction_spec = next(
+        spec for spec in STRATEGY_CATALOG if spec.name == "late_interaction"
+    )
+    if not missing_optional_modules(late_interaction_spec):
+        from kb_arena.strategies.late_interaction import LateInteractionStrategy
+
+        app.state.strategies["late_interaction"] = LateInteractionStrategy(
+            chroma_client=chroma, llm_client=llm
+        )
+
+    splade_spec = next(spec for spec in STRATEGY_CATALOG if spec.name == "splade")
+    if not missing_optional_modules(splade_spec):
+        from kb_arena.strategies.splade import SPLADEStrategy
+
+        app.state.strategies["splade"] = SPLADEStrategy()
+
     app.state.arena, app.state.arena_error = _build_arena(app.state.strategies)
 
     # Periodic session cleanup task

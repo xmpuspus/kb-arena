@@ -35,6 +35,8 @@ export const STRATEGIES = [
   "sqr",
   "hyde",
   "multi_query",
+  "late_interaction",
+  "splade",
 ] as const;
 
 export type Strategy = (typeof STRATEGIES)[number];
@@ -55,6 +57,8 @@ export const STRATEGY_LABELS: Record<Strategy, string> = {
   sqr: "SQR (optional quantum)",
   hyde: "HyDE",
   multi_query: "Multi-Query",
+  late_interaction: "Late Interaction",
+  splade: "SPLADE",
 };
 
 export const STRATEGY_COLORS: Record<Strategy, string> = {
@@ -73,6 +77,8 @@ export const STRATEGY_COLORS: Record<Strategy, string> = {
   sqr: "#a855f7",
   hyde: "#eab308",
   multi_query: "#06b6d4",
+  late_interaction: "#0d9488",
+  splade: "#d946ef",
 };
 
 export const TIER_INFO: Record<number, { label: string; description: string }> = {
@@ -134,6 +140,10 @@ export const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
     "Asks the model for a hypothetical answer and embeds that instead of the question before retrieving over naive_vector.",
   multi_query:
     "Asks the model for several sub-queries, retrieves each over naive_vector, and fuses the ranked lists with Reciprocal Rank Fusion.",
+  late_interaction:
+    "ColBERT-style reranker that keeps one embedding per token and scores by MaxSim instead of a single pooled vector. Needs the optional late-interaction dependency group.",
+  splade:
+    "Expands a query into weighted vocabulary terms and scores against its own sparse term-weight index. Needs the optional splade dependency group.",
 };
 
 export interface StrategyCatalogRecord {

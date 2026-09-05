@@ -38,13 +38,27 @@ STRATEGY_CATALOG: tuple[StrategySpec, ...] = (
     StrategySpec("pageindex", "PageIndex", "hierarchical"),
     StrategySpec("bm25", "BM25", "lexical", needs_embeddings=False),
     # Both push their filter into the Chroma query instead of cutting a fixed
-    # top_k after the fact, so they need embeddings the same way naive_vector
-    # does. Neither needs an optional extra, so they stay in the default set;
-    # a caller who passes no filter gets the same unfiltered dense retrieval
-    # as naive_vector, and the filtering behavior only shows up for a caller
-    # that asks for it.
-    StrategySpec("metadata_filtered", "Metadata Filtered", "access-aware dense"),
-    StrategySpec("temporal", "Temporal", "version-aware dense"),
+    # top_k after the fact, so they need embeddings the way naive_vector does.
+    # Both stay OUT of the default set. No corpus here carries the
+    # `classification`, `tags`, `document_family` or `version` fields they
+    # read, and no call site passes a filter or an `as_of` date. So under
+    # `--strategies all` today they retrieve exactly what naive_vector
+    # retrieves. The report would print three matching rows, and the arena
+    # would gain two entrants that are the baseline under another name.
+    StrategySpec(
+        "metadata_filtered",
+        "Metadata Filtered",
+        "access-aware dense",
+        default_benchmark=False,
+        experimental=True,
+    ),
+    StrategySpec(
+        "temporal",
+        "Temporal",
+        "version-aware dense",
+        default_benchmark=False,
+        experimental=True,
+    ),
     StrategySpec(
         "rerank_vector",
         "Rerank Vector",
@@ -74,6 +88,23 @@ STRATEGY_CATALOG: tuple[StrategySpec, ...] = (
         "multi-query fusion",
         default_benchmark=False,
         experimental=True,
+    ),
+    StrategySpec(
+        "late_interaction",
+        "Late Interaction",
+        "token-level dense",
+        default_benchmark=False,
+        optional_extra="late-interaction",
+        required_modules=("transformers", "torch"),
+    ),
+    StrategySpec(
+        "splade",
+        "SPLADE",
+        "learned sparse",
+        default_benchmark=False,
+        optional_extra="splade",
+        required_modules=("transformers", "torch"),
+        needs_embeddings=False,
     ),
 )
 

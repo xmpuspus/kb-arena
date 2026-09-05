@@ -91,6 +91,19 @@ because the rewrite step adds one LLM call per query.
 Asks the LLM for several sub-queries, retrieves Naive Vector's index once per sub-query, and fuses
 the ranked chunk lists with Reciprocal Rank Fusion. It is excluded from the default benchmark
 because each sub-query adds an LLM call per query.
+### Late Interaction
+
+Keeps one embedding per token instead of one pooled vector per passage, then reranks Naive Vector
+candidates by MaxSim: for every query token, the best cosine match among the passage tokens,
+averaged across query tokens. It is excluded from the default benchmark and needs
+`kb-arena[late-interaction]`.
+
+### SPLADE
+
+Expands a query and each indexed passage into a weighted set of vocabulary terms, then scores a
+query against a passage by the dot product of their term weights. It builds and reads its own
+term-weight index, so it needs no embedding provider. It is excluded from the default benchmark and
+needs `kb-arena[splade]`.
 
 The experiments answer research questions about operators and overhead. They do not define KB
 Arena's main product category.

@@ -147,6 +147,15 @@ class Settings(BaseSettings):
 
     # Multi-Query (#13) — sub-queries to ask the LLM for before fusing with RRF.
     multi_query_n: int = 3
+    # Strategy 12: late interaction, a ColBERT-style MaxSim reranker over
+    # naive_vector candidates. Needs the optional [late-interaction] extra.
+    late_interaction_fanout: int = 4
+    late_interaction_model: str = "colbert-ir/colbertv2.0"
+
+    # Strategy 13: SPLADE, learned sparse retrieval over its own term-weight
+    # index. Needs the optional [splade] extra.
+    splade_model: str = "naver/splade-cocondenser-ensembledistil"
+    splade_top_terms: int = 256
 
     # Paths
     # The seed a run records and sets. Two runs that differ only by seed are

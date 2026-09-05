@@ -20,6 +20,7 @@ from kb_arena.strategies.contextual_vector import ContextualVectorStrategy
 from kb_arena.strategies.hybrid import HybridStrategy
 from kb_arena.strategies.hyde import HydeStrategy
 from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
+from kb_arena.strategies.late_interaction import LateInteractionStrategy
 from kb_arena.strategies.metadata_filtered import MetadataFilteredStrategy
 from kb_arena.strategies.multi_query import MultiQueryStrategy
 from kb_arena.strategies.naive_vector import NaiveVectorStrategy
@@ -29,6 +30,7 @@ from kb_arena.strategies.quantum.qiss import QISSStrategy
 from kb_arena.strategies.quantum.sqr import SQRStrategy
 from kb_arena.strategies.raptor import RaptorStrategy
 from kb_arena.strategies.rerank_vector import RerankVectorStrategy
+from kb_arena.strategies.splade import SPLADEStrategy
 from kb_arena.strategies.temporal import TemporalStrategy
 
 logger = logging.getLogger(__name__)
@@ -50,6 +52,8 @@ STRATEGY_REGISTRY: dict[str, type] = {
     "sqr": SQRStrategy,
     "hyde": HydeStrategy,
     "multi_query": MultiQueryStrategy,
+    "late_interaction": LateInteractionStrategy,
+    "splade": SPLADEStrategy,
 }
 
 # Optional-dependency strategies: name -> (modules required, extra name).
@@ -115,10 +119,16 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
         "sqr",
         "hyde",
         "multi_query",
+        "splade",
     )
     if strategy != "all" and strategy not in buildable_names:
         raise ValueError(f"Unknown build strategy: {strategy}")
-    target_names = buildable_names if strategy == "all" else (strategy,)
+    # splade builds its own term-weight index and needs the optional [splade]
+    # extra to do it, unlike qiss/sqr, which only rebuild the naive_vector
+    # collection they wrap. So "all" must not fail on a plain install, splade
+    # is a build target only when a caller names it explicitly.
+    all_names = tuple(name for name in buildable_names if name != "splade")
+    target_names = all_names if strategy == "all" else (strategy,)
 
     chroma_strategies = {
         "naive_vector",
@@ -170,6 +180,7 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
         "sqr": lambda: SQRStrategy(chroma_client=chroma),
         "hyde": lambda: HydeStrategy(chroma_client=chroma),
         "multi_query": lambda: MultiQueryStrategy(chroma_client=chroma),
+        "splade": SPLADEStrategy,
     }
     targets = {name: factories[name]() for name in target_names}
 
@@ -245,12 +256,16 @@ def get_strategy(name: str):
                 f"Install with: {optional_install_command(spec)}"
             )
 
-    # No-dependency strategies
-    if name in ("pageindex", "bm25"):
+    # No-dependency strategies. splade builds its own term-weight index, so it
+    # needs no ChromaDB client, the same as bm25.
+    if name in ("pageindex", "bm25", "splade"):
         return cls()
 
     # Vector-backed strategies need a ChromaDB client. qiss/sqr/hyde/multi_query
     # wrap naive_vector (like rerank_vector) and query the same Chroma index.
+    # Vector-backed strategies need a ChromaDB client. qiss/sqr/late_interaction
+    # wrap naive_vector for coarse retrieval (like rerank_vector) and rerank the
+    # same Chroma index.
     if name in (
         "naive_vector",
         "contextual_vector",
@@ -263,6 +278,7 @@ def get_strategy(name: str):
         "sqr",
         "hyde",
         "multi_query",
+        "late_interaction",
     ):
         chroma = chromadb.PersistentClient(path=settings.chroma_path)
         return cls(chroma_client=chroma)
@@ -318,6 +334,8 @@ __all__ = [
     "SQRStrategy",
     "HydeStrategy",
     "MultiQueryStrategy",
+    "LateInteractionStrategy",
+    "SPLADEStrategy",
     "build_vector_indexes",
     "load_documents",
 ]

@@ -36,6 +36,35 @@ def test_catalog_labels_quantum_strategies_as_experiments():
     assert by_name["sqr"].default_benchmark is False
     assert by_name["sqr"].optional_extra == "quantum"
     assert by_name["sqr"].required_modules == ("qiskit", "qiskit_aer", "sklearn")
+    assert by_name["late_interaction"].default_benchmark is False
+    assert by_name["late_interaction"].optional_extra == "late-interaction"
+    assert by_name["late_interaction"].required_modules == ("transformers", "torch")
+    assert by_name["splade"].default_benchmark is False
+    assert by_name["splade"].optional_extra == "splade"
+    assert by_name["splade"].required_modules == ("transformers", "torch")
+    assert by_name["splade"].needs_embeddings is False
+
+
+@pytest.mark.parametrize("name", ["late_interaction", "splade"])
+def test_late_interaction_and_splade_missing_extra_is_explicit(monkeypatch, name):
+    import importlib.util
+
+    real_find_spec = importlib.util.find_spec
+
+    def without_transformers(module_name: str, *args, **kwargs):
+        if module_name in ("transformers", "torch"):
+            return None
+        return real_find_spec(module_name, *args, **kwargs)
+
+    monkeypatch.setattr(importlib.util, "find_spec", without_transformers)
+
+    spec = next(s for s in STRATEGY_CATALOG if s.name == name)
+    with pytest.raises(ImportError, match=rf"kb-arena\[{spec.optional_extra}\]"):
+        get_strategy(name)
+
+    row = next(r for r in public_catalog([]) if r["name"] == name)
+    assert row["status"] == "unavailable"
+    assert f"kb-arena[{spec.optional_extra}]" in row["unavailable_reason"]
 
 
 def test_reranker_missing_extra_is_explicit(monkeypatch):
