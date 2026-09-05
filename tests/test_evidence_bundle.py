@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from kb_arena.benchmark.evidence import BUNDLE_VERSION, build_bundle, check_bundle
+from kb_arena.benchmark.review import review_summary
 
 ROOT = Path(__file__).resolve().parents[1]
 COMMITTED = ROOT / "results" / "run_b84eba57"
@@ -237,7 +238,37 @@ def _run_with(tmp_path, name, *, fingerprint=None, split=None):
     return f"results/{name}/retriever_lab.json"
 
 
-def test_a_split_filtered_run_stays_citable_because_its_manifest_names_the_split(tmp_path):
+def _reviewed_corpus(tmp_path, monkeypatch, name="split-demo"):
+    """A small corpus whose questions are all reviewed, split two ways."""
+    import yaml
+
+    from kb_arena.settings import settings
+
+    rows = []
+    for i in range(4):
+        rows.append(
+            {
+                "id": f"{name}-{i:03d}",
+                "tier": 1,
+                "type": "factoid",
+                "hops": 1,
+                "split": "holdout" if i < 2 else "development",
+                "review_status": "human-reviewed",
+                "reviewed_by": "Xavier Puspus",
+                "question": f"Question {i}?",
+                "ground_truth": {"answer": f"Answer {i}."},
+            }
+        )
+    questions = tmp_path / "datasets" / name / "questions"
+    questions.mkdir(parents=True)
+    (questions / "tier1.yaml").write_text(yaml.safe_dump(rows))
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path / "datasets"))
+    return name
+
+
+def test_a_split_filtered_run_stays_citable_because_its_manifest_names_the_split(
+    tmp_path, monkeypatch
+):
     """`--split holdout` scores a subset on purpose, and its manifest says so.
 
     So the review runs over that same split, and the two fingerprints agree.
@@ -245,19 +276,97 @@ def test_a_split_filtered_run_stays_citable_because_its_manifest_names_the_split
     from kb_arena.benchmark.manifest import question_set_fingerprint
     from kb_arena.benchmark.questions import load_questions
 
-    holdout = question_set_fingerprint(load_questions("nist-800-171-r3", split="holdout"))
-    result = _run_with(tmp_path, "run_h", fingerprint=holdout, split="holdout")
+    corpus = _reviewed_corpus(tmp_path, monkeypatch)
+    holdout = question_set_fingerprint(load_questions(corpus, split="holdout"))
+    run = tmp_path / "results" / "run_h"
+    run.mkdir(parents=True)
+    (run / "retriever_lab.json").write_text(
+        json.dumps(
+            {
+                "corpora": {corpus: {"bm25": {"questions": 2, "execution_errors": 0}}},
+                "manifests": {
+                    corpus: {
+                        "question_set_fingerprint": holdout,
+                        "question_split": "holdout",
+                        "question_count": 2,
+                    }
+                },
+            }
+        )
+    )
     bundle = json.loads((COMMITTED / "evidence.json").read_text())
     bundle = {
         **bundle,
-        "corpus": "nist-800-171-r3",
-        "results": [result],
+        "corpus": corpus,
+        "results": ["results/run_h/retriever_lab.json"],
         "question_set_fingerprint": holdout,
         "review_question_set": holdout,
         "review_split": "holdout",
+        "review": review_summary(load_questions(corpus, split="holdout")),
     }
 
     assert check_bundle(bundle, tmp_path) == []
+
+
+def test_a_run_whose_every_query_failed_is_not_citable(tmp_path, monkeypatch):
+    """An outage writes a full summary, and every mean in it reads `0.0`.
+
+    The review verdict describes the corpus, not the run, so it stays true while
+    the run measures nothing. Only the scored count tells the two apart.
+    """
+    from kb_arena.benchmark.manifest import question_set_fingerprint
+    from kb_arena.benchmark.questions import load_questions
+
+    corpus = _reviewed_corpus(tmp_path, monkeypatch)
+    questions = load_questions(corpus)
+    fingerprint = question_set_fingerprint(questions)
+    run = tmp_path / "results" / "run_dead"
+    run.mkdir(parents=True)
+    (run / "retriever_lab.json").write_text(
+        json.dumps(
+            {
+                "corpora": {
+                    corpus: {"bm25": {"questions": 0, "execution_errors": 4}},
+                },
+                "manifests": {
+                    corpus: {
+                        "question_set_fingerprint": fingerprint,
+                        "question_split": "all",
+                        "question_count": 4,
+                    }
+                },
+            }
+        )
+    )
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    bundle = {
+        **bundle,
+        "corpus": corpus,
+        "results": ["results/run_dead/retriever_lab.json"],
+        "question_set_fingerprint": fingerprint,
+        "review_question_set": fingerprint,
+        "review_split": "all",
+        "review": review_summary(questions),
+    }
+
+    problems = check_bundle(bundle, tmp_path)
+
+    assert any("scored no questions" in p for p in problems), problems
+
+
+def test_a_bundle_cannot_carry_a_review_verdict_the_questions_do_not_support(tmp_path):
+    """The stored review is data in the bundle, so a hand edit used to pass.
+
+    Matching fingerprints prove WHICH questions. They prove nothing about the
+    verdict over them, so the checker recomputes the verdict from the corpus.
+    """
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    review = {**bundle["review"], "counts": {"human-reviewed": 0, "machine-assisted-draft": 75}}
+    bundle = {**bundle, "review": review}
+
+    problems = check_bundle(bundle, ROOT)
+
+    assert any("the questions it names count" in p for p in problems), problems
 
 
 def test_a_tier_filtered_run_cannot_prove_that_its_review_covers_it(tmp_path):
@@ -411,3 +520,66 @@ def test_writing_a_bundle_refuses_what_checking_it_would_reject(tmp_path, monkey
     assert result.returncode == 1, result.stdout
     assert "does not back a bundle" in result.stdout
     assert not (results / "evidence.json").exists(), "a rejected bundle must not land on disk"
+
+
+def test_a_partial_run_does_not_read_as_a_whole_one(tmp_path, monkeypatch):
+    """A run that scored 60 of 75 read as a 75-question run.
+
+    The review verdict then covered 15 questions nobody measured.
+    """
+    from kb_arena.benchmark.manifest import question_set_fingerprint
+    from kb_arena.benchmark.questions import load_questions
+
+    corpus = _reviewed_corpus(tmp_path, monkeypatch)
+    questions = load_questions(corpus)
+    fingerprint = question_set_fingerprint(questions)
+    run = tmp_path / "results" / "run_part"
+    run.mkdir(parents=True)
+    (run / "retriever_lab.json").write_text(
+        json.dumps(
+            {
+                "corpora": {corpus: {"bm25": {"questions": 3, "execution_errors": 1}}},
+                "manifests": {
+                    corpus: {
+                        "question_set_fingerprint": fingerprint,
+                        "question_split": "all",
+                        "question_count": 4,
+                    }
+                },
+            }
+        )
+    )
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    bundle = {
+        **bundle,
+        "corpus": corpus,
+        "results": ["results/run_part/retriever_lab.json"],
+        "question_set_fingerprint": fingerprint,
+        "review_question_set": fingerprint,
+        "review_split": "all",
+        "review": review_summary(questions),
+    }
+
+    problems = check_bundle(bundle, tmp_path)
+
+    assert any("scored 3 of the 4 questions" in p for p in problems), problems
+
+
+def test_a_question_file_holding_a_scalar_reports_instead_of_crashing(tmp_path, monkeypatch):
+    """`load_questions` raises more than it documents.
+
+    A bare scalar reaches `for entry in raw` and raises TypeError. That escaped
+    the named catch, so `kb-arena evidence --check` crashed on a broken corpus.
+    """
+    from kb_arena.settings import settings
+
+    questions = tmp_path / "datasets" / "broken" / "questions"
+    questions.mkdir(parents=True)
+    (questions / "tier1.yaml").write_text("42\n")
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path / "datasets"))
+    bundle = json.loads((COMMITTED / "evidence.json").read_text())
+    bundle = {**bundle, "corpus": "broken", "results": []}
+
+    problems = check_bundle(bundle, tmp_path)
+
+    assert any("cannot be read" in p for p in problems), problems

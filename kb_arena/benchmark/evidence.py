@@ -128,6 +128,7 @@ def check_bundle(bundle: dict, root: Path) -> list[str]:
         if problem:
             problems.append(problem)
     if bundle.get("citable"):
+        problems.extend(_measurement_problems(bundle, root))
         problems.extend(_review_scope_problems(bundle))
     if bundle.get("citable") and not review.get("publishable"):
         problems.append("calls itself citable while its own review verdict refuses")
@@ -246,19 +247,111 @@ def _question_set_problem(bundle: dict, path: Path, name: str) -> str:
     return ""
 
 
-def _live_question_set(corpus, split) -> str | None:
-    """The fingerprint of the questions on disk now, or None when they cannot be read."""
+def _measurement_problems(bundle: dict, root: Path) -> list[str]:
+    """Why a citable bundle holds no measurement to cite.
+
+    A run whose every query failed still writes a full summary, and every mean
+    in it reads `0.0`. The review verdict says the questions are sound, which is
+    a statement about the corpus and not about the run. So a bundle over an
+    outage passed as evidence for a row of zeros.
+
+    The pair of counts also tells a whole run from a partial one. A run that
+    scored 60 of 75 read as a 75-question run, and the review verdict then
+    covered 15 questions nobody measured.
+    """
+    corpus = bundle.get("corpus")
+    if not isinstance(corpus, str) or not corpus.strip():
+        return []
+    problems = []
+    for name in bundle.get("results") or []:
+        path = root / name
+        if not path.exists():
+            continue
+        scored, expected = measurement_in(path, corpus)
+        if scored is None:
+            problems.append(f"{name} does not say how many questions it scored")
+        elif scored == 0:
+            problems.append(f"{name} scored no questions, so it holds no measurement")
+        elif expected is None:
+            problems.append(f"{name} does not say how many questions it set out to score")
+        elif scored != expected:
+            problems.append(
+                f"{name} scored {scored} of the {expected} questions its manifest names, "
+                f"so the review verdict covers questions this run did not measure"
+            )
+    return problems
+
+
+def _live_review(corpus, split) -> tuple[str, dict] | None:
+    """The fingerprint and the review verdict of the questions on disk now.
+
+    Both come from one read, because they are two statements about the same set.
+    None means the questions cannot be read, so nothing about them is provable.
+
+    The catch is broad on purpose. A checker that crashes tells a reader less
+    than one that reports a problem, and `load_questions` raises more than it
+    documents: a question file holding a bare scalar reaches `for entry in raw`
+    and raises TypeError, which no named exception here would have caught.
+    """
     if not isinstance(corpus, str) or not corpus.strip():
         return None
     if not isinstance(split, str) or not split.strip():
         return None
     from kb_arena.benchmark.manifest import question_set_fingerprint
     from kb_arena.benchmark.questions import load_questions
+    from kb_arena.benchmark.review import review_summary
 
     try:
-        return question_set_fingerprint(load_questions(corpus, split=split))
-    except (OSError, ValueError):
+        questions = load_questions(corpus, split=split)
+    except Exception:
         return None
+    return question_set_fingerprint(questions), review_summary(questions)
+
+
+def measurement_in(path: Path, corpus: str) -> tuple[int | None, int | None]:
+    """How many questions a result scored, and how many its manifest names.
+
+    A run whose every query failed still writes a summary, and every mean in it
+    reads `0.0`. So the scored count is the only field that tells a measurement
+    from an outage, and the pair tells a whole run from a partial one. Two
+    writers produce a result: the lab keys a strategy summary under its corpus,
+    and a benchmark result carries its scored rows. A file that states neither
+    count says nothing, and a citable bundle over it is refused.
+    """
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError, ValueError):
+        return None, None
+    if not isinstance(data, dict):
+        return None, None
+    manifests = data.get("manifests")
+    manifest = manifests.get(corpus) if isinstance(manifests, dict) else data.get("manifest")
+    expected = manifest.get("question_count") if isinstance(manifest, dict) else None
+    return _scored_in(data, corpus), expected if _is_count(expected) else None
+
+
+def _is_count(value) -> bool:
+    """A usable count is a whole number, and `True` is not one."""
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _scored_in(data: dict, corpus: str) -> int | None:
+    corpora = data.get("corpora")
+    if isinstance(corpora, dict):
+        summaries = corpora.get(corpus)
+        if not isinstance(summaries, dict) or not summaries:
+            return None
+        counts = [s.get("questions") if isinstance(s, dict) else None for s in summaries.values()]
+        # One unusable count makes the whole file unproven. Taking the maximum
+        # over the readable ones lets a broken strategy summary hide behind a
+        # sound one, which is the defect this module already paid for twice.
+        if not all(_is_count(c) for c in counts):
+            return None
+        return max(counts)
+    records = data.get("records")
+    if isinstance(records, list):
+        return len(records)
+    return None
 
 
 def _review_scope_problems(bundle: dict) -> list[str]:
@@ -286,18 +379,44 @@ def _review_scope_problems(bundle: dict) -> list[str]:
             f"tier-filtered run records no tier in its manifest, so a bundle over "
             f"one lands here too, and refusing it is the honest answer."
         ]
-    live = _live_question_set(bundle.get("corpus"), split)
+    live = _live_review(bundle.get("corpus"), split)
     if live is None:
         return [
             f"calls itself citable, and split {split!r} of corpus "
             f"{bundle.get('corpus')!r} cannot be read, so nobody can recheck the verdict"
         ]
-    if live != covered:
+    live_set, live_review = live
+    if live_set != covered:
         return [
-            f"the questions on disk now measure {live} and the review covered {covered}. "
-            f"Somebody changed a question after this bundle was written."
+            f"the questions on disk now measure {live_set} and the review covered "
+            f"{covered}. Somebody changed a question after this bundle was written."
+        ]
+    # The set matched, which says WHICH questions. It says nothing about the
+    # verdict over them. The stored review is data in the bundle, so a hand
+    # edit that keeps `publishable` and flips every count used to pass here.
+    stored = bundle.get("review") or {}
+    if not live_review.get("publishable"):
+        return [
+            "calls itself citable, and the questions it names do not support that. "
+            + "; ".join(_live_blockers(bundle.get("corpus"), split))
+        ]
+    if stored.get("counts") != live_review.get("counts"):
+        return [
+            f"records the review counts {stored.get('counts')!r} and the questions "
+            f"it names count {live_review.get('counts')!r}"
         ]
     return []
+
+
+def _live_blockers(corpus, split) -> list[str]:
+    """Why the questions on disk do not support a citable claim."""
+    from kb_arena.benchmark.questions import load_questions
+    from kb_arena.benchmark.review import publication_blockers
+
+    try:
+        return publication_blockers(load_questions(corpus, split=split))
+    except Exception:
+        return ["the questions cannot be read"]
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover - thin wrapper
