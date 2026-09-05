@@ -790,3 +790,71 @@ def test_two_different_dirty_trees_are_two_different_builds():
 
     assert first != second, "two working trees on one commit are two builds"
     assert first.startswith("a" * 40 + "-dirty-")
+
+
+def test_variance_reads_a_retriever_lab_run(tmp_path, monkeypatch):
+    """The lab writes one file per run, holding every strategy at once.
+
+    Before this, `load_runs` skipped that shape and `kb-arena variance` answered
+    "No run carries the metric" after a lab run. That was N-33.
+    """
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    manifest = _manifest(code_version="0.11.0", git_sha="a" * 40)
+    for run_id, recall in (("a", 0.20), ("b", 0.24)):
+        run_dir = tmp_path / f"run_{run_id}"
+        run_dir.mkdir()
+        (run_dir / "retriever_lab.json").write_text(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "corpora": {
+                        "c": {
+                            "bm25": {"mean_recall_at_k": recall},
+                            "naive_vector": {"mean_recall_at_k": recall + 0.1},
+                        }
+                    },
+                    "manifests": {"c": manifest},
+                }
+            )
+        )
+
+    runs = variance.load_runs("c")
+
+    assert len(runs) == 4, "two runs, two strategies each"
+    assert {r["strategy"] for r in runs} == {"bm25", "naive_vector"}
+    # The manifest travels with each record, so the grouping still keys on it.
+    assert all(r["manifest"]["question_set_fingerprint"] for r in runs)
+
+    rows = {r["strategy"]: r for r in variance.spread_report(runs, metrics=("mean_recall_at_k",))}
+    assert rows["bm25"]["comparable"] is True
+    assert rows["bm25"]["metrics"]["mean_recall_at_k"]["runs"] == 2
+    assert rows["bm25"]["metrics"]["mean_recall_at_k"]["mean"] == pytest.approx(0.22)
+
+
+def test_a_lab_run_from_another_corpus_is_not_read():
+    """A corpus-scoped report must not pull in a corpus nobody asked about."""
+    flat = variance._flatten_lab_run(
+        {
+            "run_id": "x",
+            "corpora": {
+                "wanted": {"bm25": {"mean_recall_at_k": 0.5}},
+                "other": {"bm25": {"mean_recall_at_k": 0.9}},
+            },
+            "manifests": {},
+        },
+        "wanted",
+    )
+
+    assert [r["corpus"] for r in flat] == ["wanted"]
+
+
+def test_a_lab_run_with_no_manifest_still_loads_and_is_not_comparable():
+    """A run written before manifests keys as legacy rather than vanishing."""
+    flat = variance._flatten_lab_run(
+        {"run_id": "old", "corpora": {"c": {"bm25": {"mean_recall_at_k": 0.3}}}}, None
+    )
+
+    assert len(flat) == 1
+    assert flat[0]["manifest"] == {}
+    [row] = variance.spread_report(flat, metrics=("mean_recall_at_k",))
+    assert row["comparable"] is False

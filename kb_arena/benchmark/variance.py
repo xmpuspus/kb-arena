@@ -235,7 +235,16 @@ def load_runs(corpus: str | None = None) -> list[dict]:
                 if _looks_like_a_result(path) and _is_for_corpus(path, corpus):
                     unreadable.append(f"{path}: malformed JSON, {exc}")
                 continue
-            if not isinstance(data, dict) or "strategy" not in data or "corpus" not in data:
+            if not isinstance(data, dict):
+                continue
+            if "corpora" in data and "strategy" not in data:
+                # A Retriever Lab run holds every strategy in one file, keyed by
+                # corpus. Flattening it here is what lets `variance` read a lab
+                # run at all: before this, the loader skipped the file and the
+                # command answered "no run carries the metric".
+                runs.extend(_flatten_lab_run(data, corpus))
+                continue
+            if "strategy" not in data or "corpus" not in data:
                 continue
             if corpus and data.get("corpus") != corpus:
                 continue
@@ -274,6 +283,38 @@ def _looks_like_a_result(path: Path) -> bool:
         return False
     corpus, _, strategy = stem.partition("_")
     return bool(corpus) and bool(strategy) and path.name not in _NON_RESULT_NAMES
+
+
+def _flatten_lab_run(data: dict, corpus: str | None) -> list[dict]:
+    """One Retriever Lab file as one record per corpus and strategy.
+
+    The lab reports every strategy in a single run, and the rest of this module
+    compares one strategy at a time. The manifest travels with each record, so
+    the compatibility key and the build identity still decide the grouping.
+    """
+    manifests = data.get("manifests")
+    manifests = manifests if isinstance(manifests, dict) else {}
+    run_id = str(data.get("run_id", ""))
+    flat: list[dict] = []
+    for corpus_name, strategies in (data.get("corpora") or {}).items():
+        if corpus and corpus_name != corpus:
+            continue
+        if not isinstance(strategies, dict):
+            continue
+        for strategy, metrics in strategies.items():
+            if not isinstance(metrics, dict):
+                continue
+            flat.append(
+                {
+                    **metrics,
+                    "corpus": corpus_name,
+                    "strategy": strategy,
+                    "run_id": run_id,
+                    "manifest": manifests.get(corpus_name, {}),
+                    "source": "retriever_lab",
+                }
+            )
+    return flat
 
 
 def _is_for_corpus(path: Path, corpus: str | None) -> bool:

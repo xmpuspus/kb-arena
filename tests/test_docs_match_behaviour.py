@@ -103,8 +103,9 @@ def test_the_lab_doc_says_what_the_one_run_cannot_show():
     doc = _flat((ROOT / "docs" / "retriever-lab.md").read_text())
     assert "One run has no spread" in doc
     # The doc must not send a reader to a command that cannot read lab metrics.
-    assert "There is no one command that reports the spread of these metrics yet" in doc
-    assert "--metric mean_recall_at_k` after a lab run answers" in doc
+    # `kb-arena variance` reads a lab run as of N-33, so the doc names it.
+    assert "kb-arena variance --corpus aws-compute --metric mean_recall_at_k" in doc
+    assert "never averaged" in doc, "the doc must say what the command refuses"
     # The run does not record whether Neo4j answered, so neither reading is supported.
     assert "does not record whether Neo4j answered" in doc
     assert "A zero here means unmeasured" in doc
