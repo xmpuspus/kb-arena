@@ -292,6 +292,16 @@ def compatibility_key(data: dict) -> str:
     return LEGACY_KEY
 
 
+def question_digest(ids: list[str]) -> str:
+    """A short, stable digest of a question id list.
+
+    `variance` needs the same digest for a lab run, and two copies of this rule
+    would drift. Then the two surfaces would disagree about whether two short
+    runs covered the same questions.
+    """
+    return _digest(sorted(ids))[:8]
+
+
 def _scored_fingerprint(data: dict) -> str:
     """A short digest of which questions a partial run scored."""
     records = data.get("records")

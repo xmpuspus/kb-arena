@@ -861,31 +861,33 @@ def test_a_lab_run_with_no_manifest_still_loads_and_is_not_comparable():
 
 
 def test_a_lab_run_that_stopped_early_never_joins_one_that_finished():
-    """An incomplete run scored fewer questions, so it is a different sample."""
-    manifest = _manifest(code_version="0.11.0", git_sha="a" * 40)
-    whole = variance._flatten_lab_run(
-        {
-            "run_id": "a",
-            "status": "complete",
-            "corpora": {"c": {"bm25": {"mean_recall_at_k": 0.2}}},
-            "manifests": {"c": manifest},
-        },
-        None,
-    )
-    stopped = variance._flatten_lab_run(
-        {
-            "run_id": "b",
-            "status": "halted",
-            "corpora": {"c": {"bm25": {"mean_recall_at_k": 0.9}}},
-            "manifests": {"c": manifest},
-        },
-        None,
-    )
+    """An incomplete run scored fewer questions, so it is a different sample.
 
-    rows = variance.spread_report(whole + stopped, metrics=("mean_recall_at_k",))
+    Both runs here scored every question the manifest names, so the count
+    separates nothing. The status is the only thing left that can.
+    """
+    manifest = _manifest(code_version="0.11.0", git_sha="a" * 40)
+    rows_scored = [{"corpus": "c", "strategy": "bm25", "question_id": "q1"}]
+
+    def _run(run_id: str, status: str, recall: float) -> list[dict]:
+        return variance._flatten_lab_run(
+            {
+                "run_id": run_id,
+                "status": status,
+                "corpora": {"c": {"bm25": {"mean_recall_at_k": recall, "questions": 1}}},
+                "manifests": {"c": manifest},
+                "questions": rows_scored,
+            },
+            None,
+        )
+
+    rows = variance.spread_report(
+        _run("a", "complete", 0.2) + _run("b", "halted", 0.9), metrics=("mean_recall_at_k",)
+    )
 
     assert len(rows) == 2, "a halted run must not average with a complete one"
-    assert {r["compatibility_key"].endswith("-halted") for r in rows} == {True, False}
+    keys = [r["compatibility_key"] for r in rows]
+    assert len([k for k in keys if "-halted" in k]) == 1, keys
 
 
 def test_an_unreadable_lab_file_is_lost_evidence(tmp_path, monkeypatch):
@@ -1044,3 +1046,186 @@ def test_two_runs_that_failed_on_different_questions_never_group():
     rows = variance.spread_report(runs, metrics=("mean_recall_at_k",))
 
     assert len(rows) == 2, "both scored 40, and not the same 40"
+
+
+def _write_lab_file(path, run_id: str, recall: float, scored: int = 75) -> None:
+    """One lab file on disk, complete enough for the loader to read it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "status": "complete",
+                "corpora": {"c": {"bm25": {"mean_recall_at_k": recall, "questions": scored}}},
+                "manifests": {
+                    "c": _manifest(code_version="0.11.0", git_sha="a" * 40, question_count=75)
+                },
+                "questions": [
+                    {"corpus": "c", "strategy": "bm25", "question_id": f"q{i}"}
+                    for i in range(scored)
+                ],
+            }
+        )
+    )
+
+
+def test_two_copies_of_one_lab_run_are_one_run(tmp_path, monkeypatch):
+    """A copied lab file is a copied measurement, not a second repeat.
+
+    Counting it twice reports a standard deviation of zero over a sample of one,
+    which reads as a result that never moves.
+    """
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    _write_lab_file(tmp_path / "run_a" / "retriever_lab.json", "a", 0.5)
+    _write_lab_file(tmp_path / "retriever_lab.json", "a", 0.5)
+
+    runs = variance.load_runs(None)
+
+    assert len(runs) == 1, "one run id is one measurement, whatever it is copied into"
+
+
+def test_two_different_lab_runs_both_survive_the_identity_check(tmp_path, monkeypatch):
+    """The check must drop a copy and never drop a real repeat."""
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    _write_lab_file(tmp_path / "run_a" / "retriever_lab.json", "a", 0.50)
+    _write_lab_file(tmp_path / "run_b" / "retriever_lab.json", "b", 0.55)
+
+    [row] = variance.spread_report(variance.load_runs(None), metrics=("mean_recall_at_k",))
+
+    assert row["metrics"]["mean_recall_at_k"]["runs"] == 2
+
+
+def test_a_strategy_whose_queries_all_failed_carries_no_number():
+    """The lab writes every mean as 0.0 when no query succeeded.
+
+    Reading that as a measurement turns an outage into a quality score: the
+    strategy looks like one that retrieves nothing relevant.
+    """
+    [run] = variance._flatten_lab_run(
+        {
+            "run_id": "a",
+            "status": "complete",
+            "corpora": {
+                "c": {
+                    "bm25": {
+                        "mean_recall_at_k": 0.0,
+                        "mean_ndcg_at_k": 0.0,
+                        "questions": 0,
+                        "execution_errors": 75,
+                    }
+                }
+            },
+            "manifests": {
+                "c": _manifest(code_version="0.11.0", git_sha="a" * 40, question_count=75)
+            },
+            "questions": [],
+        },
+        None,
+    )
+
+    assert variance._metric(run, "mean_recall_at_k") is None
+    assert variance._metric(run, "mean_ndcg_at_k") is None
+
+    [row] = variance.spread_report([run], metrics=("mean_recall_at_k",))
+
+    assert row["runs"] == 1, "the run is still counted, so the sample stays honest"
+    assert row["metrics"] == {}, "and it reports no number"
+
+
+@pytest.mark.parametrize("bad_count", [None, "75", True, 7.5, []])
+def test_a_lab_run_with_an_unusable_question_count_groups_only_with_itself(bad_count):
+    """A count that is null or the wrong type says nothing about the sample.
+
+    Reading it as whole averages an unknown number of questions with a full
+    run, which is what the suffix exists to stop.
+    """
+    manifest = _manifest(code_version="0.11.0", git_sha="a" * 40, question_count=2)
+    whole = variance._flatten_lab_run(
+        {
+            "run_id": "a",
+            "status": "complete",
+            "corpora": {"c": {"bm25": {"mean_recall_at_k": 0.2, "questions": 2}}},
+            "manifests": {"c": manifest},
+            "questions": [
+                {"corpus": "c", "strategy": "bm25", "question_id": "q1"},
+                {"corpus": "c", "strategy": "bm25", "question_id": "q2"},
+            ],
+        },
+        None,
+    )
+    unknown = variance._flatten_lab_run(
+        {
+            "run_id": "b",
+            "status": "complete",
+            "corpora": {"c": {"bm25": {"mean_recall_at_k": 0.9, "questions": bad_count}}},
+            "manifests": {"c": manifest},
+            "questions": [{"corpus": "c", "strategy": "bm25", "question_id": "q1"}],
+        },
+        None,
+    )
+
+    rows = variance.spread_report(whole + unknown, metrics=("mean_recall_at_k",))
+
+    assert len(rows) == 2, f"a count of {bad_count!r} is not a proof of a full run"
+    assert any("-partial-unknown-" in r["compatibility_key"] for r in rows)
+
+
+def test_a_manifest_with_no_question_count_never_merges_into_a_whole_run():
+    """A missing count is not proof that the run scored everything.
+
+    `manifest._scored_count` reads the same case as whole. This module refuses
+    to, on purpose: merging an unproven sample into a full run is the defect
+    the suffix exists to stop.
+    """
+    named = _manifest(code_version="0.11.0", git_sha="a" * 40, question_count=2)
+    silent = {k: v for k, v in named.items() if k != "question_count"}
+    rows_scored = [
+        {"corpus": "c", "strategy": "bm25", "question_id": "q1"},
+        {"corpus": "c", "strategy": "bm25", "question_id": "q2"},
+    ]
+
+    def _run(run_id: str, manifest: dict, recall: float) -> list[dict]:
+        return variance._flatten_lab_run(
+            {
+                "run_id": run_id,
+                "status": "complete",
+                "corpora": {"c": {"bm25": {"mean_recall_at_k": recall, "questions": 2}}},
+                "manifests": {"c": manifest},
+                "questions": rows_scored,
+            },
+            None,
+        )
+
+    rows = variance.spread_report(
+        _run("a", named, 0.2) + _run("b", silent, 0.9), metrics=("mean_recall_at_k",)
+    )
+
+    assert len(rows) == 2, "an unproven sample must not average with a proven full run"
+
+
+def test_two_runs_with_no_question_count_still_group_with_each_other():
+    """The refusal costs no false split.
+
+    Two runs over the same questions carry the same digest, so they group even
+    when neither manifest names how many questions there should be.
+    """
+    manifest = _manifest(code_version="0.11.0", git_sha="a" * 40)
+    manifest.pop("question_count")
+    rows_scored = [{"corpus": "c", "strategy": "bm25", "question_id": "q1"}]
+    runs = []
+    for run_id, recall in (("a", 0.20), ("b", 0.24)):
+        runs += variance._flatten_lab_run(
+            {
+                "run_id": run_id,
+                "status": "complete",
+                "corpora": {"c": {"bm25": {"mean_recall_at_k": recall, "questions": 1}}},
+                "manifests": {"c": manifest},
+                "questions": rows_scored,
+            },
+            None,
+        )
+
+    [row] = variance.spread_report(runs, metrics=("mean_recall_at_k",))
+
+    assert row["comparable"] is True
+    assert row["metrics"]["mean_recall_at_k"]["runs"] == 2

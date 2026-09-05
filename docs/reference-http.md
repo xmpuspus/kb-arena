@@ -24,6 +24,10 @@ operator published, and closed otherwise.
 | `/api/leaderboard` | GET | open |
 | `/api/retriever-lab/runs` | GET | open |
 | `/api/retriever-lab/{run_id}` | GET | token, unless local or a published demo |
+| `/api/tools/audit` | POST | token |
+| `/api/tools/fix` | POST | token |
+| `/api/tools/generate` | POST | token |
+| `/api/tools/qa-pairs` | GET | token, unless local or a published demo |
 | `/chat` | POST | token |
 | `/chat/stream` | POST | token |
 | `/graph/stats` | GET | token, unless local or a published demo |

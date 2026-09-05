@@ -15,7 +15,6 @@ on disk differ, so a stale reference cannot merge.
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
@@ -60,19 +59,73 @@ def _cli_commands() -> list[tuple[str, str, list[tuple[str, str]]]]:
 
 
 def _api_routes() -> list[tuple[str, str, str]]:
-    """Every route, its method, and whether it needs a token."""
-    source = (ROOT / "kb_arena" / "chatbot" / "api.py").read_text()
-    found: list[tuple[str, str, str]] = []
-    for match in re.finditer(r'@app\.(get|post|put|delete)\(\s*"([^"]+)"([^)]*)\)', source, re.S):
-        method, path, rest = match.group(1), match.group(2), match.group(3)
-        if "require_read_auth" in rest:
+    """Every route the app serves, its method, and whether it needs a token.
+
+    Read off the app, not off a regex over `api.py`. The app mounts a router
+    with four routes under `/api/tools`, and a regex over one file missed every
+    one of them. The reference then claimed to list every route and did not.
+    """
+    from kb_arena.chatbot.api import app
+    from kb_arena.chatbot.auth import require_auth, require_read_auth
+
+    # A set, not a list. A FastAPI version that copies a mounted router's
+    # routes into `app.routes` as well as into the holder would otherwise print
+    # every `/api/tools` row twice.
+    found: set[tuple[str, str, str]] = set()
+    for route in _walk_routes(app):
+        path = getattr(route, "path", "")
+        methods = getattr(route, "methods", None)
+        dependant = getattr(route, "dependant", None)
+        if not path or not methods or dependant is None:
+            continue
+        calls = {d.call for d in dependant.dependencies}
+        if require_read_auth in calls:
             gate = "token, unless local or a published demo"
-        elif "require_auth" in rest:
+        elif require_auth in calls:
             gate = "token"
         else:
             gate = "open"
-        found.append((path, method.upper(), gate))
+        for method in methods:
+            if method in ("HEAD", "OPTIONS"):
+                continue
+            found.add((path, method.upper(), gate))
+
+    # The app publishes its own route list. Checking the walk against it is what
+    # makes a future mount impossible to miss in silence: a new router that this
+    # walk does not reach fails the generator instead of shrinking the table.
+    published = {
+        (path, method.upper())
+        for path, operations in app.openapi()["paths"].items()
+        for method in operations
+    }
+    walked = {(path, method) for path, method, _ in found}
+    missing = published - walked
+    if missing:
+        raise RuntimeError(
+            f"the route walk missed {len(missing)} published route(s): {sorted(missing)}"
+        )
     return sorted(found)
+
+
+def _walk_routes(app):
+    """Every route object, including the ones a mounted router holds.
+
+    FastAPI wraps `include_router` in a lazy holder whose own `routes` list is
+    empty until a request arrives. Following `original_router` reaches the real
+    routes at generation time.
+    """
+    seen: list = []
+
+    def _visit(holder) -> None:
+        for route in getattr(holder, "routes", []) or []:
+            if hasattr(route, "dependant"):
+                seen.append(route)
+            inner = getattr(route, "original_router", None)
+            if inner is not None:
+                _visit(inner)
+
+    _visit(app)
+    return seen
 
 
 def _settings_fields() -> list[tuple[str, str, str]]:

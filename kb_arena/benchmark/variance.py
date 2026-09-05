@@ -247,7 +247,20 @@ def load_runs(corpus: str | None = None) -> list[dict]:
                 # corpus. Flattening it here is what lets `variance` read a lab
                 # run at all: before this, the loader skipped the file and the
                 # command answered "no run carries the metric".
-                runs.extend(_flatten_lab_run(data, corpus))
+                for record in _flatten_lab_run(data, corpus):
+                    # A lab record takes the same identity check as a benchmark
+                    # result. Two copies of one lab file are one measurement, and
+                    # counting them twice would report a spread of zero over a
+                    # sample of one.
+                    identity = (
+                        record["run_id"] or str(path),
+                        str(record.get("corpus")),
+                        str(record.get("strategy")),
+                    )
+                    if identity in seen:
+                        continue
+                    seen.add(identity)
+                    runs.append(record)
                 continue
             if "strategy" not in data or "corpus" not in data:
                 continue
@@ -308,14 +321,30 @@ def _lab_sample_suffix(run: dict) -> str:
     status = run.get("lab_status")
     if status not in (None, "complete"):
         parts.append(str(status))
+    digest = run.get("scored_fingerprint", "none")
     scored = run.get("questions")
-    if isinstance(scored, int) and not isinstance(scored, bool):
+    if not isinstance(scored, int) or isinstance(scored, bool):
+        # A count that is missing, null, or the wrong type says nothing about
+        # the sample. Reading it as whole would average an unknown number of
+        # questions with a full run, which is the defect this suffix exists to
+        # stop. An unknown sample groups only with itself.
+        parts.append(f"partial-unknown-{digest}")
+    else:
         expected = _expected_question_count(run)
         # A run that scored every question its manifest names is whole, and it
         # keys like one. Only a short run carries the extra suffix, which is
-        # what `compatibility_key` does for a benchmark result.
+        # the shape `compatibility_key` gives a short benchmark result.
+        #
+        # The trigger differs from `manifest._scored_count` on one case, and
+        # the difference is deliberate. That function reads a manifest with no
+        # `question_count` as a whole run. This one refuses to, because a
+        # missing count is not proof that the run scored everything. The refusal
+        # costs no false split: two runs over the same questions carry the same
+        # digest, so they still group. Reading it the other way would average an
+        # unproven sample into a full run, which is the defect this suffix
+        # exists to stop.
         if expected is None or scored < expected:
-            parts.append(f"partial-{scored}-{run.get('scored_fingerprint', 'none')}")
+            parts.append(f"partial-{scored}-{digest}")
     return ("-" + "-".join(parts)) if parts else ""
 
 
@@ -352,9 +381,16 @@ def _flatten_lab_run(data: dict, corpus: str | None) -> list[dict]:
         for strategy, metrics in strategies.items():
             if not isinstance(metrics, dict):
                 continue
+            # Every query failed, and the lab writes each mean as 0.0 anyway.
+            # Carrying those through would report an outage as a strategy that
+            # retrieves nothing relevant. The record stays, so the group still
+            # counts it under `runs_without_this_metric`, and it carries no
+            # number for anybody to read.
+            scored = metrics.get("questions")
+            measured = metrics if scored != 0 else {"questions": 0}
             flat.append(
                 {
-                    **metrics,
+                    **measured,
                     "corpus": corpus_name,
                     "strategy": strategy,
                     "run_id": run_id,
@@ -374,7 +410,7 @@ def _scored_question_ids(data: dict) -> dict[tuple[str, str], str]:
     questions a strategy scored. Two short runs of the same size that covered
     different questions are different samples, and only the ids show that.
     """
-    from kb_arena.benchmark.manifest import _digest
+    from kb_arena.benchmark.manifest import question_digest
 
     ids: dict[tuple[str, str], list[str]] = {}
     for row in data.get("questions") or []:
@@ -387,7 +423,7 @@ def _scored_question_ids(data: dict) -> dict[tuple[str, str], str]:
             continue
         pair = (str(row.get("corpus", "")), str(row.get("strategy", "")))
         ids.setdefault(pair, []).append(str(row.get("question_id", "")))
-    return {pair: _digest(sorted(v))[:8] for pair, v in ids.items()}
+    return {pair: question_digest(v) for pair, v in ids.items()}
 
 
 def _is_for_corpus(path: Path, corpus: str | None) -> bool:

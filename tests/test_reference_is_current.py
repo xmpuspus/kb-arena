@@ -86,6 +86,25 @@ def test_every_route_appears_in_the_http_reference():
         assert f"`{path}`" in reference, f"{path} is missing from the reference"
 
 
+def test_the_reference_lists_every_route_the_app_itself_publishes():
+    """The check above reads the generator, so it cannot catch what the generator misses.
+
+    It did miss four. The generator read `@app` decorators out of `api.py` with
+    a regex, and `api.py` mounts a router holding `/api/tools/generate`,
+    `/api/tools/audit`, `/api/tools/fix` and `/api/tools/qa-pairs`. The
+    reference said it listed every route and left all four out.
+
+    The app's own OpenAPI document is the independent list, so this test fails
+    when a route exists and the reference does not name it.
+    """
+    from kb_arena.chatbot.api import app
+
+    reference = (ROOT / "docs" / "reference-http.md").read_text()
+    missing = [p for p in app.openapi()["paths"] if f"`{p}`" not in reference]
+
+    assert not missing, f"the app serves {missing}, and the reference names none of them"
+
+
 def test_the_http_reference_states_the_gate_each_route_carries():
     """A reader planning a deployment needs to know which routes need a token."""
     module = _generator()
