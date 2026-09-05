@@ -35,7 +35,7 @@ is, and refuses to say what it is not.
   settings differ from the first run.
 - Added named decision profiles to the report: accuracy-first, balanced,
   latency-bound and cost-bound.
-- Added one committed reproducible run at `results/run_b84eba57`, which needs no
+- Added one committed reproducible run at `results/run_422209dd`, which needs no
   API key to repeat. Its bundle reads `citable: true`, because a human reviewed
   every one of the 75 questions it scored.
 - Added a review record to every `aws-compute` question. All 75 carry
