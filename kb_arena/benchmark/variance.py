@@ -290,6 +290,11 @@ def _looks_like_a_result(path: Path) -> bool:
 
     if any(path.name.endswith(f"_{spec.name}.json") for spec in STRATEGY_CATALOG):
         return True
+    if path.name == "retriever_lab.json":
+        # A lab run is evidence wherever it sits, and the check below would
+        # refuse it outside a `run_` directory. A corrupt copy at the results
+        # root then disappeared and the report never said the sample shrank.
+        return True
     # A plugin strategy writes `<corpus>_<name>.json` under a run directory
     # too, and its name is not in the built-in catalog. Requiring the shape as
     # well as the location keeps a stray note.json in a run directory from
@@ -364,7 +369,11 @@ def _flatten_lab_run(data: dict, corpus: str | None) -> list[dict]:
     """
     manifests = data.get("manifests")
     manifests = manifests if isinstance(manifests, dict) else {}
-    run_id = str(data.get("run_id", ""))
+    # `str(None)` is "None", which is truthy, so two runs that both recorded no
+    # id would share one identity and the loader would drop one of them. Only a
+    # real string counts, and the loader falls back to the file path.
+    raw_id = data.get("run_id")
+    run_id = raw_id.strip() if isinstance(raw_id, str) and raw_id.strip() else ""
     # A lab run records whether it finished. One that stopped early scored fewer
     # questions, so averaging it with a complete run reports a smaller sample as
     # the same measurement. The status rides into the grouping key, and so do
@@ -381,13 +390,20 @@ def _flatten_lab_run(data: dict, corpus: str | None) -> list[dict]:
         for strategy, metrics in strategies.items():
             if not isinstance(metrics, dict):
                 continue
+            rows_scored, digest = scored_ids.get((corpus_name, strategy), (0, "none"))
             # Every query failed, and the lab writes each mean as 0.0 anyway.
             # Carrying those through would report an outage as a strategy that
             # retrieves nothing relevant. The record stays, so the group still
             # counts it under `runs_without_this_metric`, and it carries no
             # number for anybody to read.
+            #
+            # A count of "0" or null is not a count, so the count alone cannot
+            # decide this. The rows are the second witness: the run measured
+            # something when either the count is a positive whole number or at
+            # least one question row carries no error.
             scored = metrics.get("questions")
-            measured = metrics if scored != 0 else {"questions": 0}
+            counted = isinstance(scored, int) and not isinstance(scored, bool) and scored > 0
+            measured = metrics if (counted or rows_scored > 0) else {"questions": scored}
             flat.append(
                 {
                     **measured,
@@ -397,7 +413,7 @@ def _flatten_lab_run(data: dict, corpus: str | None) -> list[dict]:
                     "manifest": manifests.get(corpus_name, {}),
                     "source": "retriever_lab",
                     "lab_status": status,
-                    "scored_fingerprint": scored_ids.get((corpus_name, strategy), "none"),
+                    "scored_fingerprint": digest,
                 }
             )
     return flat
@@ -423,7 +439,7 @@ def _scored_question_ids(data: dict) -> dict[tuple[str, str], str]:
             continue
         pair = (str(row.get("corpus", "")), str(row.get("strategy", "")))
         ids.setdefault(pair, []).append(str(row.get("question_id", "")))
-    return {pair: question_digest(v) for pair, v in ids.items()}
+    return {pair: (len(v), question_digest(v)) for pair, v in ids.items()}
 
 
 def _is_for_corpus(path: Path, corpus: str | None) -> bool:

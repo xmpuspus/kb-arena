@@ -809,8 +809,13 @@ def test_variance_reads_a_retriever_lab_run(tmp_path, monkeypatch):
                     "run_id": run_id,
                     "corpora": {
                         "c": {
-                            "bm25": {"mean_recall_at_k": recall},
-                            "naive_vector": {"mean_recall_at_k": recall + 0.1},
+                            # Every lab file the writer produces carries the
+                            # scored count, so the fixture carries one too.
+                            "bm25": {"mean_recall_at_k": recall, "questions": 1},
+                            "naive_vector": {
+                                "mean_recall_at_k": recall + 0.1,
+                                "questions": 1,
+                            },
                         }
                     },
                     "manifests": {"c": manifest},
@@ -1229,3 +1234,99 @@ def test_two_runs_with_no_question_count_still_group_with_each_other():
 
     assert row["comparable"] is True
     assert row["metrics"]["mean_recall_at_k"]["runs"] == 2
+
+
+def test_two_lab_runs_that_recorded_no_id_stay_two_runs(tmp_path, monkeypatch):
+    """`str(None)` is "None", which is truthy, so both runs took one identity.
+
+    The loader then dropped the second one and reported a spread of zero over a
+    sample of one.
+    """
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    for name, recall in (("run_a", 0.2), ("run_b", 0.8)):
+        path = tmp_path / name / "retriever_lab.json"
+        path.parent.mkdir(parents=True)
+        payload = json.loads(_lab_payload(None, recall))
+        path.write_text(json.dumps(payload))
+
+    runs = variance.load_runs(None)
+
+    assert len(runs) == 2, "two files with no id are two measurements"
+    assert (
+        variance.spread_report(runs, metrics=("mean_recall_at_k",))[0]["metrics"][
+            "mean_recall_at_k"
+        ]["runs"]
+        == 2
+    )
+
+
+def _lab_payload(run_id, recall: float, questions=1, rows: int = 1) -> str:
+    return json.dumps(
+        {
+            "run_id": run_id,
+            "status": "complete",
+            "corpora": {"c": {"bm25": {"mean_recall_at_k": recall, "questions": questions}}},
+            "manifests": {
+                "c": _manifest(code_version="0.11.0", git_sha="a" * 40, question_count=1)
+            },
+            "questions": [
+                {"corpus": "c", "strategy": "bm25", "question_id": f"q{i}"} for i in range(rows)
+            ],
+        }
+    )
+
+
+def test_a_corrupt_lab_file_at_the_results_root_stops_the_report(tmp_path, monkeypatch):
+    """`_looks_like_a_result` asked for a `run_` parent, so this one vanished.
+
+    A report that quietly drops a file reports a spread over what survived.
+    """
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    good = tmp_path / "run_a" / "retriever_lab.json"
+    good.parent.mkdir(parents=True)
+    good.write_text(_lab_payload("a", 0.2))
+    (tmp_path / "retriever_lab.json").write_text("{truncated")
+
+    with pytest.raises(variance.RunsUnreadableError):
+        variance.load_runs(None)
+
+
+def test_a_count_of_the_string_zero_never_becomes_a_measured_zero(tmp_path, monkeypatch):
+    """A count of `"0"` is not a count, so the count alone cannot judge the run.
+
+    The question rows are the second witness. No row carries a score here, so
+    the run measured nothing and reports nothing.
+    """
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    for name, run_id in (("run_a", "a"), ("run_b", "b")):
+        path = tmp_path / name / "retriever_lab.json"
+        path.parent.mkdir(parents=True)
+        payload = json.loads(_lab_payload(run_id, 0.0, questions="0", rows=0))
+        payload["corpora"]["c"]["bm25"]["execution_errors"] = 75
+        path.write_text(json.dumps(payload))
+
+    [row] = variance.spread_report(variance.load_runs(None), metrics=("mean_recall_at_k",))
+
+    assert row["runs"] == 2, "both runs are still counted"
+    assert row["metrics"] == {}, "and neither reports a recall of 0.0"
+
+
+def test_a_corrupt_count_on_a_run_that_scored_questions_keeps_its_numbers():
+    """The rows prove the run measured something, so a bad count does not erase it."""
+    [run] = variance._flatten_lab_run(
+        {
+            "run_id": "a",
+            "status": "complete",
+            "corpora": {"c": {"bm25": {"mean_recall_at_k": 0.4, "questions": None}}},
+            "manifests": {
+                "c": _manifest(code_version="0.11.0", git_sha="a" * 40, question_count=2)
+            },
+            "questions": [
+                {"corpus": "c", "strategy": "bm25", "question_id": "q1"},
+                {"corpus": "c", "strategy": "bm25", "question_id": "q2"},
+            ],
+        },
+        None,
+    )
+
+    assert variance._metric(run, "mean_recall_at_k") == pytest.approx(0.4)
