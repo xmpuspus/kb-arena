@@ -9,12 +9,14 @@
     "--strategies",
     "bm25",
     "--top-k",
-    "5"
+    "5",
+    "--min-recall",
+    "0.3"
   ],
   "corpus": "aws-compute",
-  "created_at": "2026-09-05T10:34:07.999999+00:00",
+  "created_at": "2026-09-05T13:10:53.773633+00:00",
   "environment": {
-    "git_sha": "fe4ae84d446af053e3f5696d42f76a4601a8dc9f-dirty-eb62b749",
+    "git_sha": "be57fc3ba6e4d845d5e282c3ee130a150177a1ef",
     "kb_arena": "0.10.0",
     "platform": "macOS-26.5-arm64-arm-64bit",
     "python": {
@@ -25,7 +27,7 @@
   "notes": "",
   "question_set_fingerprint": "3083f59c5d22",
   "results": [
-    "results/run_b84eba57/retriever_lab.json"
+    "results/run_422209dd/retriever_lab.json"
   ],
   "review": {
     "counts": {

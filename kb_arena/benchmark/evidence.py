@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import platform
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,6 +24,9 @@ from kb_arena.benchmark.result_schema import (
 )
 
 BUNDLE_VERSION = 1
+
+# A commit is 40 hex characters, or 64 under sha256. Nothing else reaches git.
+_COMMIT_SHA = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 
 
 def _python_identity() -> dict:
@@ -154,7 +158,104 @@ def check_bundle(bundle: dict, root: Path) -> list[str]:
     for field in ("kb_arena", "python", "platform"):
         if not env.get(field):
             problems.append(f"environment records no {field}")
+    if bundle.get("citable"):
+        problem = _commit_problem(env.get("git_sha"), root)
+        if problem:
+            problems.append(problem)
     return problems
+
+
+def _commit_problem(sha, root: Path) -> str:
+    """Why the commit a citable bundle names is not one a reader can check out.
+
+    This repository squash-merges, so a commit made on a branch never becomes
+    part of the default branch. A bundle built on a branch names a SHA a fresh
+    clone does not hold, and the run is then unrepeatable from its own record.
+    The bundle this repository shipped carried exactly that: `4120ce9`, which
+    `git merge-base --is-ancestor` refuses against main.
+
+    A dirty marker fails for the same reason under another name. `<sha>-dirty-<hash>`
+    names a working tree nobody else has.
+
+    The check stays silent when git cannot answer. A wheel install has no
+    repository at all, and a shallow CI checkout holds too little history to
+    decide. Silence there is honest, because the check has no evidence.
+    """
+    if not isinstance(sha, str) or not sha.strip():
+        return "calls itself citable and records no commit, so nobody can get the code back"
+    sha = sha.strip()
+    # `manifest.git_sha` writes `<sha>-dirty-<hash>`, and `<sha>-dirty` when it
+    # cannot hash the diff. Matching only the first form let the second through.
+    if sha.endswith("-dirty") or "-dirty-" in sha:
+        return (
+            f"calls itself citable and was built from an uncommitted tree, {sha}. "
+            f"Nobody can get that tree back, so the run cannot be repeated."
+        )
+    # The value comes out of a JSON file the reader did not write, so it is
+    # checked before it reaches git. A value of `--help` was read as an option
+    # rather than a commit, and git then answered something this function took
+    # for silence.
+    if not _COMMIT_SHA.fullmatch(sha):
+        return (
+            f"calls itself citable and records {sha[:24]!r} where a commit belongs, "
+            f"so nobody can get the code back"
+        )
+    head = _default_branch_head(root)
+    if head is None:
+        # Not a repository at all, so there is nothing to check the commit
+        # against. A wheel install lands here, and silence is honest.
+        return ""
+    # `rev-parse --verify --quiet` and not `cat-file -e`: cat-file exits 128
+    # for an unknown object, the same code it uses for "not a repository", so
+    # the two are indistinguishable. Quiet rev-parse exits 1 for an object this
+    # repository does not hold and 128 only when it cannot answer at all.
+    #
+    # `False` is git saying no. `None` is git failing to answer, a timeout or
+    # an OS error, and merging the two would reject a valid bundle over one
+    # transient failure.
+    if _run_git(root, "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}") is False:
+        # This IS a repository and it does not hold that object. Reading that
+        # as "cannot answer" turned the exact failure this check exists to
+        # catch into a pass: `git merge-base` exits 128 on an unknown object,
+        # and the earlier version accepted every non-1 code as unknowable.
+        return (
+            f"calls itself citable and names commit {sha[:12]}, which this repository "
+            f"does not hold. Nobody can check out the code this run measured."
+        )
+    answered = _run_git(root, "merge-base", "--is-ancestor", sha, head)
+    if answered is None or answered:
+        return ""
+    return (
+        f"calls itself citable and names commit {sha[:12]}, which is not on {head}. "
+        f"The repository squash-merges, so a branch commit never reaches the default "
+        f"branch, and a reader cannot check out the code this run measured."
+    )
+
+
+def _default_branch_head(root: Path) -> str | None:
+    """The ref a reader would clone, or None when this checkout cannot say."""
+    for ref in ("origin/main", "main"):
+        if _run_git(root, "rev-parse", "--verify", "--quiet", ref):
+            return ref
+    return None
+
+
+def _run_git(root: Path, *args: str) -> bool | None:
+    """Whether the git command succeeded, or None when git could not answer.
+
+    A return code of 1 is a plain no from both `merge-base --is-ancestor` and
+    `rev-parse --verify`. Anything else means git refused the question: not a
+    repository, an unknown object, a shallow clone.
+    """
+    import subprocess
+
+    try:
+        done = subprocess.run(["git", *args], capture_output=True, text=True, timeout=5, cwd=root)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if done.returncode == 0:
+        return True
+    return False if done.returncode == 1 else None
 
 
 def question_sets_in(path: Path) -> list[str] | None:

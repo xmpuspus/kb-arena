@@ -1,6 +1,18 @@
 {
-  "run_id": "b84eba57",
-  "timestamp": "2026-09-05T04:51:18.796765+00:00",
+  "run_id": "422209dd",
+  "timestamp": "2026-09-05T13:10:45.163732+00:00",
+  "command": [
+    "kb-arena",
+    "retriever-lab",
+    "--corpus",
+    "aws-compute",
+    "--strategies",
+    "bm25",
+    "--top-k",
+    "5",
+    "--min-recall",
+    "0.3"
+  ],
   "top_k": 5,
   "ceiling_k": 20,
   "question_split": "all",
@@ -146,7 +158,7 @@
       },
       "question_count": 75,
       "code_version": "0.10.0",
-      "git_sha": "2271cb88cb2d61bb19593d68c238e4315e3f7b1a-dirty-1608a31d",
+      "git_sha": "be57fc3ba6e4d845d5e282c3ee130a150177a1ef",
       "compatibility_key": "c216172ca8a3"
     }
   },
@@ -367,8 +379,8 @@
       "ndcg_at_k": 0.6508205185601091,
       "fallback_doc_level": false,
       "hits": [
-        "ecs-fargate::fargate-launch-type",
-        "ecs-fargate::amazon-ecs-and-aws-fargate"
+        "ecs-fargate::amazon-ecs-and-aws-fargate",
+        "ecs-fargate::fargate-launch-type"
       ],
       "match_classes": {
         "strict": 2,
@@ -1033,8 +1045,8 @@
       "ndcg_at_k": 0.6366824387328317,
       "fallback_doc_level": false,
       "hits": [
-        "lambda-overview::provisioned-concurrency",
-        "lambda-overview::cold-starts"
+        "lambda-overview::cold-starts",
+        "lambda-overview::provisioned-concurrency"
       ],
       "match_classes": {
         "strict": 2,
@@ -1371,8 +1383,8 @@
       "ndcg_at_k": 0.6508205185601091,
       "fallback_doc_level": false,
       "hits": [
-        "lambda-overview::provisioned-concurrency",
-        "lambda-overview::mitigation"
+        "lambda-overview::mitigation",
+        "lambda-overview::provisioned-concurrency"
       ],
       "match_classes": {
         "strict": 2,
@@ -1574,8 +1586,8 @@
       "ndcg_at_k": 0.38356636737133565,
       "fallback_doc_level": false,
       "hits": [
-        "ecs-fargate::services",
-        "ecs-fargate::amazon-ecs-and-aws-fargate"
+        "ecs-fargate::amazon-ecs-and-aws-fargate",
+        "ecs-fargate::services"
       ],
       "match_classes": {
         "strict": 2,
@@ -1643,8 +1655,8 @@
       "ndcg_at_k": 0.7653606369886217,
       "fallback_doc_level": false,
       "hits": [
-        "lambda-overview::vpc-configuration",
-        "lambda-overview::vpc-and-internet-access"
+        "lambda-overview::vpc-and-internet-access",
+        "lambda-overview::vpc-configuration"
       ],
       "match_classes": {
         "strict": 2,
@@ -2044,8 +2056,8 @@
       "ndcg_at_k": 0.5307212739772434,
       "fallback_doc_level": false,
       "hits": [
-        "ecs-fargate::task-execution-role",
-        "ecs-fargate::integration-with-other-services"
+        "ecs-fargate::integration-with-other-services",
+        "ecs-fargate::task-execution-role"
       ],
       "match_classes": {
         "strict": 2,
@@ -2848,8 +2860,8 @@
       "ndcg_at_k": 0.36005461457723403,
       "fallback_doc_level": false,
       "hits": [
-        "ecs-fargate::services",
-        "ecs-fargate::amazon-ecs-and-aws-fargate"
+        "ecs-fargate::amazon-ecs-and-aws-fargate",
+        "ecs-fargate::services"
       ],
       "match_classes": {
         "strict": 2,
@@ -3051,10 +3063,10 @@
       "ndcg_at_k": 0.830419897363192,
       "fallback_doc_level": false,
       "hits": [
-        "ecs-fargate::task-role",
-        "ecs-fargate::task-execution-role",
+        "ecs-fargate::amazon-ecs-and-aws-fargate",
         "ecs-fargate::integration-with-other-services",
-        "ecs-fargate::amazon-ecs-and-aws-fargate"
+        "ecs-fargate::task-execution-role",
+        "ecs-fargate::task-role"
       ],
       "match_classes": {
         "strict": 4,
@@ -3254,9 +3266,9 @@
       "ndcg_at_k": 0.8318724637288826,
       "fallback_doc_level": false,
       "hits": [
-        "lambda-overview::provisioned-concurrency",
         "lambda-overview::cold-starts",
-        "lambda-overview::mitigation"
+        "lambda-overview::mitigation",
+        "lambda-overview::provisioned-concurrency"
       ],
       "match_classes": {
         "strict": 3,
@@ -3722,9 +3734,9 @@
       "ndcg_at_k": 0.9060254355346823,
       "fallback_doc_level": false,
       "hits": [
-        "lambda-overview::provisioned-concurrency",
         "lambda-overview::cold-starts",
-        "lambda-overview::mitigation"
+        "lambda-overview::mitigation",
+        "lambda-overview::provisioned-concurrency"
       ],
       "match_classes": {
         "strict": 3,
@@ -3924,9 +3936,9 @@
       "ndcg_at_k": 0.787702056960637,
       "fallback_doc_level": false,
       "hits": [
-        "ecs-fargate::task-role",
+        "ecs-fargate::integration-with-other-services",
         "ecs-fargate::task-execution-role",
-        "ecs-fargate::integration-with-other-services"
+        "ecs-fargate::task-role"
       ],
       "match_classes": {
         "strict": 3,
@@ -3994,8 +4006,8 @@
       "ndcg_at_k": 0.48522855511632257,
       "fallback_doc_level": false,
       "hits": [
-        "ecs-fargate::integration-with-other-services",
-        "ecs-fargate::services"
+        "ecs-fargate::services",
+        "ecs-fargate::integration-with-other-services"
       ],
       "match_classes": {
         "strict": 2,
@@ -4063,9 +4075,9 @@
       "ndcg_at_k": 0.8318724637288826,
       "fallback_doc_level": false,
       "hits": [
-        "lambda-overview::vpc-configuration",
         "lambda-overview::vpc-and-internet-access",
-        "lambda-overview::execution-role"
+        "lambda-overview::execution-role",
+        "lambda-overview::vpc-configuration"
       ],
       "match_classes": {
         "strict": 3,
@@ -4668,10 +4680,10 @@
       "ndcg_at_k": 0.8687949224876582,
       "fallback_doc_level": false,
       "hits": [
-        "api-gateway::stages-and-deployment",
-        "lambda-overview::stream-based-polling",
+        "api-gateway::rest-api",
         "api-gateway::amazon-api-gateway",
-        "api-gateway::rest-api"
+        "api-gateway::stages-and-deployment",
+        "lambda-overview::stream-based-polling"
       ],
       "match_classes": {
         "strict": 4,
@@ -4806,8 +4818,8 @@
       "fallback_doc_level": false,
       "hits": [
         "lambda-overview::vpc-and-internet-access",
-        "lambda-overview::aws-lambda",
-        "ecs-fargate::services"
+        "ecs-fargate::services",
+        "lambda-overview::aws-lambda"
       ],
       "match_classes": {
         "strict": 3,
@@ -4941,9 +4953,9 @@
       "ndcg_at_k": 0.7227265726449519,
       "fallback_doc_level": false,
       "hits": [
+        "ecs-fargate::amazon-ecs-and-aws-fargate",
         "ecs-fargate::integration-with-other-services",
-        "ecs-fargate::services",
-        "ecs-fargate::amazon-ecs-and-aws-fargate"
+        "ecs-fargate::services"
       ],
       "match_classes": {
         "strict": 3,

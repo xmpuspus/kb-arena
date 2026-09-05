@@ -28,7 +28,7 @@ Type "# A benchmark number is worth what sits beside it."
 Enter
 Sleep 1500ms
 
-Type "kb-arena evidence --check results/run_b84eba57/evidence.json"
+Type "kb-arena evidence --check results/run_422209dd/evidence.json"
 Enter
 Sleep 4000ms
 
