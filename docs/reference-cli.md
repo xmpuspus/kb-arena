@@ -30,7 +30,7 @@ Stage 4: Run benchmark questions against specified strategies.
 | `--runs` | Repeat the whole benchmark N times, one run id each, for spread. The cost cap applies to each run, so N runs can spend N times the cap, which is why this stops at 20. Read the spread with `kb-arena variance`. |
 | `--seed` | Seed recorded in every run manifest. Default -1 keeps KB_ARENA_RUN_SEED. It does not control provider-side model sampling. |
 | `--split` | Question split: development, validation, holdout, or all |
-| `--strategy` | Strategy name or 'all'. Options: naive_vector, contextual_vector, qna_pairs, knowledge_graph, hybrid, raptor, pageindex, bm25, rerank_vector, qiss, sqr. Not in 'all': rerank_vector, sqr |
+| `--strategy` | Strategy name or 'all'. Options: naive_vector, contextual_vector, qna_pairs, knowledge_graph, hybrid, raptor, pageindex, bm25, rerank_vector, qiss, sqr, hyde, multi_query. Not in 'all': rerank_vector, sqr, hyde, multi_query |
 | `--strategy-module` | Import path for a custom Strategy plugin (e.g. my_pkg.my_strat) |
 | `--tier` | Tier filter (0 = all tiers) |
 | `--top-k` | Top-k chunks per query (drives IR metrics) |

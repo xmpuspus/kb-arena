@@ -66,6 +66,18 @@ monotonic transform of cosine similarity, so a recall gain needs a separate mult
 Reduces embeddings to a power-of-two dimension, amplitude-encodes them, and runs a Qiskit Aer
 SWAP-test circuit. It is excluded from the default benchmark and needs `kb-arena[quantum]`.
 
+### HyDE
+
+Asks the LLM for a hypothetical answer to the question, then retrieves Naive Vector's index with
+that hypothetical answer instead of the question text. It is excluded from the default benchmark
+because the rewrite step adds one LLM call per query.
+
+### Multi-Query
+
+Asks the LLM for several sub-queries, retrieves Naive Vector's index once per sub-query, and fuses
+the ranked chunk lists with Reciprocal Rank Fusion. It is excluded from the default benchmark
+because each sub-query adds an LLM call per query.
+
 The experiments answer research questions about operators and overhead. They do not define KB
 Arena's main product category.
 

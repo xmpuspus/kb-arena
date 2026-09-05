@@ -18,7 +18,9 @@ from kb_arena.strategies.catalog import (
 )
 from kb_arena.strategies.contextual_vector import ContextualVectorStrategy
 from kb_arena.strategies.hybrid import HybridStrategy
+from kb_arena.strategies.hyde import HydeStrategy
 from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
+from kb_arena.strategies.multi_query import MultiQueryStrategy
 from kb_arena.strategies.naive_vector import NaiveVectorStrategy
 from kb_arena.strategies.pageindex import PageIndexStrategy
 from kb_arena.strategies.qna_pairs import QnAPairStrategy
@@ -42,6 +44,8 @@ STRATEGY_REGISTRY: dict[str, type] = {
     "rerank_vector": RerankVectorStrategy,
     "qiss": QISSStrategy,
     "sqr": SQRStrategy,
+    "hyde": HydeStrategy,
+    "multi_query": MultiQueryStrategy,
 }
 
 # Optional-dependency strategies: name -> (modules required, extra name).
@@ -103,6 +107,8 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
         "bm25",
         "qiss",
         "sqr",
+        "hyde",
+        "multi_query",
     )
     if strategy != "all" and strategy not in buildable_names:
         raise ValueError(f"Unknown build strategy: {strategy}")
@@ -115,6 +121,8 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
         "raptor",
         "qiss",
         "sqr",
+        "hyde",
+        "multi_query",
     }
     chroma = (
         chromadb.PersistentClient(path=settings.chroma_path)
@@ -139,8 +147,8 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
         instance._llm = llm
         return instance
 
-    # qiss/sqr build through the naive_vector collection they wrap, so building
-    # them is idempotent with the dense index.
+    # qiss/sqr/hyde/multi_query build through the naive_vector collection they
+    # wrap, so building them is idempotent with the dense index.
     factories = {
         "naive_vector": lambda: NaiveVectorStrategy(chroma_client=chroma),
         "contextual_vector": _contextual,
@@ -150,6 +158,8 @@ async def build_vector_indexes(corpus: str = "all", strategy: str = "all") -> No
         "bm25": BM25Strategy,
         "qiss": lambda: QISSStrategy(chroma_client=chroma),
         "sqr": lambda: SQRStrategy(chroma_client=chroma),
+        "hyde": lambda: HydeStrategy(chroma_client=chroma),
+        "multi_query": lambda: MultiQueryStrategy(chroma_client=chroma),
     }
     targets = {name: factories[name]() for name in target_names}
 
@@ -229,8 +239,8 @@ def get_strategy(name: str):
     if name in ("pageindex", "bm25"):
         return cls()
 
-    # Vector-backed strategies need a ChromaDB client. qiss/sqr wrap naive_vector
-    # for coarse retrieval (like rerank_vector) and rerank the same Chroma index.
+    # Vector-backed strategies need a ChromaDB client. qiss/sqr/hyde/multi_query
+    # wrap naive_vector (like rerank_vector) and query the same Chroma index.
     if name in (
         "naive_vector",
         "contextual_vector",
@@ -239,6 +249,8 @@ def get_strategy(name: str):
         "rerank_vector",
         "qiss",
         "sqr",
+        "hyde",
+        "multi_query",
     ):
         chroma = chromadb.PersistentClient(path=settings.chroma_path)
         return cls(chroma_client=chroma)
@@ -290,6 +302,8 @@ __all__ = [
     "RerankVectorStrategy",
     "QISSStrategy",
     "SQRStrategy",
+    "HydeStrategy",
+    "MultiQueryStrategy",
     "build_vector_indexes",
     "load_documents",
 ]

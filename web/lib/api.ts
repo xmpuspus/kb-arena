@@ -31,6 +31,8 @@ export const STRATEGIES = [
   "rerank_vector",
   "qiss",
   "sqr",
+  "hyde",
+  "multi_query",
 ] as const;
 
 export type Strategy = (typeof STRATEGIES)[number];
@@ -47,6 +49,8 @@ export const STRATEGY_LABELS: Record<Strategy, string> = {
   rerank_vector: "Rerank Vector",
   qiss: "QISS (quantum)",
   sqr: "SQR (optional quantum)",
+  hyde: "HyDE",
+  multi_query: "Multi-Query",
 };
 
 export const STRATEGY_COLORS: Record<Strategy, string> = {
@@ -61,6 +65,8 @@ export const STRATEGY_COLORS: Record<Strategy, string> = {
   rerank_vector: "#14b8a6",
   qiss: "#6366f1",
   sqr: "#a855f7",
+  hyde: "#eab308",
+  multi_query: "#06b6d4",
 };
 
 export const TIER_INFO: Record<number, { label: string; description: string }> = {
@@ -114,6 +120,10 @@ export const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
     "Rescores dense candidates with a pure-NumPy state-fidelity calculation and offers an experimental multi-query mode.",
   sqr:
     "Experimental Qiskit Aer SWAP-test reranker. It is excluded from the default benchmark and needs the optional quantum dependency group.",
+  hyde:
+    "Asks the model for a hypothetical answer and embeds that instead of the question before retrieving over naive_vector.",
+  multi_query:
+    "Asks the model for several sub-queries, retrieves each over naive_vector, and fuses the ranked lists with Reciprocal Rank Fusion.",
 };
 
 export interface StrategyCatalogRecord {
@@ -150,7 +160,7 @@ export const DEFAULT_STRATEGY_CATALOG: StrategyCatalogRecord[] = STRATEGIES.map(
   architecture: name === "bm25" ? "lexical" : "retrieval",
   default_benchmark: DEFAULT_BENCHMARK_STRATEGIES.includes(name),
   api_supported: true,
-  experimental: name === "qiss" || name === "sqr",
+  experimental: name === "qiss" || name === "sqr" || name === "hyde" || name === "multi_query",
   optional_extra: name === "sqr" ? "quantum" : null,
   required_modules: name === "sqr" ? ["qiskit", "qiskit_aer", "sklearn"] : [],
   status: "unknown",

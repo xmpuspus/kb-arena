@@ -55,6 +55,18 @@ STRATEGY_CATALOG: tuple[StrategySpec, ...] = (
         optional_extra="quantum",
         required_modules=("qiskit", "qiskit_aer", "sklearn"),
     ),
+    # HyDE calls the LLM once to rewrite the query, before it calls naive_vector.
+    # Multi-Query calls the LLM once per sub-query on top of that. Both add real
+    # LLM cost to every question in a benchmark run, so both stay out of the
+    # default set on purpose. That is a cost decision, not a sign of unfinished work.
+    StrategySpec("hyde", "HyDE", "query rewrite", default_benchmark=False, experimental=True),
+    StrategySpec(
+        "multi_query",
+        "Multi-Query",
+        "multi-query fusion",
+        default_benchmark=False,
+        experimental=True,
+    ),
 )
 
 

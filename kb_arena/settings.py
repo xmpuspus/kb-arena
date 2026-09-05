@@ -145,6 +145,9 @@ class Settings(BaseSettings):
     sqr_n_qubits: int = 4  # amplitude-encode into 2^n_qubits dims (4 -> 16)
     sqr_shots: int = 0  # 0 = exact statevector (benchmark default); >0 = sampled SWAP test
 
+    # Multi-Query (#13) — sub-queries to ask the LLM for before fusing with RRF.
+    multi_query_n: int = 3
+
     # Paths
     # The seed a run records and sets. Two runs that differ only by seed are
     # the same experiment, so the seed stays out of the compatibility key.

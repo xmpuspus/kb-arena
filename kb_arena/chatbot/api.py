@@ -224,7 +224,9 @@ async def lifespan(app: FastAPI):
     from kb_arena.strategies.bm25 import BM25Strategy
     from kb_arena.strategies.contextual_vector import ContextualVectorStrategy
     from kb_arena.strategies.hybrid import HybridStrategy
+    from kb_arena.strategies.hyde import HydeStrategy
     from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
+    from kb_arena.strategies.multi_query import MultiQueryStrategy
     from kb_arena.strategies.naive_vector import NaiveVectorStrategy
     from kb_arena.strategies.pageindex import PageIndexStrategy
     from kb_arena.strategies.qna_pairs import QnAPairStrategy
@@ -337,6 +339,8 @@ async def lifespan(app: FastAPI):
         "pageindex": PageIndexStrategy(),
         "bm25": BM25Strategy(),
         "qiss": QISSStrategy(chroma_client=chroma, llm_client=llm),
+        "hyde": HydeStrategy(chroma_client=chroma, llm_client=llm),
+        "multi_query": MultiQueryStrategy(chroma_client=chroma, llm_client=llm),
     }
 
     from kb_arena.strategies.catalog import STRATEGY_CATALOG, missing_optional_modules

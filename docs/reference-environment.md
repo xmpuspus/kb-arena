@@ -51,6 +51,7 @@ Every setting, read from `kb_arena/settings.py`. Each takes the
 | `KB_ARENA_LLM_STREAM_IDLE_TIMEOUT_S` | `60.0` | - |
 | `KB_ARENA_LOG_FORMAT` | `text` | - |
 | `KB_ARENA_LOG_LEVEL` | `INFO` | - |
+| `KB_ARENA_MULTI_QUERY_N` | `3` | - |
 | `KB_ARENA_NEO4J_DATABASE` | `neo4j` | - |
 | `KB_ARENA_NEO4J_PASSWORD` | `(empty)` | - |
 | `KB_ARENA_NEO4J_URI` | `bolt://localhost:7687` | - |

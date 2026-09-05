@@ -198,6 +198,8 @@ SQR. Rerank Vector needs the dependency for its selected backend, and SQR needs 
 | Rerank Vector | Reranked dense | No | The BGE backend uses `kb-arena[rerank]`. |
 | QISS | Experimental | Yes | Pure NumPy fidelity reranker over dense candidates |
 | SQR | Experimental | No | Qiskit Aer SWAP-test reranker, install `kb-arena[quantum]` |
+| HyDE | Experimental | No | Embeds an LLM-written hypothetical answer instead of the question |
+| Multi-Query | Experimental | No | Asks the LLM for several sub-queries and fuses their results with RRF |
 
 See [strategy details](https://github.com/xmpuspus/kb-arena/blob/main/docs/strategy-catalog.md) and the
 [plugin guide](https://github.com/xmpuspus/kb-arena/blob/main/CONTRIBUTING.md#add-a-strategy).

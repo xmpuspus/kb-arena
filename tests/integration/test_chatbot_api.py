@@ -615,13 +615,17 @@ def test_strategies_returns_all_five(app_client):
 def test_strategies_returns_full_catalog_with_runtime_status(app_client):
     data = app_client.get("/strategies").json()
 
-    assert len(data["catalog"]) == 11
+    assert len(data["catalog"]) == 13
     by_name = {record["name"]: record for record in data["catalog"]}
     assert by_name["naive_vector"]["status"] == "loaded"
     assert by_name["bm25"]["status"] == "unavailable"
     assert by_name["qiss"]["experimental"] is True
     assert by_name["sqr"]["optional_extra"] == "quantum"
     assert by_name["sqr"]["default_benchmark"] is False
+    # This fixture loads only five strategies, so the rest, hyde and
+    # multi_query included, report the runtime status for a strategy this
+    # process never instantiated.
+    assert by_name["hyde"]["status"] == "unavailable"
 
 
 # POST /chat happy path
