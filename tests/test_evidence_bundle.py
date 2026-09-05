@@ -8,7 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from kb_arena.benchmark.evidence import BUNDLE_VERSION, build_bundle, check_bundle
+from kb_arena.benchmark.evidence import (
+    BUNDLE_VERSION,
+    _measurement_problems,
+    build_bundle,
+    check_bundle,
+)
 from kb_arena.benchmark.review import review_summary
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -852,3 +857,68 @@ def test_the_committed_bundle_still_checks_out_against_its_own_run():
     root = COMMITTED.parent.parent
 
     assert check_bundle(bundle, root) == []
+
+
+def _lab_body(**over) -> str:
+    body = {
+        "corpora": {"c": {"bm25": {"questions": 1}}},
+        "manifests": {"c": {"question_count": 1}},
+        "questions": [{"corpus": "c", "strategy": "bm25", "question_id": "q1"}],
+    }
+    body.update(over)
+    return json.dumps(body)
+
+
+@pytest.mark.parametrize(
+    "case,body",
+    [
+        # A container that is not a list used to reach `for row in ...` and raise
+        # TypeError. A checker that crashes tells a reader less than one that
+        # answers "nothing proves this".
+        ("a question container that is not a list", _lab_body(questions=42)),
+        # The reader records the lost strategy, and an earlier version of
+        # `scored_for` looked only at the strategies that survived. The sibling
+        # that read fine then spoke for the whole corpus.
+        (
+            "a sibling strategy the file lost",
+            _lab_body(corpora={"c": {"bm25": {"questions": 1}, "plugin": None}}),
+        ),
+        # `scored` used to return the row count while the record's own verdict
+        # said the count was unproven. Two facts where there is one.
+        (
+            "a summary count that is not a number",
+            _lab_body(corpora={"c": {"bm25": {"questions": "oops"}}}),
+        ),
+        (
+            "a summary count the rows contradict",
+            _lab_body(corpora={"c": {"bm25": {"questions": 0}}}),
+        ),
+        (
+            "a question row whose id nobody can read",
+            _lab_body(questions=[{"corpus": "c", "strategy": "bm25", "question_id": None}]),
+        ),
+        # One question repeated twice is not two questions.
+        (
+            "one question id repeated",
+            _lab_body(
+                corpora={"c": {"bm25": {"questions": 2}}},
+                manifests={"c": {"question_count": 2}},
+                questions=[
+                    {"corpus": "c", "strategy": "bm25", "question_id": "q1"},
+                    {"corpus": "c", "strategy": "bm25", "question_id": "q1"},
+                ],
+            ),
+        ),
+    ],
+)
+def test_a_lab_file_that_proves_no_count_refuses_the_measurement(case, body, tmp_path):
+    """Every one of these answered a number, or crashed, before the schema landed."""
+    run = tmp_path / "results" / "run_x"
+    run.mkdir(parents=True)
+    (run / "retriever_lab.json").write_text(body)
+    bundle = {"corpus": "c", "results": ["results/run_x/retriever_lab.json"]}
+
+    problems = _measurement_problems(bundle, tmp_path, None)
+
+    assert len(problems) == 1, f"{case}: {problems}"
+    assert problems[0].startswith("results/run_x/retriever_lab.json "), problems

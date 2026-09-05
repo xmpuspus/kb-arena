@@ -29,6 +29,10 @@ from pydantic import BaseModel, ConfigDict, Field
 UNREADABLE_QUESTION_SET = "<unreadable>"
 
 
+def _rows(count: int) -> str:
+    return "1 question row" if count == 1 else f"{count} question rows"
+
+
 def is_count(value) -> bool:
     """A usable count is a whole number that is not negative, and `True` is not one."""
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
@@ -108,6 +112,7 @@ class StrategyResult(BaseModel):
     row_count: int = 0
     row_digest: str = "none"
     rows_unidentified: bool = False
+    duplicate_ids: bool = False
     summary: dict = Field(default_factory=dict)
 
     @property
@@ -119,9 +124,7 @@ class StrategyResult(BaseModel):
         the file does not support. A run whose every query failed writes rows
         that all carry an error, so it answers zero rather than nothing.
         """
-        if not self.rows_present:
-            return None
-        return self.row_count
+        return self.row_count if self.proven else None
 
     @property
     def reported(self) -> int | None:
@@ -143,18 +146,40 @@ class StrategyResult(BaseModel):
 
     @property
     def proven(self) -> bool:
-        """Whether the count has a witness, and the witness agrees with the claim.
+        """Whether the count has a witness, and the witness agrees with the claim."""
+        return not self.unproven_because
 
-        A summary that states no count, or states one that is not a whole
-        number, makes no claim a witness can agree with. So it is unproven for
-        the same reason a missing witness is.
+    @property
+    def unproven_because(self) -> str:
+        """Why nothing proves this strategy's scored count, or "" when something does.
+
+        The reason lives here and not in each caller. An earlier version left
+        `scored` and this verdict as two facts, and `evidence.py` read the count
+        while ignoring the verdict, so a summary the reader had already called
+        unusable still backed a citable bundle.
         """
-        return (
-            self.rows_present
-            and not self.rows_unidentified
-            and self.claimed is not None
-            and self.claimed == self.row_count
-        )
+        if not self.rows_present:
+            if self.claimed is None:
+                return "states no usable scored count and carries no question rows"
+            return (
+                f"claims {self.claimed} scored questions and carries no question "
+                f"rows behind that count, so the number has no witness"
+            )
+        if self.rows_unidentified:
+            return (
+                "carries question rows whose ids nobody can read, so nothing says "
+                "which questions it scored"
+            )
+        if self.duplicate_ids:
+            return (
+                f"carries {_rows(self.row_count)} over fewer distinct ids, so one "
+                f"question stands in for another"
+            )
+        if self.claimed is None:
+            return f"carries {_rows(self.row_count)} and states no usable scored count"
+        if self.claimed != self.row_count:
+            return f"claims {self.claimed} scored questions and carries {_rows(self.row_count)}"
+        return ""
 
     @property
     def measured(self) -> bool:
@@ -208,20 +233,26 @@ class LabRun(BaseModel):
     def for_corpus(self, corpus: str | None) -> list[StrategyResult]:
         return [r for r in self.results if not corpus or r.corpus == corpus]
 
-    def scored_for(self, corpus: str) -> int | None:
-        """The weakest strategy's proven count, because a bundle covers them all.
+    def scored_for(self, corpus: str) -> tuple[int | None, str]:
+        """The weakest strategy's proven count for one corpus, and why there is none.
 
         An earlier reader took the maximum, and one strategy that scored every
-        question then spoke for a sibling that scored none. A strategy whose
-        count nothing proves refuses the whole corpus, for the same reason.
+        question then spoke for a sibling that scored none. The weakest decides.
+        A strategy nothing proves, and a strategy the file lost, both refuse the
+        whole corpus, because a bundle covers them all.
         """
+        if corpus in self.unreadable_corpora:
+            return None, "holds no readable summary for this corpus"
+        lost = [s for c, s in self.unreadable_strategies if c == corpus]
+        if lost:
+            return None, f"lost the summary for {lost[0]}, so it cannot speak for that strategy"
         rows = self.for_corpus(corpus)
         if not rows:
-            return None
-        counts = [r.scored for r in rows]
-        if any(c is None for c in counts):
-            return None
-        return min(counts)
+            return None, "carries no summary for this corpus"
+        unproven = [r for r in rows if not r.proven]
+        if unproven:
+            return None, unproven[0].unproven_because
+        return min(r.row_count for r in rows), ""
 
 
 class BenchmarkRun(BaseModel):
@@ -268,8 +299,8 @@ def _run_id_in(data: dict) -> str:
     return raw.strip() if isinstance(raw, str) and raw.strip() else ""
 
 
-def _rows_by_pair(data: dict) -> dict[tuple[str, str], tuple[int, str, bool]]:
-    """Per corpus and strategy: rows scored, a digest of their ids, and whether an id is unreadable.
+def _rows_by_pair(data: dict) -> dict[tuple[str, str], tuple[int, str, bool, bool]]:
+    """Per corpus and strategy: rows scored, their digest, and two ways the ids fail.
 
     The lab writes one row per question it tried, so the rows say which questions
     a strategy scored. Two short runs of the same size that covered different
@@ -279,7 +310,12 @@ def _rows_by_pair(data: dict) -> dict[tuple[str, str], tuple[int, str, bool]]:
 
     ids: dict[tuple[str, str], list[str]] = {}
     unidentified: set[tuple[str, str]] = set()
-    for row in data.get("questions") or []:
+    distinct: dict[tuple[str, str], set[str]] = {}
+    rows = data.get("questions")
+    # A container that is not a list carries no rows. Iterating it raised
+    # TypeError on `{"questions": 42}`, and a reader that crashes tells a
+    # checker less than one that answers "nothing proves this".
+    for row in rows if isinstance(rows, list) else []:
         if not isinstance(row, dict):
             continue
         pair = (str(row.get("corpus", "")), str(row.get("strategy", "")))
@@ -288,6 +324,7 @@ def _rows_by_pair(data: dict) -> dict[tuple[str, str], tuple[int, str, bool]]:
         # whose every query failed reads as zero scored rather than as a
         # strategy with no witness at all.
         ids.setdefault(pair, [])
+        distinct.setdefault(pair, set())
         if row.get("execution_error") is not None:
             continue
         qid = row.get("question_id")
@@ -296,8 +333,18 @@ def _rows_by_pair(data: dict) -> dict[tuple[str, str], tuple[int, str, bool]]:
         if not isinstance(qid, str) or not qid.strip():
             unidentified.add(pair)
         ids[pair].append(json.dumps(qid))
+        distinct[pair].add(json.dumps(qid))
+    # The count stays over every non-error row, so two files that grouped
+    # together still do. A repeated id is a separate fact: one question stood in
+    # for another, and the sample is not the size the file claims.
     return {
-        pair: (len(rows), question_digest(rows), pair in unidentified) for pair, rows in ids.items()
+        pair: (
+            len(scored),
+            question_digest(scored),
+            pair in unidentified,
+            len(distinct[pair]) < len(scored),
+        )
+        for pair, scored in ids.items()
     }
 
 
@@ -328,7 +375,7 @@ def read_lab_run(data: dict) -> LabRun:
                 unreadable_strategies.append((str(corpus_name), str(strategy)))
                 continue
             pair = (str(corpus_name), str(strategy))
-            row_count, digest, unidentified = rows.get(pair, (0, "none", False))
+            row_count, digest, unidentified, duplicated = rows.get(pair, (0, "none", False, False))
             claimed = summary.get("questions")
             results.append(
                 StrategyResult(
@@ -339,6 +386,7 @@ def read_lab_run(data: dict) -> LabRun:
                     row_count=row_count,
                     row_digest=digest,
                     rows_unidentified=unidentified,
+                    duplicate_ids=duplicated,
                     summary=summary,
                 )
             )

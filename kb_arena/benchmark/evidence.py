@@ -224,23 +224,18 @@ def _measurement_problems(bundle: dict, root: Path, live) -> list[str]:
         path = root / name
         if not path.exists():
             continue
-        scored, expected, claimed = measurement_in(path, corpus)
+        scored, expected, why = measurement_in(path, corpus)
         if expected is not None and reviewed is not None and expected != reviewed:
             problems.append(
                 f"{name} names {expected} questions in its manifest, and the review "
                 f"covers {reviewed}. The run is not over the set the bundle claims."
             )
             continue
-        if scored is None and claimed is not None:
-            # The file states a count and carries nothing that witnesses it. An
-            # earlier check took the summary at its word, so emptying the
-            # per-question rows left the bundle reading as citable.
-            problems.append(
-                f"{name} claims {claimed} scored questions and carries no question "
-                f"rows behind that count, so the number has no witness"
-            )
-        elif scored is None:
-            problems.append(f"{name} does not say how many questions it scored")
+        if scored is None:
+            # The reader already decided this, and it says why. An earlier check
+            # took the summary at its word, so emptying the per-question rows
+            # left the bundle reading as citable.
+            problems.append(f"{name} {why}")
         elif scored == 0:
             problems.append(f"{name} scored no questions, so it holds no measurement")
         elif expected is None:
@@ -305,31 +300,28 @@ def is_bundle_result(path: Path, corpus: str) -> bool:
     return bool(corpus) and path.name.startswith(f"{corpus}_")
 
 
-def measurement_in(path: Path, corpus: str) -> tuple[int | None, int | None, int | None]:
-    """What a result proved it scored, what its manifest names, and what it claims.
+def measurement_in(path: Path, corpus: str) -> tuple[int | None, int | None, str]:
+    """What a result proved it scored, what its manifest names, and why it proved nothing.
 
     A run whose every query failed still writes a summary, and every mean in it
     reads `0.0`. So the scored count is the only field that tells a measurement
     from an outage, and the pair tells a whole run from a partial one.
 
     The proven count comes from the per-question rows, never from the summary
-    alone. A summary that claims 75 over a file carrying no rows is a claim
-    about a measurement, and a citable bundle cannot rest on one. The third
-    value is that claim, so a caller can say what the file asserts and what it
-    failed to support. The lab keys a strategy summary under its corpus, and
-    the weakest strategy decides, because the bundle covers them all.
+    alone. The third value carries the reader's own verdict, so a caller cannot
+    read the count while ignoring the reason it is missing. That split is what
+    let a summary the reader had already called unusable back a citable bundle.
     """
     record = read_result_file(path)
     if record is None:
-        return None, None, None
+        return None, None, "cannot be read"
     if isinstance(record, LabRun):
         manifest = record.manifests.get(corpus)
-        expected = manifest.question_count if manifest else None
-        rows = record.for_corpus(corpus)
-        claims = [r.claimed for r in rows if r.claimed is not None]
-        return record.scored_for(corpus), expected, min(claims) if claims else None
+        scored, why = record.scored_for(corpus)
+        return scored, manifest.question_count if manifest else None, why
     expected = record.manifest.question_count if record.manifest else None
-    return record.scored, expected, record.scored
+    why = "" if record.scored is not None else "does not say how many questions it scored"
+    return record.scored, expected, why
 
 
 def _review_scope_problems(bundle: dict, live) -> list[str]:
