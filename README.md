@@ -223,9 +223,76 @@ The [method guide](https://github.com/xmpuspus/kb-arena/blob/main/docs/methodolo
 - [Evaluation method](https://github.com/xmpuspus/kb-arena/blob/main/docs/methodology.md)
 - [Retriever Lab](https://github.com/xmpuspus/kb-arena/blob/main/docs/retriever-lab.md)
 - [Strategy catalog](https://github.com/xmpuspus/kb-arena/blob/main/docs/strategy-catalog.md)
+- [Command reference](https://github.com/xmpuspus/kb-arena/blob/main/docs/reference-cli.md), generated from the code
+- [HTTP reference](https://github.com/xmpuspus/kb-arena/blob/main/docs/reference-http.md), every route and what it asks of a caller
+- [Environment reference](https://github.com/xmpuspus/kb-arena/blob/main/docs/reference-environment.md), every setting
+- [Dataset adapters](https://github.com/xmpuspus/kb-arena/blob/main/docs/datasets.md)
 - [Changelog](https://github.com/xmpuspus/kb-arena/blob/main/CHANGELOG.md)
 - [Security policy](https://github.com/xmpuspus/kb-arena/blob/main/SECURITY.md)
 - [Contributing](https://github.com/xmpuspus/kb-arena/blob/main/CONTRIBUTING.md)
+
+## Checking a result
+
+A benchmark number is only worth as much as what sits beside it. These three
+commands are how KB Arena says what a number is, and what it is not.
+
+```bash
+# Repeat a benchmark, so a difference can be told from noise
+kb-arena benchmark --corpus my-docs --runs 3 --seed 7
+
+# Read the spread across those repeats
+kb-arena variance --corpus my-docs
+
+# Write the record that travels with a run
+kb-arena evidence --corpus my-docs --run-id <id>
+```
+
+![Spread across repeats](https://raw.githubusercontent.com/xmpuspus/kb-arena/main/docs/demo-variance.gif)
+
+`variance` groups runs by experiment and by build. Two runs from different
+commits measured different code, so it lists their values and reports no mean.
+Two runs is a range a reader can misread as a bound, so it says when a row rests
+on fewer than three.
+
+`evidence` writes the command, the package version, the commit, the platform and
+the seed beside the result. It also writes whether the run may be cited:
+
+```json
+"citable": false,
+"why_not_citable": "publishable is true only when every scored question is human-reviewed."
+```
+
+![What a run says about itself](https://raw.githubusercontent.com/xmpuspus/kb-arena/main/docs/demo-evidence.gif)
+
+`kb-arena evidence --check <path>` reads a bundle back. It refuses one that calls
+itself citable while its own review says otherwise, and one that is not citable
+and does not say why.
+
+The committed example lives at
+[`results/run_59b5b60d`](https://github.com/xmpuspus/kb-arena/tree/main/results/run_59b5b60d).
+It needs no API key to repeat.
+
+## Public datasets
+
+```bash
+kb-arena datasets                                  # what is available, and its terms
+kb-arena datasets --name crag --destination ~/data/crag
+```
+
+An adapter records who made the data, which revision, under what licence, and
+what KB Arena did to it before scoring. A moving revision such as `latest` is
+refused, because a run against one cannot be repeated.
+
+A dataset whose licence forbids redistribution is never bundled. CRAG is CC BY-NC
+4.0, so its adapter ships nothing, fetches nothing for you, and refuses to write
+inside the checkout. See [dataset adapters](https://github.com/xmpuspus/kb-arena/blob/main/docs/datasets.md).
+
+## The sealed holdout
+
+`kb-arena optimize` refuses `--split holdout` without `--confirm-holdout`. Every
+run that reads holdout questions appends to `results/holdout_uses.jsonl`, judged
+by the questions it read rather than by the split it named. `kb-arena
+holdout-uses` prints that ledger.
 
 ## Development
 

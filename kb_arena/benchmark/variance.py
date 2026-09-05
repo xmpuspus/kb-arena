@@ -13,6 +13,7 @@ carry a spread.
 
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,7 +36,6 @@ _NON_RESULT_NAMES = frozenset(
         "summary.json",
         "report.json",
         "optimize.json",
-        "retriever_lab.json",
         "run.json",
         "arena_state.json",
     }
@@ -107,8 +107,14 @@ def group_by_key(runs: list[dict]) -> dict[tuple[str, str, str], list[dict]]:
 
     grouped: dict[tuple[str, str, str], list[dict]] = {}
     for run in runs:
-        key = (str(run.get("corpus", "")), str(run.get("strategy", "")), compatibility_key(run))
-        grouped.setdefault(key, []).append(run)
+        base = compatibility_key(run)
+        # A lab run that did not finish never joins one that did. A legacy run
+        # already averages with nothing, so splitting it further would only
+        # print a longer key that means no more than `legacy` does.
+        key = base if base == LEGACY_KEY else base + _lab_sample_suffix(run)
+        grouped.setdefault(
+            (str(run.get("corpus", "")), str(run.get("strategy", "")), key), []
+        ).append(run)
     return grouped
 
 
@@ -157,6 +163,9 @@ def spread_report(runs: list[dict], metrics: tuple[str, ...] = ("accuracy_by_tie
             # came from different code is not a repeat of one experiment either.
             "comparable": (
                 key != LEGACY_KEY
+                # A record that cannot prove which questions it scored makes the
+                # whole group unreadable as a spread, whatever the key says.
+                and not any(run.get("sample_unproven") for run in group)
                 and len(versions) == 1
                 # "unrecorded" is not a build. Two runs that both fail to name
                 # one are not known to share it, so they are not repeats.
@@ -196,15 +205,18 @@ def spread_report(runs: list[dict], metrics: tuple[str, ...] = ("accuracy_by_tie
     return rows
 
 
-def load_runs(corpus: str | None = None) -> list[dict]:
+def load_runs(corpus: str | None = None, *, failures: list[str] | None = None) -> list[dict]:
     """Every stored result, as the raw record, so the manifest survives.
 
     `--runs N` writes one directory per repeat, and the newest run also lands
     at the top level. The top-level copy duplicates a run id already read from
     its own directory, so it is counted once.
-    """
-    import json
 
+    Pass `failures` to collect the lab runs that recorded a failure and hold no
+    measurement. They belong to no corpus and no strategy, so they cannot take a
+    row, and a caller that never mentions them reports a spread over the runs
+    that happened to work.
+    """
     from kb_arena.settings import settings
 
     root = Path(settings.results_path)
@@ -235,7 +247,42 @@ def load_runs(corpus: str | None = None) -> list[dict]:
                 if _looks_like_a_result(path) and _is_for_corpus(path, corpus):
                     unreadable.append(f"{path}: malformed JSON, {exc}")
                 continue
-            if not isinstance(data, dict) or "strategy" not in data or "corpus" not in data:
+            if not isinstance(data, dict):
+                continue
+            # The lab writes one file, and its name is the only reliable mark.
+            # `summary.json` from `generate_report` also carries a `corpora` key
+            # and no `strategy`, so the shape alone counted it as a lab run and
+            # then reported it as one that failed.
+            if path.name == "retriever_lab.json":
+                # A Retriever Lab run holds every strategy in one file, keyed by
+                # corpus. Flattening it here is what lets `variance` read a lab
+                # run at all: before this, the loader skipped the file and the
+                # command answered "no run carries the metric".
+                unreadable_strategies: list[str] = []
+                flat = _flatten_lab_run(data, corpus, unreadable=unreadable_strategies)
+                if failures is not None:
+                    for name in unreadable_strategies:
+                        failures.append(f"{path}: {name} has no readable summary")
+                    # Only when nothing named the loss already. A file whose one
+                    # strategy is unreadable would otherwise be counted twice.
+                    if not flat and not unreadable_strategies and _lab_run_is_lost(data, corpus):
+                        failures.append(f"{path}: {_lab_failure_reason(data)}")
+                for record in flat:
+                    # A lab record takes the same identity check as a benchmark
+                    # result. Two copies of one lab file are one measurement, and
+                    # counting them twice would report a spread of zero over a
+                    # sample of one.
+                    identity = (
+                        record["run_id"] or str(path),
+                        str(record.get("corpus")),
+                        str(record.get("strategy")),
+                    )
+                    if identity in seen:
+                        continue
+                    seen.add(identity)
+                    runs.append(record)
+                continue
+            if "strategy" not in data or "corpus" not in data:
                 continue
             if corpus and data.get("corpus") != corpus:
                 continue
@@ -258,10 +305,55 @@ def load_runs(corpus: str | None = None) -> list[dict]:
 
 
 # A result file is `<corpus>_<strategy>.json`, and the strategies are known.
+def _lab_run_is_lost(data: dict, corpus: str | None) -> bool:
+    """Whether a lab file that yielded no record is lost evidence.
+
+    Two shapes yield nothing. A run that stopped before summarizing any corpus
+    writes `status: incomplete` and an empty `corpora`. A run whose strategy
+    summary is null or the wrong type still says `complete`, so the status alone
+    cannot find it.
+
+    A file that holds only other corpora is neither. A report about one corpus
+    must not name a run that belongs to another one.
+    """
+    corpora = data.get("corpora")
+    corpora = corpora if isinstance(corpora, dict) else {}
+    # An empty map is not "this run belongs to another corpus". It is a run that
+    # stopped before it could name any corpus, so it is lost evidence under
+    # every filter.
+    #
+    # An incomplete run cannot rule itself out either. The writer adds a corpus
+    # summary only after it finishes that corpus, so a run over `a` and `b` that
+    # died inside `b` names only `a`. Reading that map as the full list hides the
+    # failure from a report about `b`.
+    finished = data.get("status") in (None, "complete")
+    if corpus and corpora and finished and corpus not in corpora:
+        return False
+    return True
+
+
+def _lab_failure_reason(data: dict) -> str:
+    """What the lab recorded about why the run holds no measurement."""
+    error = data.get("execution_error")
+    if isinstance(error, dict):
+        kind = str(error.get("type", "")).strip()
+        message = str(error.get("message", "")).strip()
+        if kind or message:
+            return f"{kind}: {message}" if kind and message else (kind or message)
+    if data.get("corpora"):
+        return "no strategy summary could be read"
+    return str(data.get("status", "incomplete"))
+
+
 def _looks_like_a_result(path: Path) -> bool:
     from kb_arena.strategies.catalog import STRATEGY_CATALOG
 
     if any(path.name.endswith(f"_{spec.name}.json") for spec in STRATEGY_CATALOG):
+        return True
+    if path.name == "retriever_lab.json":
+        # A lab run is evidence wherever it sits, and the check below would
+        # refuse it outside a `run_` directory. A corrupt copy at the results
+        # root then disappeared and the report never said the sample shrank.
         return True
     # A plugin strategy writes `<corpus>_<name>.json` under a run directory
     # too, and its name is not in the built-in catalog. Requiring the shape as
@@ -276,6 +368,187 @@ def _looks_like_a_result(path: Path) -> bool:
     return bool(corpus) and bool(strategy) and path.name not in _NON_RESULT_NAMES
 
 
+def _lab_sample_suffix(run: dict) -> str:
+    """What makes one lab run a different sample from another lab run.
+
+    Two things do. A run the lab halted scored fewer questions than one that
+    finished. So did a run that finished while some queries errored: the lab
+    drops a failed query from the metrics and still reports `complete`, so the
+    status alone never separates them.
+
+    The partial half copies the manifest's own shape, the count and then a
+    digest of the question ids. The count alone would merge two runs of forty
+    questions that scored forty different ones.
+    """
+    if run.get("source") != "retriever_lab":
+        return ""
+    # The lab stubs the LLM client for the whole run, so a strategy that calls
+    # the model (qiss decomposition, hybrid intent routing) retrieves
+    # differently than it does under `kb-arena benchmark`. The lab also always
+    # records `reference_free: True`, which a `--reference-free` benchmark
+    # records too, so the manifest core alone cannot tell the two apart. Without
+    # this the two averaged, and the gap between them read as noise.
+    parts = ["lab"]
+    status = run.get("lab_status")
+    if status not in (None, "complete"):
+        parts.append(str(status))
+    digest = run.get("scored_fingerprint", "none")
+    scored = run.get("questions")
+    if not isinstance(scored, int) or isinstance(scored, bool):
+        # A count that is missing, null, or the wrong type says nothing about
+        # the sample. Reading it as whole would average an unknown number of
+        # questions with a full run, which is the defect this suffix exists to
+        # stop. An unknown sample groups only with itself.
+        parts.append(f"partial-unknown-{digest}")
+    else:
+        expected = _expected_question_count(run)
+        # A run that scored every question its manifest names is whole, and it
+        # keys like one. Only a short run carries the extra suffix, which is
+        # the shape `compatibility_key` gives a short benchmark result.
+        #
+        # The trigger differs from `manifest._scored_count` on one case, and
+        # the difference is deliberate. That function reads a manifest with no
+        # `question_count` as a whole run. This one refuses to, because a
+        # missing count is not proof that the run scored everything. The refusal
+        # costs no false split: two runs over the same questions carry the same
+        # digest, so they still group. Reading it the other way would average an
+        # unproven sample into a full run, which is the defect this suffix
+        # exists to stop.
+        if expected is None or scored < expected:
+            parts.append(f"partial-{scored}-{digest}")
+    return ("-" + "-".join(parts)) if parts else ""
+
+
+def _expected_question_count(run: dict) -> int | None:
+    """How many questions the run's manifest names, or None when it names none.
+
+    A count of zero or less is not a count. Passing it through makes
+    `scored < expected` false for every run, which drops the suffix and lets two
+    different question sets average together.
+    """
+    manifest = run.get("manifest")
+    count = manifest.get("question_count") if isinstance(manifest, dict) else None
+    usable = isinstance(count, int) and not isinstance(count, bool) and count > 0
+    return count if usable else None
+
+
+def _flatten_lab_run(
+    data: dict, corpus: str | None, *, unreadable: list[str] | None = None
+) -> list[dict]:
+    """One Retriever Lab file as one record per corpus and strategy.
+
+    The lab reports every strategy in a single run, and the rest of this module
+    compares one strategy at a time. The manifest travels with each record, so
+    the compatibility key and the build identity still decide the grouping.
+    """
+    manifests = data.get("manifests")
+    manifests = manifests if isinstance(manifests, dict) else {}
+    # `str(None)` is "None", which is truthy, so two runs that both recorded no
+    # id would share one identity and the loader would drop one of them. Only a
+    # real string counts, and the loader falls back to the file path.
+    raw_id = data.get("run_id")
+    run_id = raw_id.strip() if isinstance(raw_id, str) and raw_id.strip() else ""
+    # A lab run records whether it finished. One that stopped early scored fewer
+    # questions, so averaging it with a complete run reports a smaller sample as
+    # the same measurement. The status rides into the grouping key, and so do
+    # the questions each strategy actually scored. A run can report `complete`
+    # after some queries errored, and then the status alone says nothing.
+    status = str(data.get("status", "unknown"))
+    scored_ids = _scored_question_ids(data)
+    flat: list[dict] = []
+    unreadable_strategies: list[str] = []
+    for corpus_name, strategies in (data.get("corpora") or {}).items():
+        if corpus and corpus_name != corpus:
+            continue
+        if not isinstance(strategies, dict):
+            continue
+        for strategy, metrics in strategies.items():
+            if not isinstance(metrics, dict):
+                # A sibling strategy that read fine used to hide this one, since
+                # the file still yielded records and the loader only reports a
+                # file that yielded none. The strategy is lost on its own.
+                unreadable_strategies.append(f"{corpus_name}/{strategy}")
+                continue
+            rows_scored, digest, unreadable_ids = scored_ids.get(
+                (corpus_name, strategy), (0, "none", False)
+            )
+            # Every query failed, and the lab writes each mean as 0.0 anyway.
+            # Carrying those through would report an outage as a strategy that
+            # retrieves nothing relevant. The record stays, so the group still
+            # counts it under `runs_without_this_metric`, and it carries no
+            # number for anybody to read.
+            #
+            # A count of "0" or null is not a count, so the count alone cannot
+            # decide this. The rows are the second witness: the run measured
+            # something when either the count is a positive whole number or at
+            # least one question row carries no error.
+            scored = metrics.get("questions")
+            usable = isinstance(scored, int) and not isinstance(scored, bool)
+            counted = usable and scored > 0
+            measured = metrics if (counted or rows_scored > 0) else {"questions": scored}
+            # The rows outrank the summary. A count of 2 over one scored row is a
+            # file contradicting itself, and taking the 2 would call the run
+            # whole and drop the digest that separates two question sets. A file
+            # with no rows at all is the same case: the count has no witness.
+            contradicted = usable and scored != rows_scored
+            if contradicted and rows_scored:
+                measured = {**measured, "questions": rows_scored}
+            record = {
+                **measured,
+                "corpus": corpus_name,
+                "strategy": strategy,
+                "run_id": run_id,
+                "manifest": manifests.get(corpus_name, {}),
+                "source": "retriever_lab",
+                "lab_status": status,
+                "scored_fingerprint": digest,
+            }
+            # Nothing here proves which questions the run scored, so a mean over
+            # this record and another would be a number about two unknowns. The
+            # key still separates what it can, and the group says it cannot be
+            # read as a spread.
+            if unreadable_ids or not usable or contradicted:
+                record["sample_unproven"] = True
+            flat.append(record)
+    if unreadable is not None:
+        unreadable.extend(unreadable_strategies)
+    return flat
+
+
+def _scored_question_ids(data: dict) -> dict[tuple[str, str], str]:
+    """A digest of the questions each corpus and strategy scored in one lab run.
+
+    The lab writes one row per question it tried, so the rows say which
+    questions a strategy scored. Two short runs of the same size that covered
+    different questions are different samples, and only the ids show that.
+    """
+    from kb_arena.benchmark.manifest import question_digest
+
+    ids: dict[tuple[str, str], list[str]] = {}
+    unidentified: set[tuple[str, str]] = set()
+    for row in data.get("questions") or []:
+        if not isinstance(row, dict):
+            continue
+        # A question the strategy failed on still writes a row, and the lab
+        # leaves it out of the metrics. Counting it here would give two runs
+        # that failed on different questions the same digest.
+        if row.get("execution_error") is not None:
+            continue
+        pair = (str(row.get("corpus", "")), str(row.get("strategy", "")))
+        qid = row.get("question_id")
+        # `str()` maps null to "None", the same text a real id of "None" gives,
+        # so two different question sets hashed alike. JSON keeps them apart.
+        if not isinstance(qid, str) or not qid.strip():
+            # An id nobody can read names no question, so the digest over these
+            # rows proves nothing. Building an ever-more-unique key was the
+            # wrong answer: it collided the same way the run id did, one
+            # function over. The record carries `sample_unproven` instead, and
+            # the group it lands in reports every value and no mean.
+            unidentified.add(pair)
+        ids.setdefault(pair, []).append(json.dumps(qid))
+    return {pair: (len(v), question_digest(v), pair in unidentified) for pair, v in ids.items()}
+
+
 def _is_for_corpus(path: Path, corpus: str | None) -> bool:
     """Whether an unreadable result could belong to the corpus being reported.
 
@@ -284,6 +557,12 @@ def _is_for_corpus(path: Path, corpus: str | None) -> bool:
     broken file.
     """
     if not corpus:
+        return True
+    if path.name == "retriever_lab.json":
+        # A lab file holds every corpus in one document, so a corpus-filtered
+        # report cannot rule it out by name. An unreadable one may hold the
+        # corpus being reported, and dropping it would shrink the sample in
+        # silence.
         return True
     return path.stem.startswith(f"{corpus}_")
 

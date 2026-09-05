@@ -4,6 +4,66 @@ All notable changes to KB Arena.
 
 ## [Unreleased]
 
+Thirty-two pull requests, closing the one Critical and all thirteen High
+findings from the 2026-09-03 audit. The theme is that a number now says what it
+is, and refuses to say what it is not.
+
+### Added
+- Added `kb-arena variance`, which reports the spread across repeats of one
+  experiment. It groups by experiment and by build, so two runs from different
+  commits list their values and report no mean.
+- Added `kb-arena evidence`, which writes the record that travels with a run:
+  command, package version, commit, platform, seed, and whether the run may be
+  cited. `--check` reads a bundle back and refuses one that claims more than its
+  own review verdict allows.
+- Added `kb-arena datasets` and a dataset adapter contract. An adapter records
+  attribution, revision, licence and checksum. A moving revision is refused, and
+  a licence that forbids redistribution is never bundled.
+- Added `--runs N` to repeat a benchmark, and `--seed` to set the seed a run
+  records. The seed drives trial order and both bootstrap paths.
+- Added a manifest on every result, with a compatibility key that decides which
+  runs may be compared.
+- Added a review gate. A report leads with whether its questions were
+  human-reviewed, and a run scored against drafts is not called evidence.
+- Added a sealed holdout. `optimize` refuses `--split holdout` without
+  `--confirm-holdout`, and every holdout run appends to a use ledger.
+- Added `kb-arena compare` and `/api/compare`, which pair two strategies question
+  by question.
+- Added graded chunk labels. A judge marks 2, 1 or 0, and a judged negative
+  reaches bpref instead of being guessed at.
+- Added per-question checkpoints and `--resume`, which refuses a resume whose
+  settings differ from the first run.
+- Added named decision profiles to the report: accuracy-first, balanced,
+  latency-bound and cost-bound.
+- Added one committed reproducible run at `results/run_59b5b60d`, which needs no
+  API key to repeat.
+- Added generated references for the commands, the routes and the settings, with
+  a test that fails when one is stale.
+
+### Changed
+- Arena ratings live per corpus and per rubric. A vote on one corpus no longer
+  moves the numbers a reader sees beside another.
+- The leaderboard groups by build as well as by experiment, so a code change is
+  no longer reported as a repeated measurement.
+- Routes that return corpus content need a token unless the caller is on this
+  machine or an operator published a demo.
+- `kb-arena demo` binds to this machine by default. It used to serve the network.
+- Holm step-down correction is applied across every trial in an optimize run.
+- The Retriever Lab documentation states what one run cannot show, and the
+  labelling documentation names the model the code actually calls.
+
+### Fixed
+- Fixed bpref reporting a perfect score for a bad ranking when the labels named
+  no negatives. On the built-in corpus it read 0.2746 instead of 0.1826.
+- Fixed the packaged frontend shipping a page the repository no longer held. A
+  digest of the frontend sources now fails the suite on a stale bundle.
+- Fixed a refused read appearing as a domain answer: an empty graph read as a
+  database outage, and sample rows read as a corpus's results.
+- Fixed `--fail-below` judging only the last repeat when `--runs` was above one.
+- Fixed the npm audit step hanging until the job was killed, which reported as a
+  cancelled check rather than a hang.
+
+
 ## [0.10.0] - 2026-08-05 - Retrieval architecture decision lab
 
 ### Added

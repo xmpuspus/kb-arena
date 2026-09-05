@@ -115,21 +115,22 @@ Read every line below as an observation about run `855aac4e` on a three-document
 corpus, not as a finding about the strategies. One run has no spread, so a gap of a
 few points is not distinguishable from noise.
 
-There is no one command that reports the spread of these metrics yet.
-`kb-arena variance` reads the per-strategy files that `kb-arena benchmark` writes,
-and the Retriever Lab writes a single `retriever_lab.json` per run instead, so the
-two do not meet. Checked on 2026-09-04: `kb-arena variance --corpus aws-compute
---metric mean_recall_at_k` after a lab run answers "No run carries the metric".
-
-Until they do meet, repeat the lab run and read the numbers side by side:
+Repeat the run and read the spread:
 
 ```bash
 kb-arena retriever-lab --corpus aws-compute   # each run gets its own id
-# then compare results/run_<id>/retriever_lab.json across the runs
+kb-arena variance --corpus aws-compute --metric mean_recall_at_k
 ```
 
-Two runs give a range a reader can misread as a bound. Three is the smallest number
-that says anything about spread.
+`variance` reads a Retriever Lab run and a benchmark run alike. Name the metric,
+because the default is `accuracy_by_tier` and these are retrieval metrics.
+
+Two runs give a range a reader can misread as a bound. Three is the smallest
+number that says anything about spread, and the command says when a row rests on
+fewer.
+
+Runs from different commits are listed and never averaged. The gap between two
+builds is a change, not noise.
 
 1. **Contextual Vector and Naive Vector are not separated by this run.** Their Recall
    and Hit are within 0.3 points and their MRR within 0.02. That is a difference this

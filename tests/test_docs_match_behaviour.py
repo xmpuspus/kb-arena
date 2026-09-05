@@ -103,8 +103,9 @@ def test_the_lab_doc_says_what_the_one_run_cannot_show():
     doc = _flat((ROOT / "docs" / "retriever-lab.md").read_text())
     assert "One run has no spread" in doc
     # The doc must not send a reader to a command that cannot read lab metrics.
-    assert "There is no one command that reports the spread of these metrics yet" in doc
-    assert "--metric mean_recall_at_k` after a lab run answers" in doc
+    # `kb-arena variance` reads a lab run as of N-33, so the doc names it.
+    assert "kb-arena variance --corpus aws-compute --metric mean_recall_at_k" in doc
+    assert "never averaged" in doc, "the doc must say what the command refuses"
     # The run does not record whether Neo4j answered, so neither reading is supported.
     assert "does not record whether Neo4j answered" in doc
     assert "A zero here means unmeasured" in doc
@@ -249,3 +250,34 @@ def test_a_bm25_only_run_does_not_demand_the_provider_it_avoids():
     assert (
         "needs_embeddings=not allow_bm25_only" in source
     ), "demanding embeddings would make the flag unusable in the case it exists for"
+
+
+@pytest.mark.parametrize("name", ["demo-variance.gif", "demo-evidence.gif"])
+def test_every_demo_the_readme_shows_exists_and_has_a_tape(name):
+    """A README image that 404s is worse than no image.
+
+    Each recording also keeps its tape, so a reader can see what produced it and
+    remake it after the command changes.
+    """
+    root = Path(__file__).resolve().parents[1]
+    gif = root / "docs" / name
+
+    assert gif.is_file(), f"{name} is linked and missing"
+    assert gif.stat().st_size > 10_000, f"{name} is too small to be a real recording"
+
+    tape = root / "docs" / "tapes" / (name.removeprefix("demo-").removesuffix(".gif") + ".tape")
+    assert tape.is_file(), f"{name} has no tape, so nobody can remake it"
+    assert name in tape.read_text(), "the tape must name the file it writes"
+
+
+def test_the_demo_tapes_run_the_module_from_this_checkout():
+    """An editable install points at whichever working copy made it.
+
+    The first take of the evidence demo recorded "No such command 'evidence'"
+    for exactly that reason, so both tapes call the module instead.
+    """
+    root = Path(__file__).resolve().parents[1]
+
+    for name in ("evidence.tape", "variance.tape"):
+        tape = (root / "docs" / "tapes" / name).read_text()
+        assert "python3 -m kb_arena.cli" in tape, f"{name} must not call the installed script"

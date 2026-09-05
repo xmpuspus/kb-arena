@@ -1649,8 +1649,8 @@ def quantum_diagnostics(
 
 @app.command(name="evidence")
 def evidence_command(
-    corpus: str = typer.Option(..., "--corpus", help="Corpus the run scored"),
-    run_id: str = typer.Option(..., "--run-id", help="Run to bundle, from results/run_<id>"),
+    corpus: str = typer.Option("", "--corpus", help="Corpus the run scored"),
+    run_id: str = typer.Option("", "--run-id", help="Run to bundle, from results/run_<id>"),
     check: str = typer.Option("", "--check", help="Check an existing evidence.json instead"),
 ):
     """Write, or check, the record that travels with a committed run.
@@ -1677,6 +1677,21 @@ def evidence_command(
             raise typer.Exit(1)
         console.print(f"[green]{path}: complete[/green]")
         return
+
+    # Required for writing, and meaningless for a check. Typer cannot say that,
+    # so the two options stay optional and the command says it here. As required
+    # options they made the documented `--check <path>` exit 2 on a missing
+    # `--corpus`, which is a document naming a command that does not run.
+    missing = [name for name, value in (("--corpus", corpus), ("--run-id", run_id)) if not value]
+    if missing:
+        console.print(
+            f"[red]{' and '.join(missing)} are needed to write a bundle. "
+            f"Pass --check <path> to read one instead.[/red]"
+            if len(missing) > 1
+            else f"[red]{missing[0]} is needed to write a bundle. "
+            f"Pass --check <path> to read one instead.[/red]"
+        )
+        raise typer.Exit(2)
 
     run_dir = _Path(_settings.results_path) / f"run_{run_id}"
     if not run_dir.is_dir():
@@ -1865,13 +1880,23 @@ def variance(
         spread_report,
     )
 
+    failed_runs: list[str] = []
     try:
-        runs = load_runs(corpus or None)
+        runs = load_runs(corpus or None, failures=failed_runs)
     except RunsUnreadableError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(1) from None
     if not runs:
-        console.print("[yellow]No results found. Run `kb-arena benchmark` first.[/yellow]")
+        if failed_runs:
+            # "No results found" told a reader to run a benchmark. A run did
+            # happen, and it failed. Printing the advice would hide that.
+            console.print(
+                f"[red]{len(failed_runs)} run(s) failed and none produced a measurement: "
+                + "; ".join(failed_runs[:3])
+                + "[/red]"
+            )
+        else:
+            console.print("[yellow]No results found. Run `kb-arena benchmark` first.[/yellow]")
         raise typer.Exit(1)
 
     rows = spread_report(runs, metrics=(metric,))
@@ -1901,9 +1926,14 @@ def variance(
         table.add_column(column)
     thin = 0
     incomparable = 0
+    unread = 0
     for row in rows:
         spread = row["metrics"].get(metric)
         if not spread:
+            # No run in this group carries a reading. A group where every query
+            # failed lands here, and skipping it in silence leaves the table
+            # showing only the strategies that worked.
+            unread += row["runs"]
             continue
         if not row["comparable"]:
             incomparable += 1
@@ -1938,6 +1968,19 @@ def variance(
         "A row groups by compatibility key, so two runs that measured different "
         "things never share a spread."
     )
+    if unread:
+        console.print(
+            f"[yellow]{unread} run(s) carry no reading for {metric!r} and take no row. "
+            f"A strategy whose queries all failed reports no number, on purpose.[/yellow]"
+        )
+    if failed_runs:
+        # A failed run belongs to no corpus and no strategy, so it cannot take a
+        # row. Saying nothing about it would report a spread over the repeats
+        # that happened to work.
+        console.print(
+            f"[yellow]{len(failed_runs)} lab run(s) recorded a failure and carry no "
+            f"measurement, so no row counts them: " + "; ".join(failed_runs[:3]) + "[/yellow]"
+        )
     if incomparable:
         console.print(
             f"[yellow]{incomparable} row(s) are not comparable: the runs carry no "

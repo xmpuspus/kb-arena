@@ -109,3 +109,50 @@ def test_the_committed_run_carries_a_readme_that_states_both_halves():
     assert "What this run does NOT show" in readme
     assert "citable: false" in readme
     assert "Only a human can do that" in readme
+
+
+def test_the_check_command_the_readme_documents_runs_as_written():
+    """`--corpus` and `--run-id` were required options, so `--check` exited 2.
+
+    The README told a reader to run `kb-arena evidence --check <path>`, and the
+    command answered "Missing option '--corpus'". That is a document naming a
+    command that does not run.
+    """
+    import subprocess
+    import sys
+
+    readme = (ROOT / "README.md").read_text()
+    assert "kb-arena evidence --check <path>" in readme, "the README documents this command"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "kb_arena.cli",
+            "evidence",
+            "--check",
+            str(COMMITTED / "evidence.json"),
+        ],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "complete" in result.stdout
+
+
+def test_writing_a_bundle_still_asks_for_the_corpus_and_the_run():
+    """The two options stay needed for a write, and the command says which is missing."""
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-m", "kb_arena.cli", "evidence", "--corpus", "aws-compute"],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+
+    assert result.returncode == 2
+    assert "--run-id" in result.stdout
