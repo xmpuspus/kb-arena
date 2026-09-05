@@ -181,6 +181,10 @@ class BenchmarkResult(BaseModel):
     strategy: str
     run_id: str = ""
     timestamp: str = ""
+    # The command that produced this result. `kb-arena evidence` used to build
+    # one out of the corpus name, so the bundle named a command that measured
+    # something else. A run knows its own command and nothing else does.
+    command: list[str] = Field(default_factory=list)
     config_snapshot: dict = Field(default_factory=dict)
     # Version 1 files carry no manifest. Version 2 files carry the experiment
     # manifest below, and the leaderboard groups runs by its compatibility key.

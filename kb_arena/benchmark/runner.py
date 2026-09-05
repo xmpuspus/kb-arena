@@ -640,6 +640,39 @@ def _config_snapshot(
     }
 
 
+def _command_for(
+    corpus: str,
+    strategy: str,
+    tier: int,
+    split: str,
+    reference_free: bool,
+    top_k: int,
+) -> list[str]:
+    """The `kb-arena benchmark` command that repeats this result.
+
+    Built from the arguments, not from `sys.argv`. An argv record carries
+    however the operator happened to start Python, and it can name a module
+    path a reader does not have.
+    """
+    command = [
+        "kb-arena",
+        "benchmark",
+        "--corpus",
+        corpus,
+        "--strategy",
+        strategy,
+        "--top-k",
+        str(top_k),
+    ]
+    if tier:
+        command += ["--tier", str(tier)]
+    if split:
+        command += ["--split", split]
+    if reference_free:
+        command.append("--reference-free")
+    return command
+
+
 async def run_benchmark(
     corpus: str = "all",
     strategy: str = "all",
@@ -795,6 +828,7 @@ async def run_benchmark(
                         strategy=strat.name,
                         run_id=run_id,
                         timestamp=timestamp,
+                        command=_command_for(corp, strat.name, tier, split, reference_free, top_k),
                         config_snapshot=config_snap,
                         schema_version=SCHEMA_VERSION,
                         judge_provider=judge_provider_of(manifest),
@@ -881,6 +915,7 @@ async def run_benchmark(
                         strategy=strat.name,
                         run_id=run_id,
                         timestamp=timestamp,
+                        command=_command_for(corp, strat.name, tier, split, reference_free, top_k),
                         config_snapshot=config_snap,
                         schema_version=SCHEMA_VERSION,
                         judge_provider=judge_provider_of(manifest),

@@ -1700,10 +1700,31 @@ def _run_command(results, root) -> list[str]:
         if isinstance(recorded, list) and all(isinstance(part, str) for part in recorded):
             found.add(tuple(recorded))
             continue
-        derived = _derived_lab_command(data)
+        derived = _derived_command(data)
         if derived:
             found.add(tuple(derived))
     return list(next(iter(found))) if len(found) == 1 else []
+
+
+def _derived_command(data: dict) -> list[str]:
+    """The command for a result written before its writer recorded one.
+
+    Both writers are covered. A lab file names every corpus and strategy it
+    measured. A benchmark file names one of each, in its own two fields.
+    """
+    if "corpora" in data:
+        return _derived_lab_command(data)
+    corpus = data.get("corpus")
+    strategy = data.get("strategy")
+    if not isinstance(corpus, str) or not corpus or not isinstance(strategy, str):
+        return []
+    if not strategy:
+        return []
+    command = ["kb-arena", "benchmark", "--corpus", corpus, "--strategy", strategy]
+    split = (data.get("manifest") or {}).get("question_split")
+    if isinstance(split, str) and split and split != "all":
+        command += ["--split", split]
+    return command
 
 
 def _derived_lab_command(data: dict) -> list[str]:
@@ -1733,6 +1754,13 @@ def _derived_lab_command(data: dict) -> list[str]:
         "--top-k",
         str(top_k),
     ]
+    ceiling_k = data.get("ceiling_k")
+    # The lab replaces a missing `--ceiling-k` with `top_k * 4`, so only a value
+    # that differs from that default proves the caller passed the flag. Leaving
+    # it out let a replay skip the retrieval-ceiling diagnostic entirely.
+    if isinstance(ceiling_k, int) and not isinstance(ceiling_k, bool):
+        if ceiling_k != top_k * 4:
+            command += ["--ceiling-k", str(ceiling_k)]
     split = data.get("question_split")
     if isinstance(split, str) and split and split != "all":
         command += ["--split", split]

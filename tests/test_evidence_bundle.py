@@ -999,3 +999,36 @@ def test_two_results_that_disagree_about_the_command_name_none(tmp_path):
     paths = [Path("results/run_x/a_bm25.json"), Path("results/run_x/a_naive_vector.json")]
 
     assert _run_command(paths, tmp_path) == []
+
+
+def test_a_benchmark_result_backs_a_bundle_the_way_a_lab_run_does():
+    """A benchmark result records no `corpora`, so the lab derivation misses it.
+
+    Before this, `kb-arena evidence` over a benchmark run exited 1 and wrote
+    nothing, because no result in it could name a command.
+    """
+    from kb_arena.cli import _derived_command
+
+    derived = _derived_command(
+        {"corpus": "a", "strategy": "bm25", "manifest": {"question_split": "holdout"}}
+    )
+
+    assert derived[:2] == ["kb-arena", "benchmark"]
+    assert derived[-2:] == ["--split", "holdout"]
+
+
+def test_the_derived_command_keeps_a_ceiling_the_run_did_not_default_to():
+    """The lab replaces a missing `--ceiling-k` with `top_k * 4`.
+
+    So only a value that differs proves the caller passed the flag. Dropping it
+    let a replay skip the retrieval-ceiling diagnostic instead of repeating it.
+    """
+    from kb_arena.cli import _derived_command
+
+    run = {"corpora": {"a": {"bm25": {}}}, "top_k": 5, "question_split": "all"}
+
+    passed = _derived_command({**run, "ceiling_k": 100})
+    defaulted = _derived_command({**run, "ceiling_k": 20})
+
+    assert passed[-2:] == ["--ceiling-k", "100"]
+    assert "--ceiling-k" not in defaulted
