@@ -41,6 +41,27 @@ def _where_sql(where: Mapping[str, str] | None) -> tuple[str, list[str]]:
 class PgVectorStore(VectorStore):
     """Wraps one Postgres table with a `vector` column behind the interface."""
 
+    def _cursor(self):
+        """A cursor whose failure leaves the connection usable.
+
+        A cursor context manager does not roll back, so one bad statement left
+        the shared connection inside a failed transaction. Every later call
+        then raised `InFailedSqlTransaction`, including a read that had nothing
+        to do with the failure.
+        """
+        from contextlib import contextmanager
+
+        @contextmanager
+        def _managed():
+            try:
+                with self._conn.cursor() as cur:
+                    yield cur
+            except Exception:
+                self._conn.rollback()
+                raise
+
+        return _managed()
+
     def __init__(
         self,
         *,
@@ -70,7 +91,7 @@ class PgVectorStore(VectorStore):
     ) -> None:
         import json
 
-        with self._conn.cursor() as cur:
+        with self._cursor() as cur:
             for i in range(len(ids)):
                 cur.execute(
                     f"INSERT INTO {self._table} (id, document, embedding, metadata) "
@@ -94,7 +115,7 @@ class PgVectorStore(VectorStore):
         where: Mapping[str, str] | None = None,
     ) -> list[VectorMatch]:
         clause, params = _where_sql(where)
-        with self._conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 f"SELECT id, document, metadata, embedding <-> %s::vector AS distance "
                 f"FROM {self._table}{clause} ORDER BY distance LIMIT %s",
@@ -112,12 +133,12 @@ class PgVectorStore(VectorStore):
         ]
 
     def delete(self, ids: Sequence[str]) -> None:
-        with self._conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(f"DELETE FROM {self._table} WHERE id = ANY(%s)", (list(ids),))
         self._conn.commit()
 
     def count(self, where: Mapping[str, str] | None = None) -> int:
         clause, params = _where_sql(where)
-        with self._conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(f"SELECT COUNT(*) FROM {self._table}{clause}", params)
             return int(cur.fetchone()[0])

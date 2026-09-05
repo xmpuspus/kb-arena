@@ -10,6 +10,7 @@ the same way tests/test_web_ssrf_dns_rebinding.py exercises the guard.
 from __future__ import annotations
 
 import socket
+import time
 
 import httpx
 import pytest
@@ -218,25 +219,24 @@ def test_a_reservation_settles_against_the_time_the_call_took(monkeypatch):
     assert strategy._spent_s == pytest.approx(0.25)
 
 
-def test_a_slow_drip_reply_stops_at_the_deadline(monkeypatch):
-    """httpx applies its timeout to each socket wait, not to the whole call.
+@pytest.mark.asyncio
+async def test_a_call_that_never_returns_stops_at_the_deadline(monkeypatch, mock_llm_client):
+    """Two rounds found the deadline missing one layer down inside httpx.
 
-    An endpoint dripping one byte at a time never waits long enough to trip
-    that timeout, so it ran past the timeout AND past the budget and then
-    succeeded. The deadline is wall-clock now.
+    First the body read, then the wait for headers, and httpx restarts its own
+    timeout on every socket read in both. The bound sits at the call boundary
+    now, so it covers connect, headers and body at once.
     """
     monkeypatch.setattr(socket, "getaddrinfo", _answers("93.184.216.34"))
-    ticks = iter([0.0])
-    monkeypatch.setattr(
-        "kb_arena.strategies.http_retriever.time.perf_counter",
-        lambda: next(ticks, 99.0),
-    )
 
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, content=b'{"chunks": []}')
+        time.sleep(5)
+        return httpx.Response(200, json=_compliant_body())
+
+    strategy = _strategy(handler, request_timeout_s=0.05, total_budget_s=0.05)
 
     with pytest.raises(RetrieverContractError, match="no reply within"):
-        _strategy(handler, request_timeout_s=1.0)._fetch_chunks("q", top_k=1, corpus="all")
+        await strategy.query("q", top_k=1)
 
 
 def test_the_request_asks_for_an_unencoded_body(monkeypatch):

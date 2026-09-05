@@ -170,14 +170,19 @@ class HTTPRetrieverStrategy(Strategy):
         with self._spend_lock:
             self._spent_s += elapsed_s - allowance
 
-    def _fetch_chunks(self, question: str, top_k: int, corpus: str) -> list[RetrievedChunkPayload]:
+    def _fetch_chunks(
+        self, question: str, top_k: int, corpus: str, request_timeout: float | None = None
+    ) -> list[RetrievedChunkPayload]:
         """POST the query, validate the reply, and return its chunks.
 
         Runs on a worker thread: httpx.Client.post() blocks the calling
         thread, and query() awaits this via asyncio.to_thread so the event
         loop stays free.
         """
-        request_timeout = self._reserve_budget()
+        # `query` reserves the allowance and bounds the whole call with it. A
+        # direct caller passes none, so the reservation happens here instead.
+        if request_timeout is None:
+            request_timeout = self._reserve_budget()
         client = self._get_client()
         host = (urlparse(self.endpoint_url).hostname or "").lower()
 
@@ -273,7 +278,21 @@ class HTTPRetrieverStrategy(Strategy):
         start = self._start_timer()
 
         retrieval_start = time.perf_counter()
-        payloads = await asyncio.to_thread(self._fetch_chunks, question, top_k, corpus)
+        # The deadline lives HERE, not inside the HTTP call. Two review rounds
+        # found it missing one layer down: first the body read, then the wait
+        # for headers, and httpx restarts its own timeout on every socket read
+        # in both. A caller-side bound covers connect, headers and body at
+        # once, and no future layer inside httpx can slip under it.
+        allowance = self._reserve_budget()
+        try:
+            payloads = await asyncio.wait_for(
+                asyncio.to_thread(self._fetch_chunks, question, top_k, corpus, allowance),
+                timeout=allowance,
+            )
+        except TimeoutError as exc:
+            raise RetrieverContractError(
+                f"{self.endpoint_url}: no reply within {allowance:.1f}s"
+            ) from exc
         retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
         retrieved = self._to_retrieved_chunks(payloads)

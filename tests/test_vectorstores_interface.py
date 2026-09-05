@@ -278,3 +278,19 @@ def test_qdrant_metadata_cannot_take_another_record_s_identity(qdrant_store):
 
     assert point.payload[_CHUNK_ID_FIELD] == "c1"
     assert point.payload["document"] == "trusted"
+
+
+def test_a_failed_pgvector_statement_leaves_the_connection_usable(pgvector_store):
+    """A cursor context manager does not roll back a failed transaction.
+
+    One bad statement left the shared connection inside a failed transaction,
+    and every later call raised `InFailedSqlTransaction`, including reads that
+    had nothing to do with the failure.
+    """
+    store, conn = pgvector_store
+    conn.cursor.return_value.__enter__.return_value.execute.side_effect = RuntimeError("bad vector")
+
+    with pytest.raises(RuntimeError):
+        store.upsert(["c1"], ["doc"], [[0.1, 0.2]], [{}])
+
+    conn.rollback.assert_called_once()
