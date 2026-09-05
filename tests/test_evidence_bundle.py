@@ -1141,6 +1141,10 @@ def test_a_citable_bundle_names_a_commit_on_the_default_branch(tmp_path):
     assert _commit_problem(on_main, tmp_path) == ""
     assert "not on" in _commit_problem(off_main, tmp_path)
     assert _commit_problem(None, tmp_path).startswith("calls itself citable and records no commit")
+    # `git merge-base` exits 128 on an unknown object, and reading every
+    # non-1 code as unknowable turned the exact failure this check exists to
+    # catch into a pass.
+    assert "does not hold" in _commit_problem("0" * 40, tmp_path)
 
 
 def test_a_bundle_built_from_an_uncommitted_tree_is_refused():
@@ -1151,9 +1155,12 @@ def test_a_bundle_built_from_an_uncommitted_tree_is_refused():
     """
     from kb_arena.benchmark.evidence import _commit_problem
 
-    problem = _commit_problem("fe4ae84d446af053e3f5696d42f76a4601a8dc9f-dirty-eb62b749", ROOT)
+    with_hash = _commit_problem("fe4ae84d446af053e3f5696d42f76a4601a8dc9f-dirty-eb62b749", ROOT)
+    # `manifest.git_sha` writes the bare form when it cannot hash the diff.
+    bare = _commit_problem("fe4ae84d446af053e3f5696d42f76a4601a8dc9f-dirty", ROOT)
 
-    assert "uncommitted tree" in problem
+    assert "uncommitted tree" in with_hash
+    assert "uncommitted tree" in bare
 
 
 def test_the_check_stays_silent_when_git_cannot_answer(tmp_path):

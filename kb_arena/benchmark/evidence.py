@@ -180,14 +180,27 @@ def _commit_problem(sha, root: Path) -> str:
     if not isinstance(sha, str) or not sha.strip():
         return "calls itself citable and records no commit, so nobody can get the code back"
     sha = sha.strip()
-    if "-dirty-" in sha:
+    # `manifest.git_sha` writes `<sha>-dirty-<hash>`, and `<sha>-dirty` when it
+    # cannot hash the diff. Matching only the first form let the second through.
+    if sha.endswith("-dirty") or "-dirty-" in sha:
         return (
             f"calls itself citable and was built from an uncommitted tree, {sha}. "
             f"Nobody can get that tree back, so the run cannot be repeated."
         )
     head = _default_branch_head(root)
     if head is None:
+        # Not a repository at all, so there is nothing to check the commit
+        # against. A wheel install lands here, and silence is honest.
         return ""
+    if _run_git(root, "cat-file", "-e", f"{sha}^{{commit}}") is not True:
+        # This IS a repository and it does not hold that object. Reading that
+        # as "cannot answer" turned the exact failure this check exists to
+        # catch into a pass: `git merge-base` exits 128 on an unknown object,
+        # and the earlier version accepted every non-1 code as unknowable.
+        return (
+            f"calls itself citable and names commit {sha[:12]}, which this repository "
+            f"does not hold. Nobody can check out the code this run measured."
+        )
     answered = _run_git(root, "merge-base", "--is-ancestor", sha, head)
     if answered is None or answered:
         return ""
