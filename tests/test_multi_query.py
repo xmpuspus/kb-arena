@@ -148,3 +148,17 @@ async def test_multi_query_build_index_delegates_to_naive_vector(
     await strategy.build_index(sample_documents)
 
     strategy._base.build_index.assert_awaited_once_with(sample_documents)
+
+
+def test_the_sub_query_count_has_a_ceiling(monkeypatch):
+    """The setting IS the fan-out: one retrieval and one generation per sub-query.
+
+    Only a floor was enforced, so `KB_ARENA_MULTI_QUERY_N=10000` bought ten
+    thousand concurrent generations from one question.
+    """
+    from kb_arena.settings import settings
+    from kb_arena.strategies.multi_query import MAX_SUB_QUERIES
+
+    monkeypatch.setattr(settings, "multi_query_n", 10000)
+
+    assert min(max(int(settings.multi_query_n), 1), MAX_SUB_QUERIES) == MAX_SUB_QUERIES

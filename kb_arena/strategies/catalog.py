@@ -61,6 +61,13 @@ STRATEGY_CATALOG: tuple[StrategySpec, ...] = (
         "Metadata Filtered",
         "access-aware dense",
         default_benchmark=False,
+        # NOT api_supported. `/chat` carries no access fields, so the API could
+        # only construct this with an empty `AccessFilter`, which allows
+        # everything. A strategy whose whole purpose is refusing documents must
+        # not be reachable through a route that cannot say what to refuse. That
+        # is the fail-open shape, and an access rule that fails open is worse
+        # than no access rule, because it reads as one.
+        api_supported=False,
         experimental=True,
     ),
     StrategySpec(

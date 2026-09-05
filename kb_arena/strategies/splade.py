@@ -277,6 +277,10 @@ class SPLADEStrategy(Strategy):
 
         selected_corpus = "" if corpus == "all" else corpus
         if not self._ensure_index(selected_corpus):
+            # This reads as an answer, and a benchmark judge scores it. `bm25`
+            # answers a missing index the same way, and two strategies in one
+            # comparison must not report an outage differently. Changing both
+            # together is N-103, and it is not this slice.
             return AnswerResult(
                 answer="SPLADE index not built. Run: kb-arena build-vectors --strategy splade",
                 sources=[],

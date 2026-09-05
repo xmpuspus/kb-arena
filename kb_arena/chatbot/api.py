@@ -228,7 +228,6 @@ async def lifespan(app: FastAPI):
     from kb_arena.strategies.hyde import HydeStrategy
     from kb_arena.strategies.knowledge_graph import KnowledgeGraphStrategy
     from kb_arena.strategies.lightrag import LightRAGStrategy
-    from kb_arena.strategies.metadata_filtered import MetadataFilteredStrategy
     from kb_arena.strategies.multi_query import MultiQueryStrategy
     from kb_arena.strategies.naive_vector import NaiveVectorStrategy
     from kb_arena.strategies.pageindex import PageIndexStrategy
@@ -342,7 +341,6 @@ async def lifespan(app: FastAPI):
         "raptor": RaptorStrategy(chroma_client=chroma),
         "pageindex": PageIndexStrategy(),
         "bm25": BM25Strategy(),
-        "metadata_filtered": MetadataFilteredStrategy(chroma_client=chroma),
         "temporal": TemporalStrategy(chroma_client=chroma),
         "qiss": QISSStrategy(chroma_client=chroma, llm_client=llm),
         "hyde": HydeStrategy(chroma_client=chroma, llm_client=llm),

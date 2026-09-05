@@ -25,6 +25,10 @@ from kb_arena.strategies.base import AnswerResult, Strategy, validate_top_k
 from kb_arena.strategies.hybrid import _reciprocal_rank_fusion
 from kb_arena.strategies.naive_vector import SYSTEM_PROMPT, NaiveVectorStrategy
 
+# The ceiling on `KB_ARENA_MULTI_QUERY_N`. One question already costs one
+# rewrite call plus this many retrievals and generations.
+MAX_SUB_QUERIES = 10
+
 MULTI_QUERY_SYSTEM_PROMPT = (
     "Write {n} different search queries that would help find the answer to the question "
     "below. One per line, no numbering, no extra text."
@@ -57,7 +61,10 @@ class MultiQueryStrategy(Strategy):
         Raises when none come back usable. A silent fall-back to the original
         question would run naive_vector once and call the result a fusion.
         """
-        n = max(int(settings.multi_query_n), 1)
+        # Every sub-query becomes one concurrent retrieval and one LLM call, so
+        # this number IS the fan-out. Only a floor was enforced, and a setting
+        # of 10000 bought ten thousand concurrent generations from one question.
+        n = min(max(int(settings.multi_query_n), 1), MAX_SUB_QUERIES)
         resp = await self._get_llm().generate(
             query=question,
             context="",

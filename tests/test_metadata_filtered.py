@@ -155,3 +155,18 @@ def test_an_empty_tag_string_matches_no_allowed_tag():
 
     assert not _matches_tags({"tags_csv": ""}, frozenset({""}))
     assert not _matches_tags({}, frozenset({"finance"}))
+
+
+def test_the_access_aware_strategy_is_not_reachable_through_the_api():
+    """`/chat` carries no access fields, so the API could only pass an empty filter.
+
+    An empty `AccessFilter` allows everything. A strategy whose purpose is
+    refusing documents must not be reachable through a route that cannot say
+    what to refuse, because an access rule that fails open reads like one that
+    works.
+    """
+    from kb_arena.strategies.catalog import STRATEGY_CATALOG
+
+    spec = next(s for s in STRATEGY_CATALOG if s.name == "metadata_filtered")
+
+    assert spec.api_supported is False
