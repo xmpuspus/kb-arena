@@ -78,11 +78,22 @@ def test_supported_python_versions_match_dependencies_and_ci() -> None:
 
     assert project["requires-python"] == ">=3.11,<3.14"
     assert "Programming Language :: Python :: 3.13" in project["classifiers"]
-    assert "tiktoken==0.13.0" in project["dependencies"]
-    assert "click==8.4.2" in project["dependencies"]
-    assert "typer==0.27.1" in project["dependencies"]
-    assert "fastapi==0.141.1" in project["dependencies"]
-    assert "starlette==1.4.1" in project["dependencies"]
+    # Every runtime dependency is pinned exactly, so a build a reader repeats
+    # installs what the recorded run installed. Five literal versions used to
+    # sit here, and each one turned a routine dependency bump into a failure of
+    # a test about Python support. The pin is the property a release needs, and
+    # the version is not.
+    #
+    # `scipy` is the one floor, and it is deliberate: the paired bootstrap and
+    # the Wilcoxon test need 1.11 or later, and any later release carries them.
+    floors = {"scipy"}
+    for spec in project["dependencies"]:
+        name = re.split(r"[=<>~!\[]", spec, maxsplit=1)[0].strip()
+        if name in floors:
+            assert ">=" in spec, f"{spec} declares no floor"
+            continue
+        assert "==" in spec, f"{spec} is not pinned exactly, so two builds can differ"
+    assert "scipy>=1.11.0" in project["dependencies"]
     assert "sentence-transformers>=5.0,<6" in project["optional-dependencies"]["rerank"]
     assert 'python-version: ["3.11", "3.12", "3.13"]' in workflow
 
