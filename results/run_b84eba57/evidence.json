@@ -8,9 +8,9 @@
     "aws-compute"
   ],
   "corpus": "aws-compute",
-  "created_at": "2026-09-05T06:08:51.422714+00:00",
+  "created_at": "2026-09-05T06:23:54.939983+00:00",
   "environment": {
-    "git_sha": "4e0d7baaaf9f6c1f9b04de3a2b2e1b6e7d7c682f",
+    "git_sha": "4120ce9234d36f2c7bc111eaf1c089375c2e9d28",
     "kb_arena": "0.10.0",
     "platform": "macOS-26.5-arm64-arm-64bit",
     "python": {
