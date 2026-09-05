@@ -106,13 +106,14 @@ def group_by_key(runs: list[dict]) -> dict[tuple[str, str, str], list[dict]]:
 
     grouped: dict[tuple[str, str, str], list[dict]] = {}
     for run in runs:
-        key = (
-            str(run.get("corpus", "")),
-            str(run.get("strategy", "")),
-            # A lab run that did not finish never joins one that did.
-            compatibility_key(run) + _status_suffix(run),
-        )
-        grouped.setdefault(key, []).append(run)
+        base = compatibility_key(run)
+        # A lab run that did not finish never joins one that did. A legacy run
+        # already averages with nothing, so splitting it further would only
+        # print a longer key that means no more than `legacy` does.
+        key = base if base == LEGACY_KEY else base + _lab_sample_suffix(run)
+        grouped.setdefault(
+            (str(run.get("corpus", "")), str(run.get("strategy", "")), key), []
+        ).append(run)
     return grouped
 
 
@@ -289,12 +290,40 @@ def _looks_like_a_result(path: Path) -> bool:
     return bool(corpus) and bool(strategy) and path.name not in _NON_RESULT_NAMES
 
 
-def _status_suffix(run: dict) -> str:
-    """An incomplete run carries its status, so it groups on its own."""
-    status = run.get("lab_status")
-    if status in (None, "complete"):
+def _lab_sample_suffix(run: dict) -> str:
+    """What makes one lab run a different sample from another lab run.
+
+    Two things do. A run the lab halted scored fewer questions than one that
+    finished. So did a run that finished while some queries errored: the lab
+    drops a failed query from the metrics and still reports `complete`, so the
+    status alone never separates them.
+
+    The partial half copies the manifest's own shape, the count and then a
+    digest of the question ids. The count alone would merge two runs of forty
+    questions that scored forty different ones.
+    """
+    if run.get("source") != "retriever_lab":
         return ""
-    return f"-{status}"
+    parts = []
+    status = run.get("lab_status")
+    if status not in (None, "complete"):
+        parts.append(str(status))
+    scored = run.get("questions")
+    if isinstance(scored, int) and not isinstance(scored, bool):
+        expected = _expected_question_count(run)
+        # A run that scored every question its manifest names is whole, and it
+        # keys like one. Only a short run carries the extra suffix, which is
+        # what `compatibility_key` does for a benchmark result.
+        if expected is None or scored < expected:
+            parts.append(f"partial-{scored}-{run.get('scored_fingerprint', 'none')}")
+    return ("-" + "-".join(parts)) if parts else ""
+
+
+def _expected_question_count(run: dict) -> int | None:
+    """How many questions the run's manifest names, or None when it names none."""
+    manifest = run.get("manifest")
+    count = manifest.get("question_count") if isinstance(manifest, dict) else None
+    return count if isinstance(count, int) and not isinstance(count, bool) else None
 
 
 def _flatten_lab_run(data: dict, corpus: str | None) -> list[dict]:
@@ -309,8 +338,11 @@ def _flatten_lab_run(data: dict, corpus: str | None) -> list[dict]:
     run_id = str(data.get("run_id", ""))
     # A lab run records whether it finished. One that stopped early scored fewer
     # questions, so averaging it with a complete run reports a smaller sample as
-    # the same measurement. The status rides into the grouping key.
+    # the same measurement. The status rides into the grouping key, and so do
+    # the questions each strategy actually scored. A run can report `complete`
+    # after some queries errored, and then the status alone says nothing.
     status = str(data.get("status", "unknown"))
+    scored_ids = _scored_question_ids(data)
     flat: list[dict] = []
     for corpus_name, strategies in (data.get("corpora") or {}).items():
         if corpus and corpus_name != corpus:
@@ -329,9 +361,33 @@ def _flatten_lab_run(data: dict, corpus: str | None) -> list[dict]:
                     "manifest": manifests.get(corpus_name, {}),
                     "source": "retriever_lab",
                     "lab_status": status,
+                    "scored_fingerprint": scored_ids.get((corpus_name, strategy), "none"),
                 }
             )
     return flat
+
+
+def _scored_question_ids(data: dict) -> dict[tuple[str, str], str]:
+    """A digest of the questions each corpus and strategy scored in one lab run.
+
+    The lab writes one row per question it tried, so the rows say which
+    questions a strategy scored. Two short runs of the same size that covered
+    different questions are different samples, and only the ids show that.
+    """
+    from kb_arena.benchmark.manifest import _digest
+
+    ids: dict[tuple[str, str], list[str]] = {}
+    for row in data.get("questions") or []:
+        if not isinstance(row, dict):
+            continue
+        # A question the strategy failed on still writes a row, and the lab
+        # leaves it out of the metrics. Counting it here would give two runs
+        # that failed on different questions the same digest.
+        if row.get("execution_error") is not None:
+            continue
+        pair = (str(row.get("corpus", "")), str(row.get("strategy", "")))
+        ids.setdefault(pair, []).append(str(row.get("question_id", "")))
+    return {pair: _digest(sorted(v))[:8] for pair, v in ids.items()}
 
 
 def _is_for_corpus(path: Path, corpus: str | None) -> bool:

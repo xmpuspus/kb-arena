@@ -906,3 +906,141 @@ def test_an_unreadable_lab_run_stops_a_corpus_filtered_report(tmp_path, monkeypa
 
     with pytest.raises(variance.RunsUnreadableError):
         variance.load_runs("aws-compute")
+
+
+def _lab_run(run_id: str, recall: float, question_ids: list[str], expected: int = 75) -> list[dict]:
+    """One lab file, flattened, that scored exactly the questions named."""
+    return variance._flatten_lab_run(
+        {
+            "run_id": run_id,
+            "status": "complete",
+            "corpora": {
+                "c": {"bm25": {"mean_recall_at_k": recall, "questions": len(question_ids)}}
+            },
+            "manifests": {
+                "c": _manifest(code_version="0.11.0", git_sha="a" * 40, question_count=expected)
+            },
+            "questions": [
+                {"corpus": "c", "strategy": "bm25", "question_id": qid} for qid in question_ids
+            ],
+        },
+        None,
+    )
+
+
+def test_a_lab_run_that_scored_fewer_questions_is_a_different_sample():
+    """The lab drops a failed query from the metrics and still reports complete.
+
+    So two runs can both say `complete` and cover different question sets. The
+    scored questions are what separate them.
+    """
+    every = [f"q{i}" for i in range(75)]
+    runs = _lab_run("a", 0.2, every) + _lab_run("b", 0.9, every[:40])
+
+    rows = variance.spread_report(runs, metrics=("mean_recall_at_k",))
+
+    assert len(rows) == 2, "35 fewer questions is not the same measurement"
+    keys = {r["compatibility_key"] for r in rows}
+    short = [k for k in keys if "-partial-40-" in k]
+    whole = [k for k in keys if "partial" not in k]
+    assert len(short) == 1, keys
+    assert len(whole) == 1, "a run that scored every question is whole"
+
+
+def test_two_short_lab_runs_over_different_questions_never_group():
+    """The count alone would merge them, and they measured different questions."""
+    every = [f"q{i}" for i in range(75)]
+    runs = _lab_run("a", 0.2, every[:40]) + _lab_run("b", 0.9, every[35:])
+
+    rows = variance.spread_report(runs, metrics=("mean_recall_at_k",))
+
+    assert len(rows) == 2
+    assert all("-partial-40-" in r["compatibility_key"] for r in rows)
+
+
+def test_two_lab_runs_over_the_same_questions_still_group():
+    """The digest separates different samples and must not split matching ones."""
+    every = [f"q{i}" for i in range(75)]
+    runs = _lab_run("a", 0.20, every[:40]) + _lab_run("b", 0.24, every[:40])
+
+    [row] = variance.spread_report(runs, metrics=("mean_recall_at_k",))
+
+    assert row["comparable"] is True
+    assert row["metrics"]["mean_recall_at_k"]["runs"] == 2
+
+
+def test_a_whole_lab_run_keys_the_same_as_its_manifest_says():
+    """A complete run must not drift away from the key its own manifest stores.
+
+    The reader adds a suffix only for a short run, which is what the manifest
+    does for a benchmark result. A suffix on every run would leave a committed
+    lab file naming a key nobody groups under.
+    """
+    from kb_arena.benchmark.manifest import compatibility_key
+
+    [run] = _lab_run("a", 0.2, [f"q{i}" for i in range(75)])
+
+    [(_, _, key)] = variance.group_by_key([run])
+
+    assert key == compatibility_key(run)
+
+
+def test_a_lab_run_with_no_manifest_keeps_the_bare_legacy_key():
+    """A legacy run averages with nothing, so a finer key would say no more.
+
+    Splitting the legacy group prints keys like `legacy-unknown-partial-75-...`,
+    which read as a measurement identity. They are not one.
+    """
+    [run] = variance._flatten_lab_run(
+        {
+            "run_id": "a",
+            "status": "unknown",
+            "corpora": {"c": {"bm25": {"mean_recall_at_k": 0.2, "questions": 75}}},
+            "questions": [{"corpus": "c", "strategy": "bm25", "question_id": "q1"}],
+        },
+        None,
+    )
+
+    [(_, _, key)] = variance.group_by_key([run])
+
+    assert key == variance.LEGACY_KEY
+
+
+def test_two_runs_that_failed_on_different_questions_never_group():
+    """A failed question still writes a row, and the lab drops it from the metrics.
+
+    So both runs list all 75 rows and both report 40 scored. Only the rows that
+    carry no error say which 40 each one measured.
+    """
+    every = [f"q{i}" for i in range(75)]
+
+    def _run(run_id: str, recall: float, scored: list[str]) -> list[dict]:
+        rows = [
+            {"corpus": "c", "strategy": "bm25", "question_id": qid}
+            if qid in set(scored)
+            else {
+                "corpus": "c",
+                "strategy": "bm25",
+                "question_id": qid,
+                "execution_error": {"type": "TimeoutError", "message": "slow"},
+            }
+            for qid in every
+        ]
+        return variance._flatten_lab_run(
+            {
+                "run_id": run_id,
+                "status": "complete",
+                "corpora": {"c": {"bm25": {"mean_recall_at_k": recall, "questions": len(scored)}}},
+                "manifests": {
+                    "c": _manifest(code_version="0.11.0", git_sha="a" * 40, question_count=75)
+                },
+                "questions": rows,
+            },
+            None,
+        )
+
+    runs = _run("a", 0.2, every[:40]) + _run("b", 0.9, every[35:])
+
+    rows = variance.spread_report(runs, metrics=("mean_recall_at_k",))
+
+    assert len(rows) == 2, "both scored 40, and not the same 40"
