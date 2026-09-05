@@ -37,7 +37,7 @@ dependencies = [
     "fastapi==0.141.1",
     "starlette==1.4.1",
     "uvicorn[standard]==0.34.0",
-    "sse-starlette==2.2.1",
+    "sse-starlette==3.4.10",
     "openai==2.24.0",
     "tiktoken==0.14.0",
     "httpx==0.28.1",
@@ -66,6 +66,26 @@ late-interaction = ["transformers==4.57.1", "torch==2.9.1"]
 # Strategy #13, SPLADE (learned sparse retrieval, term-weight expansion over a
 # masked-language model). Lazy-imported, so a plain install never pulls in torch.
 splade = ["transformers==4.57.1", "torch==2.9.1"]
+# Optional tracing (see kb_arena/telemetry.py). Lazy-imported, so the core
+# install and CI stay light; install with `pip install 'kb-arena[otel]'` and
+# set KB_ARENA_OTEL_ENABLED=true. The host process still configures the
+# exporter, for example with `opentelemetry-instrument`.
+otel = [
+    "opentelemetry-api==1.40.0",
+    "opentelemetry-sdk==1.40.0",
+    "opentelemetry-exporter-otlp-proto-grpc==1.40.0",
+]
+# MCP server (kb_arena/mcp/): stdio tools for corpus, strategy, and benchmark
+# work. Lazy-imported everywhere in the core install, so the CLI and API stay
+# usable without it; install with `pip install 'kb-arena[mcp]'`.
+mcp = ["mcp==2.1.1"]
+# Optional VectorStore adapters (kb_arena/vectorstores/). ChromaDB stays the
+# core default. Each one is lazy-imported, so the core install stays free of
+# them until a corpus selects one. They are pinned exactly, the way every other
+# extra here is, so two installs of one release resolve to one set of versions.
+qdrant = ["qdrant-client==1.16.1"]
+pgvector = ["psycopg[binary]==3.2.10"]
+lancedb = ["lancedb==0.26.0"]
 
 [project.scripts]
 kb-arena = "kb_arena.cli:app"

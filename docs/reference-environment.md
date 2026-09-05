@@ -67,6 +67,7 @@ Every setting, read from `kb_arena/settings.py`. Each takes the
 | `KB_ARENA_OPENAI_FAST_MODEL` | `gpt-4o-mini` | - |
 | `KB_ARENA_OPENAI_GENERATE_MODEL` | `gpt-4o` | - |
 | `KB_ARENA_OPENAI_JUDGE_MODEL` | `gpt-4o` | - |
+| `KB_ARENA_OTEL_ENABLED` | `False` | - |
 | `KB_ARENA_PAGEINDEX_BEAM_WIDTH` | `3` | - |
 | `KB_ARENA_PAGEINDEX_MAX_DEPTH` | `4` | - |
 | `KB_ARENA_PORT` | `8000` | - |
