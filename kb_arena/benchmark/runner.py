@@ -654,15 +654,25 @@ def _command_for(
     however the operator happened to start Python, and it can name a module
     path a reader does not have.
     """
+    from kb_arena.settings import settings
+
     command = [
         "kb-arena",
         "benchmark",
         "--corpus",
         corpus,
+        # The caller's own argument, not the resolved strategy name. Recording
+        # the resolved name gave every result in a `--strategy all` run a
+        # different command, and `kb-arena evidence` then found no single one
+        # and refused to write a bundle at all.
         "--strategy",
         strategy,
         "--top-k",
         str(top_k),
+        # The seed decides the bootstrap resampling and lands in every
+        # manifest, so a replay without it measures something else.
+        "--seed",
+        str(settings.run_seed),
     ]
     if tier:
         command += ["--tier", str(tier)]
@@ -828,7 +838,7 @@ async def run_benchmark(
                         strategy=strat.name,
                         run_id=run_id,
                         timestamp=timestamp,
-                        command=_command_for(corp, strat.name, tier, split, reference_free, top_k),
+                        command=_command_for(corp, strategy, tier, split, reference_free, top_k),
                         config_snapshot=config_snap,
                         schema_version=SCHEMA_VERSION,
                         judge_provider=judge_provider_of(manifest),
@@ -915,7 +925,7 @@ async def run_benchmark(
                         strategy=strat.name,
                         run_id=run_id,
                         timestamp=timestamp,
-                        command=_command_for(corp, strat.name, tier, split, reference_free, top_k),
+                        command=_command_for(corp, strategy, tier, split, reference_free, top_k),
                         config_snapshot=config_snap,
                         schema_version=SCHEMA_VERSION,
                         judge_provider=judge_provider_of(manifest),

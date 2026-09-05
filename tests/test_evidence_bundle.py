@@ -1032,3 +1032,20 @@ def test_the_derived_command_keeps_a_ceiling_the_run_did_not_default_to():
 
     assert passed[-2:] == ["--ceiling-k", "100"]
     assert "--ceiling-k" not in defaulted
+
+
+def test_every_result_in_a_multi_strategy_run_records_one_command():
+    """The command recorded the RESOLVED strategy, so a `--strategy all` run
+    wrote a different command per result file.
+
+    `_run_command` then found no single command and `kb-arena evidence` refused
+    to write a bundle at all, for the most ordinary invocation there is.
+    """
+    from kb_arena.benchmark.runner import _command_for
+
+    everything = _command_for("aws-compute", "all", 0, "", False, 5)
+    one = _command_for("aws-compute", "bm25", 0, "", False, 5)
+
+    assert everything[everything.index("--strategy") + 1] == "all"
+    assert one[one.index("--strategy") + 1] == "bm25"
+    assert "--seed" in everything, "a replay without the seed measures something else"
