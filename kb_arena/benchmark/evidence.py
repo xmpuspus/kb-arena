@@ -259,6 +259,12 @@ def _is_shallow(root: Path) -> bool:
             cwd=root,
         )
     except (OSError, subprocess.SubprocessError):
+        # A failure answers "shallow", which suppresses the missing-object
+        # refusal. That is deliberate, and it follows the rule the rest of this
+        # function follows: no verdict without evidence. Not knowing whether the
+        # history is truncated means not knowing whether a missing object means
+        # anything, and the other reading refuses a valid bundle every time this
+        # one command times out. That failure already turned main red once.
         return True
     return done.returncode != 0 or done.stdout.strip() == "true"
 
