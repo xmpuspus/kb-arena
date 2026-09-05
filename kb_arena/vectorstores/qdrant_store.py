@@ -83,10 +83,14 @@ class QdrantVectorStore(VectorStore):
             PointStruct(
                 id=_point_id(ids[i]),
                 vector=list(embeddings[i]),
+                # Metadata expands FIRST. Expanding it last let a chunk carry
+                # `{"chunk_id": "c2", "document": "spoofed"}` and take another
+                # record's identity, so a query answered with the wrong id and
+                # a delete of that id left the real point in place.
                 payload={
+                    **dict(metadatas[i]),
                     "document": documents[i],
                     _CHUNK_ID_FIELD: ids[i],
-                    **dict(metadatas[i]),
                 },
             )
             for i in range(len(ids))

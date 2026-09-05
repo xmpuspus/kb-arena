@@ -70,6 +70,31 @@ class RetrieverQueryResponse(BaseModel):
     chunks: list[RetrievedChunkPayload]
 
 
+class _Deadline:
+    """A response that stops yielding raw bytes once the wall clock runs out.
+
+    `_read_capped` reads through `iter_raw`, `headers`, `is_stream_consumed`
+    and `_content`, so this proxies those four and nothing else. It is a
+    wrapper rather than a change to `_read_capped`, because the web fetcher
+    that owns that function has its own deadline in its own transport.
+    """
+
+    def __init__(self, response, deadline: float) -> None:
+        self._response = response
+        self._deadline = deadline
+
+    def __getattr__(self, name: str):
+        return getattr(self._response, name)
+
+    def iter_raw(self):
+        for chunk in self._response.iter_raw():
+            if time.perf_counter() > self._deadline:
+                raise httpx.ReadTimeout("the reply did not finish inside the request timeout")
+            yield chunk
+        if time.perf_counter() > self._deadline:
+            raise httpx.ReadTimeout("the reply did not finish inside the request timeout")
+
+
 class HTTPRetrieverStrategy(Strategy):
     """Benchmarks a user's own retriever behind an HTTP endpoint.
 
@@ -171,10 +196,26 @@ class HTTPRetrieverStrategy(Strategy):
                 self.endpoint_url,
                 json=payload.model_dump(),
                 timeout=request_timeout,
+                # The sibling web fetcher asks for an unencoded body, and this
+                # one must too. httpx advertises `br` when Brotli is installed,
+                # and `_read_capped` has no Brotli decoder, so a compliant
+                # endpoint honouring that header crashed the call.
+                headers={"Accept-Encoding": "identity"},
             )
             response = client.send(request, stream=True, follow_redirects=False)
             try:
-                response._content = _read_capped(response, self.endpoint_url)
+                # httpx applies its timeout to each socket wait, not to the
+                # call. An endpoint dripping one byte every 0.9 seconds never
+                # waits a full second, so it ran past the timeout AND past the
+                # budget and then succeeded. The deadline is wall-clock.
+                deadline = request_start + request_timeout
+                capped = _Deadline(response, deadline)
+                response._content = _read_capped(capped, self.endpoint_url)
+                # The wrapper aborts a live stream mid-body. A response whose
+                # body was already read never reaches that loop, so the clock
+                # is checked once more here and both paths answer the same way.
+                if time.perf_counter() > deadline:
+                    raise httpx.ReadTimeout("the reply did not finish inside the request timeout")
             finally:
                 response.close()
         except SSRFBlocked:

@@ -256,3 +256,25 @@ def test_lancedb_filters_before_the_vector_search(lancedb_store):
     store.query([0.1, 0.2, 0.3], top_k=5, where={"source_doc_id": "d1"})
 
     assert table.search.return_value.where.call_args.kwargs == {"prefilter": True}
+
+
+def test_qdrant_metadata_cannot_take_another_record_s_identity(qdrant_store):
+    """Metadata expanded last let a chunk name itself `c2` and spoof the document.
+
+    A query then answered with the wrong id, and deleting that id left the real
+    point in place under the UUID for `c1`.
+    """
+    from kb_arena.vectorstores.qdrant_store import _CHUNK_ID_FIELD
+
+    store, client = qdrant_store
+
+    store.upsert(
+        ["c1"],
+        ["trusted"],
+        [[0.1, 0.2, 0.3]],
+        [{"chunk_id": "c2", "document": "spoofed", "source_doc_id": "d1"}],
+    )
+    [point] = client.upsert.call_args.kwargs["points"]
+
+    assert point.payload[_CHUNK_ID_FIELD] == "c1"
+    assert point.payload["document"] == "trusted"

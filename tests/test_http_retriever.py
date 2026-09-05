@@ -216,3 +216,42 @@ def test_a_reservation_settles_against_the_time_the_call_took(monkeypatch):
     strategy._charge_budget(0.25, allowance)
 
     assert strategy._spent_s == pytest.approx(0.25)
+
+
+def test_a_slow_drip_reply_stops_at_the_deadline(monkeypatch):
+    """httpx applies its timeout to each socket wait, not to the whole call.
+
+    An endpoint dripping one byte at a time never waits long enough to trip
+    that timeout, so it ran past the timeout AND past the budget and then
+    succeeded. The deadline is wall-clock now.
+    """
+    monkeypatch.setattr(socket, "getaddrinfo", _answers("93.184.216.34"))
+    ticks = iter([0.0])
+    monkeypatch.setattr(
+        "kb_arena.strategies.http_retriever.time.perf_counter",
+        lambda: next(ticks, 99.0),
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b'{"chunks": []}')
+
+    with pytest.raises(RetrieverContractError, match="no reply within"):
+        _strategy(handler, request_timeout_s=1.0)._fetch_chunks("q", top_k=1, corpus="all")
+
+
+def test_the_request_asks_for_an_unencoded_body(monkeypatch):
+    """httpx advertises `br` when Brotli is installed, and the reader has no Brotli decoder.
+
+    A compliant endpoint honouring that header crashed the call with
+    "unsupported content-encoding 'br'".
+    """
+    monkeypatch.setattr(socket, "getaddrinfo", _answers("93.184.216.34"))
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["accept-encoding"] = request.headers.get("accept-encoding", "")
+        return httpx.Response(200, json=_compliant_body())
+
+    _strategy(handler)._fetch_chunks("q", top_k=2, corpus="all")
+
+    assert seen["accept-encoding"] == "identity"
