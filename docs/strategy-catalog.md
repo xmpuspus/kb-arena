@@ -121,6 +121,7 @@ Run the strategy explicitly after installing the selected backend.
 - Architecture: reranked dense
 - In the default benchmark: no
 - Needs `pip install 'kb-arena[rerank]'`
+- Imports `sentence_transformers` at run time
 
 ## QISS
 
@@ -141,6 +142,7 @@ Qiskit Aer SWAP-test circuit.
 - In the default benchmark: no
 - Experimental: available for research, with no general performance claim
 - Needs `pip install 'kb-arena[quantum]'`
+- Imports `qiskit`, `qiskit_aer`, `sklearn` at run time
 
 ## HyDE
 
@@ -169,6 +171,7 @@ the passage tokens, averaged across query tokens.
 - Architecture: token-level dense
 - In the default benchmark: no
 - Needs `pip install 'kb-arena[late-interaction]'`
+- Imports `transformers`, `torch` at run time
 
 ## SPLADE
 
@@ -179,6 +182,7 @@ reads its own term-weight index, so it needs no embedding provider.
 - Architecture: learned sparse
 - In the default benchmark: no
 - Needs `pip install 'kb-arena[splade]'`
+- Imports `transformers`, `torch` at run time
 - Calls no embedding provider
 
 ## Agentic

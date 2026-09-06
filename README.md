@@ -207,6 +207,7 @@ synthetic question sets.
 
 ## Strategy catalog
 
+<!-- default-set-exclusions -->
 The catalog holds 19 strategies. The default `all` benchmark runs 9 of them and leaves
 out 10: LightRAG, Metadata Filtered, Temporal, Rerank Vector, SQR, HyDE, Multi-Query, Late
 Interaction, SPLADE and Agentic. Each one is out for a reason a default run cannot meet.
@@ -216,6 +217,7 @@ LightRAG needs a reachable Neo4j, and a degraded result there fails the whole ru
 than the strategy. Metadata Filtered needs a filter the caller passes. Temporal needs an
 as-of date. HyDE, Multi-Query and Agentic each cost one or more LLM calls per question.
 The API reports loaded and unavailable strategies at `GET /strategies`.
+<!-- /default-set-exclusions -->
 
 | Strategy | Architecture | Default | Notes |
 |---|---|:---:|---|

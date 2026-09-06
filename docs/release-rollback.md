@@ -17,9 +17,11 @@ These are the two options, best first.
    pinned 0.11.0 keep a working install, and `pip install kb-arena` gives them
    the fix.
 2. Yank 0.11.0. Use this only when the release is unsafe to install, for example
-   when it leaks a credential or corrupts data. Run `python3 -m twine yank` or
-   use the PyPI web form. A yank hides the version from resolution, but a pin to
-   `kb-arena==0.11.0` still installs it. A yank is not a delete.
+   when it leaks a credential or corrupts data. There is no CLI for a yank.
+   Twine does not have the command. Open the PyPI project page, then Manage,
+   then the release, then Options, then Yank. A yank hides the version from
+   resolution, but a pin to `kb-arena==0.11.0` still installs it. A yank is not
+   a delete.
 
 Never delete a PyPI release to re-upload the same number. The number is then
 permanently unusable.
@@ -32,7 +34,12 @@ it with these two commands.
 ```
 gh api -X DELETE repos/xmpuspus/kb-arena/git/refs/tags/v0.11.0
 git tag -d v0.11.0
+git tag -a v0.11.0 <the right commit> -m "KB Arena 0.11.0"
+git push origin v0.11.0
 ```
+
+The first two commands only remove the tag. The last two put it back on the
+commit you meant. Run all four, or the tag is gone rather than moved.
 
 After PyPI holds a release built from that tag, the tag is a record and not a
 pointer. Leave it. Cut a new tag instead.

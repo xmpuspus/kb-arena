@@ -276,6 +276,12 @@ def _strategy_facts(spec) -> list[str]:
         facts.append("Experimental: available for research, with no general performance claim")
     if spec.optional_extra:
         facts.append(f"Needs `pip install 'kb-arena[{spec.optional_extra}]'`")
+    # The extra is not the whole install story. Rerank Vector reads
+    # `sentence_transformers` for a local backend and reaches a hosted reranker
+    # otherwise, so the extra alone told a reader less than the catalog knows.
+    if spec.required_modules:
+        modules = ", ".join(f"`{m}`" for m in spec.required_modules)
+        facts.append(f"Imports {modules} at run time")
     if not spec.api_supported:
         facts.append("Not reachable through the API")
     if not spec.needs_embeddings:
