@@ -19,6 +19,7 @@ entry in CALLS.
 from __future__ import annotations
 
 import json
+import os
 import selectors
 import subprocess
 import sys
@@ -54,13 +55,25 @@ COMPARE_FIELDS = (
 
 
 def send(proc: subprocess.Popen, message: dict) -> None:
-    proc.stdin.write(json.dumps(message) + "\n")
+    proc.stdin.write((json.dumps(message) + "\n").encode())
     proc.stdin.flush()
 
 
 # A recording that hangs is worse than one that fails, because vhs keeps rolling
 # and nothing on screen says why. Every read carries a deadline.
 REPLY_TIMEOUT_SECONDS = 60.0
+
+# Bytes read past the end of one reply belong to the next one, so the buffer
+# outlives a single call.
+_BUFFER = bytearray()
+
+
+def _take_line() -> tuple[bytes, int]:
+    """The first complete line in the buffer, removed from it."""
+    end = _BUFFER.index(b"\n")
+    line = bytes(_BUFFER[:end])
+    del _BUFFER[: end + 1]
+    return line, end
 
 
 def read_reply(proc: subprocess.Popen, request_id: int) -> dict:
@@ -74,9 +87,18 @@ def read_reply(proc: subprocess.Popen, request_id: int) -> dict:
     A server that starts and then stalls held the demo open forever.
     """
     deadline = time.monotonic() + REPLY_TIMEOUT_SECONDS
+    fd = proc.stdout.fileno()
     with selectors.DefaultSelector() as selector:
-        selector.register(proc.stdout, selectors.EVENT_READ)
+        selector.register(fd, selectors.EVENT_READ)
         while True:
+            while b"\n" in _BUFFER:
+                line, _ = _take_line()
+                try:
+                    message = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if message.get("id") == request_id:
+                    return message
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise RuntimeError(
@@ -85,17 +107,16 @@ def read_reply(proc: subprocess.Popen, request_id: int) -> dict:
                 )
             if not selector.select(remaining):
                 continue
-            line = proc.stdout.readline()
-            if not line:
+            # `os.read` and not `readline`. A selector says only that some bytes
+            # are readable, and `readline` then blocks until a newline arrives.
+            # A server that wrote half a line and stalled walked past the
+            # deadline that way.
+            chunk = os.read(fd, 65536)
+            if not chunk:
                 raise RuntimeError(
                     f"the server closed stdout before it answered request {request_id}"
                 )
-            try:
-                message = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if message.get("id") == request_id:
-                return message
+            _BUFFER.extend(chunk)
 
 
 def result(reply: dict) -> dict:
@@ -157,8 +178,7 @@ def main() -> int:
         [sys.executable, "-m", "kb_arena.mcp.server"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        text=True,
-        bufsize=1,
+        bufsize=0,
     )
     try:
         print("-> initialize")
