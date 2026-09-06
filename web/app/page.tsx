@@ -13,6 +13,8 @@ import {
   type Strategy,
   type StrategyCatalogRecord,
 } from "@/lib/api";
+import StateBanner from "@/components/StateBanner";
+import { useServerState } from "@/components/ServerStateProvider";
 
 const TIER_LABELS = [
   "Tier 1: Factoid",
@@ -51,14 +53,24 @@ function StrategyCard({ record }: { record: StrategyCatalogRecord }) {
 export default function Home() {
   const [corpora, setCorpora] = useState<CorpusInfo[]>(CORPORA);
   const [catalog, setCatalog] = useState<StrategyCatalogRecord[]>(DEFAULT_STRATEGY_CATALOG);
+  const { state } = useServerState();
 
   useEffect(() => {
     fetchCorpora().then(setCorpora);
     fetchStrategyCatalog().then(setCatalog);
   }, []);
 
+  // With no server answer, both lists below are the built-in defaults. They
+  // name what KB Arena ships, not what this deployment loaded.
+  const sample =
+    state === "unreachable"
+      ? "The strategy catalog and the corpus list below are the built-in defaults."
+      : undefined;
+
   return (
     <div className="max-w-5xl mx-auto px-6 py-12 space-y-16">
+      <StateBanner sample={sample} />
+
       {/* Hero */}
       <section className="space-y-4">
         <h1 className="text-3xl font-bold tracking-tight" style={{ color: "var(--foreground)" }}>

@@ -2,7 +2,10 @@
 
 import { useEffect, useState, useRef } from "react";
 import { apiFetch } from "@/lib/auth";
-import { CORPORA, fetchCorpora } from "@/lib/api";
+import { CORPORA, fetchCorpora, readFailureMessage } from "@/lib/api";
+import StateBanner from "@/components/StateBanner";
+import FetchError from "@/components/FetchError";
+import { useScopeReset } from "@/lib/useScopeReset";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -112,18 +115,50 @@ export default function ArenaPage() {
   const [voting, setVoting] = useState(false);
   const [totalVotes, setTotalVotes] = useState(0);
   const [error, setError] = useState("");
+  // A vote failure and a match failure need different retries, so the page
+  // records which read failed instead of retrying the wrong one.
+  const [errorKind, setErrorKind] = useState<"match" | "vote">("match");
+  // A retry that finds the vote already recorded is not a failure.
+  const [voteNotice, setVoteNotice] = useState("");
   const [corpus, setCorpus] = useState("all");
   const [corpora, setCorpora] = useState(CORPORA);
   const [boardError, setBoardError] = useState("");
+  // An empty board and a board nobody has read yet are two different answers.
+  const [boardPending, setBoardPending] = useState(true);
 
   // The board is per corpus, so a vote on one corpus never moves the numbers
   // a reader sees next to another.
   // Only the newest request writes the board. A quick run of corpus changes
   // otherwise lands out of order and shows another corpus's numbers.
   const boardRequest = useRef(0);
+  // The winner the reader picked, so a failed vote retries that same vote.
+  const lastWinner = useRef<"a" | "b" | "tie">("tie");
+  // The corpus on screen right now. A vote reply lands later, and the state
+  // it closed over names the corpus the reader has already left.
+  const selectedCorpus = useRef(corpus);
+
+  useEffect(() => {
+    selectedCorpus.current = corpus;
+  }, [corpus]);
+
+  // The corpus over the board changed, so the ratings under the old one go
+  // before the new read starts. The match goes with them: its answers came
+  // from the old corpus, and a vote on it would land in the old corpus's
+  // ratings while the picker names the new one.
+  useScopeReset(corpus, () => {
+    setLeaderboard([]);
+    setTotalVotes(0);
+    setBoardError("");
+    setBoardPending(true);
+    setMatch(null);
+    setVoteResult(null);
+    setVoteNotice("");
+    setError("");
+  });
 
   async function fetchLeaderboard(scope: string = corpus) {
     const ticket = ++boardRequest.current;
+    setBoardPending(true);
     try {
       const query = scope && scope !== "all" ? `?corpus=${encodeURIComponent(scope)}` : "";
       const res = await fetch(`${API}/api/arena/leaderboard${query}`);
@@ -137,13 +172,15 @@ export default function ArenaPage() {
       // The board is scoped, so the count next to it is the scope's own.
       setTotalVotes(data.votes_in_history ?? data.total_votes ?? 0);
       setBoardError("");
+      setBoardPending(false);
     } catch (err: unknown) {
       // A stale board next to a live corpus name reads as that corpus's
       // result, so drop it and say the read failed.
       if (ticket !== boardRequest.current) return;
       setLeaderboard([]);
       setTotalVotes(0);
-      setBoardError(err instanceof Error ? err.message : "Leaderboard unavailable");
+      setBoardError(readFailureMessage(err, "The leaderboard did not load."));
+      setBoardPending(false);
     }
   }
 
@@ -153,6 +190,8 @@ export default function ArenaPage() {
     setMatch(null);
     setVoteResult(null);
     setError("");
+    setErrorKind("match");
+    setVoteNotice("");
     try {
       const res = await apiFetch(`${API}/api/arena/match`, {
         method: "POST",
@@ -164,7 +203,7 @@ export default function ArenaPage() {
       if (!isMatchResult(data)) throw new Error("Server returned an invalid match response");
       setMatch(data);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to create match");
+      setError(readFailureMessage(err, "The match did not start."));
     } finally {
       setLoading(false);
     }
@@ -174,6 +213,9 @@ export default function ArenaPage() {
     if (!match) return;
     setVoting(true);
     setError("");
+    setErrorKind("vote");
+    setVoteNotice("");
+    lastWinner.current = winner;
     try {
       const res = await apiFetch(`${API}/api/arena/vote`, {
         method: "POST",
@@ -181,13 +223,41 @@ export default function ArenaPage() {
         body: JSON.stringify({ match_id: match.match_id, winner }),
       });
       const data: unknown = await res.json();
-      if (!res.ok) throw new Error(errorMessage(data, "Vote failed"));
+      if (!res.ok) {
+        const message = errorMessage(data, "The vote did not reach the server.");
+        // The server keeps one vote for each match id and refuses the second,
+        // so this answer means the first attempt landed and its response was
+        // lost. Calling that a failed vote is the wrong claim.
+        if (message.toLowerCase().includes("already voted")) {
+          // Same guard as the other two vote outcomes. This branch used to
+          // write its notice whatever corpus was on screen, so the old match's
+          // line appeared under a corpus the reader had just moved to.
+          if (corpus !== selectedCorpus.current) return;
+          setVoteNotice("This match already carries a vote, so the retry changed nothing.");
+          fetchLeaderboard(selectedCorpus.current);
+          return;
+        }
+        throw new Error(message);
+      }
       if (!isVoteResult(data)) throw new Error("Server returned an invalid vote response");
+      const votedCorpus = data.corpus ?? corpus;
+      // The reader moved to another corpus while this vote was in flight. The
+      // reply carries the voted match's corpus, and reading it in would put
+      // that corpus's ratings under the name now on screen.
+      if (votedCorpus !== selectedCorpus.current) return;
       setVoteResult(data);
       // The vote moved the match's own scope, so refresh that board.
-      fetchLeaderboard(data.corpus ?? corpus);
+      fetchLeaderboard(votedCorpus);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Vote failed");
+      // The success path drops a stale reply, and this one has to match it.
+      // Without the check, a vote that failed for the corpus the reader left
+      // wrote its error under the corpus now on screen.
+      if (corpus !== selectedCorpus.current) return;
+      setError(readFailureMessage(err, "The vote got no answer."));
+      // The request can fail after the server records the vote, so the client
+      // cannot read the outcome from a transport failure. Re-read the board
+      // rather than tell the reader the ratings held still.
+      fetchLeaderboard(selectedCorpus.current);
     } finally {
       setVoting(false);
     }
@@ -205,6 +275,8 @@ export default function ArenaPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
+      <StateBanner />
+
       {/* Header */}
       <div className="text-center">
         <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--foreground)" }}>
@@ -274,12 +346,24 @@ export default function ArenaPage() {
           ))}
         </div>
         {error && (
+          <FetchError
+            title={errorKind === "vote" ? "The vote got no answer" : "The match did not start"}
+            message={error}
+            hint={
+              errorKind === "vote"
+                ? "The server may have recorded this vote before the answer was lost, so the outcome is unknown. The board below is a fresh read, and one match carries one vote, so a retry cannot count twice."
+                : "The arena needs a live server with a model key. Start one, or enter an API token with the key button, then try again."
+            }
+            onRetry={() => (errorKind === "vote" ? vote(lastWinner.current) : createMatch())}
+          />
+        )}
+        {voteNotice && (
           <p
-            role="alert"
-            className="px-3 py-2 rounded-lg text-sm"
-            style={{ background: "#fef2f2", color: "#dc2626" }}
+            role="status"
+            className="px-3 py-2 rounded-lg border text-sm"
+            style={{ borderColor: "var(--border)", color: "var(--muted)" }}
           >
-            {error}
+            {voteNotice}
           </p>
         )}
       </div>
@@ -397,6 +481,7 @@ export default function ArenaPage() {
                   setVoteResult(null);
                   setQuestion("");
                   setError("");
+                  setVoteNotice("");
                 }}
                 className="px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-80"
                 style={{ background: "var(--accent)", color: "#fff" }}
@@ -411,18 +496,22 @@ export default function ArenaPage() {
       {/* Leaderboard */}
       {boardError && (
         <div className="max-w-2xl mx-auto">
-          <div
-            className="rounded-lg border px-4 py-3 text-sm"
-            style={{ borderColor: "var(--border)", color: "var(--muted)" }}
-            role="status"
-          >
-            The leaderboard did not load: {boardError}. The ratings below are hidden, because a
-            board from an earlier read would name the wrong corpus.
-          </div>
+          <FetchError
+            title="The ELO leaderboard did not load"
+            message={boardError}
+            hint="A board from an earlier read would name the wrong corpus, so the ratings stay off screen."
+            onRetry={() => fetchLeaderboard(corpus)}
+          />
         </div>
       )}
 
-      {!boardError && leaderboard.length > 0 && (
+      {boardPending && !boardError && (
+        <p className="max-w-2xl mx-auto text-sm" style={{ color: "var(--muted)" }} role="status">
+          Reading the leaderboard for this corpus...
+        </p>
+      )}
+
+      {!boardPending && !boardError && leaderboard.length > 0 && (
         <div className="max-w-2xl mx-auto">
           <h2 className="text-base font-semibold mb-3" style={{ color: "var(--foreground)" }}>
             ELO Leaderboard

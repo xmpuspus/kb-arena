@@ -337,3 +337,47 @@ def test_two_partial_runs_of_one_size_that_scored_different_questions_differ():
     assert mf.compatibility_key(first) == mf.compatibility_key(
         same
     ), "the order the records were written in is not part of the experiment"
+
+
+def test_an_evidence_bundle_is_not_a_strategy_on_the_leaderboard(tmp_path, monkeypatch):
+    """A record that is not a measurement must not read as one.
+
+    `results/run_*/evidence.json` carries a corpus and no per-question records.
+    The strategy came from `path.stem.split("_", 1)[-1]`, which returns the whole
+    stem for a name with no underscore, so the bundle reached the board as a
+    strategy called `evidence` with 0.0 accuracy beside the real rows.
+    """
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    _write_run(tmp_path, "r1", "c", "bm25", 0.8, None)
+    bundle = {
+        "bundle_version": 1,
+        "corpus": "c",
+        "run_id": "r1",
+        "citable": True,
+        "command": ["kb-arena", "retriever-lab", "--corpus", "c"],
+        "results": ["c_bm25.json"],
+    }
+    (tmp_path / "run_r1" / "evidence.json").write_text(json.dumps(bundle))
+
+    board = asyncio.run(api.leaderboard(None, corpus="c"))["leaderboard"]
+
+    assert [row["strategy"] for row in board] == ["bm25"]
+
+
+def test_a_named_side_file_is_not_a_strategy_on_the_leaderboard(tmp_path, monkeypatch):
+    """Dropping one filename left the class open.
+
+    `question_coverage.json` carries an underscore, so the name split cleanly and
+    gave the strategy `coverage`. The guard belongs on the document: a benchmark
+    run always carries `records`, and `data.get("records", [])` read a missing key
+    and an empty list as the same thing.
+    """
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    _write_run(tmp_path, "r1", "c", "bm25", 0.8, None)
+    (tmp_path / "run_r1" / "question_coverage.json").write_text(
+        json.dumps({"corpus": "c", "documents_reaching_the_prompt": 102})
+    )
+
+    board = asyncio.run(api.leaderboard(None, corpus="c"))["leaderboard"]
+
+    assert [row["strategy"] for row in board] == ["bm25"]

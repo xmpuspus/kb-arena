@@ -5,8 +5,10 @@ import BenchmarkTable from "@/components/BenchmarkTable";
 import TierChart from "@/components/TierChart";
 import StrategyCompare from "@/components/StrategyCompare";
 import StrategyRunPanel from "@/components/StrategyRunPanel";
+import StateBanner from "@/components/StateBanner";
+import FetchError from "@/components/FetchError";
 import {
-  MOCK_BENCHMARK_DATA,
+  BENCHMARK_UNAVAILABLE,
   CORPORA,
   fetchBenchmarkResults,
   fetchCorpora,
@@ -14,14 +16,17 @@ import {
 import { useTokenEpoch } from "@/lib/useTokenEpoch";
 
 type ViewMode = "table" | "chart" | "both" | "compare";
+type Row = Awaited<ReturnType<typeof fetchBenchmarkResults>>[number];
 
 export default function BenchmarkPage() {
   // A saved token must retry the read it was entered for.
   const tokenEpoch = useTokenEpoch();
   const [corpus, setCorpus] = useState("all");
   const [view, setView] = useState<ViewMode>("both");
-  const [rows, setRows] = useState(MOCK_BENCHMARK_DATA);
-  const [source, setSource] = useState<"mock" | "file" | "refused">("mock");
+  const [rows, setRows] = useState<Row[]>([]);
+  const [status, setStatus] = useState<"loading" | "ok" | "refused">("loading");
+  const [failure, setFailure] = useState("");
+  const [attempt, setAttempt] = useState(0);
   const [corpora, setCorpora] = useState(CORPORA);
 
   useEffect(() => {
@@ -30,27 +35,34 @@ export default function BenchmarkPage() {
 
   useEffect(() => {
     let active = true;
+    setStatus("loading");
     fetchBenchmarkResults(corpus)
       .then((data) => {
         if (!active) return;
         setRows(data);
-        setSource(data === MOCK_BENCHMARK_DATA ? "mock" : "file");
+        setStatus("ok");
       })
-      .catch(() => {
-        // The read was refused. Sample rows under a real corpus name would
-        // read as that corpus's results, so the table goes and the reason
-        // takes its place.
+      .catch((err: unknown) => {
+        // The read failed. Sample rows under a real corpus name would read as
+        // that corpus's results, so the table goes and the reason takes its
+        // place.
         if (!active) return;
         setRows([]);
-        setSource("refused");
+        setFailure(err instanceof Error ? err.message : BENCHMARK_UNAVAILABLE);
+        setStatus("refused");
       });
     return () => {
       active = false;
     };
-  }, [corpus, tokenEpoch]);
+  }, [corpus, attempt, tokenEpoch]);
+
+  const corpusLabel = corpora.find((c) => c.value === corpus)?.label ?? "all corpora";
+  const runCommand = `kb-arena benchmark --corpus ${corpus === "all" ? "aws-compute" : corpus}`;
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+      <StateBanner />
+
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--foreground)" }}>
@@ -96,44 +108,56 @@ export default function BenchmarkPage() {
           ))}
         </div>
 
-        {source === "refused" && (
-          <span
-            className="text-xs px-2 py-1 rounded border"
-            style={{ borderColor: "var(--border)", color: "var(--muted)" }}
-            role="status"
-          >
-            The benchmark results need an API token. Enter one with the key button to read them.
-          </span>
-        )}
-        {source === "mock" && (
-          <span className="text-xs px-2 py-1 rounded border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
-            Checked sample run. Use <code className="mono">kb-arena benchmark</code> to evaluate your corpus.
+        {status === "loading" && (
+          <span className="text-xs px-2 py-1" style={{ color: "var(--muted)" }} role="status">
+            Reading the recorded runs...
           </span>
         )}
       </div>
 
       {/* Content */}
-      <div className="space-y-8">
-        {(view === "table" || view === "both") && (
-          <BenchmarkTable rows={rows} />
-        )}
+      {status === "refused" && (
+        <FetchError
+          title="The benchmark results did not load"
+          message={failure}
+          hint="Sample rows under a real corpus name would read as that corpus's results, so the table stays empty. Start the API, or enter an API token with the key button, then try again."
+          onRetry={() => setAttempt((n) => n + 1)}
+        />
+      )}
 
-        {(view === "chart" || view === "both") && (
-          <div
-            className="rounded-lg border p-4"
-            style={{ borderColor: "var(--border)", background: "var(--card)" }}
-          >
-            <h2 className="text-sm font-semibold mb-4" style={{ color: "var(--foreground)" }}>
-              Accuracy by tier
-            </h2>
-            <TierChart rows={rows} />
-          </div>
-        )}
+      {status === "ok" && rows.length === 0 && (
+        <div
+          className="rounded-lg border border-dashed p-6 text-sm"
+          style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+        >
+          No recorded run for {corpusLabel}. Run <code className="mono">{runCommand}</code> to
+          record one. This page shows measured runs only.
+        </div>
+      )}
 
-        {view === "compare" && (
-          <StrategyCompare rows={rows} />
-        )}
-      </div>
+      {status === "ok" && rows.length > 0 && (
+        <div className="space-y-8">
+          {(view === "table" || view === "both") && (
+            <BenchmarkTable rows={rows} />
+          )}
+
+          {(view === "chart" || view === "both") && (
+            <div
+              className="rounded-lg border p-4"
+              style={{ borderColor: "var(--border)", background: "var(--card)" }}
+            >
+              <h2 className="text-sm font-semibold mb-4" style={{ color: "var(--foreground)" }}>
+                Accuracy by tier
+              </h2>
+              <TierChart rows={rows} />
+            </div>
+          )}
+
+          {view === "compare" && (
+            <StrategyCompare rows={rows} />
+          )}
+        </div>
+      )}
 
       {/* Methodology note */}
       <div

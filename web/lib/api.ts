@@ -16,6 +16,17 @@ export const BENCHMARK_UNAVAILABLE =
 export const BENCHMARK_UNAUTHORIZED =
   "The benchmark results need an API token. Enter one to read them.";
 
+export const NETWORK_UNREACHABLE = "The browser could not reach the API.";
+
+// `fetch` rejects with a TypeError, and the browser writes its own message
+// there: "Failed to fetch", "Load failed", "NetworkError when attempting to
+// fetch resource". All three are developer strings with no action in them, so
+// every page says the one sentence a reader can act on instead.
+export function readFailureMessage(err: unknown, fallback: string): string {
+  if (err instanceof TypeError) return NETWORK_UNREACHABLE;
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 // Known built-in names. Runtime availability comes from GET /strategies.
@@ -282,19 +293,65 @@ export async function fetchStrategyCatalog(): Promise<StrategyCatalogRecord[]> {
   }
 }
 
-export async function fetchCorpora(): Promise<CorpusInfo[]> {
+// The built-in list names what KB Arena ships, not what this deployment holds.
+// A page that acts on a corpus, rather than only naming one, needs to know
+// which of the two it received, so this reports the failure and `fetchCorpora`
+// keeps the fallback for the pages that only list names.
+export async function fetchCorporaResult(): Promise<{
+  corpora: CorpusInfo[];
+  failed: boolean;
+}> {
   try {
     const res = await fetch(`${API_URL}/api/corpora`);
-    if (!res.ok) return DEFAULT_CORPORA;
+    if (!res.ok) return { corpora: [], failed: true };
     const data = await res.json();
-    return data.corpora?.length ? data.corpora : DEFAULT_CORPORA;
+    // A body of another shape reached the page as a corpus list, and the page
+    // then mapped over whatever it held. A crash tells the reader less than
+    // the failure the page already renders, so this is that failure.
+    if (!data || typeof data !== "object") return { corpora: [], failed: true };
+    const listed = (data as Record<string, unknown>).corpora;
+    if (listed !== undefined && !Array.isArray(listed)) return { corpora: [], failed: true };
+    const corpora = (listed ?? []).filter(
+      (entry: unknown): entry is CorpusInfo =>
+        Boolean(entry) &&
+        typeof entry === "object" &&
+        typeof (entry as CorpusInfo).value === "string" &&
+        typeof (entry as CorpusInfo).label === "string",
+    );
+    // An empty answer is a deployment that holds no corpus. Handing back the
+    // built-in list here reported that deployment as holding the built-in set,
+    // and reported it as a success.
+    return { corpora, failed: false };
   } catch {
-    return DEFAULT_CORPORA;
+    return { corpora: [], failed: true };
   }
+}
+
+export async function fetchCorpora(): Promise<CorpusInfo[]> {
+  // A page that only names corpora keeps the built-in list when the read
+  // fails, and its banner says the API did not answer. A page that acts on a
+  // corpus reads `fetchCorporaResult` and stops instead.
+  const result = await fetchCorporaResult();
+  return result.failed ? DEFAULT_CORPORA : result.corpora;
 }
 
 export interface ServerStatus {
   demoMode: boolean;
+  // The app sets demo mode for itself when no model key is configured. That
+  // machine is not a hosted demo, and only this flag tells the two apart.
+  // null when the answer did not carry it, which is neither of the two.
+  demoModeAuto: boolean | null;
+  // Whether this browser reached the API over the loopback address. Neither
+  // demo flag says where the server runs, and the browser cannot tell.
+  // null when the answer did not carry it, which is not "somewhere else".
+  callerIsLocal: boolean | null;
+}
+
+// A missing flag is an absent answer, not a false one. `Boolean(undefined)`
+// turned every gap into a positive claim: an older build that reports no
+// locality read as a server on another machine.
+function reportedFlag(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
 }
 
 // null means the server did not answer, which is not the same as live mode.
@@ -304,10 +361,131 @@ export async function fetchServerStatus(): Promise<ServerStatus | null> {
     const res = await fetch(`${API_URL}/health`);
     if (!res.ok) return null;
     const data = await res.json();
-    return { demoMode: Boolean(data.demo_mode) };
+    // A body with no demo flag is not this API's health answer, and reading
+    // the gap as false would call it a live deployment.
+    if (typeof data?.demo_mode !== "boolean") return null;
+    return {
+      demoMode: data.demo_mode,
+      demoModeAuto: reportedFlag(data.demo_mode_auto),
+      callerIsLocal: reportedFlag(data.caller_is_local),
+    };
   } catch {
     return null;
   }
+}
+
+export const LEADERBOARD_MALFORMED =
+  "The leaderboard answer did not carry the rows this page reads.";
+
+export interface LeaderboardRow {
+  corpus: string;
+  strategy: string;
+  // Runs that differ in question set, qrels, judge or top_k never share a row.
+  compatibility_key: string;
+  build?: string;
+  manifest: {
+    question_split?: string | null;
+    judge_model?: string | null;
+    top_k?: number | null;
+  };
+  mixed_with: string[];
+  runs: number;
+  mean_accuracy: number | null;
+  mean_recall_at_5: number | null;
+  mean_ndcg_at_5: number | null;
+  mean_cost_usd: number | null;
+  mean_latency_ms: number | null;
+}
+
+export interface LeaderboardPage {
+  corpora: string[];
+  leaderboard: LeaderboardRow[];
+  filter: string;
+}
+
+const strings = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
+// A metric the answer reports as null is a measurement nobody has, and the
+// table prints "n/a" for it. A metric the answer never carried is a different
+// thing: the row is not the shape this page reads, so undefined drops it.
+const metric = (value: unknown): number | null | undefined => {
+  if (value === null) return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return undefined;
+};
+
+/**
+ * The one place the leaderboard answer becomes rows.
+ *
+ * A page that reads fields off an unchecked body renders whatever a wrong
+ * answer carries, and a check added at the call site guards one field and
+ * misses the next. `kb_arena/benchmark/result_schema.py` learned this on the
+ * Python side: one validated read made a class of defects unreachable instead
+ * of guarded.
+ *
+ * A body that is not an object, or that carries no `leaderboard` array, is a
+ * failed read.
+ *
+ * A row must carry every field the table reads: `corpus`, `strategy`,
+ * `compatibility_key`, `mixed_with`, `manifest`, `runs`, and the five metrics,
+ * where a metric may be null for a measurement nobody has. A row that lacks
+ * one is dropped, never completed. Filling a gap with "legacy", zero runs and
+ * n/a metrics builds a row the server never sent, and a reader cannot tell it
+ * from a measured one. `build` stays optional, because a server older than
+ * that field still reports real rows.
+ */
+export function parseLeaderboard(body: unknown): LeaderboardPage {
+  if (!body || typeof body !== "object") throw new Error(LEADERBOARD_MALFORMED);
+  const answer = body as Record<string, unknown>;
+  if (!Array.isArray(answer.leaderboard)) throw new Error(LEADERBOARD_MALFORMED);
+
+  const rows: LeaderboardRow[] = [];
+  for (const entry of answer.leaderboard) {
+    if (!entry || typeof entry !== "object") continue;
+    const row = entry as Record<string, unknown>;
+    if (typeof row.corpus !== "string" || typeof row.strategy !== "string") continue;
+    if (typeof row.compatibility_key !== "string") continue;
+    if (!Array.isArray(row.mixed_with)) continue;
+    if (typeof row.runs !== "number" || !Number.isFinite(row.runs)) continue;
+    if (!row.manifest || typeof row.manifest !== "object") continue;
+    const manifest = row.manifest as Record<string, unknown>;
+    const metrics = {
+      mean_accuracy: metric(row.mean_accuracy),
+      mean_recall_at_5: metric(row.mean_recall_at_5),
+      mean_ndcg_at_5: metric(row.mean_ndcg_at_5),
+      mean_cost_usd: metric(row.mean_cost_usd),
+      mean_latency_ms: metric(row.mean_latency_ms),
+    };
+    if (Object.values(metrics).some((value) => value === undefined)) continue;
+    rows.push({
+      corpus: row.corpus,
+      strategy: row.strategy,
+      compatibility_key: row.compatibility_key,
+      build: typeof row.build === "string" ? row.build : undefined,
+      manifest: {
+        question_split:
+          typeof manifest.question_split === "string" ? manifest.question_split : null,
+        judge_model: typeof manifest.judge_model === "string" ? manifest.judge_model : null,
+        top_k: metric(manifest.top_k) ?? null,
+      },
+      mixed_with: strings(row.mixed_with),
+      runs: row.runs,
+      ...(metrics as {
+        mean_accuracy: number | null;
+        mean_recall_at_5: number | null;
+        mean_ndcg_at_5: number | null;
+        mean_cost_usd: number | null;
+        mean_latency_ms: number | null;
+      }),
+    });
+  }
+
+  return {
+    corpora: strings(answer.corpora),
+    leaderboard: rows,
+    filter: typeof answer.filter === "string" ? answer.filter : "all",
+  };
 }
 
 export interface GraphData {
@@ -317,27 +495,23 @@ export interface GraphData {
 }
 
 export async function fetchGraphData(corpus: string = "all"): Promise<GraphData> {
-  try {
-    // The route returns entities extracted from the documents, so it carries
-    // the API token when one is set.
-    const res = await apiFetch(`${API_URL}/api/graph/data?corpus=${corpus}`);
-    if (res.status === 401 || res.status === 429 || res.status >= 500) {
-      // `connected: false` reads as "the graph database is down", which is a
-      // claim about the deployment. A refusal, a rate limit and a server
-      // error are all failures to read, and none of them is that claim.
-      throw new Error(res.status === 401 ? GRAPH_UNAUTHORIZED : GRAPH_UNAVAILABLE);
-    }
-    if (!res.ok) return { nodes: [], edges: [], connected: false };
-    return await res.json();
-  } catch (err: unknown) {
-    if (
-      err instanceof Error &&
-      (err.message === GRAPH_UNAUTHORIZED || err.message === GRAPH_UNAVAILABLE)
-    ) {
-      throw err;
-    }
-    return { nodes: [], edges: [], connected: false };
+  // The route returns entities extracted from the documents, so it carries
+  // the API token when one is set.
+  const res = await apiFetch(`${API_URL}/api/graph/data?corpus=${corpus}`).catch(() => {
+    // A network error reached the same `connected: false` return as a real
+    // answer did, so an unreachable API read as an unreachable database.
+    throw new Error(GRAPH_UNAVAILABLE);
+  });
+  if (res.status === 401) throw new Error(GRAPH_UNAUTHORIZED);
+  // `connected: false` reads as "the graph database is down", which is a claim
+  // about the deployment. A rate limit, a server error and every other failed
+  // read are failures to read, and none of them is that claim.
+  if (res.status === 429 || res.status >= 500 || !res.ok) {
+    throw new Error(GRAPH_UNAVAILABLE);
   }
+  return await res.json().catch(() => {
+    throw new Error(GRAPH_UNAVAILABLE);
+  });
 }
 
 export type GraphBuildEvent =
@@ -447,32 +621,26 @@ export async function* streamGraphBuild(
   }
 }
 
+// An empty list is a corpus with no recorded run. Every failure throws, because
+// sample numbers in place of a failed read put invented results on screen under
+// a real corpus name.
 export async function fetchBenchmarkResults(
   corpus: string = "all"
 ): Promise<{ strategy: Strategy; tiers: number[]; latencyMs: number; costUsd: number }[]> {
-  try {
-    // This route returns per-question records, so it carries the API token
-    // when one is set. A bare fetch would get 401 on a deployment with a token.
-    const res = await apiFetch(`${API_URL}/api/benchmark/results?corpus=${corpus}`);
-    if (res.status === 401 || res.status === 429 || res.status >= 500) {
-      // Sample numbers in place of a failed read would put invented results
-      // on screen under a real corpus name. Say what happened instead.
-      throw new Error(
-        res.status === 401 ? BENCHMARK_UNAUTHORIZED : BENCHMARK_UNAVAILABLE,
-      );
-    }
-    if (!res.ok) return MOCK_BENCHMARK_DATA;
-    const data = await res.json();
-    return data.results?.length ? data.results : MOCK_BENCHMARK_DATA;
-  } catch (err: unknown) {
-    if (
-      err instanceof Error &&
-      (err.message === BENCHMARK_UNAUTHORIZED || err.message === BENCHMARK_UNAVAILABLE)
-    ) {
-      throw err;
-    }
-    return MOCK_BENCHMARK_DATA;
+  // This route returns per-question records, so it carries the API token
+  // when one is set. A bare fetch would get 401 on a deployment with a token.
+  const res = await apiFetch(`${API_URL}/api/benchmark/results?corpus=${corpus}`).catch(() => {
+    throw new Error(BENCHMARK_UNAVAILABLE);
+  });
+  if (res.status === 401) throw new Error(BENCHMARK_UNAUTHORIZED);
+  // A rate limit and a server error are failures to read, not results.
+  if (res.status === 429 || res.status >= 500 || !res.ok) {
+    throw new Error(BENCHMARK_UNAVAILABLE);
   }
+  const data = await res.json().catch(() => {
+    throw new Error(BENCHMARK_UNAVAILABLE);
+  });
+  return data.results ?? [];
 }
 
 export interface Source {
@@ -576,54 +744,3 @@ export async function* streamChat(
   }
 }
 
-// Mock data used when API is unavailable
-export const MOCK_BENCHMARK_DATA = [
-  {
-    strategy: "qna_pairs" as Strategy,
-    tiers: [79, 85, 83, 84, 66],
-    latencyMs: 9043,
-    costUsd: 0.48,
-  },
-  {
-    strategy: "knowledge_graph" as Strategy,
-    tiers: [72, 69, 61, 77, 79],
-    latencyMs: 20322,
-    costUsd: 1.37,
-  },
-  {
-    strategy: "hybrid" as Strategy,
-    tiers: [39, 81, 61, 80, 62],
-    latencyMs: 41549,
-    costUsd: 3.02,
-  },
-  {
-    strategy: "raptor" as Strategy,
-    tiers: [30, 16, 15, 36, 30],
-    latencyMs: 7240,
-    costUsd: 0.69,
-  },
-  {
-    strategy: "naive_vector" as Strategy,
-    tiers: [27, 15, 14, 26, 22],
-    latencyMs: 6421,
-    costUsd: 0.33,
-  },
-  {
-    strategy: "contextual_vector" as Strategy,
-    tiers: [25, 11, 9, 26, 11],
-    latencyMs: 5114,
-    costUsd: 0.29,
-  },
-  {
-    strategy: "pageindex" as Strategy,
-    tiers: [19, 12, 7, 21, 12],
-    latencyMs: 10933,
-    costUsd: 0.29,
-  },
-  {
-    strategy: "bm25" as Strategy,
-    tiers: [24, 11, 9, 16, 10],
-    latencyMs: 4514,
-    costUsd: 0.26,
-  },
-];

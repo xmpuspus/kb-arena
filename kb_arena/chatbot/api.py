@@ -1139,6 +1139,25 @@ async def compare_strategies(
         raise HTTPException(status_code=400, detail=f"cannot compare: {exc}") from exc
 
 
+def _pair_from(path: _Path, data: dict) -> tuple[str, str]:
+    """The corpus and strategy a result file describes, or empty strings.
+
+    `path.stem.split("_", 1)[-1]` returned the whole stem for a name with no
+    underscore in it, so `results/run_*/evidence.json` reached the leaderboard as
+    a strategy called `evidence`. The bundle carries a corpus and no per-question
+    records, so it rendered as a strategy that scored 0.0 percent. A record that
+    is not a measurement must not read as one.
+
+    A name with no underscore yields an empty strategy, and the caller drops it.
+    """
+    stem_corpus, _, stem_strategy = path.stem.partition("_")
+    corpus = data.get("corpus") or stem_corpus
+    strategy = data.get("strategy") or stem_strategy
+    if not isinstance(corpus, str) or not isinstance(strategy, str):
+        return "", ""
+    return corpus, strategy
+
+
 @app.get("/api/leaderboard")
 async def leaderboard(request: Request, corpus: str = "all") -> dict:
     """Public read-only leaderboard of all benchmark runs across all corpora.
@@ -1181,9 +1200,8 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
             continue
         if not isinstance(data, dict):
             continue
-        c = data.get("corpus") or path.stem.split("_")[0]
-        s = data.get("strategy") or path.stem.split("_", 1)[-1]
-        if not isinstance(c, str) or not c or not isinstance(s, str) or not s:
+        c, s = _pair_from(path, data)
+        if not c or not s:
             continue
         seen_corpora.add(c)
         if corpus != "all" and c != corpus:
@@ -1212,9 +1230,8 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
                 continue
             if not isinstance(data, dict):
                 continue
-            c = data.get("corpus") or path.stem.split("_")[0]
-            s = data.get("strategy") or path.stem.split("_", 1)[-1]
-            if not isinstance(c, str) or not c or not isinstance(s, str) or not s:
+            c, s = _pair_from(path, data)
+            if not c or not s:
                 continue
             seen_corpora.add(c)
             if corpus != "all" and c != corpus:
@@ -1284,6 +1301,18 @@ def _finite_number(value: object, field: str) -> float:
 
 def _summarise_run(data: dict) -> dict:
     """Pull the leaderboard-relevant fields out of a benchmark JSON, tolerantly."""
+
+    # A missing key and an empty list are not the same thing. `data.get("records", [])`
+    # read them as one, so any JSON file under `results/` summarised to zeros and
+    # reached the board as a strategy. Dropping `evidence.json` by name fixed one
+    # file and left the class open: `question_coverage.json` splits cleanly and
+    # would have become the strategy `coverage`.
+    #
+    # The legacy single-run shape carries `overall_accuracy` and no `records`, so
+    # requiring `records` alone would drop a real measurement. A file that carries
+    # neither is not a run.
+    if "records" not in data and "overall_accuracy" not in data:
+        raise ValueError("no records and no overall_accuracy, so this is not a benchmark run")
 
     records = data.get("records", [])
     if not isinstance(records, list) or not all(isinstance(record, dict) for record in records):
@@ -1378,6 +1407,16 @@ async def health(request: Request) -> dict:
         },
         "strategies": list(request.app.state.strategies.keys()),
         "demo_mode": settings.demo_mode,
+        # `demo_mode` alone reads as "an operator published this deployment",
+        # and the app also turns it on for a laptop with no model key. The
+        # dashboard names one of three states from these two flags, so it must
+        # see both or it calls a laptop a hosted demo.
+        "demo_mode_auto": settings.demo_mode_auto,
+        # Neither flag says where the server runs, and the dashboard called
+        # every reachable deployment the reader's own machine. Only the server
+        # knows which address the caller arrived on, and the read gate already
+        # decides it the same way.
+        "caller_is_local": _auth_module._is_loopback_host(_auth_module._client_key(request)),
     }
 
 
