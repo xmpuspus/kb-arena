@@ -79,6 +79,9 @@ def main(root: Path) -> int:
     if not (root / "index.html").is_file():
         print(f"No dashboard at {root}.", file=sys.stderr)
         return 1
+    # Resolve first. `kb_arena/static/../static` reaches the same directory, and
+    # an unresolved comparison read its parent as `..` and let the guard pass.
+    root = root.resolve()
     if root.name == "static" and root.parent.name == "kb_arena":
         print(
             "Refusing to rewrite the packaged bundle. Run this on the Space copy.", file=sys.stderr

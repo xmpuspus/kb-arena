@@ -114,3 +114,10 @@ def test_a_link_to_a_page_the_build_never_wrote_stops_the_deploy(tmp_path, capsy
     assert "never wrote" in capsys.readouterr().err
     # The link is left alone, so the failure names the real problem.
     assert 'href="/missing/"' in (space / "index.html").read_text()
+
+
+def test_the_packaged_bundle_guard_resolves_the_path_first(capsys):
+    """`kb_arena/static/../static` reaches the same directory."""
+    module = _module()
+    assert module.main(ROOT / "kb_arena" / "static" / ".." / "static") == 1
+    assert "Refusing to rewrite the packaged bundle" in capsys.readouterr().err
