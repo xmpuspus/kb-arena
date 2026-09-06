@@ -460,3 +460,12 @@ def test_the_truncation_fields_are_checked_rather_than_coerced():
     lib = (WEB / "lib" / "decide.ts").read_text()
     assert 'if (typeof data.truncated !== "boolean") throw new Error(EVIDENCE_UNREADABLE);' in lib
     assert "truncated: Boolean(data.truncated)" not in lib
+
+
+def test_the_evidence_scan_does_not_follow_a_symlink_out_of_the_results_directory():
+    """`/api/evidence` needs no token, so a planted symlink read any JSON file."""
+    api = (ROOT / "kb_arena" / "chatbot" / "api.py").read_text()
+    assert "follow_symlinks=False" in api
+    scan = api[api.index("entries: list[tuple[float, str, _Path]] = []") :]
+    scan = scan[: scan.index("entries.sort(reverse=True)")]
+    assert "entry.is_dir()" not in scan, "is_dir follows a symlink by default"

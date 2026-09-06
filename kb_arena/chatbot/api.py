@@ -1259,7 +1259,10 @@ def _recent_run_dirs(base: _Path) -> tuple[list[_Path], bool]:
                     overflow = True
                     break
                 examined += 1
-                if not entry.name.startswith("run_") or not entry.is_dir():
+                # `is_dir()` follows a symlink, so `results/run_leak` pointing
+                # anywhere the server account can read became a bundle on an
+                # endpoint that needs no token. Only real directories here.
+                if not entry.name.startswith("run_") or not entry.is_dir(follow_symlinks=False):
                     continue
                 mtime, name = _entry_recency(entry)
                 entries.append((mtime, name, _Path(entry.path)))
