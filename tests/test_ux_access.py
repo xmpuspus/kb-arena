@@ -528,3 +528,49 @@ def test_the_environment_block_is_checked_field_by_field():
     lib = (WEB / "lib" / "decide.ts").read_text()
     assert "const environmentTextIsText =" in lib
     assert '["kb_arena", "git_sha", "platform"]' in lib
+
+
+def test_the_catalog_read_refuses_a_body_it_cannot_recognise():
+    """An unchecked catalog let the page claim the deployment answered.
+
+    `/strategies` answering 200 with any non-empty `catalog` array flowed
+    straight through as records. `catalogIsLive` then tested `status` against
+    the fallback's own value, so an entry with no status at all read as live,
+    and the decide page stated the architecture list came from the server.
+    """
+    api = (WEB / "lib" / "api.ts").read_text()
+    reader_start = api.index("export async function fetchStrategyCatalog")
+    guard = api[api.index("function isCatalogRecord") : reader_start]
+    for field in ("record.name", "record.label", "record.status"):
+        assert f'typeof {field} === "string"' in guard, f"the guard skips {field}"
+    assert "CATALOG_STATUSES.has(record.status)" in guard
+
+    reader = api[reader_start:]
+    reader = reader[: reader.index("\n}")]
+    assert "data.catalog?.length ? data.catalog" not in reader
+    assert "listed.every(isCatalogRecord)" in reader
+
+    decide = (WEB / "lib" / "decide.ts").read_text()
+    live = decide[decide.index("export function catalogIsLive") :]
+    live = live[: live.index("\n}")]
+    # Name the two the server writes. Testing against the fallback's value
+    # counts a record with no status as a server answer.
+    assert 'record?.status === "loaded"' in live
+    assert 'record?.status === "unavailable"' in live
+    assert '!== "unknown"' not in live
+
+
+def test_an_absent_question_total_never_renders_as_a_denominator():
+    """ "5 of 0 questions" is a measurement nobody made.
+
+    A bundle whose review block carries counts but no `questions` total read
+    the total as zero, so the caveat printed a denominator the run never
+    recorded. An absent value is not a zero value, which is the distinction
+    the `citable` branch above it already makes.
+    """
+    decide = (WEB / "lib" / "decide.ts").read_text()
+    body = decide[decide.index("export function bundleCaveats") :]
+    body = body[: body.index("\n}\n", body.index("const drafts = review.counts"))]
+    assert "review.questions ?? 0" not in body
+    assert 'const outOf = counted ? ` of ${total}` : "";' in body
+    assert "The bundle records no question total" in body

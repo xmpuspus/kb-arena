@@ -286,12 +286,37 @@ export const DEFAULT_CORPORA: CorpusInfo[] = [
 // Kept for backward compatibility with components that do not fetch dynamically.
 export const CORPORA = DEFAULT_CORPORA;
 
+// The status strings the catalog can carry. `kb_arena/strategies/catalog.py`
+// writes `loaded` or `unavailable`, and the built-in fallback above writes
+// `unknown`. A record with any other status, or none, came from something this
+// page cannot read.
+const CATALOG_STATUSES = new Set(["loaded", "unavailable", "unknown"]);
+
+function isCatalogRecord(entry: unknown): entry is StrategyCatalogRecord {
+  if (!entry || typeof entry !== "object") return false;
+  const record = entry as Record<string, unknown>;
+  return (
+    typeof record.name === "string" &&
+    typeof record.label === "string" &&
+    typeof record.status === "string" &&
+    CATALOG_STATUSES.has(record.status)
+  );
+}
+
 export async function fetchStrategyCatalog(): Promise<StrategyCatalogRecord[]> {
   try {
     const res = await fetch(`${API_URL}/strategies`);
     if (!res.ok) return DEFAULT_STRATEGY_CATALOG;
     const data = await res.json();
-    return data.catalog?.length ? data.catalog : DEFAULT_STRATEGY_CATALOG;
+    // Any 200 carrying a non-empty `catalog` array used to flow on untouched.
+    // `catalogIsLive` then read that body as a fact about this deployment, so
+    // a proxy or a version skew could make the decide page state the
+    // architecture list came from the server. One bad record fails the whole
+    // read, because a half-trusted catalog is not a catalog.
+    const listed = (data as Record<string, unknown> | null)?.catalog;
+    if (!Array.isArray(listed) || listed.length === 0) return DEFAULT_STRATEGY_CATALOG;
+    if (!listed.every(isCatalogRecord)) return DEFAULT_STRATEGY_CATALOG;
+    return listed as StrategyCatalogRecord[];
   } catch {
     return DEFAULT_STRATEGY_CATALOG;
   }

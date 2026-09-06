@@ -370,8 +370,15 @@ export type DecideCatalogRecord = StrategyCatalogRecord & { needs_embeddings?: b
 // Every record in the offline fallback carries `status: "unknown"`. A record
 // from the server carries `loaded` or `unavailable`. So this tells a live
 // catalog from the hardcoded copy, and the copy states the wrong architecture.
+//
+// The test used to read `!== "unknown"`, which a record with no status at all
+// passes. That turned an unreadable body into a claim that this deployment
+// answered, which is the one thing this function exists to prevent. Name the
+// two the server writes instead.
 export function catalogIsLive(catalog: DecideCatalogRecord[]): boolean {
-  return catalog.some((record) => record.status !== "unknown");
+  return catalog.some(
+    (record) => record?.status === "loaded" || record?.status === "unavailable"
+  );
 }
 
 export interface Candidate {
@@ -609,16 +616,25 @@ export function bundleCaveats(bundle: EvidenceBundle | null): string[] {
   }
   const drafts = review.counts?.["machine-assisted-draft"] ?? 0;
   const unspecified = review.counts?.["unspecified"] ?? 0;
-  const total = review.questions ?? 0;
+  // An absent total is not a total of zero. Reading it as zero printed
+  // "5 of 0 questions are machine-assisted drafts", which a reader cannot
+  // tell from a measurement. The same distinction the `citable` branch above
+  // makes: nothing recorded is not a recorded nothing.
+  const total = review.questions;
+  const counted = typeof total === "number";
+  const outOf = counted ? ` of ${total}` : "";
   if (drafts > 0) {
     lines.push(
-      `${drafts} of ${total} questions are machine-assisted drafts. Nobody checked those answer keys.`
+      `${drafts}${outOf} questions are machine-assisted drafts. Nobody checked those answer keys.`
     );
   }
   if (unspecified > 0) {
-    lines.push(`${unspecified} of ${total} questions carry no review status.`);
+    lines.push(`${unspecified}${outOf} questions carry no review status.`);
   }
-  if (drafts === 0 && unspecified === 0 && total > 0) {
+  if (!counted && (drafts > 0 || unspecified > 0)) {
+    lines.push("The bundle records no question total, so these counts have no denominator.");
+  }
+  if (drafts === 0 && unspecified === 0 && counted && total > 0) {
     lines.push(`All ${total} scored questions are marked human-reviewed.`);
   }
   if (review.note) lines.push(review.note);
