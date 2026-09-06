@@ -69,3 +69,21 @@ Regenerate the HTML with `node scripts/render_benchmark_evidence.mjs`, then capt
 1200 by 675 headless browser viewport. The full-resolution PNG was inspected after capture. Its six
 rows and three metrics match the JSON to three decimal places, and the interpretation limit remains
 visible at README size.
+
+## The social preview is one frame of the hero recording
+
+`docs/social-preview.png` is 1280x640, the size GitHub asks for. It is frame 36
+of `docs/demo.gif`, cropped and scaled, so it shows the same real keyless run
+and invents nothing.
+
+GitHub has no REST endpoint for the social preview. Upload it by hand:
+Settings, then General, then Social preview, then Edit, then Upload an image.
+Check the result by opening `https://opengraph.githubassets.com/1/xmpuspus/kb-arena`
+in a browser. GitHub caches that image, so the new one does not appear at once.
+
+Rebuild the file after a new hero recording:
+
+```
+ffmpeg -i docs/demo.gif -vf fps=1/6 /tmp/hero-%02d.png
+ffmpeg -y -i /tmp/hero-06.png -vf "crop=1200:600:0:0,scale=1280:640:flags=lanczos" docs/social-preview.png
+```
