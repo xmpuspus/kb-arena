@@ -1174,6 +1174,25 @@ def _pair_from(path: _Path, data: dict) -> tuple[str, str]:
     return corpus, strategy
 
 
+def _run_dir_recency(path: _Path) -> tuple[float, str]:
+    """How recent a run directory is, for the evidence scan order.
+
+    The directory name holds a random hex run id, so sorting by name orders
+    the runs arbitrarily. This uses the directory's own modification time,
+    which is one `stat` per directory rather than a parse of every bundle.
+    Sorting on the bundle's `created_at` would mean reading every bundle
+    first, which is the walk the scan limit exists to avoid.
+
+    The name breaks ties so the order stays stable. A tree that was copied
+    without timestamps carries one mtime for everything, and the order then
+    falls back to the name, which is the behaviour this replaced.
+    """
+    try:
+        return (path.stat().st_mtime, path.name)
+    except OSError:
+        return (0.0, path.name)
+
+
 @app.get("/api/evidence", dependencies=[Depends(check_rate_limit)])
 async def evidence_bundles(corpus: str = "") -> dict:
     """The newest evidence bundles this deployment holds, at most 50 run directories read.
@@ -1186,9 +1205,13 @@ async def evidence_bundles(corpus: str = "") -> dict:
     A results directory grows one directory per run and never shrinks. Reading
     every one of them is a blocking file walk on the event loop that gets
     slower for every run anybody has made. So this reads the newest
-    `EVIDENCE_SCAN_LIMIT` directories and stops. `truncated` says when older
-    directories went unread, because a short list and a capped list are two
-    different answers.
+    `EVIDENCE_SCAN_LIMIT` directories, ordered by directory modification time,
+    and stops. `truncated` says when older directories went unread, because a
+    short list and a capped list are two different answers.
+
+    `unreadable` names the runs whose `evidence.json` could not be parsed. A
+    broken bundle is not a missing one, and dropping it answered 200 with an
+    empty list while the run sat on disk.
 
     `check_bundle` is not called. It shells out to git, and a route that runs
     git per request answers slowly and differently on a wheel install. That
@@ -1198,31 +1221,44 @@ async def evidence_bundles(corpus: str = "") -> dict:
         raise HTTPException(status_code=400, detail="invalid corpus")
     base = _Path(settings.results_path)
     if not base.exists():
-        return {"bundles": [], "truncated": False, "scan_limit": EVIDENCE_SCAN_LIMIT}
-    # The glob is sorted before the slice, so the cap keeps the newest run
-    # directories rather than whichever ones the filesystem listed first.
-    run_dirs = sorted(base.glob("run_*"), reverse=True)
+        return {
+            "bundles": [],
+            "unreadable": [],
+            "truncated": False,
+            "scan_limit": EVIDENCE_SCAN_LIMIT,
+        }
+    run_dirs = sorted(base.glob("run_*"), key=_run_dir_recency, reverse=True)
     scanned = run_dirs[:EVIDENCE_SCAN_LIMIT]
     bundles: list[dict] = []
+    unreadable: list[str] = []
     for run_dir in scanned:
+        # The run id names the directory, not a bundle field. A page that links
+        # a bundle back to its run needs it, and reading it out of the result
+        # paths breaks the moment one bundle names two files.
+        run_id = run_dir.name.removeprefix("run_")
         path = run_dir / "evidence.json"
         if not path.exists():
             continue
         try:
             bundle = json.loads(path.read_text())
         except (json.JSONDecodeError, OSError):
+            # A bundle that cannot be parsed is not a bundle that is absent.
+            # Dropping it answered 200 with an empty list, and the page then
+            # said the deployment holds no recorded run. The run is there.
+            unreadable.append(run_id)
             continue
         if not isinstance(bundle, dict):
+            unreadable.append(run_id)
             continue
+        # An unreadable bundle names no corpus, so the filter runs after the
+        # parse and a broken file is reported whichever corpus was asked for.
         if corpus and bundle.get("corpus") != corpus:
             continue
-        # The run id names the directory, not a bundle field. A page that links
-        # a bundle back to its run needs it, and reading it out of the result
-        # paths breaks the moment one bundle names two files.
-        bundle["run_id"] = run_dir.name.removeprefix("run_")
+        bundle["run_id"] = run_id
         bundles.append(bundle)
     return {
         "bundles": bundles,
+        "unreadable": unreadable,
         "truncated": len(run_dirs) > len(scanned),
         "scan_limit": EVIDENCE_SCAN_LIMIT,
     }

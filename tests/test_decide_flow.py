@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 from pathlib import Path
 
@@ -191,6 +192,48 @@ def test_changing_the_scope_drops_the_earlier_comparison():
     ), "the URL-linked read must fire once, or it refills the record the reset just cleared"
 
 
+def test_a_read_in_flight_cannot_write_back_after_the_scope_changes():
+    """Clearing state does not cancel a request. The reply lands and refills it."""
+    page = DECIDE_PAGE.read_text()
+    read = re.search(r"const readComparison = useCallback\(.*?\n  \}, \[", page, re.S)
+    assert read, "web/app/decide/page.tsx must define readComparison"
+    body = read.group(0)
+
+    assert "++readTicket.current" in body, "the read must take a ticket before it starts"
+    assert body.count("isCurrentRead()") >= 3, (
+        "the success path, the failure path and the pending flag each need the "
+        "check. A retired reply that writes any of the three is the same bug."
+    )
+
+    reset = re.search(r"useScopeReset\(.*?\n  \}\);", page, re.S)
+    assert reset, "the scope reset must exist"
+    assert "readTicket.current += 1" in reset.group(
+        0
+    ), "the reset must retire the read in flight, not only clear what landed"
+    assert "setComparing(false)" in reset.group(
+        0
+    ), "a retired read never reaches its finally, so the pending flag would never clear"
+
+
+def test_a_capped_or_broken_evidence_read_never_reads_as_no_run_exists():
+    source = DECIDE_TS.read_text()
+    reason = re.search(r"export function noBundleReason\(.*?\n\}", source, re.S)
+    assert reason, "web/lib/decide.ts must export noBundleReason"
+    body = reason.group(0)
+
+    assert "not proof that no run exists" in body, (
+        "a capped list and a parse failure both leave the list empty, and neither "
+        "proves the deployment holds no run"
+    )
+    assert body.index("unreadable.length > 0") < body.index(
+        "truncatedLimit > 0"
+    ), "a bundle that failed to parse is the more definite fact, so it reports first"
+    page = DECIDE_PAGE.read_text()
+    assert (
+        "noBundleReason(bundlesTruncated, bundlesUnreadable, corpus)" in page
+    ), "the empty state must read the truncation and the parse failures the route reported"
+
+
 def test_step_four_never_advertises_a_path_step_five_cannot_read():
     """`/api/compare` reads result files. A retriever-lab run writes one lab file instead."""
     page = DECIDE_PAGE.read_text()
@@ -304,16 +347,50 @@ def test_a_full_read_never_reports_a_truncation(tmp_path, monkeypatch):
     assert asyncio.run(api.evidence_bundles())["truncated"] is False
 
 
-def test_a_corrupt_bundle_never_stops_the_others(tmp_path, monkeypatch):
+def test_the_scan_drops_the_oldest_runs_not_an_arbitrary_set(tmp_path, monkeypatch):
+    """A run id is random hex, so a name sort ordered the runs by nothing."""
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    # Name order and time order disagree: the alphabetically first run is the
+    # newest. A name sort would drop it, and it is the one a reader wants.
+    for name, when in (("aaa", 3000.0), ("mmm", 2000.0), ("zzz", 1000.0)):
+        _write_bundle(tmp_path, name, _bundle())
+        os.utime(tmp_path / f"run_{name}", (when, when))
+    monkeypatch.setattr(api, "EVIDENCE_SCAN_LIMIT", 2)
+
+    answer = asyncio.run(api.evidence_bundles())
+
+    assert [b["run_id"] for b in answer["bundles"]] == ["aaa", "mmm"]
+    assert answer["truncated"] is True
+
+
+def test_a_corrupt_bundle_is_reported_rather_than_dropped(tmp_path, monkeypatch):
+    """Dropping it answered 200 with an empty list, and step 4 then claimed no run exists."""
     monkeypatch.setattr(settings, "results_path", str(tmp_path))
     _write_bundle(tmp_path, "aaa", _bundle())
     (tmp_path / "run_bad").mkdir()
     (tmp_path / "run_bad" / "evidence.json").write_text("{ not json")
+    (tmp_path / "run_list").mkdir()
+    (tmp_path / "run_list" / "evidence.json").write_text("[1, 2]")
     (tmp_path / "run_empty").mkdir()
 
     answer = asyncio.run(api.evidence_bundles())
 
     assert [b["run_id"] for b in answer["bundles"]] == ["aaa"]
+    assert sorted(answer["unreadable"]) == ["bad", "list"]
+    # A directory with no bundle at all is not unreadable. It holds no evidence.
+    assert "empty" not in answer["unreadable"]
+
+
+def test_a_broken_bundle_is_reported_whichever_corpus_was_asked_for(tmp_path, monkeypatch):
+    """It names no corpus, so filtering it out would hide it from every reader."""
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    (tmp_path / "run_bad").mkdir()
+    (tmp_path / "run_bad" / "evidence.json").write_text("{ not json")
+
+    answer = asyncio.run(api.evidence_bundles(corpus="aws-compute"))
+
+    assert answer["bundles"] == []
+    assert answer["unreadable"] == ["bad"]
 
 
 def test_no_results_directory_reads_as_no_bundles(tmp_path, monkeypatch):
@@ -321,6 +398,7 @@ def test_no_results_directory_reads_as_no_bundles(tmp_path, monkeypatch):
 
     assert asyncio.run(api.evidence_bundles()) == {
         "bundles": [],
+        "unreadable": [],
         "truncated": False,
         "scan_limit": api.EVIDENCE_SCAN_LIMIT,
     }

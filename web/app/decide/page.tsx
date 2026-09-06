@@ -27,6 +27,7 @@ import {
   fetchEvidenceBundles,
   ingestCommand,
   labCommand,
+  noBundleReason,
   type CompareResult,
   type DecideCatalogRecord,
   type EvidenceBundle,
@@ -103,6 +104,7 @@ export default function DecidePage() {
   const [bundles, setBundles] = useState<EvidenceBundle[]>([]);
   // The scan limit when the route capped the walk, zero when it read everything.
   const [bundlesTruncated, setBundlesTruncated] = useState(0);
+  const [bundlesUnreadable, setBundlesUnreadable] = useState<string[]>([]);
   const [bundlesError, setBundlesError] = useState<string | null>(null);
   const [createdAt, setCreatedAt] = useState("");
 
@@ -156,11 +158,13 @@ export default function DecidePage() {
       .then((answer) => {
         setBundles(answer.bundles);
         setBundlesTruncated(answer.truncated ? answer.scanLimit : 0);
+        setBundlesUnreadable(answer.unreadable);
         setBundlesError(null);
       })
       .catch(() => {
         setBundles([]);
         setBundlesTruncated(0);
+        setBundlesUnreadable([]);
         setBundlesError(EVIDENCE_UNREADABLE);
       });
   }, [corpus]);
@@ -192,27 +196,42 @@ export default function DecidePage() {
     window.history.replaceState(null, "", `?${params.toString()}`);
   }, []);
 
+  // A read in flight when the scope changes still lands. Clearing the state
+  // does not cancel it, so its reply writes the old numbers back under the new
+  // header. The ticket retires that reply the way the graph page does.
+  const readTicket = useRef(0);
+
   const readComparison = useCallback(() => {
     if (!corpus || !stratA || !stratB) return;
+    const ticket = ++readTicket.current;
+    const isCurrentRead = () => ticket === readTicket.current;
     setComparing(true);
     fetchCompare(corpus, stratA, stratB, metric)
       .then((result) => {
+        if (!isCurrentRead()) return;
         setComparison(result);
         setComparisonError(null);
       })
       .catch((err: Error) => {
+        if (!isCurrentRead()) return;
         setComparison(null);
         setComparisonError(err.message);
       })
-      .finally(() => setComparing(false));
+      .finally(() => {
+        if (isCurrentRead()) setComparing(false);
+      });
   }, [corpus, stratA, stratB, metric]);
 
   // The numbers belong to one corpus, one pair of strategies and one metric.
   // Change any of the three and the old numbers describe something the header
   // no longer names, so they go before the next read starts.
   useScopeReset(`${corpus}|${stratA}|${stratB}|${metric}`, () => {
+    readTicket.current += 1;
     setComparison(null);
     setComparisonError(null);
+    // The retired read never reaches its own finally, so the button would read
+    // "Reading" for ever. The graph page hit the same thing.
+    setComparing(false);
   });
 
   // A link that names both strategies asks for the comparison, so the page
@@ -560,10 +579,16 @@ export default function DecidePage() {
                   exist and this page did not read them.
                 </p>
               )}
+              {bundlesUnreadable.length > 0 && (
+                <Refusal
+                  text={`The evidence for ${bundlesUnreadable.join(
+                    ", "
+                  )} is on disk and could not be read. Those runs are not missing.`}
+                />
+              )}
               {!bundlesError && bundles.length === 0 && (
                 <p className="text-sm" style={{ color: "var(--muted)" }}>
-                  This deployment holds no evidence bundle for {corpus || "this corpus"}, so there
-                  is no recorded run to inspect. Run one of the commands above.
+                  {noBundleReason(bundlesTruncated, bundlesUnreadable, corpus)}
                 </p>
               )}
               {bundles.map((b) => (

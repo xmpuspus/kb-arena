@@ -139,6 +139,9 @@ export async function fetchCorporaOrFail(): Promise<CorpusInfo[]> {
 
 export interface EvidenceAnswer {
   bundles: EvidenceBundle[];
+  // Runs whose bundle sits on disk and could not be parsed. A broken bundle is
+  // not a missing one, so the page never reads these as an empty deployment.
+  unreadable: string[];
   // The route reads a fixed number of run directories. A capped list and a
   // short list are two different answers, so the page repeats which it got.
   truncated: boolean;
@@ -152,9 +155,32 @@ export async function fetchEvidenceBundles(corpus: string): Promise<EvidenceAnsw
   const data = await res.json();
   return {
     bundles: Array.isArray(data.bundles) ? data.bundles : [],
+    unreadable: Array.isArray(data.unreadable) ? data.unreadable : [],
     truncated: Boolean(data.truncated),
     scanLimit: typeof data.scan_limit === "number" ? data.scan_limit : 0,
   };
+}
+
+/**
+ * What an empty bundle list proves, which is less than "no run exists".
+ *
+ * The list is empty after a capped scan and after a parse failure as well as
+ * after a real absence. Only the third case supports "run one of the commands
+ * above", so the other two say what actually happened.
+ */
+export function noBundleReason(
+  truncatedLimit: number,
+  unreadable: string[],
+  corpus: string
+): string {
+  const name = corpus || "this corpus";
+  if (unreadable.length > 0) {
+    return `No bundle for ${name} could be read. ${unreadable.length} bundle files on disk could not be parsed, so this is not proof that no run exists.`;
+  }
+  if (truncatedLimit > 0) {
+    return `No bundle for ${name} sits in the newest ${truncatedLimit} run directories. Older directories went unread, so this is not proof that no run exists.`;
+  }
+  return `This deployment holds no evidence bundle for ${name}, so there is no recorded run to inspect. Run one of the commands above.`;
 }
 
 export async function fetchCompare(
