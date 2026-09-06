@@ -1139,6 +1139,25 @@ async def compare_strategies(
         raise HTTPException(status_code=400, detail=f"cannot compare: {exc}") from exc
 
 
+def _pair_from(path: _Path, data: dict) -> tuple[str, str]:
+    """The corpus and strategy a result file describes, or empty strings.
+
+    `path.stem.split("_", 1)[-1]` returned the whole stem for a name with no
+    underscore in it, so `results/run_*/evidence.json` reached the leaderboard as
+    a strategy called `evidence`. The bundle carries a corpus and no per-question
+    records, so it rendered as a strategy that scored 0.0 percent. A record that
+    is not a measurement must not read as one.
+
+    A name with no underscore yields an empty strategy, and the caller drops it.
+    """
+    stem_corpus, _, stem_strategy = path.stem.partition("_")
+    corpus = data.get("corpus") or stem_corpus
+    strategy = data.get("strategy") or stem_strategy
+    if not isinstance(corpus, str) or not isinstance(strategy, str):
+        return "", ""
+    return corpus, strategy
+
+
 @app.get("/api/leaderboard")
 async def leaderboard(request: Request, corpus: str = "all") -> dict:
     """Public read-only leaderboard of all benchmark runs across all corpora.
@@ -1181,9 +1200,8 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
             continue
         if not isinstance(data, dict):
             continue
-        c = data.get("corpus") or path.stem.split("_")[0]
-        s = data.get("strategy") or path.stem.split("_", 1)[-1]
-        if not isinstance(c, str) or not c or not isinstance(s, str) or not s:
+        c, s = _pair_from(path, data)
+        if not c or not s:
             continue
         seen_corpora.add(c)
         if corpus != "all" and c != corpus:
@@ -1212,9 +1230,8 @@ async def leaderboard(request: Request, corpus: str = "all") -> dict:
                 continue
             if not isinstance(data, dict):
                 continue
-            c = data.get("corpus") or path.stem.split("_")[0]
-            s = data.get("strategy") or path.stem.split("_", 1)[-1]
-            if not isinstance(c, str) or not c or not isinstance(s, str) or not s:
+            c, s = _pair_from(path, data)
+            if not c or not s:
                 continue
             seen_corpora.add(c)
             if corpus != "all" and c != corpus:
