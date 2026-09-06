@@ -233,7 +233,7 @@ def test_a_reader_that_cannot_parse_a_body_says_so_instead_of_thinning_it():
 
     decide = (WEB / "lib" / "decide.ts").read_text()
     assert "const rowsAreShaped =" in decide
-    assert 'typeof (row as Record<string, unknown>).question_id === "string"' in decide
+    assert 'typeof cells.question_id === "string"' in decide
 
 
 def test_the_diagnostics_page_calls_a_missing_flag_unknown():
@@ -250,3 +250,32 @@ def test_the_diagnostics_page_calls_a_missing_flag_unknown():
     following = page[branch : branch + 400]
     assert "NOT_REPORTED" in following
     assert following.index("NOT_REPORTED") < following.index("can call the model")
+
+
+def test_the_decision_flow_refuses_an_empty_strategy_pick_the_way_the_panel_does():
+    """Two builders for the same command must not disagree on the empty case."""
+    lib = (WEB / "lib" / "decide.ts").read_text()
+    assert 'return names.join(",");' in lib
+    assert 'names.length ? names.join(",") : "all"' not in lib
+    assert "return names.length ? command(parts, values) : NOTHING_PICKED;" in lib
+
+
+def test_an_empty_corpus_drops_the_evidence_the_last_one_left():
+    """Returning early kept the old bundles under the heading "no corpus"."""
+    page = (WEB / "app" / "decide" / "page.tsx").read_text()
+    branch = page.index("if (!activeCorpus) {")
+    body = page[branch : page.index("const ticket = ++evidenceTicket.current;", branch)]
+    for cleared in ("evidenceTicket.current += 1;", "setBundles([]);", "setBundlesUnreadable([]);"):
+        assert cleared in body, f"the empty branch leaves this behind: {cleared}"
+
+
+def test_the_comparison_guard_covers_every_field_the_type_declares():
+    """Three rounds each asked for one more field, so this checks the whole type."""
+    lib = (WEB / "lib" / "decide.ts").read_text()
+    declared = lib[lib.index("export interface CompareResult {") :]
+    declared = declared[: declared.index("\n}")]
+    fields = re.findall(r"^  (\w+):", declared, re.MULTILINE)
+    start = lib.index("const ci = data.delta_ci_95;")
+    guard = lib[start : lib.index("throw new Error(COMPARE_UNREADABLE)", start)]
+    missing = [f for f in fields if f not in guard and f != "delta_ci_95"]
+    assert not missing, f"the guard never checks these declared fields: {missing}"

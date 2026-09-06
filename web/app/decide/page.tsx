@@ -170,7 +170,17 @@ export default function DecidePage() {
   // corpus's runs under this corpus's heading.
   const evidenceTicket = useRef(0);
   useEffect(() => {
-    if (!activeCorpus) return;
+    if (!activeCorpus) {
+      // Returning here left the previous corpus's bundles on screen under the
+      // heading "Recorded runs for no corpus", and the decision record took
+      // them. Retire the read in flight and drop what it filled.
+      evidenceTicket.current += 1;
+      setBundles([]);
+      setBundlesTruncated(0);
+      setBundlesUnreadable([]);
+      setBundlesError(null);
+      return;
+    }
     const ticket = ++evidenceTicket.current;
     const isCurrentRead = () => ticket === evidenceTicket.current;
     fetchEvidenceBundles(activeCorpus)

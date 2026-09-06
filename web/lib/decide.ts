@@ -222,28 +222,65 @@ export async function fetchCompare(
   // them would render "not recorded" beside real numbers, which reads as a
   // measured absence rather than a reply this page could not use.
   const ci = data.delta_ci_95;
-  const meta = data.meta as { reasons?: unknown } | undefined;
-  // Every row is dereferenced while the table renders, so an array alone is not
-  // enough. A 200 carrying `per_question: [null]` passed this guard and then
-  // crashed on `row.question_id`.
+  // Checked against every field `CompareResult` declares, not a subset. Three
+  // review rounds each asked for one more field, which is the shape that never
+  // converges. The page renders each of these as a fact, so a 200 that omits
+  // one is an unreadable answer rather than a smaller one.
+  const numbers = [
+    "n_paired",
+    "unpaired_a",
+    "unpaired_b",
+    "mean_a",
+    "mean_b",
+    "mean_delta",
+    "wins",
+    "ties",
+    "losses",
+  ];
+  const booleans = [
+    "lower_is_better",
+    "ci_excludes_zero",
+    "significant",
+    "enough_pairs_for_inference",
+  ];
+  const strings = ["metric", "a", "b", "note"];
+  const nullableNumbers = ["effect_size_d", "wilcoxon_p"];
+
   const rowsAreShaped =
     Array.isArray(data.per_question) &&
-    data.per_question.every(
-      (row) =>
-        row !== null &&
-        typeof row === "object" &&
-        typeof (row as Record<string, unknown>).question_id === "string" &&
-        typeof (row as Record<string, unknown>).delta === "number"
-    );
-  const shaped =
-    typeof data.n_paired === "number" &&
-    typeof data.mean_delta === "number" &&
-    rowsAreShaped &&
-    Array.isArray(ci) &&
-    ci.length === 2 &&
+    data.per_question.every((row) => {
+      if (row === null || typeof row !== "object") return false;
+      const cells = row as Record<string, unknown>;
+      return (
+        typeof cells.question_id === "string" &&
+        typeof cells.a === "number" &&
+        typeof cells.b === "number" &&
+        typeof cells.delta === "number"
+      );
+    });
+
+  const meta = data.meta as Record<string, unknown> | undefined;
+  const metaIsShaped =
     typeof meta === "object" &&
     meta !== null &&
-    Array.isArray(meta.reasons);
+    typeof meta.comparable === "boolean" &&
+    Array.isArray(meta.reasons) &&
+    meta.reasons.every((reason) => typeof reason === "string") &&
+    typeof meta.a === "object" &&
+    meta.a !== null &&
+    typeof meta.b === "object" &&
+    meta.b !== null;
+
+  const shaped =
+    numbers.every((key) => typeof data[key] === "number") &&
+    booleans.every((key) => typeof data[key] === "boolean") &&
+    strings.every((key) => typeof data[key] === "string") &&
+    nullableNumbers.every((key) => data[key] === null || typeof data[key] === "number") &&
+    Array.isArray(ci) &&
+    ci.length === 2 &&
+    ci.every((bound) => typeof bound === "number") &&
+    rowsAreShaped &&
+    metaIsShaped;
   if (!shaped) throw new Error(COMPARE_UNREADABLE);
   return data as unknown as CompareResult;
 }
@@ -349,23 +386,35 @@ function command(parts: string[], values: string[]): string {
   return values.every(isSafeId) ? parts.join(" ") : UNSAFE_COMMAND;
 }
 
+/** A command that names strategies, or the refusal when none were picked. */
+function strategyCommand(parts: string[], values: string[], names: string[]): string {
+  return names.length ? command(parts, values) : NOTHING_PICKED;
+}
+
+// StrategyRunPanel refuses an empty pick. This builder expanded it to "all",
+// so a reader who unchecked every box read a command that runs the nine
+// defaults, each of which can call a paid provider.
+export const NOTHING_PICKED = "Pick at least one strategy. An empty pick is not a run.";
+
 function selectionOf(names: string[]): string {
-  return names.length ? names.join(",") : "all";
+  return names.join(",");
 }
 
 export function benchmarkCommand(corpus: string, names: string[]): string {
   const selection = selectionOf(names);
-  return command(
+  return strategyCommand(
     ["kb-arena", "benchmark", "--corpus", corpus, "--strategy", selection],
-    [corpus, ...names]
+    [corpus, ...names],
+    names
   );
 }
 
 export function labCommand(corpus: string, names: string[]): string {
   const selection = selectionOf(names);
-  return command(
+  return strategyCommand(
     ["kb-arena", "retriever-lab", "--corpus", corpus, "--strategies", selection],
-    [corpus, ...names]
+    [corpus, ...names],
+    names
   );
 }
 

@@ -297,7 +297,16 @@ def test_a_command_a_reader_pastes_is_refused_before_it_carries_a_shell_characte
     for name in ("benchmarkCommand", "labCommand", "compareCommand", "ingestCommand"):
         body = re.search(rf"export function {name}\(.*?\n\}}", source, re.S)
         assert body, f"web/lib/decide.ts must export {name}"
-        assert "command(" in body.group(0), f"{name} must build through the validating helper"
+        built = body.group(0)
+        assert (
+            "command(" in built or "strategyCommand(" in built
+        ), f"{name} must build through the validating helper"
+
+    # The two strategy builders go through `strategyCommand`, which refuses an
+    # empty pick and then hands the values to the same validating helper.
+    delegate = re.search(r"function strategyCommand\(.*?\n\}", source, re.S)
+    assert delegate, "web/lib/decide.ts must hold strategyCommand"
+    assert "command(parts, values)" in delegate.group(0)
     builder = re.search(r"function command\(.*?\n\}", source, re.S)
     assert builder and "values.every(isSafeId)" in builder.group(0)
     assert "UNSAFE_COMMAND" in builder.group(
