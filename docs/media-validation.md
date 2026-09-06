@@ -92,8 +92,8 @@ ffmpeg -y -i /tmp/hero-06.png -vf "crop=1200:600:0:0,scale=1280:640:flags=lanczo
 
 - Asset: `docs/demo-mcp.gif`
 - Source: `docs/tapes/mcp.tape` driving `scripts/mcp_stdio_demo.py`
-- Size: 216353 bytes, 1280x800, about 24 seconds
-- SHA-256: `b55bf88381ab77ab9c602d1236a911fa4a8d894682a0e68239c2d20079c4f4c8`
+- Size: 219008 bytes, 1280x800, about 24 seconds
+- SHA-256: `a0ebcbe7bf8421d23dc49844a78fa96e410f586fe7343600046cf1ce7007f466`
 - Capture environment: the `mcp` extra in a virtualenv at `/tmp/mcp-demo`, vhs 0.11.0
 
 The driver starts `python3 -m kb_arena.mcp.server` as a subprocess and speaks

@@ -63,6 +63,11 @@ def send(proc: subprocess.Popen, message: dict) -> None:
 # and nothing on screen says why. Every read carries a deadline.
 REPLY_TIMEOUT_SECONDS = 60.0
 
+# A stream with no newline in it would otherwise grow the buffer without limit.
+# The deadline bounds time, not bytes, and a fast writer reaches the memory
+# limit long before 60 seconds pass.
+MAX_REPLY_BYTES = 16 * 1024 * 1024
+
 # Bytes read past the end of one reply belong to the next one, so the buffer
 # outlives a single call.
 _BUFFER = bytearray()
@@ -122,6 +127,11 @@ def read_reply(proc: subprocess.Popen, request_id: int) -> dict:
                     f"the server closed stdout before it answered request {request_id}"
                 )
             _BUFFER.extend(chunk)
+            if b"\n" not in _BUFFER and len(_BUFFER) > MAX_REPLY_BYTES:
+                raise RuntimeError(
+                    f"the server wrote over {MAX_REPLY_BYTES} bytes with no newline, "
+                    f"so request {request_id} has no reply to read"
+                )
 
 
 def result(reply: dict) -> dict:
@@ -225,8 +235,15 @@ def main() -> int:
             show(name, payload(read_reply(proc, index)))
             print()
     finally:
+        # A server that ignores EOF used to outlive this script, and the wait
+        # timeout raised over whatever failed first. Kill it, and let the
+        # original error stand.
         proc.stdin.close()
-        proc.wait(timeout=10)
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
     return 0
 
 
