@@ -16,7 +16,9 @@ fi
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
-git clone --depth 1 "https://huggingface.co/spaces/${SPACE}" "$WORK_DIR/space"
+# A missing Space answers 404, and the prompt setting turns that into a fast
+# failure instead of a wait on a credential prompt. Create the Space first.
+GIT_TERMINAL_PROMPT=0 git clone --depth 1 "https://huggingface.co/spaces/${SPACE}" "$WORK_DIR/space"
 cp "$SOURCE_DIR/README.md" "$SOURCE_DIR/Dockerfile" "$WORK_DIR/space/"
 cd "$WORK_DIR/space"
 git add README.md Dockerfile

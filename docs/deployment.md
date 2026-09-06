@@ -55,13 +55,20 @@ checks that, with nothing started yet.
 docker compose config
 ```
 
-## The hosted Space serves the demo corpus only
+## The Space image is ready, and the deploy waits on a paid account
 
-A read-only demo runs at <https://xmpuspus-kb-arena.hf.space>. Its files live
-in `deploy/hf-space/`: a `README.md` that carries the Hugging Face Space front
-matter, a `Dockerfile`, and `push.sh`. The Dockerfile installs
+The demo Space at `xmpuspus/kb-arena` does not exist yet. Hugging Face refuses
+to create a Docker Space on a free account, and answers this each time:
+"Static Spaces are free for everyone, but hosting Gradio and Docker Spaces on
+free cpu-basic requires a PRO subscription." Buy PRO for the `xmpuspus`
+account, or choose another container host, then run the push script below. The
+`https://xmpuspus-kb-arena.hf.space` address goes live with that first push.
+
+The files wait in `deploy/hf-space/`: a `README.md` that carries the Hugging
+Face Space front matter, a `Dockerfile`, and `push.sh`. The Dockerfile installs
 `kb-arena==0.11.0` from PyPI, so the Space builds no source from this
-repository.
+repository. A `docker build` on that directory, and a container run in demo
+mode, check the image with no Space at all.
 
 The Dockerfile copies the packaged `aws-compute_*.json` results out of the
 wheel, and nothing else. The datasets directory inside the image stays empty,
@@ -76,7 +83,7 @@ benchmark route serves the recorded results to any reader. Demo mode that the
 app turns on for itself, for lack of a model key, does not open those reads.
 The Space carries no model key and no `KB_ARENA_API_TOKEN`.
 
-Redeploy after you change either file:
+Deploy the Space, and redeploy it after you change either file:
 
 ```bash
 deploy/hf-space/push.sh
