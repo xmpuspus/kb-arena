@@ -626,3 +626,27 @@ def test_a_question_body_cannot_raise_the_reviewed_count(tmp_path, monkeypatch):
     assert trap["questionCount"] == 1
     assert trap["draftQuestionCount"] == 1
     assert trap["reviewedQuestionCount"] == 0, "the answer voted on its own status"
+
+
+def test_a_broken_question_file_stops_the_corpus_claiming_a_full_review(tmp_path, monkeypatch):
+    """One reviewed question beside one broken file used to report one of one."""
+    import asyncio
+
+    from kb_arena.chatbot import api
+
+    questions = tmp_path / "datasets" / "partial" / "questions"
+    questions.mkdir(parents=True)
+    (questions / "good.yaml").write_text(
+        "- id: q1\n  question: Which one?\n  answer: This one.\n  review_status: human-reviewed\n"
+    )
+    (questions / "broken.yaml").write_text("- id: q2\n  question: [unclosed\n")
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path / "datasets"))
+
+    body = asyncio.run(api.list_corpora())
+    partial = {c["value"]: c for c in body["corpora"]}["partial"]
+
+    assert partial["questionCount"] == 1
+    assert partial["reviewedQuestionCount"] == 1
+    assert (
+        partial["unreadableQuestionFiles"] == 1
+    ), "the count that equals the total must travel with the file nobody read"

@@ -173,12 +173,21 @@ export async function fetchEvidenceBundles(corpus: string): Promise<EvidenceAnsw
   const res = await fetch(`${API_URL}/api/evidence${query}`);
   if (!res.ok) throw new Error(EVIDENCE_UNREADABLE);
   const data = await readJson(res, EVIDENCE_UNREADABLE);
-  if (!Array.isArray(data.bundles) || !Array.isArray(data.unreadable)) {
+  // Two arrays were the whole check, so a 200 carrying `bundles: [null]` passed
+  // and then crashed the step-4 table. Every field on EvidenceBundle is
+  // optional, so the requirement is that each element is an object at all, and
+  // that each unreadable entry is a name the page can print.
+  const bundlesAreShaped =
+    Array.isArray(data.bundles) &&
+    data.bundles.every((bundle) => bundle !== null && typeof bundle === "object");
+  const unreadableIsShaped =
+    Array.isArray(data.unreadable) && data.unreadable.every((name) => typeof name === "string");
+  if (!bundlesAreShaped || !unreadableIsShaped) {
     throw new Error(EVIDENCE_UNREADABLE);
   }
   return {
-    bundles: data.bundles,
-    unreadable: data.unreadable,
+    bundles: data.bundles as EvidenceBundle[],
+    unreadable: data.unreadable as string[],
     truncated: Boolean(data.truncated),
     scanLimit: typeof data.scan_limit === "number" ? data.scan_limit : 0,
   };
@@ -201,7 +210,10 @@ export function noBundleReason(
     return `No bundle for ${name} could be read. ${unreadable.length} bundle files on disk could not be parsed, so this is not proof that no run exists.`;
   }
   if (truncatedLimit > 0) {
-    return `No bundle for ${name} sits in the newest ${truncatedLimit} run directories. Older directories went unread, so this is not proof that no run exists.`;
+    // The scan stops after a fixed number of directory entries, and it takes
+    // whichever ones the filesystem returned first. So the unread ones are not
+    // the older ones, and the newest run on disk can be among them.
+    return `No bundle for ${name} sits in the ${truncatedLimit} run directories this scan reached. The scan stops at a fixed count and reads whichever directories the filesystem lists first, so the newest run can be one it never opened. This is not proof that no run exists.`;
   }
   return `This deployment holds no evidence bundle for ${name}, so there is no recorded run to inspect. Run one of the commands above.`;
 }
@@ -466,6 +478,14 @@ export function reviewWarning(corpus: CorpusInfo): string | null {
   const total = corpus.questionCount ?? 0;
   const reviewed = corpus.reviewedQuestionCount ?? 0;
   const drafts = corpus.draftQuestionCount ?? 0;
+  // A question file the server could not parse holds an unknown number of
+  // questions with unknown statuses. Reading `reviewed >= total` as a full
+  // review would count those as reviewed, which nobody measured.
+  const unread = corpus.unreadableQuestionFiles ?? 0;
+  if (unread > 0) {
+    const files = unread === 1 ? "question file" : "question files";
+    return `${unread} ${files} could not be read, so the review status of this corpus is unknown`;
+  }
   if (total === 0 || reviewed >= total) return null;
   const unspecified = Math.max(0, total - reviewed - drafts);
   if (reviewed === 0) {

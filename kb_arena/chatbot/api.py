@@ -619,6 +619,11 @@ async def list_corpora() -> dict:
             # One status per question is the only honest count, so parse it.
             reviewed_questions = 0
             draft_questions = 0
+            # A file this route cannot parse leaves its questions out of both
+            # counts, and a reader who sees reviewed equal to total takes that
+            # as a full review. So the count of unreadable files travels with
+            # the numbers, and a corpus with any of them claims nothing.
+            unreadable_question_files = 0
             if (d / "questions").is_dir():
                 for qf in sorted((d / "questions").glob("*.yaml")):
                     if qf.name == EXPECTED_CHUNKS_FILE:
@@ -626,10 +631,10 @@ async def list_corpora() -> dict:
                     try:
                         entries = yaml.safe_load(qf.read_text())
                     except (OSError, yaml.YAMLError):
-                        # A file nobody can read contributes no count. Guessing
-                        # from it is what the text search did.
+                        unreadable_question_files += 1
                         continue
                     if not isinstance(entries, list):
+                        unreadable_question_files += 1
                         continue
                     for entry in entries:
                         if not isinstance(entry, dict) or "id" not in entry:
@@ -658,6 +663,7 @@ async def list_corpora() -> dict:
                     "questionCount": total_questions,
                     "reviewedQuestionCount": reviewed_questions,
                     "draftQuestionCount": draft_questions,
+                    "unreadableQuestionFiles": unreadable_question_files,
                     "hasProcessed": has_processed,
                     "hasResults": has_results,
                     "hasQaPairs": has_qa_pairs,

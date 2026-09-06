@@ -271,6 +271,8 @@ export interface CorpusInfo {
   questionCount?: number;
   reviewedQuestionCount?: number;
   draftQuestionCount?: number;
+  /** Question files the server could not parse, so their statuses are unknown. */
+  unreadableQuestionFiles?: number;
   hasProcessed?: boolean;
   hasResults?: boolean;
   hasQaPairs?: boolean;

@@ -279,3 +279,49 @@ def test_the_comparison_guard_covers_every_field_the_type_declares():
     guard = lib[start : lib.index("throw new Error(COMPARE_UNREADABLE)", start)]
     missing = [f for f in fields if f not in guard and f != "delta_ci_95"]
     assert not missing, f"the guard never checks these declared fields: {missing}"
+
+
+def test_an_unreadable_question_file_blocks_the_citable_claim():
+    """Dropping a failed file from both counts made a partial read look complete.
+
+    The counts skipped a question file nobody could parse, so a corpus with one
+    reviewed question and one broken file reported one of one reviewed. Both the
+    decision flow and the diagnostics page read that as evidence.
+    """
+    api = (ROOT / "kb_arena" / "chatbot" / "api.py").read_text()
+    assert '"unreadableQuestionFiles": unreadable_question_files,' in api
+    assert api.count("unreadable_question_files += 1") == 2
+
+    lib = (WEB / "lib" / "decide.ts").read_text()
+    warning = lib[lib.index("export function reviewWarning") :]
+    warning = warning[: warning.index("\n}")]
+    assert "corpus.unreadableQuestionFiles" in warning
+    # The unread branch has to run before the early return that reads a full
+    # count as a full review.
+    early_return = "if (total === 0 || reviewed >= total) return null;"
+    assert warning.index("const unread = corpus.unreadableQuestionFiles") < warning.index(
+        early_return
+    )
+
+    page = (WEB / "app" / "diagnostics" / "page.tsx").read_text()
+    line = page[page.index("function corpusLine") :]
+    line = line[: line.index("\n}")]
+    assert "unreadableQuestionFiles" in line
+
+
+def test_the_evidence_reader_checks_its_elements():
+    """`bundles: [null]` passed a two-array check and crashed the step-4 table."""
+    lib = (WEB / "lib" / "decide.ts").read_text()
+    assert "const bundlesAreShaped =" in lib
+    assert "const unreadableIsShaped =" in lib
+    assert 'data.unreadable.every((name) => typeof name === "string")' in lib
+
+
+def test_the_truncation_notice_describes_the_scan_that_ran():
+    """The scan takes whichever entries the filesystem lists first, not the newest."""
+    lib = (WEB / "lib" / "decide.ts").read_text()
+    reason = lib[lib.index("export function noBundleReason") :]
+    reason = reason[: reason.index("\n}")]
+    assert "sits in the newest" not in reason, "the scan does not pick the newest entries"
+    assert "Older directories went unread" not in reason
+    assert "whichever directories the filesystem lists first" in reason

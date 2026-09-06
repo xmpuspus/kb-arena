@@ -112,6 +112,13 @@ function arena(health: HealthReport): { heading: string; body: string } {
 
 function corpusLine(corpus: CorpusInfo): string {
   const total = corpus.questionCount ?? 0;
+  // A file the server could not parse holds an unknown number of questions with
+  // unknown statuses, so neither count below describes the whole corpus.
+  const unread = corpus.unreadableQuestionFiles ?? 0;
+  if (unread > 0) {
+    const files = unread === 1 ? "question file" : "question files";
+    return `${unread} ${files} could not be read, so the counts here cover only part of this corpus.`;
+  }
   if (!total) return "No question file, so no run can score it.";
   const reviewed = corpus.reviewedQuestionCount;
   const draft = corpus.draftQuestionCount;
