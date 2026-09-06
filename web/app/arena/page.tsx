@@ -117,6 +117,8 @@ export default function ArenaPage() {
   // A vote failure and a match failure need different retries, so the page
   // records which read failed instead of retrying the wrong one.
   const [errorKind, setErrorKind] = useState<"match" | "vote">("match");
+  // A retry that finds the vote already recorded is not a failure.
+  const [voteNotice, setVoteNotice] = useState("");
   const [corpus, setCorpus] = useState("all");
   const [corpora, setCorpora] = useState(CORPORA);
   const [boardError, setBoardError] = useState("");
@@ -161,6 +163,7 @@ export default function ArenaPage() {
     setVoteResult(null);
     setError("");
     setErrorKind("match");
+    setVoteNotice("");
     try {
       const res = await apiFetch(`${API}/api/arena/match`, {
         method: "POST",
@@ -183,6 +186,7 @@ export default function ArenaPage() {
     setVoting(true);
     setError("");
     setErrorKind("vote");
+    setVoteNotice("");
     lastWinner.current = winner;
     try {
       const res = await apiFetch(`${API}/api/arena/vote`, {
@@ -191,7 +195,18 @@ export default function ArenaPage() {
         body: JSON.stringify({ match_id: match.match_id, winner }),
       });
       const data: unknown = await res.json();
-      if (!res.ok) throw new Error(errorMessage(data, "Vote failed"));
+      if (!res.ok) {
+        const message = errorMessage(data, "The vote did not reach the server.");
+        // The server keeps one vote for each match id and refuses the second,
+        // so this answer means the first attempt landed and its response was
+        // lost. Calling that a failed vote is the wrong claim.
+        if (message.toLowerCase().includes("already voted")) {
+          setVoteNotice("This match already carries a vote, so the retry changed nothing.");
+          fetchLeaderboard(corpus);
+          return;
+        }
+        throw new Error(message);
+      }
       if (!isVoteResult(data)) throw new Error("Server returned an invalid vote response");
       setVoteResult(data);
       // The vote moved the match's own scope, so refresh that board.
@@ -296,6 +311,15 @@ export default function ArenaPage() {
             }
             onRetry={() => (errorKind === "vote" ? vote(lastWinner.current) : createMatch())}
           />
+        )}
+        {voteNotice && (
+          <p
+            role="status"
+            className="px-3 py-2 rounded-lg border text-sm"
+            style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+          >
+            {voteNotice}
+          </p>
         )}
       </div>
 
@@ -412,6 +436,7 @@ export default function ArenaPage() {
                   setVoteResult(null);
                   setQuestion("");
                   setError("");
+                  setVoteNotice("");
                 }}
                 className="px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-80"
                 style={{ background: "var(--accent)", color: "#fff" }}
