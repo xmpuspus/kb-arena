@@ -140,6 +140,29 @@ def test_no_control_draws_its_edge_with_the_weak_border_token():
     assert not weak, "these controls draw a 1.23 edge: " + ", ".join(weak)
 
 
+def test_no_shared_style_or_active_state_hands_a_control_the_weak_token():
+    """The tag scan misses a border set through a variable or a ternary.
+
+    A reviewer found four decision-flow controls and the shared select style
+    still on the divider token, none of which the scan above can see: one hides
+    the token in a `const ...Style` object, the other behind `active ? a : b`.
+    """
+    offenders = []
+    for path in _pages():
+        for index, line in enumerate(path.read_text().splitlines()):
+            # The active-state idiom marks a control, so its inactive edge is a
+            # control edge too.
+            if 'var(--accent)" : "var(--border)"' in line:
+                offenders.append(f"{path.relative_to(ROOT)}:{index + 1}")
+    for path in _pages():
+        source = path.read_text()
+        for match in re.finditer(r"const (\w*Style) = \{(.*?)\};", source, re.S):
+            if 'borderColor: "var(--border)"' in match.group(2):
+                line = source[: match.start()].count("\n") + 1
+                offenders.append(f"{path.relative_to(ROOT)}:{line} ({match.group(1)})")
+    assert not offenders, "these hand a control the 1.23 edge: " + ", ".join(offenders)
+
+
 def test_the_diagnostics_route_is_reachable_from_the_navigation():
     """A route only a URL reaches is a route an operator never finds."""
     nav = (WEB / "components" / "Nav.tsx").read_text()
@@ -290,7 +313,9 @@ def test_an_unreadable_question_file_blocks_the_citable_claim():
     """
     api = (ROOT / "kb_arena" / "chatbot" / "api.py").read_text()
     assert '"unreadableQuestionFiles": unreadable_question_files,' in api
-    assert api.count("unreadable_question_files += 1") == 2
+    # Three ways a question file fails to describe its corpus: it will not
+    # read, it is not a list, and it holds an entry the loader rejects.
+    assert api.count("unreadable_question_files += 1") == 3
 
     lib = (WEB / "lib" / "decide.ts").read_text()
     warning = lib[lib.index("export function reviewWarning") :]
@@ -382,3 +407,39 @@ def test_the_evidence_guard_covers_every_field_the_bundle_declares():
     missing = [f for f in fields if f not in guard]
     assert not missing, f"the guard never checks these declared fields: {missing}"
     assert "const flagsAreFlags =" in guard
+
+
+def test_an_absent_citable_verdict_is_not_read_as_a_negative_one():
+    """A bundle that records no verdict said nothing, so the page must not.
+
+    `bundleCaveats` and the step-4 badge both read every falsy value as an
+    explicit "development signal", which put a conclusion in a bundle that
+    never carried one.
+    """
+    lib = (WEB / "lib" / "decide.ts").read_text()
+    assert "if (bundle.citable === undefined) {" in lib
+    caveats = lib[lib.index("export function bundleCaveats") :]
+    caveats = caveats[: caveats.index("\n}")]
+    assert caveats.index("citable === undefined") < caveats.index(
+        "calls this run a development signal"
+    )
+
+    page = (WEB / "app" / "decide" / "page.tsx").read_text()
+    assert '"no verdict recorded"' in page
+    assert page.count("b.citable === undefined") == 3
+
+
+def test_a_malformed_question_entry_marks_the_corpus_unreadable():
+    """`load_questions` raises on an entry with no id, so the corpus cannot run."""
+    api = (ROOT / "kb_arena" / "chatbot" / "api.py").read_text()
+    assert "malformed = True" in api
+    assert "if malformed:\n                        unreadable_question_files += 1" in api
+
+
+def test_the_evidence_scan_counts_every_entry_it_looks_at():
+    """The cap counted kept directories, so an unrelated file never stopped it."""
+    api = (ROOT / "kb_arena" / "chatbot" / "api.py").read_text()
+    scan = api[api.index("entries: list[tuple[float, str, _Path]] = []") :]
+    scan = scan[: scan.index("entries.sort(reverse=True)")]
+    assert "if examined >= EVIDENCE_LIST_LIMIT:" in scan
+    assert scan.index("examined += 1") < scan.index('entry.name.startswith("run_")')

@@ -636,8 +636,13 @@ async def list_corpora() -> dict:
                     if not isinstance(entries, list):
                         unreadable_question_files += 1
                         continue
+                    malformed = False
                     for entry in entries:
                         if not isinstance(entry, dict) or "id" not in entry:
+                            # `load_questions` raises on this entry, so the
+                            # corpus cannot run. Skipping it quietly let the
+                            # remaining questions report a full review.
+                            malformed = True
                             continue
                         total_questions += 1
                         status = entry.get("review_status")
@@ -645,6 +650,8 @@ async def list_corpora() -> dict:
                             reviewed_questions += 1
                         elif status == DRAFT:
                             draft_questions += 1
+                    if malformed:
+                        unreadable_question_files += 1
             has_results = results_dir.exists() and any(results_dir.glob(f"{d.name}_*.json"))
             qa_path = d / "qa-pairs" / "qa_pairs.jsonl"
             has_qa_pairs = qa_path.exists()
@@ -1241,14 +1248,19 @@ def _recent_run_dirs(base: _Path) -> tuple[list[_Path], bool]:
     """
     entries: list[tuple[float, str, _Path]] = []
     overflow = False
+    examined = 0
     try:
         with _os.scandir(base) as listing:
             for entry in listing:
-                if not entry.name.startswith("run_") or not entry.is_dir():
-                    continue
-                if len(entries) >= EVIDENCE_LIST_LIMIT:
+                # The cap counted the run directories it kept, so a results
+                # folder holding a million ordinary files was still walked to
+                # the end on the event loop. It counts every entry it looks at.
+                if examined >= EVIDENCE_LIST_LIMIT:
                     overflow = True
                     break
+                examined += 1
+                if not entry.name.startswith("run_") or not entry.is_dir():
+                    continue
                 mtime, name = _entry_recency(entry)
                 entries.append((mtime, name, _Path(entry.path)))
     except OSError as exc:

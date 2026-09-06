@@ -56,7 +56,7 @@ const STEPS = [
 const card = { background: "var(--card)", borderColor: "var(--border)" };
 const inputStyle = {
   background: "var(--card)",
-  borderColor: "var(--border)",
+  borderColor: "var(--border-strong)",
   color: "var(--foreground)",
 };
 
@@ -353,7 +353,7 @@ export default function DecidePage() {
               aria-current={s.n === step ? "step" : undefined}
               className="rounded-lg border px-3 py-1.5 text-sm font-medium"
               style={{
-                borderColor: s.n === step ? "var(--accent)" : "var(--border)",
+                borderColor: s.n === step ? "var(--accent)" : "var(--border-strong)",
                 background: s.n === step ? "var(--accent)" : "var(--card)",
                 color: s.n === step ? "#fff" : "var(--foreground)",
               }}
@@ -385,7 +385,7 @@ export default function DecidePage() {
                   onClick={() => setOwnDocs(choice.own)}
                   className="rounded-lg border px-4 py-2 text-sm font-medium"
                   style={{
-                    borderColor: ownDocs === choice.own ? "var(--accent)" : "var(--border)",
+                    borderColor: ownDocs === choice.own ? "var(--accent)" : "var(--border-strong)",
                     color: ownDocs === choice.own ? "var(--accent)" : "var(--foreground)",
                     background: "var(--card)",
                   }}
@@ -414,7 +414,7 @@ export default function DecidePage() {
                       onClick={() => setCorpus(c.value)}
                       className="rounded-lg border px-3 py-2 text-sm text-left"
                       style={{
-                        borderColor: corpus === c.value ? "var(--accent)" : "var(--border)",
+                        borderColor: corpus === c.value ? "var(--accent)" : "var(--border-strong)",
                         background: "var(--card)",
                       }}
                     >
@@ -506,7 +506,7 @@ export default function DecidePage() {
                     onClick={() => setProfile(name)}
                     className="rounded-lg border p-4 text-left space-y-2"
                     style={{
-                      borderColor: profile === name ? "var(--accent)" : "var(--border)",
+                      borderColor: profile === name ? "var(--accent)" : "var(--border-strong)",
                       background: "var(--card)",
                     }}
                   >
@@ -644,11 +644,27 @@ export default function DecidePage() {
                     <span
                       className="text-xs font-medium rounded px-2 py-0.5"
                       style={{
-                        background: b.citable ? "var(--success-bg)" : "var(--danger-bg)",
-                        color: b.citable ? "var(--success-text)" : "var(--danger-text)",
+                        background:
+                          b.citable === undefined
+                            ? "var(--subtle)"
+                            : b.citable
+                              ? "var(--success-bg)"
+                              : "var(--danger-bg)",
+                        color:
+                          b.citable === undefined
+                            ? "var(--muted)"
+                            : b.citable
+                              ? "var(--success-text)"
+                              : "var(--danger-text)",
                       }}
                     >
-                      {b.citable ? "citable evidence" : "development signal"}
+                      {/* An absent verdict is not a negative one. The badge said
+                          "development signal" for a bundle that recorded nothing. */}
+                      {b.citable === undefined
+                        ? "no verdict recorded"
+                        : b.citable
+                          ? "citable evidence"
+                          : "development signal"}
                     </span>
                   </div>
                   <Command text={(b.command ?? []).join(" ") || "no command recorded"} />

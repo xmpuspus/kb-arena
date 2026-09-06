@@ -208,7 +208,7 @@ export default function DemoPage() {
                 onClick={() => toggleStrategy(s)}
                 className="text-xs px-3 py-1.5 rounded-lg border transition-all"
                 style={{
-                  borderColor: active ? "var(--accent)" : "var(--border)",
+                  borderColor: active ? "var(--accent)" : "var(--border-strong)",
                   background: active ? "var(--accent)" : "transparent",
                   color: active ? "#fff" : "var(--muted)",
                   opacity: active ? 1 : 0.6,

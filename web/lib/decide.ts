@@ -566,7 +566,11 @@ export function bundleCaveats(bundle: EvidenceBundle | null): string[] {
   }
   const lines: string[] = [];
   const review = bundle.review ?? {};
-  if (bundle.citable) {
+  if (bundle.citable === undefined) {
+    // An absent verdict is not a negative one. Reading it as "development
+    // signal" put a conclusion in the bundle's mouth that it never recorded.
+    lines.push("The bundle records no citable verdict, so its review status is unknown.");
+  } else if (bundle.citable) {
     lines.push("The bundle calls this run citable evidence.");
   } else {
     lines.push("The bundle calls this run a development signal, not citable evidence.");

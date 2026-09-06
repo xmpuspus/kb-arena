@@ -26,7 +26,7 @@ const SPLIT_OPTIONS = [
 
 const selectStyle = {
   background: "var(--card)",
-  borderColor: "var(--border)",
+  borderColor: "var(--border-strong)",
   color: "var(--foreground)",
 };
 
