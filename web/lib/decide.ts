@@ -6,7 +6,15 @@
 // `tests/test_decide_parity.py` fails when the two lists disagree.
 
 import { apiFetch } from "./auth";
-import { API_URL, type CorpusInfo, type StrategyCatalogRecord, type Strategy } from "./api";
+import {
+  API_URL,
+  REVIEW_DRAFT,
+  REVIEW_REVIEWED,
+  REVIEW_UNSPECIFIED,
+  type CorpusInfo,
+  type StrategyCatalogRecord,
+  type Strategy,
+} from "./api";
 
 export const PROFILE_NAMES = [
   "accuracy-first",
@@ -218,8 +226,14 @@ export async function fetchEvidenceBundles(corpus: string): Promise<EvidenceAnsw
       const numbersAreNumbers = ["bundle_version", "seed"].every(
         (key) => fields[key] === undefined || typeof fields[key] === "number"
       );
+      // `typeof [] === "object"`, so an array passed here and then read as a
+      // block holding no statuses, which reached the page as a clean bundle.
       const nestedAreObjects = ["review", "environment"].every(
-        (key) => fields[key] === undefined || (fields[key] !== null && typeof fields[key] === "object")
+        (key) =>
+          fields[key] === undefined ||
+          (fields[key] !== null &&
+            typeof fields[key] === "object" &&
+            !Array.isArray(fields[key]))
       );
       // The page renders these two as React children, and React throws on an
       // object there. So an object check on the parent is not enough.
@@ -370,8 +384,15 @@ export type DecideCatalogRecord = StrategyCatalogRecord & { needs_embeddings?: b
 // Every record in the offline fallback carries `status: "unknown"`. A record
 // from the server carries `loaded` or `unavailable`. So this tells a live
 // catalog from the hardcoded copy, and the copy states the wrong architecture.
+//
+// The test used to read `!== "unknown"`, which a record with no status at all
+// passes. That turned an unreadable body into a claim that this deployment
+// answered, which is the one thing this function exists to prevent. Name the
+// two the server writes instead.
 export function catalogIsLive(catalog: DecideCatalogRecord[]): boolean {
-  return catalog.some((record) => record.status !== "unknown");
+  return catalog.some(
+    (record) => record?.status === "loaded" || record?.status === "unavailable"
+  );
 }
 
 export interface Candidate {
@@ -588,6 +609,39 @@ function fixed(value: number | null | undefined, places: number): string {
  * the reviewed share here would drift from `build_bundle`, which also refuses
  * a bundle that records no command.
  */
+/**
+ * The review counts a bundle records, with anything that is not a number gone.
+ *
+ * `"5"` is not five. It passes `> 0`, so it renders as a count, and it passes
+ * through any sum of numbers as zero, so it never reaches a denominator. One
+ * read, into numbers, means no caller downstream has to know that.
+ */
+function reviewCounts(raw: Record<string, number> | undefined): {
+  counts: Record<string, number>;
+  unreadable: boolean;
+} {
+  const counts: Record<string, number> = {};
+  let unreadable = false;
+  // `Object.entries(5)` answers with an empty list rather than throwing, so a
+  // number here read as a bundle that recorded no statuses, and the caveat
+  // then called every question human-reviewed.
+  if (raw !== undefined && (typeof raw !== "object" || raw === null || Array.isArray(raw))) {
+    return { counts, unreadable: true };
+  }
+  for (const [status, count] of Object.entries(raw ?? {})) {
+    if (Number.isInteger(count) && (count as number) >= 0) {
+      counts[status] = count;
+      continue;
+    }
+    // Dropping it in silence is how a block recording -3 drafts rendered as
+    // "All 10 scored questions are marked human-reviewed". A count nobody can
+    // read makes the whole block unusable, which is the rule `reviewOf` in
+    // `lib/api.ts` already applies to the leaderboard.
+    unreadable = true;
+  }
+  return { counts, unreadable };
+}
+
 export function bundleCaveats(bundle: EvidenceBundle | null): string[] {
   if (!bundle) {
     return [
@@ -607,21 +661,83 @@ export function bundleCaveats(bundle: EvidenceBundle | null): string[] {
     lines.push("The bundle calls this run a development signal, not citable evidence.");
     lines.push(`Reason the bundle records: ${bundle.why_not_citable || "none recorded"}`);
   }
-  const drafts = review.counts?.["machine-assisted-draft"] ?? 0;
-  const unspecified = review.counts?.["unspecified"] ?? 0;
-  const total = review.questions ?? 0;
+  // Read the counts once, and keep only the ones that are numbers. Four
+  // cross-model rounds each reached "5 of 0 questions" through a different
+  // door: an absent total, a recorded zero, a sum over two statuses where the
+  // block held more, and finally `"5"` as a string, which `> 0` accepts and
+  // any sum of numbers ignores. Reading the block once, into numbers, closes
+  // the type-confusion door for every status at the same time.
+  const { counts, unreadable } = reviewCounts(review.counts);
+  const drafts = counts["machine-assisted-draft"] ?? 0;
+  const unspecified = counts["unspecified"] ?? 0;
+  if (unreadable) {
+    lines.push(
+      "The bundle records a review count this page cannot read, so the review status behind these numbers is unknown."
+    );
+  }
+  // An absent total is not a total of zero. Reading it as zero printed
+  // "5 of 0 questions", which a reader cannot tell from a measurement. The
+  // same distinction the `citable` branch above makes: nothing recorded is not
+  // a recorded nothing. A total that cannot hold the statuses under it is no
+  // better, so the test is whether the number fits, not whether it exists.
+  const recorded = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  // A count of questions is a whole number. `questions: 0.5` rendered as
+  // "All 0.5 scored questions are marked human-reviewed", which is the same
+  // impossible measurement as "5 of 0" in a different shape.
+  const total = review.questions;
+  const counted = typeof total === "number" && Number.isInteger(total) && total >= recorded;
+  const outOf = counted ? ` of ${total}` : "";
   if (drafts > 0) {
     lines.push(
-      `${drafts} of ${total} questions are machine-assisted drafts. Nobody checked those answer keys.`
+      `${drafts}${outOf} questions are machine-assisted drafts. Nobody checked those answer keys.`
     );
   }
   if (unspecified > 0) {
-    lines.push(`${unspecified} of ${total} questions carry no review status.`);
+    lines.push(`${unspecified}${outOf} questions carry no review status.`);
   }
-  if (drafts === 0 && unspecified === 0 && total > 0) {
+  // Any recorded status needs a denominator, not just the two shown above. A
+  // block holding five human-reviewed and no total said nothing at all, and
+  // silence reads as a bundle that needs no warning.
+  if (!counted && recorded > 0) {
+    lines.push(
+      typeof total === "number"
+        ? `The bundle records ${total} questions and more review statuses than that, so these counts have no denominator.`
+        : "The bundle records no question total, so these counts have no denominator."
+    );
+  }
+  // The strongest sentence in this list, so it takes the strongest test. It
+  // used to need only "no drafts and no unspecified", which a block recording
+  // 5 reviewed out of 10 satisfies by saying nothing about the other 5. State
+  // it when the reviewed count reaches the total, and never otherwise.
+  // A status this page does not name still classified its questions, so the
+  // three named counts do not add up and neither branch below fires. Silence
+  // there reads as a bundle that needs no warning.
+  const named = new Set([REVIEW_REVIEWED, REVIEW_DRAFT, REVIEW_UNSPECIFIED]);
+  const unnamed = Object.entries(counts)
+    .filter(([status]) => !named.has(status))
+    .reduce((sum, [, count]) => sum + count, 0);
+  if (unnamed > 0) {
+    lines.push(
+      `${unnamed} questions carry a review status this page does not know, so their review is unread here.`
+    );
+  }
+  const reviewed = counts[REVIEW_REVIEWED] ?? 0;
+  if (counted && !unreadable && total > 0 && reviewed === total) {
     lines.push(`All ${total} scored questions are marked human-reviewed.`);
+  } else if (counted && !unreadable && total > 0 && recorded < total) {
+    // `recorded`, not the three statuses this function names. A bundle
+    // carrying a status nobody here knows still classified its questions, and
+    // summing the known three reported it as unaccounted for.
+    lines.push(
+      `The bundle records a status for ${recorded} of ${total} questions, so the rest are unaccounted for.`
+    );
   }
-  if (review.note) lines.push(review.note);
+  // The bundle is arbitrary JSON, and React throws on an object child. An
+  // object here took the whole step-4 panel down rather than adding a line.
+  if (typeof review.note === "string" && review.note) lines.push(review.note);
+  else if (review.note !== undefined && typeof review.note !== "string") {
+    lines.push("The bundle records a review note this page cannot read.");
+  }
   if (
     bundle.question_set_fingerprint &&
     bundle.review_question_set &&

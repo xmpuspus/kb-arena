@@ -528,3 +528,141 @@ def test_the_environment_block_is_checked_field_by_field():
     lib = (WEB / "lib" / "decide.ts").read_text()
     assert "const environmentTextIsText =" in lib
     assert '["kb_arena", "git_sha", "platform"]' in lib
+
+
+def test_the_catalog_read_refuses_a_body_it_cannot_recognise():
+    """An unchecked catalog let the page claim the deployment answered.
+
+    `/strategies` answering 200 with any non-empty `catalog` array flowed
+    straight through as records. `catalogIsLive` then tested `status` against
+    the fallback's own value, so an entry with no status at all read as live,
+    and the decide page stated the architecture list came from the server.
+    """
+    api = (WEB / "lib" / "api.ts").read_text()
+    reader_start = api.index("export async function fetchStrategyCatalog")
+    guard = api[api.index("function isCatalogRecord") : reader_start]
+    # Every field the type declares, not the three the first version checked.
+    # A guard shallower than its reader passed a record whose
+    # `default_benchmark` was undefined, and `candidatesFor` then returned no
+    # candidate from a catalog the page called live.
+    declared = api[api.index("export interface StrategyCatalogRecord {") :]
+    declared = declared[: declared.index("\n}")]
+    fields = re.findall(r"^  (\w+):", declared, re.MULTILINE)
+    missing = [f for f in fields if f"record.{f}" not in guard]
+    assert not missing, f"the guard never checks these declared fields: {missing}"
+    assert "CATALOG_STATUSES.has(record.status)" in guard
+
+    reader = api[reader_start:]
+    reader = reader[: reader.index("\n}")]
+    assert "data.catalog?.length ? data.catalog" not in reader
+    assert "listed.every(isCatalogRecord)" in reader
+
+    decide = (WEB / "lib" / "decide.ts").read_text()
+    live = decide[decide.index("export function catalogIsLive") :]
+    live = live[: live.index("\n}")]
+    # Name the two the server writes. Testing against the fallback's value
+    # counts a record with no status as a server answer.
+    assert 'record?.status === "loaded"' in live
+    assert 'record?.status === "unavailable"' in live
+    assert '!== "unknown"' not in live
+
+
+def test_an_absent_question_total_never_renders_as_a_denominator():
+    """ "5 of 0 questions" is a measurement nobody made.
+
+    A bundle whose review block carries counts but no `questions` total read
+    the total as zero, so the caveat printed a denominator the run never
+    recorded. An absent value is not a zero value, which is the distinction
+    the `citable` branch above it already makes.
+    """
+    decide = (WEB / "lib" / "decide.ts").read_text()
+    caveats_at = decide.index("export function bundleCaveats")
+    body = decide[caveats_at:]
+    body = body[: body.index("\n}\n", body.index("const { counts, unreadable }"))]
+    assert "review.questions ?? 0" not in body
+    assert 'const outOf = counted ? ` of ${total}` : "";' in body
+    assert "The bundle records no question total" in body
+    # A recorded zero reaches the same "5 of 0" as an absent total, so the
+    # test is whether the total can hold the counts under it. Summing the two
+    # statuses this function renders let `questions: 10` past counts adding to
+    # 15, so the sum covers every status the bundle records.
+    assert "total >= recorded" in body
+    assert "total >= drafts + unspecified" not in body
+
+    # Four rounds reached the same wrong sentence through four doors, the last
+    # being `"5"` as a string, which `> 0` accepts. The block is read once,
+    # into numbers, so no caller below has to know that.
+    reader = decide[decide.index("function reviewCounts") : caveats_at]
+    # A count is a whole number. `counts: {"human-reviewed": 0.5}` is not a count.
+    assert "Number.isInteger(count) && (count as number) >= 0" in reader
+    assert "unreadable = true;" in reader
+    # `Object.entries(5)` answers with an empty list rather than raising, so a
+    # number here read as a bundle that recorded no statuses at all.
+    assert 'typeof raw !== "object" || raw === null || Array.isArray(raw)' in reader
+    # A count nobody can read must not draw a clean review.
+    assert "const { counts, unreadable } = reviewCounts(review.counts);" in body
+    assert "counted && !unreadable && total > 0" in body
+
+
+def test_the_full_review_claim_needs_a_reviewed_count_that_reaches_the_total():
+    """The strongest sentence in the list takes the strongest test.
+
+    "All 10 scored questions are marked human-reviewed" used to need only "no
+    drafts and no unspecified", which a block recording 5 reviewed out of 10
+    satisfies by saying nothing about the other 5. A reader cites that line.
+    """
+    decide = (WEB / "lib" / "decide.ts").read_text()
+    body = decide[decide.index("export function bundleCaveats") :]
+    body = body[: body.index("\n}\n", body.index("const { counts, unreadable }"))]
+    # Pin the code form. A comment in the same function quotes this sentence.
+    claim = body.index("lines.push(`All ${total} scored questions")
+    guard = body[body.rindex("const reviewed =", 0, claim) : claim]
+    assert "reviewed === total" in guard, "the claim does not check the reviewed count"
+    assert "!unreadable" in guard
+    # And the partial case says so rather than staying silent.
+    assert "so the rest are unaccounted for" in body
+    # Any recorded status needs a denominator, not just the two shown above. A
+    # block holding five human-reviewed and no total used to say nothing.
+    assert "if (!counted && recorded > 0) {" in body
+    # The bundle is arbitrary JSON, and React throws on an object child.
+    assert 'typeof review.note === "string" && review.note' in body
+    assert "The bundle records a review note this page cannot read." in body
+    # A count of questions is a whole number, and `questions: 0.5` rendered as
+    # "All 0.5 scored questions are marked human-reviewed".
+    assert "Number.isInteger(total)" in body
+    # The unaccounted line sums every status, not the three this file names.
+    assert "recorded < total" in body
+    assert "reviewed + drafts + unspecified < total" not in body
+    # A status this page does not name still classified its questions.
+    assert "a review status this page does not know" in body
+
+
+def test_the_evidence_guard_refuses_an_array_where_it_reads_an_object():
+    """`typeof [] === "object"`, so an array passed the nested-object check.
+
+    `review: []` then read as a block holding no statuses, and the bundle
+    reached the page as clean evidence with no warning on it.
+    """
+    decide = (WEB / "lib" / "decide.ts").read_text()
+    guard = decide[decide.index("const nestedAreObjects") :]
+    guard = guard[: guard.index(");")]
+    assert "!Array.isArray(fields[key])" in guard
+    for key in ("review", "environment"):
+        assert f'"{key}"' in guard
+
+
+def test_the_catalog_guard_refuses_a_strategy_nothing_implements():
+    """The decide page builds a CLI command out of this name.
+
+    A record naming `bogus` passed every type check and reached the command
+    builder, which wrote `kb-arena benchmark --strategy bogus`. The backend
+    rejects that, so the page handed the reader a command that cannot run.
+    """
+    api = (WEB / "lib" / "api.ts").read_text()
+    guard = api[
+        api.index("function isCatalogRecord") : api.index(
+            "export async function fetchStrategyCatalog"
+        )
+    ]
+    assert "KNOWN_STRATEGIES.has(record.name)" in guard
+    assert "const KNOWN_STRATEGIES = new Set<string>(STRATEGIES);" in api

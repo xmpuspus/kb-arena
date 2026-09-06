@@ -286,12 +286,63 @@ export const DEFAULT_CORPORA: CorpusInfo[] = [
 // Kept for backward compatibility with components that do not fetch dynamically.
 export const CORPORA = DEFAULT_CORPORA;
 
+// The status strings the catalog can carry. `kb_arena/strategies/catalog.py`
+// writes `loaded` or `unavailable`, and the built-in fallback above writes
+// `unknown`. A record with any other status, or none, came from something this
+// page cannot read.
+const CATALOG_STATUSES = new Set(["loaded", "unavailable", "unknown"]);
+
+// Every field `StrategyCatalogRecord` declares, checked here. A first version
+// read name, label and status only, and a cross-model pass showed what that
+// costs: a record carrying those three passes, `catalogIsLive` calls it a
+// server answer, and `candidatesFor` then reads `default_benchmark` as
+// undefined and returns no candidate. A guard shallower than its reader hands
+// the reader a hole in the shape of the missing field.
+const KNOWN_STRATEGIES = new Set<string>(STRATEGIES);
+
+function isCatalogRecord(entry: unknown): entry is StrategyCatalogRecord {
+  if (!entry || typeof entry !== "object") return false;
+  const record = entry as Record<string, unknown>;
+  const nullableString = (value: unknown) => value === null || typeof value === "string";
+  return (
+    typeof record.name === "string" &&
+    // `Strategy` is a closed union, and the decide page builds a CLI command
+    // out of this name. A name nothing implements produced
+    // `kb-arena benchmark --strategy bogus`, which the backend rejects.
+    KNOWN_STRATEGIES.has(record.name) &&
+    typeof record.label === "string" &&
+    typeof record.architecture === "string" &&
+    typeof record.default_benchmark === "boolean" &&
+    typeof record.api_supported === "boolean" &&
+    typeof record.experimental === "boolean" &&
+    nullableString(record.optional_extra) &&
+    Array.isArray(record.required_modules) &&
+    record.required_modules.every((module) => typeof module === "string") &&
+    typeof record.status === "string" &&
+    CATALOG_STATUSES.has(record.status) &&
+    nullableString(record.unavailable_reason) &&
+    // `/strategies` serves this and the offline fallback does not, so absent
+    // is a real answer and `web/lib/decide.ts` declares it optional. A value
+    // of the wrong type is not: `needs_embeddings: "false"` is truthy, and it
+    // would have decided which strategies run without a key.
+    (record.needs_embeddings === undefined || typeof record.needs_embeddings === "boolean")
+  );
+}
+
 export async function fetchStrategyCatalog(): Promise<StrategyCatalogRecord[]> {
   try {
     const res = await fetch(`${API_URL}/strategies`);
     if (!res.ok) return DEFAULT_STRATEGY_CATALOG;
     const data = await res.json();
-    return data.catalog?.length ? data.catalog : DEFAULT_STRATEGY_CATALOG;
+    // Any 200 carrying a non-empty `catalog` array used to flow on untouched.
+    // `catalogIsLive` then read that body as a fact about this deployment, so
+    // a proxy or a version skew could make the decide page state the
+    // architecture list came from the server. One bad record fails the whole
+    // read, because a half-trusted catalog is not a catalog.
+    const listed = (data as Record<string, unknown> | null)?.catalog;
+    if (!Array.isArray(listed) || listed.length === 0) return DEFAULT_STRATEGY_CATALOG;
+    if (!listed.every(isCatalogRecord)) return DEFAULT_STRATEGY_CATALOG;
+    return listed as StrategyCatalogRecord[];
   } catch {
     return DEFAULT_STRATEGY_CATALOG;
   }
