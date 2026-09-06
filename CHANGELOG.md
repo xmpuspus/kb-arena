@@ -52,44 +52,6 @@ out.
   found six wrong answer keys, and `datasets/aws-compute/README.md` lists them.
 - Added generated references for the commands, the routes and the settings, with
   a test that fails when one is stale.
-
-### Changed
-- Arena ratings live per corpus and per rubric. A vote on one corpus no longer
-  moves the numbers a reader sees beside another.
-- The leaderboard groups by build as well as by experiment, so a code change is
-  no longer reported as a repeated measurement.
-- Routes that return corpus content need a token unless the caller is on this
-  machine or an operator published a demo.
-- `kb-arena demo` binds to this machine by default. It used to serve the network.
-- Holm step-down correction is applied across every trial in an optimize run.
-- The Retriever Lab documentation states what one run cannot show, and the
-  labelling documentation names the model the code actually calls.
-
-### Fixed
-- Fixed bpref reporting a perfect score for a bad ranking when the labels named
-  no negatives. On the built-in corpus it read 0.2746 instead of 0.1826.
-- Fixed the packaged frontend shipping a page the repository no longer held. A
-  digest of the frontend sources now fails the suite on a stale bundle.
-- Fixed a refused read appearing as a domain answer: an empty graph read as a
-  database outage, and sample rows read as a corpus's results.
-- Fixed `--fail-below` judging only the last repeat when `--runs` was above one.
-- Fixed the npm audit step hanging until the job was killed, which reported as a
-  cancelled check rather than a hang.
-- Fixed the citability check proving nothing. It read the question set out of
-  the run, stored it, and compared the stored value to the run. A bundle now
-  records what the run measured and what the review covers, and refuses a
-  citable claim when the two differ or when a question changes afterwards.
-- Fixed `kb-arena evidence` announcing a citable run for a bundle that
-  `kb-arena evidence --check` then rejected. The command reads its own checker
-  before it writes.
-- Fixed `kb-arena evidence --check <path>` needing `--corpus` and `--run-id`,
-  which are meaningless for a check.
-- Fixed `kb-arena retriever-lab` asking for an embedding key on a bm25-only run,
-  which two READMEs promise needs no key.
-
-
-
-### Added in 0.11.0
 - Added eight retrieval strategies, taking the catalog from 11 to 19: `hyde`,
   `multi_query`, `metadata_filtered`, `temporal`, `late_interaction`, `splade`,
   `agentic` and `lightrag`. Nine strategies still run by default. The rest need
@@ -113,7 +75,17 @@ out.
   `docs/mcp-server.md`, `docs/github-action.md` and
   `docs/own-corpus-walkthrough.md`.
 
-### Changed in 0.11.0
+### Changed
+- Arena ratings live per corpus and per rubric. A vote on one corpus no longer
+  moves the numbers a reader sees beside another.
+- The leaderboard groups by build as well as by experiment, so a code change is
+  no longer reported as a repeated measurement.
+- Routes that return corpus content need a token unless the caller is on this
+  machine or an operator published a demo.
+- `kb-arena demo` binds to this machine by default. It used to serve the network.
+- Holm step-down correction is applied across every trial in an optimize run.
+- The Retriever Lab documentation states what one run cannot show, and the
+  labelling documentation names the model the code actually calls.
 - The strategy picker groups 19 strategies into baseline, advanced and
   experimental, derived from the catalog's own fields, and puts the operator
   controls behind one collapsed section.
@@ -123,7 +95,27 @@ out.
   `==`, rather than asserting five literal versions that made each routine bump
   fail a test about Python support.
 
-### Fixed in 0.11.0
+### Fixed
+- Fixed bpref reporting a perfect score for a bad ranking when the labels named
+  no negatives. On the built-in corpus it read 0.2746 instead of 0.1826.
+- Fixed the packaged frontend shipping a page the repository no longer held. A
+  digest of the frontend sources now fails the suite on a stale bundle.
+- Fixed a refused read appearing as a domain answer: an empty graph read as a
+  database outage, and sample rows read as a corpus's results.
+- Fixed `--fail-below` judging only the last repeat when `--runs` was above one.
+- Fixed the npm audit step hanging until the job was killed, which reported as a
+  cancelled check rather than a hang.
+- Fixed the citability check proving nothing. It read the question set out of
+  the run, stored it, and compared the stored value to the run. A bundle now
+  records what the run measured and what the review covers, and refuses a
+  citable claim when the two differ or when a question changes afterwards.
+- Fixed `kb-arena evidence` announcing a citable run for a bundle that
+  `kb-arena evidence --check` then rejected. The command reads its own checker
+  before it writes.
+- Fixed `kb-arena evidence --check <path>` needing `--corpus` and `--run-id`,
+  which are meaningless for a check.
+- Fixed `kb-arena retriever-lab` asking for an embedding key on a bm25-only run,
+  which two READMEs promise needs no key.
 - Fixed the evidence bundle recording a command that did not reproduce the run.
   It was built from the corpus name alone, so a bundle for a bm25-only run told
   a reader to run eleven strategies. The lab and the benchmark runner record
@@ -134,7 +126,6 @@ out.
 - Fixed `variance.py` and `evidence.py` judging a result file through a growing
   pile of shape checks. One validated read replaces them, which made four
   recurring defect classes unreachable rather than guarded.
-
 
 ## [0.10.0] - 2026-08-05 - Retrieval architecture decision lab
 

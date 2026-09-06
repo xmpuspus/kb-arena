@@ -1,25 +1,29 @@
 # Every change in 0.11.0 traces to a finding, and every finding names its check
 
-An eight-dimension audit on 2026-09-03 produced a ledger of 227 numbered
+An eight-dimension audit on 2026-09-03 produced a ledger of 236 numbered
 findings. This document maps what shipped to what it closed, and says what it
 did not close. It is the record a reader checks instead of trusting the release
 notes.
 
 ## The count, and what the count is not
 
-The 227 rows carry five statuses, and they add up:
+The 236 rows carry five statuses, and they add up:
 
 | Status | Rows | What it means |
 |---|---|---|
 | fixed | 166 | The change is on `origin/main`, and a script proves it by name |
-| open | 54 | Not done. Most are enhancements, and each row states why it waits |
+| open | 62 | Not done. Most are enhancements, and each row states why it waits |
 | in-progress | 3 | Started and not finished |
-| checked | 3 | Investigated and found to need no change |
+| checked | 4 | Investigated and found to need no change |
 | deferred | 1 | Deliberately out of scope, with the reason recorded |
 
 The script is `verify_fixed.py` in the run directory. It greps the default
 branch for the name each fixed row quotes, because this repository squash-merges
 and a branch SHA proves nothing about main. All 166 pass.
+
+An earlier version of this document said 227 rows. The counter used a row-id
+pattern that missed four-letter prefixes, so it skipped every `DEMO` and `DIST`
+row. The count is now 236.
 
 Three open rows are named in this document, because a reader deciding whether to
 trust a number needs them.
