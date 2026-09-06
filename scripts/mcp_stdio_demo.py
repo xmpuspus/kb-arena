@@ -19,8 +19,10 @@ entry in CALLS.
 from __future__ import annotations
 
 import json
+import selectors
 import subprocess
 import sys
+import time
 
 # The newest revision the initialize handshake reaches. LATEST_PROTOCOL_VERSION
 # is newer, but it names the stateless per-request era, which this handshake
@@ -56,21 +58,44 @@ def send(proc: subprocess.Popen, message: dict) -> None:
     proc.stdin.flush()
 
 
-def read_reply(proc: subprocess.Popen, request_id: int) -> dict:
-    """The reply to one request id.
+# A recording that hangs is worse than one that fails, because vhs keeps rolling
+# and nothing on screen says why. Every read carries a deadline.
+REPLY_TIMEOUT_SECONDS = 60.0
 
-    A line that does not parse as JSON is skipped rather than raised on: a
+
+def read_reply(proc: subprocess.Popen, request_id: int) -> dict:
+    """The reply to one request id, or a raise once the deadline passes.
+
+    A line that does not parse as JSON is skipped rather than raised on. A
     dependency that prints at import time lands on this stream too, and it is
     not a protocol message.
+
+    `for line in proc.stdout` used to drive this, and it blocks with no way out.
+    A server that starts and then stalls held the demo open forever.
     """
-    for line in proc.stdout:
-        try:
-            message = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if message.get("id") == request_id:
-            return message
-    raise RuntimeError(f"the server closed stdout before it answered request {request_id}")
+    deadline = time.monotonic() + REPLY_TIMEOUT_SECONDS
+    with selectors.DefaultSelector() as selector:
+        selector.register(proc.stdout, selectors.EVENT_READ)
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError(
+                    f"the server did not answer request {request_id} within "
+                    f"{REPLY_TIMEOUT_SECONDS:.0f} seconds"
+                )
+            if not selector.select(remaining):
+                continue
+            line = proc.stdout.readline()
+            if not line:
+                raise RuntimeError(
+                    f"the server closed stdout before it answered request {request_id}"
+                )
+            try:
+                message = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if message.get("id") == request_id:
+                return message
 
 
 def result(reply: dict) -> dict:

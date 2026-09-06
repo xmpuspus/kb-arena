@@ -87,3 +87,30 @@ Rebuild the file after a new hero recording:
 ffmpeg -i docs/demo.gif -vf fps=1/6 /tmp/hero-%02d.png
 ffmpeg -y -i /tmp/hero-06.png -vf "crop=1200:600:0:0,scale=1280:640:flags=lanczos" docs/social-preview.png
 ```
+
+## The MCP recording shows a live server, not a printed transcript
+
+- Asset: `docs/demo-mcp.gif`
+- Source: `docs/tapes/mcp.tape` driving `scripts/mcp_stdio_demo.py`
+- Size: 219664 bytes, 1280x800, about 24 seconds
+- SHA-256: `41190dee83f0940bf0ba5cb1951fe10e3b5cdd5f09dab58efac1e56af036e8a5`
+- Capture environment: the `mcp` extra in a virtualenv at `/tmp/mcp-demo`, vhs 0.11.0
+
+The driver starts `python3 -m kb_arena.mcp.server` as a subprocess and speaks
+newline-delimited JSON-RPC on its stdin and stdout. Every line on screen comes
+from the running server.
+
+Four frames read back at one every six seconds:
+
+- Frame 1: the `(mcp-demo)` prompt and the typed annotation.
+- Frame 2: `-> initialize` sent and the reply `kb-arena, protocol 2025-11-25`.
+- Frame 3: `tools/list` naming all eight tools, then the `list_corpora` table.
+- Frame 4: the `compare` answer with `significant True` and `comparable False`,
+  and the reason that neither file carries a manifest.
+
+Rebuild it with:
+
+```
+python3 -m venv /tmp/mcp-demo && /tmp/mcp-demo/bin/pip install -e '.[mcp]'
+vhs docs/tapes/mcp.tape
+```
