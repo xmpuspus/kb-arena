@@ -31,6 +31,14 @@ The graph page draws a sample graph, and it says "Showing sample data because
 Neo4j is not connected." This Space runs no database and no API, so that line
 names the wrong cause. The graph you see is sample data.
 
+## Open each page by its file path
+
+The host answers exact file paths. The home page opens at `/`, which redirects
+to `/index.html`. A second page needs its own file, for example
+`/benchmark/index.html`. A request for `/benchmark/` leaves this host and
+lands on `huggingface.co`, so the links in the top navigation do not move the
+page. Open the file path instead.
+
 ## The Space holds no corpus and no key
 
 - No corpus document travels with this deploy. The Space carries the dashboard

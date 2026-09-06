@@ -73,6 +73,13 @@ rows still reads "Results from your benchmark runs", and no run stands behind
 this deploy. The graph page draws a sample graph and names a Neo4j outage as
 the cause, though this Space has no database to lose.
 
+The host answers exact file paths only. `/` redirects to `/index.html` and
+opens the dashboard. A second page needs its file, for example
+`/benchmark/index.html`. A request for `/benchmark/` redirects to
+`huggingface.co/benchmark`, so a click in the top navigation stays put. The
+export writes `benchmark/index.html`, and this host does not resolve a
+directory to that file.
+
 Create the Space once, then push the dashboard.
 
 ```bash
