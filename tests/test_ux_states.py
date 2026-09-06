@@ -188,7 +188,9 @@ def test_a_lost_vote_answer_never_claims_the_ratings_held_still():
 
     assert "The ELO ratings stay as they were" not in page
     assert "the outcome is unknown" in page
-    assert "fetchLeaderboard(corpus);\n    } finally {" in page, "a failed vote re-reads"
+    assert (
+        "fetchLeaderboard(selectedCorpus.current);\n    } finally {" in page
+    ), "a failed vote re-reads the board"
 
 
 async def test_health_reports_whether_the_caller_is_local(monkeypatch):
@@ -289,6 +291,47 @@ def test_a_scope_change_drops_the_data_the_last_scope_owned(route, scope):
     assert f"useScopeReset({scope}, () => {{" in page
 
 
+def test_a_late_vote_reply_never_lands_under_another_corpus():
+    """The reply carries the voted corpus, and the reader may have moved on."""
+    page = (WEB / "app" / "arena" / "page.tsx").read_text()
+
+    assert "const selectedCorpus = useRef(corpus);" in page
+    assert "if (votedCorpus !== selectedCorpus.current) return;" in page
+    # Every read that starts inside an awaited vote takes the corpus from the
+    # ref. The effect on a corpus change reads the value it just received.
+    assert page.count("fetchLeaderboard(selectedCorpus.current)") == 2
+
+
+def test_the_tools_wait_for_the_corpus_list_before_they_call_it_empty():
+    """An outstanding read looks the same as a server that holds no corpus."""
+    page = (WEB / "app" / "tools" / "page.tsx").read_text()
+
+    assert "const [pending, setPending] = useState(true);" in page
+    assert "{!pending && !failed && corpora.length === 0 && (" in page
+    assert page.count("disabled={failed || pending}") == 2
+
+
+def test_one_parser_turns_the_leaderboard_answer_into_rows():
+    """A 200 carrying the wrong body rendered as data.
+
+    The check lives in the client, not in the page. A check for each field at
+    the call site guards the field somebody thought of and misses the next.
+    """
+    api = (WEB / "lib" / "api.ts").read_text()
+    page = (WEB / "app" / "leaderboard" / "page.tsx").read_text()
+
+    assert "export function parseLeaderboard(body: unknown): LeaderboardPage" in api
+    # A body that is not an object, and one with no leaderboard array, fail.
+    assert 'if (!body || typeof body !== "object") throw new Error(LEADERBOARD_MALFORMED);' in api
+    assert "if (!Array.isArray(answer.leaderboard)) throw new Error(LEADERBOARD_MALFORMED);" in api
+    # A row that names no corpus and no strategy is dropped, not rendered.
+    assert 'typeof row.corpus !== "string" || typeof row.strategy !== "string"' in api
+
+    assert "parseLeaderboard(body)" in page
+    assert "type LeaderRow" not in page, "the page keeps no shape of its own"
+    assert "FetchError" in page, "a malformed body reaches the existing error surface"
+
+
 def test_the_scope_reset_lives_in_one_place():
     """Three copies of the same clear drift, and two of them already had."""
     hook = WEB / "lib" / "useScopeReset.ts"
@@ -324,7 +367,7 @@ def test_the_tools_never_act_on_a_corpus_from_a_failed_read():
     assert "{corpus && !failed && (" in page, "the tabs stay off after a failed read"
     # The three tab buttons and the corpus select stayed live beside an empty
     # list, so a reader could start an audit with no corpus.
-    assert page.count("disabled={failed}") == 2
+    assert page.count("disabled={failed || pending}") == 2
     assert "Corpus list unavailable" in page
 
 

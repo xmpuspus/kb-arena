@@ -21,9 +21,13 @@ export default function ToolsPage() {
   const [corpus, setCorpus] = useState("");
   const [corpora, setCorpora] = useState<CorpusInfo[]>([]);
   const [failed, setFailed] = useState(false);
+  // A read still running is not a server that holds no corpus, and the empty
+  // list looks the same either way.
+  const [pending, setPending] = useState(true);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    setPending(true);
     fetchCorporaResult().then((result) => {
       // Every tool here acts on the corpus this list names. The built-in
       // default under a failed read would send a fix or an audit at a corpus
@@ -33,6 +37,7 @@ export default function ToolsPage() {
       if (!result.failed && result.corpora.length > 0) {
         setCorpus((prev) => prev || result.corpora[0].value);
       }
+      setPending(false);
     });
   }, [attempt]);
 
@@ -50,7 +55,13 @@ export default function ToolsPage() {
         </p>
       </div>
 
-      {!failed && corpora.length === 0 && (
+      {pending && (
+        <p className="text-sm" style={{ color: "var(--muted)" }} role="status">
+          Reading the corpus list...
+        </p>
+      )}
+
+      {!pending && !failed && corpora.length === 0 && (
         <div
           className="rounded-lg border border-dashed p-6 text-sm"
           style={{ borderColor: "var(--border)", color: "var(--muted)" }}
@@ -76,7 +87,7 @@ export default function ToolsPage() {
           <select
             value={corpus}
             onChange={(e) => setCorpus(e.target.value)}
-            disabled={failed}
+            disabled={failed || pending}
             className="px-3 py-1.5 rounded-lg border text-sm disabled:opacity-50"
             style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
           >
@@ -94,7 +105,7 @@ export default function ToolsPage() {
             <button
               key={t}
               onClick={() => setTab(t)}
-              disabled={failed}
+              disabled={failed || pending}
               title={failed ? "The corpus list did not load, so the tools stay off" : undefined}
               className="px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-40"
               style={{

@@ -3,42 +3,17 @@
 import { useState, useEffect, useMemo } from "react";
 import StateBanner from "@/components/StateBanner";
 import FetchError from "@/components/FetchError";
-import { readFailureMessage } from "@/lib/api";
+import {
+  parseLeaderboard,
+  readFailureMessage,
+  type LeaderboardPage,
+} from "@/lib/api";
 import { useScopeReset } from "@/lib/useScopeReset";
-
-type LeaderRow = {
-  corpus: string;
-  strategy: string;
-  // Runs that differ in question set, qrels, judge, or top_k never share a
-  // row. The key names the experiment, and mixed_with lists the other keys
-  // seen for the same corpus and strategy.
-  compatibility_key: string;
-  // Which build produced these runs. The API groups by it, so the page shows it.
-  build?: string;
-  manifest: {
-    question_split?: string | null;
-    judge_model?: string | null;
-    top_k?: number | null;
-  };
-  mixed_with: string[];
-  runs: number;
-  mean_accuracy: number | null;
-  mean_recall_at_5: number | null;
-  mean_ndcg_at_5: number | null;
-  mean_cost_usd: number | null;
-  mean_latency_ms: number | null;
-};
-
-type LeaderboardResponse = {
-  corpora: string[];
-  leaderboard: LeaderRow[];
-  filter: string;
-};
 
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 
 export default function LeaderboardPage() {
-  const [data, setData] = useState<LeaderboardResponse | null>(null);
+  const [data, setData] = useState<LeaderboardPage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("all");
   const [attempt, setAttempt] = useState(0);
@@ -59,7 +34,10 @@ export default function LeaderboardPage() {
         if (!r.ok) throw new Error(`The server answered ${r.status}.`);
         return r.json();
       })
-      .then((d: LeaderboardResponse) => {
+      // Every field the table reads comes back checked, so a 200 with the
+      // wrong body is a failed read rather than a rendered one.
+      .then((body: unknown) => parseLeaderboard(body))
+      .then((d) => {
         setData(d);
         setCorpusNames(d.corpora ?? []);
         setError(null);
