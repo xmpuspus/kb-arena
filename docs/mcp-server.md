@@ -4,6 +4,13 @@ KB Arena ships a Model Context Protocol server. It exposes eight tools for
 corpus, strategy, and benchmark work over stdio, so an editor or agent can
 call kb-arena the same way the CLI does, without shelling out.
 
+![A stdio client reads the eight tools and three answers from the running server](demo-mcp.gif)
+
+The recording shows a client that starts the server, lists its eight tools,
+and then reads the answers to `list_corpora`, `validate_corpus`, and
+`compare`. Repeat it with `python3 scripts/mcp_stdio_demo.py` after you
+install the extra, or record it again with `vhs docs/tapes/mcp.tape`.
+
 The server calls a plain kb-arena function for every tool, never a CLI
 command, so no tool result depends on a Typer wrapper. No tool returns an
 empty result to mean the call failed. A failure raises instead, so a caller
