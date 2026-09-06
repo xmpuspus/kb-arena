@@ -326,10 +326,19 @@ export interface ServerStatus {
   demoMode: boolean;
   // The app sets demo mode for itself when no model key is configured. That
   // machine is not a hosted demo, and only this flag tells the two apart.
-  demoModeAuto: boolean;
+  // null when the answer did not carry it, which is neither of the two.
+  demoModeAuto: boolean | null;
   // Whether this browser reached the API over the loopback address. Neither
   // demo flag says where the server runs, and the browser cannot tell.
-  callerIsLocal: boolean;
+  // null when the answer did not carry it, which is not "somewhere else".
+  callerIsLocal: boolean | null;
+}
+
+// A missing flag is an absent answer, not a false one. `Boolean(undefined)`
+// turned every gap into a positive claim: an older build that reports no
+// locality read as a server on another machine.
+function reportedFlag(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
 }
 
 // null means the server did not answer, which is not the same as live mode.
@@ -339,10 +348,13 @@ export async function fetchServerStatus(): Promise<ServerStatus | null> {
     const res = await fetch(`${API_URL}/health`);
     if (!res.ok) return null;
     const data = await res.json();
+    // A body with no demo flag is not this API's health answer, and reading
+    // the gap as false would call it a live deployment.
+    if (typeof data?.demo_mode !== "boolean") return null;
     return {
-      demoMode: Boolean(data.demo_mode),
-      demoModeAuto: Boolean(data.demo_mode_auto),
-      callerIsLocal: Boolean(data.caller_is_local),
+      demoMode: data.demo_mode,
+      demoModeAuto: reportedFlag(data.demo_mode_auto),
+      callerIsLocal: reportedFlag(data.caller_is_local),
     };
   } catch {
     return null;

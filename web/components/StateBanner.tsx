@@ -20,11 +20,12 @@ const CHIP: Record<string, { label: string; color: string }> = {
   "hosted-read-only": { label: "Hosted read-only", color: "var(--warning)" },
   "live-local": { label: "Live local", color: "var(--success)" },
   "live-remote": { label: "Live server", color: "var(--success)" },
+  "live-unknown": { label: "Live server", color: "var(--success)" },
   sample: { label: "Sample data", color: "var(--warning)" },
 };
 
 export default function StateBanner({ sample }: Props) {
-  const { state, writesOff, refresh } = useServerState();
+  const { state, writesOff, keyless, refresh } = useServerState();
   const chip = CHIP[sample ? "sample" : state];
 
   let sentence = "";
@@ -36,12 +37,19 @@ export default function StateBanner({ sample }: Props) {
     sentence =
       "An operator published this server read-only. It serves recorded results, " +
       "and live questions, arena matches and graph builds stay off.";
-  } else if (writesOff) {
+  } else if (writesOff && keyless) {
     sentence =
       "This server has no model key, so live questions, arena matches and " +
       "graph builds answer 503. Set a model key to turn them on.";
+  } else if (writesOff) {
+    sentence =
+      "This server answers reads only. Live questions, arena matches and " +
+      "graph builds answer 503.";
   } else if (state === "live-remote") {
     sentence = "This server accepts live runs, and it runs on another machine.";
+  } else if (state === "live-unknown") {
+    sentence =
+      "This server accepts live runs. It did not say whether it runs on your machine.";
   } else {
     sentence = "This server runs on your machine and accepts live runs.";
   }

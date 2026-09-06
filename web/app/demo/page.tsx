@@ -4,6 +4,7 @@ import { useCallback, useState, useRef, useEffect } from "react";
 import ChatPanel, { type DemoResult, type PanelOutcome } from "@/components/ChatPanel";
 import StateBanner from "@/components/StateBanner";
 import { useServerState } from "@/components/ServerStateProvider";
+import { useScopeReset } from "@/lib/useScopeReset";
 import {
   STRATEGY_LABELS,
   CORPORA,
@@ -90,6 +91,15 @@ export default function DemoPage() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { fetchCorpora().then(setCorpora); }, []);
+
+  // The answers on screen came from the corpus the picker named a moment ago.
+  // Setting the trigger back to zero remounts each panel, which aborts a read
+  // still running and puts the sample answers back.
+  useScopeReset(corpus, () => {
+    setOutcomes({});
+    setHistory([]);
+    setTrigger(0);
+  });
 
   const checking = state === "checking";
   // Chat answers 503 whenever demo mode is on, whoever turned it on.

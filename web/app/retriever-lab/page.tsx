@@ -171,7 +171,11 @@ export default function RetrieverLabPage() {
   // is an answer nobody has yet.
   const [listPending, setListPending] = useState(true);
   const [error, setError] = useState<string>("");
+  // The two reads fail for different reasons and need different remedies. One
+  // error state said the run list failed even when the list had loaded.
+  const [detailError, setDetailError] = useState<string>("");
   const [attempt, setAttempt] = useState(0);
+  const [detailAttempt, setDetailAttempt] = useState(0);
 
   useEffect(() => {
     setError("");
@@ -202,7 +206,7 @@ export default function RetrieverLabPage() {
     const controller = new AbortController();
     let active = true;
     setLoading(true);
-    setError("");
+    setDetailError("");
     // Question-level records, so this read carries the API token when set.
     apiFetch(`${API_URL}/api/retriever-lab/${selectedRun}`, { signal: controller.signal })
       .then((r) => {
@@ -221,7 +225,7 @@ export default function RetrieverLabPage() {
           // Leaving the old run on screen puts one run's numbers under
           // another run's name. Clear it and say what happened.
           if (active) setData(null);
-          setError(readFailureMessage(e, "The run did not load."));
+          setDetailError(readFailureMessage(e, "The run did not load."));
         }
       })
       .finally(() => {
@@ -231,7 +235,7 @@ export default function RetrieverLabPage() {
       active = false;
       controller.abort();
     };
-  }, [selectedRun, attempt, tokenEpoch]);
+  }, [selectedRun, attempt, detailAttempt, tokenEpoch]);
 
   const corpusSummary = useMemo(() => {
     if (!data || !selectedCorpus) return null;
@@ -272,10 +276,19 @@ export default function RetrieverLabPage() {
 
       {error && (
         <FetchError
-          title="The retriever-lab runs did not load"
+          title="The retriever-lab run list did not load"
           message={error}
           hint="An empty run list would read as a deployment that never ran the lab, so this page shows none. Start the API, or enter an API token with the key button, then try again."
           onRetry={() => setAttempt((n) => n + 1)}
+        />
+      )}
+
+      {detailError && (
+        <FetchError
+          title={`Run ${selectedRun} did not load`}
+          message={detailError}
+          hint="The run list loaded, so this run alone is unreadable. Pick another run, or try this one again."
+          onRetry={() => setDetailAttempt((n) => n + 1)}
         />
       )}
 

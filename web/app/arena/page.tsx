@@ -135,12 +135,18 @@ export default function ArenaPage() {
   const lastWinner = useRef<"a" | "b" | "tie">("tie");
 
   // The corpus over the board changed, so the ratings under the old one go
-  // before the new read starts.
+  // before the new read starts. The match goes with them: its answers came
+  // from the old corpus, and a vote on it would land in the old corpus's
+  // ratings while the picker names the new one.
   useScopeReset(corpus, () => {
     setLeaderboard([]);
     setTotalVotes(0);
     setBoardError("");
     setBoardPending(true);
+    setMatch(null);
+    setVoteResult(null);
+    setVoteNotice("");
+    setError("");
   });
 
   async function fetchLeaderboard(scope: string = corpus) {
