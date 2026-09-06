@@ -9,17 +9,24 @@ import { REVIEW_DRAFT, REVIEW_REVIEWED, REVIEW_UNSPECIFIED, type LeaderboardRow 
  * and the review status of the questions. A reader who cannot see those three
  * cannot tell an incomparable row from a comparable one, and cannot tell a
  * citable result from a development signal.
+ *
+ * The page passes each field by name rather than the whole row, so a reader of
+ * the page can see which four facts reach this component.
  */
 interface Props {
-  row: LeaderboardRow;
+  compatibilityKey: string;
+  /** The page shortens the build and names the unrecorded case. */
+  buildLabel: string;
+  review: LeaderboardRow["review"];
+  manifest: LeaderboardRow["manifest"];
+  mixedWith: string[];
 }
 
-export function reviewSentence(row: LeaderboardRow): {
+export function reviewSentence(review: LeaderboardRow["review"]): {
   chip: string;
   colour: string;
   sentence: string;
 } {
-  const review = row.review;
   // A server older than the review summary reports real numbers and no
   // review. Reading that gap as "not citable" would be a claim about
   // questions nobody described.
@@ -57,40 +64,43 @@ export function reviewSentence(row: LeaderboardRow): {
   };
 }
 
-export default function RowProvenance({ row }: Props) {
-  const legacy = row.compatibility_key === "legacy";
-  const review = reviewSentence(row);
+export default function RowProvenance({
+  compatibilityKey,
+  buildLabel,
+  review,
+  manifest,
+  mixedWith,
+}: Props) {
+  const legacy = compatibilityKey === "legacy";
+  const verdict = reviewSentence(review);
   const experiment = legacy
     ? "This result file carries no manifest, so nothing records what it measured."
-    : `Judge ${row.manifest?.judge_model ?? "unrecorded"}, split ${
-        row.manifest?.question_split ?? "unrecorded"
-      }, top-k ${row.manifest?.top_k ?? "unrecorded"}.`;
+    : `Judge ${manifest?.judge_model ?? "unrecorded"}, split ${
+        manifest?.question_split ?? "unrecorded"
+      }, top-k ${manifest?.top_k ?? "unrecorded"}.`;
 
   return (
     <div className="space-y-1 text-xs">
       <div className="mono" title={experiment}>
-        {legacy ? "legacy" : `key ${row.compatibility_key.slice(0, 6)}`}
+        {legacy ? "legacy" : `key ${compatibilityKey.slice(0, 6)}`}
       </div>
       <p style={{ color: "var(--muted)" }}>{experiment}</p>
       <div className="mono" style={{ color: "var(--muted)" }}>
-        {row.build && row.build !== "unrecorded"
-          ? `build ${row.build.length > 14 ? `${row.build.slice(0, 14)}...` : row.build}`
-          : "build unrecorded"}
+        {buildLabel}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         <span
           className="rounded px-1.5 py-0.5 font-semibold"
-          style={{ background: "var(--subtle)", color: review.colour }}
+          style={{ background: "var(--subtle)", color: verdict.colour }}
         >
-          {review.chip}
+          {verdict.chip}
         </span>
-        <span style={{ color: "var(--muted)" }}>{review.sentence}</span>
+        <span style={{ color: "var(--muted)" }}>{verdict.sentence}</span>
       </div>
-      {row.mixed_with?.length > 0 && (
+      {mixedWith.length > 0 && (
         <p style={{ color: "var(--muted)" }}>
-          {row.mixed_with.length} other experiment{row.mixed_with.length === 1 ? "" : "s"} ran on
-          this corpus and strategy. Those rows measured something else, so do not read them as one
-          ranking.
+          {mixedWith.length} other experiment{mixedWith.length === 1 ? "" : "s"} ran on this corpus
+          and strategy. Those rows measured something else, so do not read them as one ranking.
         </p>
       )}
     </div>

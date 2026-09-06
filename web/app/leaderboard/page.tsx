@@ -150,7 +150,19 @@ export default function LeaderboardPage() {
                   <td className="px-3 py-2 font-mono">{row.corpus}</td>
                   <td className="px-3 py-2 font-mono">{row.strategy}</td>
                   <td className="px-3 py-2 align-top" style={{ minWidth: 220 }}>
-                    <RowProvenance row={row} />
+                    <RowProvenance
+                      compatibilityKey={row.compatibility_key}
+                      buildLabel={
+                        row.build && row.build !== "unrecorded"
+                          ? `build ${
+                              row.build.length > 14 ? `${row.build.slice(0, 14)}...` : row.build
+                            }`
+                          : "build unrecorded"
+                      }
+                      review={row.review}
+                      manifest={row.manifest}
+                      mixedWith={row.mixed_with ?? []}
+                    />
                   </td>
                   <td className="px-3 py-2 text-right">
                     {row.mean_accuracy != null ? (row.mean_accuracy * 100).toFixed(1) + "%" : "n/a"}
