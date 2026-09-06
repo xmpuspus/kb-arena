@@ -16,7 +16,7 @@ before you build on it.
 Use it before you commit to a retrieval architecture, or as a regression lab after your corpus,
 chunking, model, or index changes.
 
-![Historical KB Arena retrieval result](https://raw.githubusercontent.com/xmpuspus/kb-arena/main/docs/demo.gif)
+![kb-arena 0.11.0 ingests the aws-compute corpus, builds a BM25 index, scores retrieval, and checks the evidence bundle, with no API key](https://raw.githubusercontent.com/xmpuspus/kb-arena/main/docs/demo.gif)
 
 ## Explore a checked result
 
