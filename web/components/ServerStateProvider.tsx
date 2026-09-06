@@ -19,18 +19,24 @@ export type ServerState =
   | "unreachable"
   | "hosted-read-only"
   | "live-local"
-  | "live-remote";
+  | "live-remote"
+  | "live-unknown";
 
 export interface ServerStateValue {
   state: ServerState;
   // True when /chat, arena matches, graph builds and the tools answer 503.
   writesOff: boolean;
+  // True when the server says it turned demo mode on for itself, which means
+  // no model key. An answer that does not say leaves this false, and the
+  // banner then makes no claim about why the writes are off.
+  keyless: boolean;
   refresh: () => void;
 }
 
 const FALLBACK: ServerStateValue = {
   state: "checking",
   writesOff: false,
+  keyless: false,
   refresh: () => {},
 };
 
@@ -44,11 +50,12 @@ export default function ServerStateProvider({ children }: { children: React.Reac
   const [value, setValue] = useState<Omit<ServerStateValue, "refresh">>({
     state: "checking",
     writesOff: false,
+    keyless: false,
   });
   const [attempt, setAttempt] = useState(0);
 
   const refresh = useCallback(() => {
-    setValue({ state: "checking", writesOff: false });
+    setValue({ state: "checking", writesOff: false, keyless: false });
     setAttempt((n) => n + 1);
   }, []);
 
@@ -57,20 +64,24 @@ export default function ServerStateProvider({ children }: { children: React.Reac
     fetchServerStatus().then((status) => {
       if (!active) return;
       if (!status) {
-        setValue({ state: "unreachable", writesOff: false });
+        setValue({ state: "unreachable", writesOff: false, keyless: false });
         return;
       }
       setValue({
         // Demo mode the app turned on for itself says nothing about hosting.
         // It says this machine has no model key, so live runs are off. Where
-        // the server runs is the server's own answer, not a guess from a flag.
+        // the server runs is the server's own answer, not a guess from a flag,
+        // and an answer that skipped the flag says nothing either way.
         state:
-          status.demoMode && !status.demoModeAuto
+          status.demoMode && status.demoModeAuto === false
             ? "hosted-read-only"
-            : status.callerIsLocal
+            : status.callerIsLocal === true
               ? "live-local"
-              : "live-remote",
+              : status.callerIsLocal === false
+                ? "live-remote"
+                : "live-unknown",
         writesOff: status.demoMode,
+        keyless: status.demoModeAuto === true,
       });
     });
     return () => {

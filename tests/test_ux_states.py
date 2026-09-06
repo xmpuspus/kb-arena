@@ -74,7 +74,7 @@ def test_the_banner_reads_both_flags_from_the_api():
     provider = (WEB / "components" / "ServerStateProvider.tsx").read_text()
 
     assert "fetchServerStatus" in provider, "the state comes from the API, not a constant"
-    assert "status.demoMode && !status.demoModeAuto" in provider
+    assert "status.demoMode && status.demoModeAuto === false" in provider
     for state in ("unreachable", "hosted-read-only", "live-local"):
         assert f'"{state}"' in provider
 
@@ -219,12 +219,62 @@ def test_the_banner_names_a_remote_live_server_as_one():
     assert "it runs on another machine" in banner
 
 
+def test_a_health_answer_without_the_flags_claims_nothing():
+    """`Boolean(undefined)` turned a missing flag into a positive answer.
+
+    An older build that reports no locality read as a server on another
+    machine, and a body that is not a health answer read as a live one.
+    """
+    api = (WEB / "lib" / "api.ts").read_text()
+    provider = (WEB / "components" / "ServerStateProvider.tsx").read_text()
+    banner = (WEB / "components" / "StateBanner.tsx").read_text()
+
+    assert 'if (typeof data?.demo_mode !== "boolean") return null;' in api
+    assert "function reportedFlag(value: unknown): boolean | null" in api
+    assert "callerIsLocal: boolean | null" in api
+
+    assert "status.callerIsLocal === true" in provider
+    assert "status.callerIsLocal === false" in provider
+    assert '"live-unknown"' in provider
+    assert "It did not say whether it runs on your machine." in banner
+
+
+def test_the_arena_match_goes_with_the_board_on_a_corpus_change():
+    """A vote lands on the match's own corpus, whatever the picker now says."""
+    page = (WEB / "app" / "arena" / "page.tsx").read_text()
+    reset = page[page.index("useScopeReset(corpus") : page.index("async function fetchLeaderboard")]
+
+    assert "setMatch(null);" in reset, "the old corpus's answers stay votable otherwise"
+    assert "setVoteResult(null);" in reset
+
+
+def test_the_demo_answers_go_with_the_corpus_that_produced_them():
+    """The panels held answers from the corpus the picker named a moment ago."""
+    page = (WEB / "app" / "demo" / "page.tsx").read_text()
+
+    assert "useScopeReset(corpus, () => {" in page
+    # The panel key carries the trigger, so this remount aborts a running read.
+    assert "setTrigger(0);" in page
+    assert "key={`${s}-${trigger}`}" in page
+
+
+def test_a_failed_run_read_says_which_read_failed():
+    """One error state said the run list failed when one run alone had."""
+    page = (WEB / "app" / "retriever-lab" / "page.tsx").read_text()
+
+    assert "detailError" in page
+    assert "The retriever-lab run list did not load" in page
+    assert "did not load`}" in page, "the run error names the run"
+    assert "setDetailAttempt" in page, "and retries that run, not the list"
+
+
 @pytest.mark.parametrize(
     ("route", "scope"),
     [
         ("arena/page.tsx", "corpus"),
         ("graph/page.tsx", "corpus"),
         ("leaderboard/page.tsx", "filter"),
+        ("demo/page.tsx", "corpus"),
     ],
 )
 def test_a_scope_change_drops_the_data_the_last_scope_owned(route, scope):
