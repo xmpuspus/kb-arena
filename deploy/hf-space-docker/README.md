@@ -26,7 +26,7 @@ same lab on your own documents.
 
 The image sets `KB_ARENA_DEMO_MODE=true`. An operator sets that flag, and the
 read gate then serves the recorded results to any reader, with no token. The
-app can also turn demo mode on by itself, when it finds no model key, and that
+app turns demo mode on by itself too, when it finds no model key, and that
 case keeps the read routes closed. The two cases stay apart on purpose, so this
 image states the published one.
 
@@ -52,7 +52,12 @@ Each caller gets 60 requests a minute on every read route, the gated ones and
 the open aggregates alike. `/health` and `/ready` are outside that count, on
 purpose: a platform polls a liveness probe, and a limiter there reports the
 deployment as down under its own health check. The platform proxy reports one
-address for its traffic, so readers share the allowance.
+address for its traffic, so readers share the allowance. One busy caller can
+use it up for everyone, and the next reader gets a 429 nobody caused. That is
+the trade this deployment takes: it serves reads without a token, so it cannot
+tell two callers apart. `KB_ARENA_TRUSTED_PROXY_HEADER` does not help here,
+because the app honours that header only when the socket peer is on loopback,
+and the platform proxy is not.
 
 That claim was false when this file first said it. `/api/leaderboard`,
 `/api/corpora`, `/api/retriever-lab/runs` and `/api/arena/leaderboard` answered
