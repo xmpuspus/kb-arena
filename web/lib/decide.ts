@@ -624,9 +624,15 @@ export function bundleCaveats(bundle: EvidenceBundle | null): string[] {
   // A recorded zero is no better than an absent total when the same block
   // reports five drafts. A cross-model pass reached the same "5 of 0" through
   // `questions: 0`, so the test is whether the total can hold the counts, not
-  // whether somebody wrote a number.
+  // whether somebody wrote a number. Summing the two statuses this function
+  // renders let `questions: 10` past a block whose counts add to 15, so the
+  // sum covers every status the bundle records, named or not.
+  const recorded = Object.values(review.counts ?? {}).reduce(
+    (sum, count) => sum + (typeof count === "number" && Number.isFinite(count) ? count : 0),
+    0
+  );
   const total = review.questions;
-  const counted = typeof total === "number" && total >= drafts + unspecified;
+  const counted = typeof total === "number" && total >= recorded;
   const outOf = counted ? ` of ${total}` : "";
   if (drafts > 0) {
     lines.push(

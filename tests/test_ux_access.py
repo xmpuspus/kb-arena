@@ -582,5 +582,9 @@ def test_an_absent_question_total_never_renders_as_a_denominator():
     assert 'const outOf = counted ? ` of ${total}` : "";' in body
     assert "The bundle records no question total" in body
     # A recorded zero reaches the same "5 of 0" as an absent total, so the
-    # test is whether the total can hold the counts under it.
-    assert "total >= drafts + unspecified" in body
+    # test is whether the total can hold the counts under it. Summing the two
+    # statuses this function renders let `questions: 10` past counts adding to
+    # 15, so the sum covers every status the bundle records.
+    assert "total >= recorded" in body
+    assert "Object.values(review.counts ?? {})" in body
+    assert "total >= drafts + unspecified" not in body
