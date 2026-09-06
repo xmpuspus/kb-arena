@@ -49,7 +49,13 @@ The OpenAPI page stays closed, because `KB_ARENA_API_DOCS_ENABLED` follows the
 debug setting, and this image leaves both off.
 
 Each caller gets 60 requests a minute on every read route, the gated ones and
-the open aggregates alike. `/health` and `/ready` are outside that count, on
+the open aggregates alike. That last part needs a release this image does not
+carry yet. The image pins `kb-arena==0.11.0`, and 0.11.0 limits only the gated
+routes. `/api/leaderboard`, `/api/corpora`, `/api/retriever-lab/runs`,
+`/api/arena/leaderboard` and `/strategies` get their limiter in the next
+release. Raise `KB_ARENA_VERSION` in the Dockerfile once it ships.
+
+`/health` and `/ready` are outside that count, on
 purpose: a platform polls a liveness probe, and a limiter there reports the
 deployment as down under its own health check. The platform proxy reports one
 address for its traffic, so readers share the allowance. One busy caller can

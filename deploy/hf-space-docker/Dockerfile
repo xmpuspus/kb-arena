@@ -7,7 +7,10 @@ RUN useradd -m -u 1000 user
 USER user
 ENV PATH=/home/user/.local/bin:$PATH
 
-RUN pip install --no-cache-dir --user kb-arena==0.11.0
+# Pinned, because a Space that floats to the newest release changes under a
+# reader without anybody deciding to. Raise it here after a release lands.
+ARG KB_ARENA_VERSION=0.11.0
+RUN pip install --no-cache-dir --user "kb-arena==${KB_ARENA_VERSION}"
 
 # Seed the results from the wheel. The aws-compute glob is the whole allow list.
 # The datasets directory stays empty: no corpus file enters this image, so no
