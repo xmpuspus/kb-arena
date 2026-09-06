@@ -492,3 +492,12 @@ def test_a_review_count_it_cannot_read_drops_the_whole_review_block():
     assert 'if (typeof count !== "number" || !Number.isFinite(count)) return undefined;' in parser
     thinning = 'if (typeof count === "number" && Number.isFinite(count)) counts[status]'
     assert thinning not in parser
+
+
+def test_the_evidence_route_bounds_the_bytes_it_reads():
+    """Counting directories bounded the files opened, not the bytes read."""
+    api = (ROOT / "kb_arena" / "chatbot" / "api.py").read_text()
+    assert re.search(r"^EVIDENCE_MAX_BYTES = [\d_]+$", api, re.MULTILINE)
+    assert "_os.fstat(handle.fileno()).st_size > EVIDENCE_MAX_BYTES" in api
+    largest = max((p.stat().st_size for p in (ROOT / "results").rglob("evidence.json")), default=0)
+    assert largest < 1_000_000, f"a bundle in this repository is {largest} bytes"

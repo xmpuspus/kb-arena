@@ -67,6 +67,9 @@ EVIDENCE_SCAN_LIMIT = 50
 # How many directory entries the listing examines before it stops. The scan
 # limit alone bounded the answer while the walk still touched every run.
 EVIDENCE_LIST_LIMIT = 500
+# An evidence bundle records a command, a seed, a fingerprint and review
+# counts. The largest one this repository holds is under 4 KB.
+EVIDENCE_MAX_BYTES = 1_000_000
 
 
 def _enqueue_graph_build_event(queue: _asyncio.Queue, event: dict | None) -> None:
@@ -1353,6 +1356,13 @@ async def evidence_bundles(corpus: str = "") -> dict:
             continue
         try:
             with _os.fdopen(fd, encoding="utf-8") as handle:
+                # The directory caps bound how many files this route opens and
+                # nothing bounded how many bytes it read. A bundle records a
+                # command, a seed and review counts, so it is kilobytes. A file
+                # past the cap is a file this route will not answer with.
+                if _os.fstat(handle.fileno()).st_size > EVIDENCE_MAX_BYTES:
+                    unreadable.append(run_id)
+                    continue
                 bundle = json.loads(handle.read())
         except (json.JSONDecodeError, OSError, UnicodeDecodeError):
             # A bundle that cannot be parsed is not a bundle that is absent.
