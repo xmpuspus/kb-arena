@@ -443,3 +443,20 @@ def test_the_evidence_scan_counts_every_entry_it_looks_at():
     scan = scan[: scan.index("entries.sort(reverse=True)")]
     assert "if examined >= EVIDENCE_LIST_LIMIT:" in scan
     assert scan.index("examined += 1") < scan.index('entry.name.startswith("run_")')
+
+
+def test_an_unreachable_results_directory_is_not_an_empty_deployment():
+    """`Path.exists()` answers False on a permission error, which is not absence."""
+    api = (ROOT / "kb_arena" / "chatbot" / "api.py").read_text()
+    route = api[api.index("base = _Path(settings.results_path)") :]
+    route = route[: route.index("scanned, truncated = _recent_run_dirs(base)")]
+    assert "_os.stat(base)" in route
+    assert "except FileNotFoundError:" in route
+    assert "status_code=503" in route
+
+
+def test_the_truncation_fields_are_checked_rather_than_coerced():
+    """`Boolean("false")` is true, and a bad scan limit silently became zero."""
+    lib = (WEB / "lib" / "decide.ts").read_text()
+    assert 'if (typeof data.truncated !== "boolean") throw new Error(EVIDENCE_UNREADABLE);' in lib
+    assert "truncated: Boolean(data.truncated)" not in lib

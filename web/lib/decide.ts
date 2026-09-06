@@ -230,10 +230,17 @@ export async function fetchEvidenceBundles(corpus: string): Promise<EvidenceAnsw
   if (!bundlesAreShaped || !unreadableIsShaped) {
     throw new Error(EVIDENCE_UNREADABLE);
   }
+  // `Boolean("false")` is true, and a non-numeric scan limit fell back to zero,
+  // which drops the truncation warning and lets step 4 say no run exists. Both
+  // fields are checked rather than coerced.
+  if (typeof data.truncated !== "boolean") throw new Error(EVIDENCE_UNREADABLE);
+  if (data.scan_limit !== undefined && typeof data.scan_limit !== "number") {
+    throw new Error(EVIDENCE_UNREADABLE);
+  }
   return {
     bundles: data.bundles as EvidenceBundle[],
     unreadable: data.unreadable as string[],
-    truncated: Boolean(data.truncated),
+    truncated: data.truncated,
     scanLimit: typeof data.scan_limit === "number" ? data.scan_limit : 0,
   };
 }

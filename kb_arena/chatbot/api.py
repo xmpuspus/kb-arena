@@ -1301,13 +1301,22 @@ async def evidence_bundles(corpus: str = "") -> dict:
     if corpus and not SAFE_ID.fullmatch(corpus):
         raise HTTPException(status_code=400, detail="invalid corpus")
     base = _Path(settings.results_path)
-    if not base.exists():
+    # `Path.exists()` swallows a permission error and answers False, so a
+    # directory this process cannot reach read as a deployment with no runs.
+    # `os.stat` says which of the two happened.
+    try:
+        _os.stat(base)
+    except FileNotFoundError:
         return {
             "bundles": [],
             "unreadable": [],
             "truncated": False,
             "scan_limit": EVIDENCE_SCAN_LIMIT,
         }
+    except OSError as exc:
+        raise HTTPException(
+            status_code=503, detail="the results directory could not be listed"
+        ) from exc
     scanned, truncated = _recent_run_dirs(base)
     bundles: list[dict] = []
     unreadable: list[str] = []
