@@ -469,3 +469,22 @@ def test_the_evidence_scan_does_not_follow_a_symlink_out_of_the_results_director
     scan = api[api.index("entries: list[tuple[float, str, _Path]] = []") :]
     scan = scan[: scan.index("entries.sort(reverse=True)")]
     assert "entry.is_dir()" not in scan, "is_dir follows a symlink by default"
+
+
+def test_a_symlinked_bundle_file_is_refused_the_way_a_symlinked_directory_is():
+    """Skipping the directory left the file, and the route still needs no token."""
+    api = (ROOT / "kb_arena" / "chatbot" / "api.py").read_text()
+    assert "if path.is_symlink():" in api
+    read = api[api.index('path = run_dir / "evidence.json"') :]
+    read = read[: read.index("bundle = json.loads(path.read_text())")]
+    assert read.index("is_symlink") < read.index("try:")
+
+
+def test_a_review_count_it_cannot_read_drops_the_whole_review_block():
+    """Dropping one count left `publishable` behind it, which is the citable claim."""
+    lib = (WEB / "lib" / "api.ts").read_text()
+    parser = lib[lib.index("function reviewOf(") :]
+    parser = parser[: parser.index("\n}")]
+    assert 'if (typeof count !== "number" || !Number.isFinite(count)) return undefined;' in parser
+    thinning = 'if (typeof count === "number" && Number.isFinite(count)) counts[status]'
+    assert thinning not in parser

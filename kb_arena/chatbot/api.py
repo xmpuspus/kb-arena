@@ -1331,6 +1331,12 @@ async def evidence_bundles(corpus: str = "") -> dict:
         path = run_dir / "evidence.json"
         if not path.exists():
             continue
+        # Skipping a symlinked directory left the file itself. A real run
+        # directory holding a symlinked evidence.json read whatever it pointed
+        # at, on a route that needs no token.
+        if path.is_symlink():
+            unreadable.append(run_id)
+            continue
         try:
             bundle = json.loads(path.read_text())
         except (json.JSONDecodeError, OSError):

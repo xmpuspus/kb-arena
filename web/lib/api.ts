@@ -443,7 +443,11 @@ function reviewOf(value: unknown): RowReview | undefined {
   if (!rawCounts || typeof rawCounts !== "object") return undefined;
   const counts: Record<string, number> = {};
   for (const [status, count] of Object.entries(rawCounts as Record<string, unknown>)) {
-    if (typeof count === "number" && Number.isFinite(count)) counts[status] = count;
+    // A count this page drops still leaves `publishable` behind it, so the row
+    // printed "a reviewer checked all 10" from a reply whose counts it threw
+    // away. A count it cannot read makes the whole review block unusable.
+    if (typeof count !== "number" || !Number.isFinite(count)) return undefined;
+    counts[status] = count;
   }
   const share = review.reviewed_share;
   return {
