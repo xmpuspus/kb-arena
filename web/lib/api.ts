@@ -303,19 +303,23 @@ export async function fetchCorporaResult(): Promise<{
 }> {
   try {
     const res = await fetch(`${API_URL}/api/corpora`);
-    if (!res.ok) return { corpora: DEFAULT_CORPORA, failed: true };
+    if (!res.ok) return { corpora: [], failed: true };
     const data = await res.json();
-    return {
-      corpora: data.corpora?.length ? data.corpora : DEFAULT_CORPORA,
-      failed: false,
-    };
+    // An empty answer is a deployment that holds no corpus. Handing back the
+    // built-in list here reported that deployment as holding the built-in set,
+    // and reported it as a success.
+    return { corpora: data.corpora ?? [], failed: false };
   } catch {
-    return { corpora: DEFAULT_CORPORA, failed: true };
+    return { corpora: [], failed: true };
   }
 }
 
 export async function fetchCorpora(): Promise<CorpusInfo[]> {
-  return (await fetchCorporaResult()).corpora;
+  // A page that only names corpora keeps the built-in list when the read
+  // fails, and its banner says the API did not answer. A page that acts on a
+  // corpus reads `fetchCorporaResult` and stops instead.
+  const result = await fetchCorporaResult();
+  return result.failed ? DEFAULT_CORPORA : result.corpora;
 }
 
 export interface ServerStatus {

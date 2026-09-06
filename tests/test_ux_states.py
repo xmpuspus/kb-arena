@@ -12,6 +12,7 @@ the state they are in, and drop the data when a read fails.
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -140,11 +141,11 @@ def test_a_failed_run_list_never_reads_as_a_lab_nobody_ran():
 
     assert "if (!r.ok) throw new Error" in page, "the run list must check the status"
     assert "setRuns([]);" in page, "and drop the runs it cannot vouch for"
-    assert "!loading && !error && !corpusSummary" in page, "no runs yet is not a failed read"
+    assert "!error && !corpusSummary" in page, "no runs yet is not a failed read"
     # The Run control sat under the error and read "No runs yet", which is the
     # claim the error above it says the page does not make.
-    assert 'error ? "Run list unavailable" : "No runs yet"' in page
-    assert "disabled={Boolean(error)}" in page, "a failed read leaves nothing to pick"
+    assert '"Run list unavailable"' in page
+    assert "disabled={Boolean(error) || listPending}" in page, "nothing to pick, so nothing picks"
 
 
 def test_a_failed_arena_read_retries_the_read_that_failed():
@@ -153,6 +154,40 @@ def test_a_failed_arena_read_retries_the_read_that_failed():
 
     assert "errorKind" in page
     assert "vote(lastWinner.current) : createMatch()" in page
+
+
+def test_one_match_carries_one_vote_and_a_retry_says_so():
+    """The engine refuses the second vote, so a retry cannot double count.
+
+    A lost response leaves the vote recorded. The page then read the refusal
+    as a failed vote, which is the wrong claim about a vote that landed.
+    """
+    from kb_arena.arena.engine import ArenaEngine
+
+    source = inspect.getsource(ArenaEngine.vote)
+    assert "if match.winner is not None:" in source
+    assert '"error": "Match already voted on"' in source
+
+    page = (WEB / "app" / "arena" / "page.tsx").read_text()
+    assert 'message.toLowerCase().includes("already voted")' in page
+    assert "setVoteNotice(" in page
+
+
+def test_an_empty_corpus_answer_is_not_the_built_in_list():
+    """A server that holds no corpus read as one holding the built-in set."""
+    api = (WEB / "lib" / "api.ts").read_text()
+
+    assert "return { corpora: data.corpora ?? [], failed: false };" in api
+    assert "corpora: [], failed: true" in api
+
+
+def test_the_run_list_says_nothing_definite_while_it_is_pending():
+    """The page answered "No runs yet" before the first run-list read landed."""
+    page = (WEB / "app" / "retriever-lab" / "page.tsx").read_text()
+
+    assert "const [listPending, setListPending] = useState(true);" in page
+    assert "setListPending(false)" in page
+    assert "!loading && !listPending && !error" in page, "the empty state waits for an answer"
 
 
 def test_the_tools_never_act_on_a_corpus_from_a_failed_read():

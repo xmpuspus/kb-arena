@@ -50,6 +50,16 @@ export default function ToolsPage() {
         </p>
       </div>
 
+      {!failed && corpora.length === 0 && (
+        <div
+          className="rounded-lg border border-dashed p-6 text-sm"
+          style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+        >
+          This server holds no corpus. Run <code className="mono">kb-arena ingest</code> to add
+          one, then reload this page.
+        </div>
+      )}
+
       {failed && (
         <FetchError
           title="The corpus list did not load"

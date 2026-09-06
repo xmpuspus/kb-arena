@@ -166,11 +166,16 @@ export default function RetrieverLabPage() {
   const [selectedCorpus, setSelectedCorpus] = useState<string>("");
   const [selectedQid, setSelectedQid] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  // `loading` covers the detail read. Without its own flag, the run list read
+  // is pending while the page already says "No retriever-lab runs yet", which
+  // is an answer nobody has yet.
+  const [listPending, setListPending] = useState(true);
   const [error, setError] = useState<string>("");
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     setError("");
+    setListPending(true);
     fetch(`${API_URL}/api/retriever-lab/runs`)
       .then((r) => {
         // An empty run list reads as a deployment that never ran the lab, so a
@@ -188,7 +193,8 @@ export default function RetrieverLabPage() {
         setSelectedRun("");
         setData(null);
         setError(readFailureMessage(e, "The run list did not load."));
-      });
+      })
+      .finally(() => setListPending(false));
   }, [attempt]);
 
   useEffect(() => {
@@ -281,7 +287,7 @@ export default function RetrieverLabPage() {
           <select
             value={selectedRun}
             onChange={(e) => setSelectedRun(e.target.value)}
-            disabled={Boolean(error)}
+            disabled={Boolean(error) || listPending}
             className="px-3 py-1.5 rounded-lg border text-sm disabled:opacity-50"
             style={{
               background: "var(--card)",
@@ -292,7 +298,13 @@ export default function RetrieverLabPage() {
             {/* "No runs yet" is a claim about the deployment, and a failed read
                 supports no such claim. */}
             {runs.length === 0 && (
-              <option value="">{error ? "Run list unavailable" : "No runs yet"}</option>
+              <option value="">
+                {listPending
+                  ? "Reading the run list..."
+                  : error
+                    ? "Run list unavailable"
+                    : "No runs yet"}
+              </option>
             )}
             {runs.map((r) => (
               <option key={r.run_id} value={r.run_id}>
@@ -334,7 +346,11 @@ export default function RetrieverLabPage() {
         )}
       </div>
 
-      {loading && <div style={{ color: "var(--muted)" }}>Loading...</div>}
+      {(loading || listPending) && (
+        <div style={{ color: "var(--muted)" }}>
+          {listPending ? "Reading the run list..." : "Loading..."}
+        </div>
+      )}
 
       {!loading && corpusSummary && (
         <section className="space-y-3">
@@ -429,8 +445,9 @@ export default function RetrieverLabPage() {
         </section>
       )}
 
-      {/* A failed read empties the list too, and "no runs yet" is a claim. */}
-      {!loading && !error && !corpusSummary && runs.length === 0 && (
+      {/* A failed read empties the list too, and a pending read has answered
+          nothing yet. "No runs yet" is a claim, and neither state supports it. */}
+      {!loading && !listPending && !error && !corpusSummary && runs.length === 0 && (
         <div
           className="border border-dashed rounded-lg p-6 text-sm"
           style={{ borderColor: "var(--border)", color: "var(--muted)" }}
