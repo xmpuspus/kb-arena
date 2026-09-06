@@ -210,7 +210,20 @@ export async function fetchEvidenceBundles(corpus: string): Promise<EvidenceAnsw
         "review_question_set",
         "review_split",
       ].every((key) => fields[key] === undefined || typeof fields[key] === "string");
-      return listsAreLists && textIsText;
+      // `citable` is the one field the whole flow rests on, and the string
+      // "false" is truthy. So a corrupt bundle read as citable evidence.
+      const flagsAreFlags = ["citable"].every(
+        (key) => fields[key] === undefined || typeof fields[key] === "boolean"
+      );
+      const numbersAreNumbers = ["bundle_version", "seed"].every(
+        (key) => fields[key] === undefined || typeof fields[key] === "number"
+      );
+      const nestedAreObjects = ["review", "environment"].every(
+        (key) => fields[key] === undefined || (fields[key] !== null && typeof fields[key] === "object")
+      );
+      return (
+        listsAreLists && textIsText && flagsAreFlags && numbersAreNumbers && nestedAreObjects
+      );
     });
   const unreadableIsShaped =
     Array.isArray(data.unreadable) && data.unreadable.every((name) => typeof name === "string");

@@ -370,3 +370,15 @@ def test_the_evidence_reader_checks_the_types_the_table_reads():
     lib = (WEB / "lib" / "decide.ts").read_text()
     assert "const listsAreLists =" in lib
     assert '["command", "results"]' in lib
+
+
+def test_the_evidence_guard_covers_every_field_the_bundle_declares():
+    """`citable: "false"` is truthy, so a corrupt bundle read as citable evidence."""
+    lib = (WEB / "lib" / "decide.ts").read_text()
+    declared = lib[lib.index("export interface EvidenceBundle {") :]
+    declared = declared[: declared.index("\n}")]
+    fields = re.findall(r"^  (\w+)\?:", declared, re.MULTILINE)
+    guard = lib[lib.index("const bundlesAreShaped =") : lib.index("const unreadableIsShaped =")]
+    missing = [f for f in fields if f not in guard]
+    assert not missing, f"the guard never checks these declared fields: {missing}"
+    assert "const flagsAreFlags =" in guard
