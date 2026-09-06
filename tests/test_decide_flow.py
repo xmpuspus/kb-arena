@@ -354,8 +354,11 @@ def test_the_navigation_points_at_the_leaderboard_and_the_flow():
     links = re.findall(r'\{ href: "([^"]+)", label: "([^"]+)" \}', NAV.read_text())
     hrefs = [href for href, _ in links]
 
-    assert "/leaderboard" in hrefs, "the leaderboard exists and nothing links to it"
-    assert "/decide" in hrefs, "the decision flow needs an entry point too"
+    # Each route carries a trailing slash, which is the path the export writes
+    # and the only one a static host resolves.
+    assert "/leaderboard/" in hrefs, "the leaderboard exists and nothing links to it"
+    assert "/decide/" in hrefs, "the decision flow needs an entry point too"
+    assert all(h == "/" or h.endswith("/") for h in hrefs), f"a route without a slash: {hrefs}"
 
 
 def test_the_flow_offers_the_commands_the_cli_accepts():

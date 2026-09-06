@@ -166,7 +166,8 @@ def test_no_shared_style_or_active_state_hands_a_control_the_weak_token():
 def test_the_diagnostics_route_is_reachable_from_the_navigation():
     """A route only a URL reaches is a route an operator never finds."""
     nav = (WEB / "components" / "Nav.tsx").read_text()
-    assert '"/diagnostics"' in nav
+    # The route carries a trailing slash, which is the path the export writes.
+    assert '"/diagnostics/"' in nav
     assert (WEB / "app" / "diagnostics" / "page.tsx").is_file()
 
 

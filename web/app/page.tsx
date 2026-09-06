@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import {
   CORPORA,
   DEFAULT_STRATEGY_CATALOG,
@@ -80,20 +79,20 @@ export default function Home() {
           Compare retrieval architectures on the same documentation and questions, then choose from recorded quality, latency, cost, and limits.
         </p>
         <div className="flex gap-3 pt-2">
-          <Link
-            href="/demo"
+          <a
+            href="/demo/"
             className="px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-80"
             style={{ background: "var(--accent)", color: "#fff" }}
           >
             Try the demo
-          </Link>
-          <Link
-            href="/benchmark"
+          </a>
+          <a
+            href="/benchmark/"
             className="px-4 py-2 rounded-lg text-sm font-medium border transition-opacity hover:opacity-80"
             style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
           >
             View benchmarks
-          </Link>
+          </a>
           <a
             href="https://github.com/xmpuspus/kb-arena"
             target="_blank"

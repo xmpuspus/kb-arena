@@ -121,3 +121,17 @@ def test_the_packaged_bundle_guard_resolves_the_path_first(capsys):
     module = _module()
     assert module.main(ROOT / "kb_arena" / "static" / ".." / "static") == 1
     assert "Refusing to rewrite the packaged bundle" in capsys.readouterr().err
+
+
+def test_the_navigation_uses_plain_anchors():
+    """A next/link intercepts the click and asks for a payload that is not there.
+
+    The hosted Space serves exact file paths, so the deploy rewrites each route
+    link to its index.html. A next/link then requests a route payload under that
+    name, gets a 404, and the page never moves. The click has to reach the
+    browser.
+    """
+    for name in ("web/components/Nav.tsx", "web/app/page.tsx"):
+        source = (ROOT / name).read_text()
+        assert 'import Link from "next/link"' not in source, f"{name} intercepts its own links"
+        assert "<a" in source, f"{name} must hand the click to the browser"
