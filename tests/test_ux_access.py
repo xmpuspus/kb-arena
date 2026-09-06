@@ -541,8 +541,15 @@ def test_the_catalog_read_refuses_a_body_it_cannot_recognise():
     api = (WEB / "lib" / "api.ts").read_text()
     reader_start = api.index("export async function fetchStrategyCatalog")
     guard = api[api.index("function isCatalogRecord") : reader_start]
-    for field in ("record.name", "record.label", "record.status"):
-        assert f'typeof {field} === "string"' in guard, f"the guard skips {field}"
+    # Every field the type declares, not the three the first version checked.
+    # A guard shallower than its reader passed a record whose
+    # `default_benchmark` was undefined, and `candidatesFor` then returned no
+    # candidate from a catalog the page called live.
+    declared = api[api.index("export interface StrategyCatalogRecord {") :]
+    declared = declared[: declared.index("\n}")]
+    fields = re.findall(r"^  (\w+):", declared, re.MULTILINE)
+    missing = [f for f in fields if f"record.{f}" not in guard]
+    assert not missing, f"the guard never checks these declared fields: {missing}"
     assert "CATALOG_STATUSES.has(record.status)" in guard
 
     reader = api[reader_start:]
@@ -574,3 +581,6 @@ def test_an_absent_question_total_never_renders_as_a_denominator():
     assert "review.questions ?? 0" not in body
     assert 'const outOf = counted ? ` of ${total}` : "";' in body
     assert "The bundle records no question total" in body
+    # A recorded zero reaches the same "5 of 0" as an absent total, so the
+    # test is whether the total can hold the counts under it.
+    assert "total >= drafts + unspecified" in body

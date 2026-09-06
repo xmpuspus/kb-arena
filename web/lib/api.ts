@@ -292,14 +292,29 @@ export const CORPORA = DEFAULT_CORPORA;
 // page cannot read.
 const CATALOG_STATUSES = new Set(["loaded", "unavailable", "unknown"]);
 
+// Every field `StrategyCatalogRecord` declares, checked here. A first version
+// read name, label and status only, and a cross-model pass showed what that
+// costs: a record carrying those three passes, `catalogIsLive` calls it a
+// server answer, and `candidatesFor` then reads `default_benchmark` as
+// undefined and returns no candidate. A guard shallower than its reader hands
+// the reader a hole in the shape of the missing field.
 function isCatalogRecord(entry: unknown): entry is StrategyCatalogRecord {
   if (!entry || typeof entry !== "object") return false;
   const record = entry as Record<string, unknown>;
+  const nullableString = (value: unknown) => value === null || typeof value === "string";
   return (
     typeof record.name === "string" &&
     typeof record.label === "string" &&
+    typeof record.architecture === "string" &&
+    typeof record.default_benchmark === "boolean" &&
+    typeof record.api_supported === "boolean" &&
+    typeof record.experimental === "boolean" &&
+    nullableString(record.optional_extra) &&
+    Array.isArray(record.required_modules) &&
+    record.required_modules.every((module) => typeof module === "string") &&
     typeof record.status === "string" &&
-    CATALOG_STATUSES.has(record.status)
+    CATALOG_STATUSES.has(record.status) &&
+    nullableString(record.unavailable_reason)
   );
 }
 

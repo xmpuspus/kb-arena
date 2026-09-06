@@ -620,8 +620,13 @@ export function bundleCaveats(bundle: EvidenceBundle | null): string[] {
   // "5 of 0 questions are machine-assisted drafts", which a reader cannot
   // tell from a measurement. The same distinction the `citable` branch above
   // makes: nothing recorded is not a recorded nothing.
+  //
+  // A recorded zero is no better than an absent total when the same block
+  // reports five drafts. A cross-model pass reached the same "5 of 0" through
+  // `questions: 0`, so the test is whether the total can hold the counts, not
+  // whether somebody wrote a number.
   const total = review.questions;
-  const counted = typeof total === "number";
+  const counted = typeof total === "number" && total >= drafts + unspecified;
   const outOf = counted ? ` of ${total}` : "";
   if (drafts > 0) {
     lines.push(
@@ -632,7 +637,11 @@ export function bundleCaveats(bundle: EvidenceBundle | null): string[] {
     lines.push(`${unspecified}${outOf} questions carry no review status.`);
   }
   if (!counted && (drafts > 0 || unspecified > 0)) {
-    lines.push("The bundle records no question total, so these counts have no denominator.");
+    lines.push(
+      typeof total === "number"
+        ? `The bundle records ${total} questions and more review statuses than that, so these counts have no denominator.`
+        : "The bundle records no question total, so these counts have no denominator."
+    );
   }
   if (drafts === 0 && unspecified === 0 && counted && total > 0) {
     lines.push(`All ${total} scored questions are marked human-reviewed.`);
