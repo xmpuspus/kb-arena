@@ -576,8 +576,9 @@ def test_an_absent_question_total_never_renders_as_a_denominator():
     the `citable` branch above it already makes.
     """
     decide = (WEB / "lib" / "decide.ts").read_text()
-    body = decide[decide.index("export function bundleCaveats") :]
-    body = body[: body.index("\n}\n", body.index("const drafts = review.counts"))]
+    caveats_at = decide.index("export function bundleCaveats")
+    body = decide[caveats_at:]
+    body = body[: body.index("\n}\n", body.index("const { counts, unreadable }"))]
     assert "review.questions ?? 0" not in body
     assert 'const outOf = counted ? ` of ${total}` : "";' in body
     assert "The bundle records no question total" in body
@@ -586,5 +587,14 @@ def test_an_absent_question_total_never_renders_as_a_denominator():
     # statuses this function renders let `questions: 10` past counts adding to
     # 15, so the sum covers every status the bundle records.
     assert "total >= recorded" in body
-    assert "Object.values(review.counts ?? {})" in body
     assert "total >= drafts + unspecified" not in body
+
+    # Four rounds reached the same wrong sentence through four doors, the last
+    # being `"5"` as a string, which `> 0` accepts. The block is read once,
+    # into numbers, so no caller below has to know that.
+    reader = decide[decide.index("function reviewCounts") : caveats_at]
+    assert 'typeof count === "number" && Number.isFinite(count) && count >= 0' in reader
+    assert "unreadable = true;" in reader
+    # A count nobody can read must not render as a clean review.
+    assert "const { counts, unreadable } = reviewCounts(review.counts);" in body
+    assert "counted && !unreadable && total > 0" in body

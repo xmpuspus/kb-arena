@@ -314,7 +314,12 @@ function isCatalogRecord(entry: unknown): entry is StrategyCatalogRecord {
     record.required_modules.every((module) => typeof module === "string") &&
     typeof record.status === "string" &&
     CATALOG_STATUSES.has(record.status) &&
-    nullableString(record.unavailable_reason)
+    nullableString(record.unavailable_reason) &&
+    // `/strategies` serves this and the offline fallback does not, so absent
+    // is a real answer and `web/lib/decide.ts` declares it optional. A value
+    // of the wrong type is not: `needs_embeddings: "false"` is truthy, and it
+    // would have decided which strategies run without a key.
+    (record.needs_embeddings === undefined || typeof record.needs_embeddings === "boolean")
   );
 }
 

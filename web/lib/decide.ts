@@ -595,6 +595,33 @@ function fixed(value: number | null | undefined, places: number): string {
  * the reviewed share here would drift from `build_bundle`, which also refuses
  * a bundle that records no command.
  */
+/**
+ * The review counts a bundle records, with anything that is not a number gone.
+ *
+ * `"5"` is not five. It passes `> 0`, so it renders as a count, and it passes
+ * through any sum of numbers as zero, so it never reaches a denominator. One
+ * read, into numbers, means no caller downstream has to know that.
+ */
+function reviewCounts(raw: Record<string, number> | undefined): {
+  counts: Record<string, number>;
+  unreadable: boolean;
+} {
+  const counts: Record<string, number> = {};
+  let unreadable = false;
+  for (const [status, count] of Object.entries(raw ?? {})) {
+    if (typeof count === "number" && Number.isFinite(count) && count >= 0) {
+      counts[status] = count;
+      continue;
+    }
+    // Dropping it in silence is how a block recording -3 drafts rendered as
+    // "All 10 scored questions are marked human-reviewed". A count nobody can
+    // read makes the whole block unusable, which is the rule `reviewOf` in
+    // `lib/api.ts` already applies to the leaderboard.
+    unreadable = true;
+  }
+  return { counts, unreadable };
+}
+
 export function bundleCaveats(bundle: EvidenceBundle | null): string[] {
   if (!bundle) {
     return [
@@ -614,25 +641,28 @@ export function bundleCaveats(bundle: EvidenceBundle | null): string[] {
     lines.push("The bundle calls this run a development signal, not citable evidence.");
     lines.push(`Reason the bundle records: ${bundle.why_not_citable || "none recorded"}`);
   }
-  const drafts = review.counts?.["machine-assisted-draft"] ?? 0;
-  const unspecified = review.counts?.["unspecified"] ?? 0;
+  // Read the counts once, and keep only the ones that are numbers. Four
+  // cross-model rounds each reached "5 of 0 questions" through a different
+  // door: an absent total, a recorded zero, a sum over two statuses where the
+  // block held more, and finally `"5"` as a string, which `> 0` accepts and
+  // any sum of numbers ignores. Reading the block once, into numbers, closes
+  // the type-confusion door for every status at the same time.
+  const { counts, unreadable } = reviewCounts(review.counts);
+  const drafts = counts["machine-assisted-draft"] ?? 0;
+  const unspecified = counts["unspecified"] ?? 0;
+  if (unreadable) {
+    lines.push(
+      "The bundle records a review count this page cannot read, so the review status behind these numbers is unknown."
+    );
+  }
   // An absent total is not a total of zero. Reading it as zero printed
-  // "5 of 0 questions are machine-assisted drafts", which a reader cannot
-  // tell from a measurement. The same distinction the `citable` branch above
-  // makes: nothing recorded is not a recorded nothing.
-  //
-  // A recorded zero is no better than an absent total when the same block
-  // reports five drafts. A cross-model pass reached the same "5 of 0" through
-  // `questions: 0`, so the test is whether the total can hold the counts, not
-  // whether somebody wrote a number. Summing the two statuses this function
-  // renders let `questions: 10` past a block whose counts add to 15, so the
-  // sum covers every status the bundle records, named or not.
-  const recorded = Object.values(review.counts ?? {}).reduce(
-    (sum, count) => sum + (typeof count === "number" && Number.isFinite(count) ? count : 0),
-    0
-  );
+  // "5 of 0 questions", which a reader cannot tell from a measurement. The
+  // same distinction the `citable` branch above makes: nothing recorded is not
+  // a recorded nothing. A total that cannot hold the statuses under it is no
+  // better, so the test is whether the number fits, not whether it exists.
+  const recorded = Object.values(counts).reduce((sum, count) => sum + count, 0);
   const total = review.questions;
-  const counted = typeof total === "number" && total >= recorded;
+  const counted = typeof total === "number" && Number.isFinite(total) && total >= recorded;
   const outOf = counted ? ` of ${total}` : "";
   if (drafts > 0) {
     lines.push(
@@ -649,7 +679,9 @@ export function bundleCaveats(bundle: EvidenceBundle | null): string[] {
         : "The bundle records no question total, so these counts have no denominator."
     );
   }
-  if (drafts === 0 && unspecified === 0 && counted && total > 0) {
+  // The clean claim is the one that must not be said on a partial read, so it
+  // takes the unreadable flag too.
+  if (drafts === 0 && unspecified === 0 && counted && !unreadable && total > 0) {
     lines.push(`All ${total} scored questions are marked human-reviewed.`);
   }
   if (review.note) lines.push(review.note);
