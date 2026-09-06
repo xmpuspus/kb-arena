@@ -305,10 +305,23 @@ export async function fetchCorporaResult(): Promise<{
     const res = await fetch(`${API_URL}/api/corpora`);
     if (!res.ok) return { corpora: [], failed: true };
     const data = await res.json();
+    // A body of another shape reached the page as a corpus list, and the page
+    // then mapped over whatever it held. A crash tells the reader less than
+    // the failure the page already renders, so this is that failure.
+    if (!data || typeof data !== "object") return { corpora: [], failed: true };
+    const listed = (data as Record<string, unknown>).corpora;
+    if (listed !== undefined && !Array.isArray(listed)) return { corpora: [], failed: true };
+    const corpora = (listed ?? []).filter(
+      (entry: unknown): entry is CorpusInfo =>
+        Boolean(entry) &&
+        typeof entry === "object" &&
+        typeof (entry as CorpusInfo).value === "string" &&
+        typeof (entry as CorpusInfo).label === "string",
+    );
     // An empty answer is a deployment that holds no corpus. Handing back the
     // built-in list here reported that deployment as holding the built-in set,
     // and reported it as a success.
-    return { corpora: data.corpora ?? [], failed: false };
+    return { corpora, failed: false };
   } catch {
     return { corpora: [], failed: true };
   }
@@ -393,10 +406,14 @@ export interface LeaderboardPage {
 const strings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 
-// A metric the answer did not carry is unknown, and the table prints "n/a" for
-// it. Reading a missing metric as zero would put a measurement on screen.
-const metric = (value: unknown): number | null =>
-  typeof value === "number" && Number.isFinite(value) ? value : null;
+// A metric the answer reports as null is a measurement nobody has, and the
+// table prints "n/a" for it. A metric the answer never carried is a different
+// thing: the row is not the shape this page reads, so undefined drops it.
+const metric = (value: unknown): number | null | undefined => {
+  if (value === null) return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return undefined;
+};
 
 /**
  * The one place the leaderboard answer becomes rows.
@@ -408,8 +425,15 @@ const metric = (value: unknown): number | null =>
  * of guarded.
  *
  * A body that is not an object, or that carries no `leaderboard` array, is a
- * failed read. A row with no corpus or no strategy names no measurement, so it
- * is dropped rather than rendered.
+ * failed read.
+ *
+ * A row must carry every field the table reads: `corpus`, `strategy`,
+ * `compatibility_key`, `mixed_with`, `manifest`, `runs`, and the five metrics,
+ * where a metric may be null for a measurement nobody has. A row that lacks
+ * one is dropped, never completed. Filling a gap with "legacy", zero runs and
+ * n/a metrics builds a row the server never sent, and a reader cannot tell it
+ * from a measured one. `build` stays optional, because a server older than
+ * that field still reports real rows.
  */
 export function parseLeaderboard(body: unknown): LeaderboardPage {
   if (!body || typeof body !== "object") throw new Error(LEADERBOARD_MALFORMED);
@@ -421,28 +445,39 @@ export function parseLeaderboard(body: unknown): LeaderboardPage {
     if (!entry || typeof entry !== "object") continue;
     const row = entry as Record<string, unknown>;
     if (typeof row.corpus !== "string" || typeof row.strategy !== "string") continue;
-    const manifest = (
-      row.manifest && typeof row.manifest === "object" ? row.manifest : {}
-    ) as Record<string, unknown>;
-    rows.push({
-      corpus: row.corpus,
-      strategy: row.strategy,
-      compatibility_key:
-        typeof row.compatibility_key === "string" ? row.compatibility_key : "legacy",
-      build: typeof row.build === "string" ? row.build : undefined,
-      manifest: {
-        question_split:
-          typeof manifest.question_split === "string" ? manifest.question_split : null,
-        judge_model: typeof manifest.judge_model === "string" ? manifest.judge_model : null,
-        top_k: metric(manifest.top_k),
-      },
-      mixed_with: strings(row.mixed_with),
-      runs: typeof row.runs === "number" && Number.isFinite(row.runs) ? row.runs : 0,
+    if (typeof row.compatibility_key !== "string") continue;
+    if (!Array.isArray(row.mixed_with)) continue;
+    if (typeof row.runs !== "number" || !Number.isFinite(row.runs)) continue;
+    if (!row.manifest || typeof row.manifest !== "object") continue;
+    const manifest = row.manifest as Record<string, unknown>;
+    const metrics = {
       mean_accuracy: metric(row.mean_accuracy),
       mean_recall_at_5: metric(row.mean_recall_at_5),
       mean_ndcg_at_5: metric(row.mean_ndcg_at_5),
       mean_cost_usd: metric(row.mean_cost_usd),
       mean_latency_ms: metric(row.mean_latency_ms),
+    };
+    if (Object.values(metrics).some((value) => value === undefined)) continue;
+    rows.push({
+      corpus: row.corpus,
+      strategy: row.strategy,
+      compatibility_key: row.compatibility_key,
+      build: typeof row.build === "string" ? row.build : undefined,
+      manifest: {
+        question_split:
+          typeof manifest.question_split === "string" ? manifest.question_split : null,
+        judge_model: typeof manifest.judge_model === "string" ? manifest.judge_model : null,
+        top_k: metric(manifest.top_k) ?? null,
+      },
+      mixed_with: strings(row.mixed_with),
+      runs: row.runs,
+      ...(metrics as {
+        mean_accuracy: number | null;
+        mean_recall_at_5: number | null;
+        mean_ndcg_at_5: number | null;
+        mean_cost_usd: number | null;
+        mean_latency_ms: number | null;
+      }),
     });
   }
 

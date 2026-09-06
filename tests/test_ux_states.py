@@ -332,6 +332,59 @@ def test_one_parser_turns_the_leaderboard_answer_into_rows():
     assert "FetchError" in page, "a malformed body reaches the existing error surface"
 
 
+def test_a_stale_graph_reply_never_clears_the_pending_state():
+    """The reply for the corpus the reader left can resolve last.
+
+    It turned the pending state off for the corpus now on screen, which put
+    the last corpus's map under this corpus's name.
+    """
+    page = (WEB / "app" / "graph" / "page.tsx").read_text()
+
+    assert "const readTicket = useRef(0);" in page
+    assert "const ticket = ++readTicket.current;" in page
+    assert "ticket === readTicket.current" in page
+    assert "if (!isCurrentRead()) return;" in page
+
+
+def test_a_corpus_answer_of_another_shape_is_a_failed_read():
+    """The page mapped over whatever the body held, and a crash says less."""
+    api = (WEB / "lib" / "api.ts").read_text()
+    reader = api[
+        api.index("export async function fetchCorporaResult") : api.index(
+            "export async function fetchCorpora("
+        )
+    ]
+
+    assert 'if (!data || typeof data !== "object") return { corpora: [], failed: true };' in reader
+    assert "!Array.isArray(listed)" in reader, "a corpora field of another type fails the read"
+    assert 'typeof (entry as CorpusInfo).value === "string"' in reader, "an entry names a corpus"
+
+
+def test_an_incomplete_leaderboard_row_is_dropped_not_completed():
+    """A row of corpus and strategy alone rendered as a legacy row, 0 runs.
+
+    A reader cannot tell a completed row from a measured one, so the parser
+    names the fields it needs and drops a row that lacks one.
+    """
+    api = (WEB / "lib" / "api.ts").read_text()
+    parser = api[
+        api.index("export function parseLeaderboard") : api.index("export interface GraphData")
+    ]
+
+    for required in (
+        'typeof row.compatibility_key !== "string"',
+        "!Array.isArray(row.mixed_with)",
+        'typeof row.runs !== "number" || !Number.isFinite(row.runs)',
+        '!row.manifest || typeof row.manifest !== "object"',
+    ):
+        assert f"if ({required}) continue;" in parser, f"{required} must drop the row"
+    assert "Object.values(metrics).some((value) => value === undefined)" in parser
+    # The docstring says which fields are required, because the next reader
+    # decides from it whether a field may go missing.
+    assert "A row must carry every field the table reads" in api
+    assert "never completed" in api
+
+
 def test_the_scope_reset_lives_in_one_place():
     """Three copies of the same clear drift, and two of them already had."""
     hook = WEB / "lib" / "useScopeReset.ts"
@@ -344,8 +397,14 @@ def test_an_empty_corpus_answer_is_not_the_built_in_list():
     """A server that holds no corpus read as one holding the built-in set."""
     api = (WEB / "lib" / "api.ts").read_text()
 
-    assert "return { corpora: data.corpora ?? [], failed: false };" in api
-    assert "corpora: [], failed: true" in api
+    reader = api[
+        api.index("export async function fetchCorporaResult") : api.index(
+            "export async function fetchCorpora("
+        )
+    ]
+    assert "return { corpora, failed: false };" in reader
+    assert "corpora: [], failed: true" in reader
+    assert "DEFAULT_CORPORA" not in reader, "a successful read answers with what it received"
 
 
 def test_the_run_list_says_nothing_definite_while_it_is_pending():
