@@ -24,7 +24,7 @@ cd "$WORK_DIR/space"
 git add README.md Dockerfile
 
 if git diff --cached --quiet; then
-  echo "The Space already matches deploy/hf-space. Nothing to push."
+  echo "The Space already matches deploy/hf-space-docker. Nothing to push."
   exit 0
 fi
 

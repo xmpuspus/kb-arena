@@ -55,17 +55,48 @@ checks that, with nothing started yet.
 docker compose config
 ```
 
-## The Space image is ready, and the deploy waits on a paid account
+## The free Space serves the dashboard, with sample data
 
-The demo Space at `xmpuspus/kb-arena` does not exist yet. Hugging Face refuses
-to create a Docker Space on a free account, and answers this each time:
-"Static Spaces are free for everyone, but hosting Gradio and Docker Spaces on
-free cpu-basic requires a PRO subscription." Buy PRO for the `xmpuspus`
-account, or choose another container host, then run the push script below. The
-`https://xmpuspus-kb-arena.hf.space` address goes live with that first push.
+A static Space costs nothing on Hugging Face, and it runs no process. The
+dashboard is a static Next.js export, so a static Space can serve it. That
+deploy runs at <https://xmpuspus-kb-arena.static.hf.space>, and its files sit
+in `deploy/hf-space-static/`.
 
-The files wait in `deploy/hf-space/`: a `README.md` that carries the Hugging
-Face Space front matter, a `Dockerfile`, and `push.sh`. The Dockerfile installs
+The Space serves `kb_arena/static/`, the same dashboard build that the Python
+package ships. No corpus file travels with it, and no key. Every `/api/...`
+call from those pages answers 404, because no server stands behind them.
+
+Read every number there as sample data. The benchmark page falls back to the
+sample rows inside the dashboard, and it marks that state: "Checked sample run.
+Use kb-arena benchmark to evaluate your corpus." The table footer under those
+rows still reads "Results from your benchmark runs", and no run stands behind
+this deploy. The graph page draws a sample graph and names a Neo4j outage as
+the cause, though this Space has no database to lose.
+
+Create the Space once, then push the dashboard.
+
+```bash
+curl -s -X POST https://huggingface.co/api/repos/create \
+  -H "Authorization: Bearer $(cat ~/.cache/huggingface/token)" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"space","name":"kb-arena","private":false,"sdk":"static"}'
+deploy/hf-space-static/push.sh
+```
+
+Run `python3 scripts/sync_frontend_bundle.py` before that push when you change
+the web sources. The script copies the bundle as it finds it, so a stale bundle
+deploys without a warning.
+
+## The API Space needs a paid Hugging Face account
+
+Hugging Face refuses to create a Docker Space on a free account, and answers
+this each time: "Static Spaces are free for everyone, but hosting Gradio and
+Docker Spaces on free cpu-basic requires a PRO subscription." Buy PRO for the
+`xmpuspus` account, or choose another container host. One name carries one
+Space, so this deploy replaces the static one, or it takes a new name.
+
+The files wait in `deploy/hf-space-docker/`: a `README.md` that carries the
+Hugging Face Space front matter, a `Dockerfile`, and `push.sh`. It installs
 `kb-arena==0.11.0` from PyPI, so the Space builds no source from this
 repository. A `docker build` on that directory, and a container run in demo
 mode, check the image with no Space at all.
@@ -95,7 +126,7 @@ curl -s -X POST https://huggingface.co/api/repos/create \
 Then push, for that first deploy and for every change after it:
 
 ```bash
-deploy/hf-space/push.sh
+deploy/hf-space-docker/push.sh
 ```
 
 The script reads the token from `HF_TOKEN`, or from

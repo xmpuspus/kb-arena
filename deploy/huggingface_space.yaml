@@ -1,6 +1,6 @@
-# The Space files moved to deploy/hf-space/. Its README.md carries the front
-# matter that Hugging Face reads, and its Dockerfile installs the published
-# wheel. Read docs/deployment.md for what the Space serves and how to redeploy.
+# The Space files moved. deploy/hf-space-static/ holds the free static deploy,
+# and deploy/hf-space-docker/ holds the API deploy, which needs a PRO account.
+# Read docs/deployment.md for what each one serves and how to push it.
 #
 # The note this file used to carry is wrong now. It said a Space with no API
 # key enters demo mode by itself. The app still does that, and the content read

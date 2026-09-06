@@ -11,6 +11,10 @@ short_description: Read-only demo of the KB Arena retrieval decision lab
 
 ## This Space serves one public demo corpus, read only
 
+A Docker Space needs a Hugging Face PRO account. A free account gets the
+static dashboard in `deploy/hf-space-static/` instead, and that one runs no
+API. This directory holds the API deploy.
+
 The Space runs the KB Arena API and its bundled dashboard from the published
 `kb-arena==0.11.0` wheel. It shows the recorded `aws-compute` benchmark run:
 accuracy by tier, latency, and cost for each retrieval strategy.
