@@ -104,9 +104,9 @@ def test_a_missing_bundle_reads_as_unknown_review_status():
     assert caveats, "web/lib/decide.ts must export bundleCaveats"
     no_bundle = caveats.group(0).split("const lines")[0]
 
-    assert "unknown" in no_bundle, (
-        "with no bundle the record must call the review status unknown, never reviewed"
-    )
+    assert (
+        "unknown" in no_bundle
+    ), "with no bundle the record must call the review status unknown, never reviewed"
     assert "human-reviewed" not in no_bundle
 
 
@@ -114,12 +114,12 @@ def test_the_record_reports_a_machine_drafted_question_set():
     """The NIST set is a machine-generated draft. A record hiding that invites a citation."""
     source = DECIDE_TS.read_text()
 
-    assert "machine-assisted-draft" in source, (
-        "the record must read the draft count the review verdict wrote"
-    )
-    assert "enough_pairs_for_inference" in source, (
-        "below the pair floor no flag fired, so the record must not print one"
-    )
+    assert (
+        "machine-assisted-draft" in source
+    ), "the record must read the draft count the review verdict wrote"
+    assert (
+        "enough_pairs_for_inference" in source
+    ), "below the pair floor no flag fired, so the record must not print one"
 
 
 def test_the_candidate_list_reads_catalog_fields_the_api_serves():
@@ -128,9 +128,9 @@ def test_the_candidate_list_reads_catalog_fields_the_api_serves():
 
     for field in ("default_benchmark", "needs_embeddings", "optional_extra", "experimental"):
         assert field in source, f"the candidate rule ignores {field}, which the catalog records"
-    assert "catalogIsLive" in source, (
-        "the page must tell a served catalog from the bundled copy before it prints architecture"
-    )
+    assert (
+        "catalogIsLive" in source
+    ), "the page must tell a served catalog from the bundled copy before it prints architecture"
 
 
 def test_the_page_renders_every_step_it_advertises():
