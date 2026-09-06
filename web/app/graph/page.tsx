@@ -13,6 +13,7 @@ import {
 import { useTokenEpoch } from "@/lib/useTokenEpoch";
 import StateBanner from "@/components/StateBanner";
 import FetchError from "@/components/FetchError";
+import { useScopeReset } from "@/lib/useScopeReset";
 
 // The example map, shown only when a read succeeds and reports no graph
 // database behind it. A failed read never reaches it: sample entities under a
@@ -114,6 +115,17 @@ export default function GraphPage() {
   const buildEpochRef = useRef(0);
 
   useEffect(() => { fetchCorpora().then(setCorpora); }, []);
+
+  // The corpus name over the map changed, so the entities under the old one go
+  // before the new read starts.
+  useScopeReset(corpus, () => {
+    setNodes([]);
+    setEdges([]);
+    setSampleMap(false);
+    setConnected(false);
+    setReadError("");
+    setLoading(true);
+  });
 
   useEffect(() => () => {
     buildEpochRef.current += 1;
@@ -361,9 +373,10 @@ export default function GraphPage() {
         </div>
       )}
 
-      {/* Stats bar and graph. A failed read shows neither: zero nodes under a
-          corpus name reads as a corpus with no entities. */}
-      {!readError && (
+      {/* Stats bar and graph. A failed read shows neither, and neither does a
+          read still running: zero nodes under a corpus name reads as a corpus
+          with no entities, and the last corpus's nodes read as this one's. */}
+      {!readError && !loading && (
         <>
           <div className="flex gap-6">
             {[

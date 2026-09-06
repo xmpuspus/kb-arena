@@ -25,11 +25,15 @@ ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "web"
 
 
-def _request():
+def _request(host: str = "127.0.0.1"):
     state = SimpleNamespace(
         neo4j=None, neo4j_error="", llm=None, arena=None, arena_error="", strategies={}
     )
-    return SimpleNamespace(app=SimpleNamespace(state=state))
+    return SimpleNamespace(
+        app=SimpleNamespace(state=state),
+        client=SimpleNamespace(host=host, port=1),
+        headers={},
+    )
 
 
 @pytest.mark.parametrize(
@@ -173,6 +177,76 @@ def test_one_match_carries_one_vote_and_a_retry_says_so():
     assert "setVoteNotice(" in page
 
 
+def test_a_lost_vote_answer_never_claims_the_ratings_held_still():
+    """The request can fail after the server records the vote.
+
+    The page said the ELO ratings stayed as they were, which the client cannot
+    read from a transport failure. It now says the outcome is unknown and
+    re-reads the board.
+    """
+    page = (WEB / "app" / "arena" / "page.tsx").read_text()
+
+    assert "The ELO ratings stay as they were" not in page
+    assert "the outcome is unknown" in page
+    assert "fetchLeaderboard(corpus);\n    } finally {" in page, "a failed vote re-reads"
+
+
+async def test_health_reports_whether_the_caller_is_local(monkeypatch):
+    """Neither demo flag says where the server runs, and the banner claimed it.
+
+    Only the server knows which address the caller arrived on. The read gate
+    already decides it the same way.
+    """
+    monkeypatch.setattr(settings, "demo_mode", False)
+    monkeypatch.setattr(settings, "demo_mode_auto", False)
+    monkeypatch.setattr(settings, "trusted_proxy_header", "")
+
+    local = await health(_request(host="127.0.0.1"))
+    remote = await health(_request(host="203.0.113.7"))
+
+    assert local["caller_is_local"] is True
+    assert remote["caller_is_local"] is False
+
+
+def test_the_banner_names_a_remote_live_server_as_one():
+    """Every reachable deployment read as the reader's own machine."""
+    provider = (WEB / "components" / "ServerStateProvider.tsx").read_text()
+    banner = (WEB / "components" / "StateBanner.tsx").read_text()
+
+    assert "status.callerIsLocal" in provider
+    assert '"live-remote"' in provider
+    assert '"live-remote": { label: "Live server"' in banner
+    assert "it runs on another machine" in banner
+
+
+@pytest.mark.parametrize(
+    ("route", "scope"),
+    [
+        ("arena/page.tsx", "corpus"),
+        ("graph/page.tsx", "corpus"),
+        ("leaderboard/page.tsx", "filter"),
+    ],
+)
+def test_a_scope_change_drops_the_data_the_last_scope_owned(route, scope):
+    """The last corpus's rows under the new corpus name read as the new one.
+
+    Ordering the responses does not close the gap, because nothing cleared
+    when the read started.
+    """
+    page = (WEB / "app" / route).read_text()
+
+    assert "useScopeReset" in page
+    assert f"useScopeReset({scope}, () => {{" in page
+
+
+def test_the_scope_reset_lives_in_one_place():
+    """Three copies of the same clear drift, and two of them already had."""
+    hook = WEB / "lib" / "useScopeReset.ts"
+
+    assert hook.is_file()
+    assert "export function useScopeReset" in hook.read_text()
+
+
 def test_an_empty_corpus_answer_is_not_the_built_in_list():
     """A server that holds no corpus read as one holding the built-in set."""
     api = (WEB / "lib" / "api.ts").read_text()
@@ -234,5 +308,5 @@ def test_a_failed_graph_read_shows_no_example_map():
     # The example map is reached from one place: a read that succeeded and
     # reported no graph database behind it.
     assert page.count("setNodes(SAMPLE_NODES)") == 1
-    assert "{!readError && (" in page, "a failed read hides the map and the counts"
+    assert "{!readError && !loading && (" in page, "a failed read hides the map and the counts"
     assert "FetchError" in page

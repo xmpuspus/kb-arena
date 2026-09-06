@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import StateBanner from "@/components/StateBanner";
 import FetchError from "@/components/FetchError";
 import { readFailureMessage } from "@/lib/api";
+import { useScopeReset } from "@/lib/useScopeReset";
 
 type LeaderRow = {
   corpus: string;
@@ -41,6 +42,14 @@ export default function LeaderboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("all");
   const [attempt, setAttempt] = useState(0);
+  const [corpusNames, setCorpusNames] = useState<string[]>([]);
+
+  // The filter names the corpus over the table, so the rows for the last one
+  // go before the new read starts.
+  useScopeReset(filter, () => {
+    setData(null);
+    setError(null);
+  });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -52,6 +61,7 @@ export default function LeaderboardPage() {
       })
       .then((d: LeaderboardResponse) => {
         setData(d);
+        setCorpusNames(d.corpora ?? []);
         setError(null);
       })
       .catch((e) => {
@@ -64,7 +74,9 @@ export default function LeaderboardPage() {
     return () => controller.abort();
   }, [filter, attempt]);
 
-  const corpora = useMemo(() => ["all", ...(data?.corpora ?? [])], [data?.corpora]);
+  // The picker lists every corpus this deployment holds, whatever the filter
+  // is, so it survives a filter change while the rows do not.
+  const corpora = useMemo(() => ["all", ...corpusNames], [corpusNames]);
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
