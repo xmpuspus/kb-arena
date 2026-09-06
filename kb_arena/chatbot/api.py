@@ -1378,6 +1378,11 @@ async def health(request: Request) -> dict:
         },
         "strategies": list(request.app.state.strategies.keys()),
         "demo_mode": settings.demo_mode,
+        # `demo_mode` alone reads as "an operator published this deployment",
+        # and the app also turns it on for a laptop with no model key. The
+        # dashboard names one of three states from these two flags, so it must
+        # see both or it calls a laptop a hosted demo.
+        "demo_mode_auto": settings.demo_mode_auto,
     }
 
 

@@ -295,6 +295,9 @@ export async function fetchCorpora(): Promise<CorpusInfo[]> {
 
 export interface ServerStatus {
   demoMode: boolean;
+  // The app sets demo mode for itself when no model key is configured. That
+  // machine is not a hosted demo, and only this flag tells the two apart.
+  demoModeAuto: boolean;
 }
 
 // null means the server did not answer, which is not the same as live mode.
@@ -304,7 +307,10 @@ export async function fetchServerStatus(): Promise<ServerStatus | null> {
     const res = await fetch(`${API_URL}/health`);
     if (!res.ok) return null;
     const data = await res.json();
-    return { demoMode: Boolean(data.demo_mode) };
+    return {
+      demoMode: Boolean(data.demo_mode),
+      demoModeAuto: Boolean(data.demo_mode_auto),
+    };
   } catch {
     return null;
   }
@@ -317,27 +323,21 @@ export interface GraphData {
 }
 
 export async function fetchGraphData(corpus: string = "all"): Promise<GraphData> {
-  try {
-    // The route returns entities extracted from the documents, so it carries
-    // the API token when one is set.
-    const res = await apiFetch(`${API_URL}/api/graph/data?corpus=${corpus}`);
-    if (res.status === 401 || res.status === 429 || res.status >= 500) {
-      // `connected: false` reads as "the graph database is down", which is a
-      // claim about the deployment. A refusal, a rate limit and a server
-      // error are all failures to read, and none of them is that claim.
-      throw new Error(res.status === 401 ? GRAPH_UNAUTHORIZED : GRAPH_UNAVAILABLE);
-    }
-    if (!res.ok) return { nodes: [], edges: [], connected: false };
-    return await res.json();
-  } catch (err: unknown) {
-    if (
-      err instanceof Error &&
-      (err.message === GRAPH_UNAUTHORIZED || err.message === GRAPH_UNAVAILABLE)
-    ) {
-      throw err;
-    }
-    return { nodes: [], edges: [], connected: false };
-  }
+  // The route returns entities extracted from the documents, so it carries
+  // the API token when one is set.
+  const res = await apiFetch(`${API_URL}/api/graph/data?corpus=${corpus}`).catch(() => {
+    // A network error reached the same `connected: false` return as a real
+    // answer did, so an unreachable API read as an unreachable database.
+    throw new Error(GRAPH_UNAVAILABLE);
+  });
+  if (res.status === 401) throw new Error(GRAPH_UNAUTHORIZED);
+  // `connected: false` reads as "the graph database is down", which is a claim
+  // about the deployment. Every failed read is a failure to read, and none of
+  // them is that claim.
+  if (!res.ok) throw new Error(GRAPH_UNAVAILABLE);
+  return await res.json().catch(() => {
+    throw new Error(GRAPH_UNAVAILABLE);
+  });
 }
 
 export type GraphBuildEvent =
@@ -447,32 +447,23 @@ export async function* streamGraphBuild(
   }
 }
 
+// An empty list is a corpus with no recorded run. Every failure throws, because
+// sample numbers in place of a failed read put invented results on screen under
+// a real corpus name.
 export async function fetchBenchmarkResults(
   corpus: string = "all"
 ): Promise<{ strategy: Strategy; tiers: number[]; latencyMs: number; costUsd: number }[]> {
-  try {
-    // This route returns per-question records, so it carries the API token
-    // when one is set. A bare fetch would get 401 on a deployment with a token.
-    const res = await apiFetch(`${API_URL}/api/benchmark/results?corpus=${corpus}`);
-    if (res.status === 401 || res.status === 429 || res.status >= 500) {
-      // Sample numbers in place of a failed read would put invented results
-      // on screen under a real corpus name. Say what happened instead.
-      throw new Error(
-        res.status === 401 ? BENCHMARK_UNAUTHORIZED : BENCHMARK_UNAVAILABLE,
-      );
-    }
-    if (!res.ok) return MOCK_BENCHMARK_DATA;
-    const data = await res.json();
-    return data.results?.length ? data.results : MOCK_BENCHMARK_DATA;
-  } catch (err: unknown) {
-    if (
-      err instanceof Error &&
-      (err.message === BENCHMARK_UNAUTHORIZED || err.message === BENCHMARK_UNAVAILABLE)
-    ) {
-      throw err;
-    }
-    return MOCK_BENCHMARK_DATA;
-  }
+  // This route returns per-question records, so it carries the API token
+  // when one is set. A bare fetch would get 401 on a deployment with a token.
+  const res = await apiFetch(`${API_URL}/api/benchmark/results?corpus=${corpus}`).catch(() => {
+    throw new Error(BENCHMARK_UNAVAILABLE);
+  });
+  if (res.status === 401) throw new Error(BENCHMARK_UNAUTHORIZED);
+  if (!res.ok) throw new Error(BENCHMARK_UNAVAILABLE);
+  const data = await res.json().catch(() => {
+    throw new Error(BENCHMARK_UNAVAILABLE);
+  });
+  return data.results ?? [];
 }
 
 export interface Source {
@@ -576,54 +567,3 @@ export async function* streamChat(
   }
 }
 
-// Mock data used when API is unavailable
-export const MOCK_BENCHMARK_DATA = [
-  {
-    strategy: "qna_pairs" as Strategy,
-    tiers: [79, 85, 83, 84, 66],
-    latencyMs: 9043,
-    costUsd: 0.48,
-  },
-  {
-    strategy: "knowledge_graph" as Strategy,
-    tiers: [72, 69, 61, 77, 79],
-    latencyMs: 20322,
-    costUsd: 1.37,
-  },
-  {
-    strategy: "hybrid" as Strategy,
-    tiers: [39, 81, 61, 80, 62],
-    latencyMs: 41549,
-    costUsd: 3.02,
-  },
-  {
-    strategy: "raptor" as Strategy,
-    tiers: [30, 16, 15, 36, 30],
-    latencyMs: 7240,
-    costUsd: 0.69,
-  },
-  {
-    strategy: "naive_vector" as Strategy,
-    tiers: [27, 15, 14, 26, 22],
-    latencyMs: 6421,
-    costUsd: 0.33,
-  },
-  {
-    strategy: "contextual_vector" as Strategy,
-    tiers: [25, 11, 9, 26, 11],
-    latencyMs: 5114,
-    costUsd: 0.29,
-  },
-  {
-    strategy: "pageindex" as Strategy,
-    tiers: [19, 12, 7, 21, 12],
-    latencyMs: 10933,
-    costUsd: 0.29,
-  },
-  {
-    strategy: "bm25" as Strategy,
-    tiers: [24, 11, 9, 16, 10],
-    latencyMs: 4514,
-    costUsd: 0.26,
-  },
-];

@@ -11,8 +11,12 @@ import {
   type CorpusInfo,
 } from "@/lib/api";
 import { useTokenEpoch } from "@/lib/useTokenEpoch";
+import StateBanner from "@/components/StateBanner";
+import FetchError from "@/components/FetchError";
 
-// Fallback data shown when Neo4j is not connected
+// The example map, shown only when a read succeeds and reports no graph
+// database behind it. A failed read never reaches it: sample entities under a
+// corpus name read as that corpus's graph.
 const SAMPLE_NODES: GraphNode[] = [
   { id: "lambda", label: "Lambda", type: "Topic", properties: { category: "Compute" } },
   { id: "api-gw", label: "API Gateway", type: "Topic", properties: { category: "Networking" } },
@@ -93,13 +97,15 @@ function apiToGraphEdges(data: { source: string; target: string; type: string }[
 
 export default function GraphPage() {
   const [corpus, setCorpus] = useState("aws-compute");
-  const [nodes, setNodes] = useState<GraphNode[]>(SAMPLE_NODES);
-  const [edges, setEdges] = useState<GraphEdge[]>(SAMPLE_EDGES);
+  const [nodes, setNodes] = useState<GraphNode[]>([]);
+  const [edges, setEdges] = useState<GraphEdge[]>([]);
   const [corpora, setCorpora] = useState<CorpusInfo[]>(CORPORA);
   const [connected, setConnected] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [sampleMap, setSampleMap] = useState(false);
+  const [loading, setLoading] = useState(true);
   // A refused read, distinct from the graph database being unreachable.
   const [readError, setReadError] = useState("");
+  const [attempt, setAttempt] = useState(0);
   // Entering a token is the moment a refused read should be tried again.
   const tokenEpoch = useTokenEpoch();
   const [buildStatus, setBuildStatus] = useState<"idle" | "building" | "done" | "error">("idle");
@@ -125,9 +131,13 @@ export default function GraphPage() {
       buildEpochRef.current === buildEpoch && !controller.signal.aborted;
     setBuildStatus("building");
     setBuildProgress("Starting...");
+    // A build streams its own entities, so the earlier read failure no longer
+    // describes what is on screen.
+    setReadError("");
     // Clear existing graph so nodes animate in fresh
     setNodes([]);
     setEdges([]);
+    setSampleMap(false);
     try {
       const build = await triggerGraphBuild(buildCorpus);
       if (!isCurrentBuild()) return;
@@ -152,12 +162,16 @@ export default function GraphPage() {
           if (!isCurrentBuild()) break;
           setConnected(data.connected);
           if (!data.connected) {
-            setNodes(SAMPLE_NODES);
-            setEdges(SAMPLE_EDGES);
+            // The build just ran on this corpus, so the example map here would
+            // read as the graph it produced. Show nothing and say so.
+            setNodes([]);
+            setEdges([]);
+            setSampleMap(false);
             setBuildStatus("error");
-            setBuildProgress("Graph build completed, but the saved graph could not be loaded.");
+            setBuildProgress("The graph build finished, and the saved graph did not load.");
             continue;
           }
+          setSampleMap(false);
           setNodes(apiToGraphNodes(data.nodes));
           setEdges(apiToGraphEdges(data.edges));
           setBuildStatus("done");
@@ -198,8 +212,13 @@ export default function GraphPage() {
       .catch((err: unknown) => {
         // A refusal is not an outage of the graph database, so it must not
         // set `connected: false` and show an empty graph as a real answer.
+        // The example map goes too, because it would read as this corpus.
         if (active) {
-          setReadError(err instanceof Error ? err.message : "Could not read the graph");
+          setNodes([]);
+          setEdges([]);
+          setSampleMap(false);
+          setConnected(false);
+          setReadError(err instanceof Error ? err.message : "The graph did not load.");
         }
         return null;
       })
@@ -214,9 +233,13 @@ export default function GraphPage() {
       }
       setConnected(data.connected);
       if (data.connected) {
+        setSampleMap(false);
         setNodes(apiToGraphNodes(data.nodes));
         setEdges(apiToGraphEdges(data.edges));
       } else {
+        // The server answered, and it reports no graph database behind it.
+        // That is the sample state, and the banner names it.
+        setSampleMap(true);
         setNodes(SAMPLE_NODES);
         setEdges(SAMPLE_EDGES);
       }
@@ -225,7 +248,7 @@ export default function GraphPage() {
     return () => {
       active = false;
     };
-  }, [corpus, tokenEpoch]);
+  }, [corpus, tokenEpoch, attempt]);
 
 
 
@@ -244,6 +267,14 @@ export default function GraphPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+      <StateBanner
+        sample={
+          sampleMap
+            ? "This server reports no Neo4j connection, so the map below is a built-in example."
+            : undefined
+        }
+      />
+
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
@@ -283,13 +314,12 @@ export default function GraphPage() {
 
       {/* Status banner */}
       {readError && !loading && (
-        <div
-          className="px-3 py-2 rounded-lg text-xs"
-          style={{ background: "var(--border)", color: "var(--muted)" }}
-          role="status"
-        >
-          {readError}
-        </div>
+        <FetchError
+          title="The graph did not load"
+          message={readError}
+          hint="A failed read is not an empty graph, so the map stays off screen. Start the API, or enter an API token with the key button, then try again."
+          onRetry={() => setAttempt((n) => n + 1)}
+        />
       )}
 
       {!readError && !connected && !loading && (
@@ -331,31 +361,35 @@ export default function GraphPage() {
         </div>
       )}
 
-      {/* Stats bar */}
-      <div className="flex gap-6">
-        {[
-          { label: "Nodes", value: stats.nodes },
-          { label: "Edges", value: stats.edges },
-          { label: "Types", value: stats.types },
-          { label: "Max degree", value: stats.maxDegree },
-        ].map((s) => (
-          <div key={s.label} className="text-center">
-            <p className="text-xl font-bold mono" style={{ color: "var(--foreground)" }}>{s.value}</p>
-            <p className="text-xs" style={{ color: "var(--muted)" }}>{s.label}</p>
+      {/* Stats bar and graph. A failed read shows neither: zero nodes under a
+          corpus name reads as a corpus with no entities. */}
+      {!readError && (
+        <>
+          <div className="flex gap-6">
+            {[
+              { label: "Nodes", value: stats.nodes },
+              { label: "Edges", value: stats.edges },
+              { label: "Types", value: stats.types },
+              { label: "Max degree", value: stats.maxDegree },
+            ].map((s) => (
+              <div key={s.label} className="text-center">
+                <p className="text-xl font-bold mono" style={{ color: "var(--foreground)" }}>{s.value}</p>
+                <p className="text-xs" style={{ color: "var(--muted)" }}>{s.label}</p>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      {/* Graph */}
-      <div
-        className="rounded-lg border overflow-hidden"
-        style={{ borderColor: "var(--border)", height: "calc(100vh - 300px)", minHeight: 500 }}
-      >
-        <GraphViewer
-          nodes={nodes}
-          edges={edges}
-        />
-      </div>
+          <div
+            className="rounded-lg border overflow-hidden"
+            style={{ borderColor: "var(--border)", height: "calc(100vh - 300px)", minHeight: 500 }}
+          >
+            <GraphViewer
+              nodes={nodes}
+              edges={edges}
+            />
+          </div>
+        </>
+      )}
 
       {/* Info panel */}
       <div
