@@ -147,6 +147,10 @@ export default function GraphPage() {
       buildEpochRef.current === buildEpoch && !controller.signal.aborted;
     setBuildStatus("building");
     setBuildProgress("Starting...");
+    // A read still in flight when the build starts describes the graph the
+    // build is replacing. Retiring the ticket here stops its failure from
+    // writing an error over a build that is already streaming entities.
+    readTicket.current += 1;
     // A build streams its own entities, so the earlier read failure no longer
     // describes what is on screen.
     setReadError("");

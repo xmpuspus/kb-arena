@@ -229,6 +229,10 @@ export default function ArenaPage() {
         // so this answer means the first attempt landed and its response was
         // lost. Calling that a failed vote is the wrong claim.
         if (message.toLowerCase().includes("already voted")) {
+          // Same guard as the other two vote outcomes. This branch used to
+          // write its notice whatever corpus was on screen, so the old match's
+          // line appeared under a corpus the reader had just moved to.
+          if (corpus !== selectedCorpus.current) return;
           setVoteNotice("This match already carries a vote, so the retry changed nothing.");
           fetchLeaderboard(selectedCorpus.current);
           return;

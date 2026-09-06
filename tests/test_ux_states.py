@@ -479,3 +479,33 @@ def test_a_stale_vote_failure_does_not_write_under_the_corpus_now_on_screen():
     assert (
         "if (votedCorpus !== selectedCorpus.current) return;" in source
     ), "the vote success path must drop a reply for a corpus the reader left"
+
+
+def test_a_live_graph_build_retires_the_read_that_it_replaces():
+    """A read failure used to write an error over a build already streaming.
+
+    `handleLiveBuild` clears the graph and the error, and it did not retire the
+    read ticket. A read still in flight then passed `isCurrentRead()` and wrote
+    its failure over entities the build had started to draw.
+    """
+    source = (ROOT / "web" / "app" / "graph" / "page.tsx").read_text()
+    build = source.split("async function handleLiveBuild()")[1]
+
+    assert (
+        "readTicket.current += 1;" in build.split("try {")[0]
+    ), "handleLiveBuild must retire the in-flight read before it starts"
+
+
+def test_every_vote_outcome_drops_a_reply_for_a_corpus_the_reader_left():
+    """Three outcomes, and the guard reached them one at a time.
+
+    The success path got it first, then the transport failure, and the
+    already-voted branch still wrote its notice under whatever corpus was on
+    screen. All three compare now.
+    """
+    source = (ROOT / "web" / "app" / "arena" / "page.tsx").read_text()
+
+    assert (
+        source.count("if (corpus !== selectedCorpus.current) return;") == 2
+    ), "the already-voted branch and the transport failure both need the guard"
+    assert "if (votedCorpus !== selectedCorpus.current) return;" in source
