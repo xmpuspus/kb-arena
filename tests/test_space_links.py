@@ -46,7 +46,8 @@ def _module():
     ],
 )
 def test_only_a_route_link_gains_a_file_name(html, expected):
-    assert _module().rewrite(html)[0] == expected
+    known = {"/benchmark/", "/retriever-lab/"}
+    assert _module().rewrite(html, known)[0] == expected
 
 
 def test_the_rewrite_refuses_the_packaged_bundle(capsys):
@@ -100,3 +101,16 @@ def test_the_check_reads_the_routes_off_the_build():
     assert "/benchmark/" in found
     assert "/decide/" in found
     assert "/diagnostics/" in found
+
+
+def test_a_link_to_a_page_the_build_never_wrote_stops_the_deploy(tmp_path, capsys):
+    """`/missing/index.html` is a 404 wearing the right shape."""
+    space = tmp_path / "space"
+    space.mkdir()
+    (space / "index.html").write_text('<a href="/missing/">x</a>')
+
+    module = _module()
+    assert module.main(space) == 1
+    assert "never wrote" in capsys.readouterr().err
+    # The link is left alone, so the failure names the real problem.
+    assert 'href="/missing/"' in (space / "index.html").read_text()

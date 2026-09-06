@@ -24,15 +24,26 @@ from pathlib import Path
 ROUTE_LINK = re.compile(r'(href=")(/[A-Za-z0-9][A-Za-z0-9._~-]*(?:/[A-Za-z0-9._~-]+)*/)(")')
 
 
-def rewrite(text: str) -> tuple[str, int]:
+def rewrite(text: str, known: set[str] | None = None) -> tuple[str, int, list[str]]:
+    """Rewrite a route link, and name a directory link with no page behind it.
+
+    Rewriting every directory-shaped link turned `/missing/` into
+    `/missing/index.html`, which is a 404 wearing the right shape. With the
+    routes the build wrote, an unknown one is reported instead.
+    """
     count = 0
+    unknown: list[str] = []
 
     def swap(match: re.Match[str]) -> str:
         nonlocal count
+        route = match.group(2)
+        if known is not None and route not in known:
+            unknown.append(route)
+            return match.group(0)
         count += 1
-        return f"{match.group(1)}{match.group(2)}index.html{match.group(3)}"
+        return f"{match.group(1)}{route}index.html{match.group(3)}"
 
-    return ROUTE_LINK.sub(swap, text), count
+    return ROUTE_LINK.sub(swap, text), count, unknown
 
 
 def routes(root: Path) -> list[str]:
@@ -74,18 +85,27 @@ def main(root: Path) -> int:
         )
         return 1
 
+    known = set(routes(root))
     files = 0
     links = 0
+    unknown: list[str] = []
     for page in sorted(root.rglob("*.html")):
         text = page.read_text(encoding="utf-8")
-        changed, count = rewrite(text)
+        changed, count, missing = rewrite(text, known)
+        unknown.extend(f"{page.relative_to(root)} links to {route}" for route in missing)
         if count:
             page.write_text(changed, encoding="utf-8")
             files += 1
             links += count
     print(f"exact paths written: {links} links across {files} files")
 
-    left = remaining(root, routes(root))
+    if unknown:
+        print("A link names a directory this build never wrote:", file=sys.stderr)
+        for line in unknown[:20]:
+            print(f"  {line}", file=sys.stderr)
+        return 1
+
+    left = remaining(root, sorted(known))
     if left:
         print(
             "A route is still written as a directory, which this Space redirects:", file=sys.stderr
