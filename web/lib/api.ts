@@ -379,12 +379,32 @@ export async function fetchServerStatus(): Promise<ServerStatus | null> {
 export const LEADERBOARD_MALFORMED =
   "The leaderboard answer did not carry the rows this page reads.";
 
+// The three status strings `kb_arena/benchmark/review.py` writes into every
+// record. A fourth name invented here would count nothing, so the parity test
+// fails when the two lists disagree.
+export const REVIEW_REVIEWED = "human-reviewed";
+export const REVIEW_DRAFT = "machine-assisted-draft";
+export const REVIEW_UNSPECIFIED = "unspecified";
+
+// How much of a row rests on questions a reviewer checked. `publishable` is
+// true only when every scored question is human-reviewed, so a row with one
+// machine draft under it is a development signal and not citable evidence.
+export interface RowReview {
+  counts: Record<string, number>;
+  questions: number;
+  reviewed_share: number | null;
+  publishable: boolean;
+}
+
 export interface LeaderboardRow {
   corpus: string;
   strategy: string;
   // Runs that differ in question set, qrels, judge or top_k never share a row.
   compatibility_key: string;
   build?: string;
+  // Optional for the same reason `build` is: a server older than the field
+  // still reports real rows, and dropping them would hide measured results.
+  review?: RowReview;
   manifest: {
     question_split?: string | null;
     judge_model?: string | null;
@@ -407,6 +427,30 @@ export interface LeaderboardPage {
 
 const strings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
+// A row from a server older than the review summary carries no `review`, and
+// that row still holds measured numbers. An absent or malformed summary reads
+// as undefined, so the page says the review status is unknown instead of
+// claiming a count nobody reported.
+function reviewOf(value: unknown): RowReview | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const review = value as Record<string, unknown>;
+  if (typeof review.questions !== "number" || !Number.isFinite(review.questions)) return undefined;
+  if (typeof review.publishable !== "boolean") return undefined;
+  const rawCounts = review.counts;
+  if (!rawCounts || typeof rawCounts !== "object") return undefined;
+  const counts: Record<string, number> = {};
+  for (const [status, count] of Object.entries(rawCounts as Record<string, unknown>)) {
+    if (typeof count === "number" && Number.isFinite(count)) counts[status] = count;
+  }
+  const share = review.reviewed_share;
+  return {
+    counts,
+    questions: review.questions,
+    reviewed_share: typeof share === "number" && Number.isFinite(share) ? share : null,
+    publishable: review.publishable,
+  };
+}
 
 // A metric the answer reports as null is a measurement nobody has, and the
 // table prints "n/a" for it. A metric the answer never carried is a different
@@ -434,8 +478,8 @@ const metric = (value: unknown): number | null | undefined => {
  * where a metric may be null for a measurement nobody has. A row that lacks
  * one is dropped, never completed. Filling a gap with "legacy", zero runs and
  * n/a metrics builds a row the server never sent, and a reader cannot tell it
- * from a measured one. `build` stays optional, because a server older than
- * that field still reports real rows.
+ * from a measured one. `build` and `review` stay optional, because a server
+ * older than either field still reports real rows.
  */
 export function parseLeaderboard(body: unknown): LeaderboardPage {
   if (!body || typeof body !== "object") throw new Error(LEADERBOARD_MALFORMED);
@@ -465,6 +509,7 @@ export function parseLeaderboard(body: unknown): LeaderboardPage {
       strategy: row.strategy,
       compatibility_key: row.compatibility_key,
       build: typeof row.build === "string" ? row.build : undefined,
+      review: reviewOf(row.review),
       manifest: {
         question_split:
           typeof manifest.question_split === "string" ? manifest.question_split : null,

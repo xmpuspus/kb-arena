@@ -222,23 +222,33 @@ export default function DemoPage() {
 
         {/* Query input */}
         <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3 sm:flex">
+          <label htmlFor="demo-corpus" className="sr-only">
+            Corpus
+          </label>
           <select
+            id="demo-corpus"
             value={corpus}
             onChange={(e) => setCorpus(e.target.value)}
             className="col-span-2 px-3 py-2 rounded-lg border text-sm sm:shrink-0"
-            style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
+            style={{ background: "var(--card)", borderColor: "var(--border-strong)", color: "var(--foreground)" }}
           >
             {corpora.map((c) => (
               <option key={c.value} value={c.value}>{c.label}</option>
             ))}
           </select>
+          {/* A placeholder disappears the moment a reader types, so it is not
+              a label. The label stays. */}
+          <label htmlFor="demo-question" className="sr-only">
+            Question for the selected strategies
+          </label>
           <input
+            id="demo-question"
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Ask a question about your documentation..."
             className="col-span-2 min-w-0 px-4 py-2 rounded-lg border text-sm outline-none sm:flex-1"
-            style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
+            style={{ background: "var(--card)", borderColor: "var(--border-strong)", color: "var(--foreground)" }}
           />
           <button
             type="submit"

@@ -83,13 +83,14 @@ export default function ToolsPage() {
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
-          <label className="text-xs font-medium" style={{ color: "var(--muted)" }}>Corpus</label>
+          <label htmlFor="tools-corpus" className="text-xs font-medium" style={{ color: "var(--muted)" }}>Corpus</label>
           <select
+            id="tools-corpus"
             value={corpus}
             onChange={(e) => setCorpus(e.target.value)}
             disabled={failed || pending}
             className="px-3 py-1.5 rounded-lg border text-sm disabled:opacity-50"
-            style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
+            style={{ background: "var(--card)", borderColor: "var(--border-strong)", color: "var(--foreground)" }}
           >
             {/* Every tool acts on this corpus, so a failed read leaves nothing
                 to pick and nothing to start. */}

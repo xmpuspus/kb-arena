@@ -2,16 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Every colour below is measured against the surface it sits on. Body text
+   holds 4.5:1 or more, and an interactive border holds 3:1 or more.
+   tests/test_ux_access.py recomputes the ratios from these values. */
 :root {
   --background: #f8fafc;
   --foreground: #0f172a;
-  --muted: #64748b;
+  --muted: #5b6878;
+  /* A divider only. A control that a reader operates uses --border-strong,
+     because a 1.2:1 edge does not read as a control. */
   --border: #e2e8f0;
+  --border-strong: #7c8ba1;
   --card: #ffffff;
   --accent: #2563eb;
-  --success: #16a34a;
-  --danger: #dc2626;
-  --warning: #d97706;
+  --success: #15803d;
+  --danger: #b91c1c;
+  --warning: #b45309;
   --success-bg: #d1fae5;
   --success-text: #065f46;
   --danger-bg: #fee2e2;
@@ -25,6 +31,36 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
+/* A keyboard reader must see where the focus sits. `outline-none` on an input
+   removed the only marker the browser drew, so the ring comes back here for
+   every focused element and cannot be dropped one control at a time. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+  border-color: var(--accent);
+}
+
+/* Reading is not a reason to move the screen. Motion stops for a reader who
+   asked for less of it, and the state each animation reported stays readable
+   in text next to it. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 @media (max-width: 639px) {
   button,
   input,
@@ -35,6 +71,13 @@ body {
 
   button {
     min-width: 44px;
+  }
+
+  /* The info trigger sits inline with the label it explains, so a 44px box
+     would push the label off its own row. 24px still meets the target size. */
+  button.info-tip {
+    min-height: 24px;
+    min-width: 24px;
   }
 }
 

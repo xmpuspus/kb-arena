@@ -295,12 +295,13 @@ export default function ArenaPage() {
       {/* Question Input */}
       <div className="space-y-3 max-w-2xl mx-auto">
         <div className="flex items-center gap-2">
-          <label className="text-xs font-medium" style={{ color: "var(--muted)" }}>Corpus</label>
+          <label htmlFor="arena-corpus" className="text-xs font-medium" style={{ color: "var(--muted)" }}>Corpus</label>
           <select
+            id="arena-corpus"
             value={corpus}
             onChange={(e) => setCorpus(e.target.value)}
             className="px-3 py-1.5 rounded-lg border text-sm"
-            style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
+            style={{ background: "var(--card)", borderColor: "var(--border-strong)", color: "var(--foreground)" }}
             disabled={loading}
           >
             <option value="all">All corpora</option>
@@ -310,16 +311,22 @@ export default function ArenaPage() {
           </select>
         </div>
         <div className="flex gap-2">
+          {/* A placeholder disappears the moment a reader types, so it is not
+              a label. The label stays. */}
+          <label htmlFor="arena-question" className="sr-only">
+            Question for both strategies
+          </label>
           <input
+            id="arena-question"
             type="text"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && createMatch()}
             placeholder="Ask a question about your documentation..."
-            className="flex-1 px-4 py-2.5 rounded-lg border text-sm outline-none"
+            className="min-w-0 flex-1 px-4 py-2.5 rounded-lg border text-sm outline-none"
             style={{
               background: "var(--card)",
-              borderColor: "var(--border)",
+              borderColor: "var(--border-strong)",
               color: "var(--foreground)",
             }}
             disabled={loading}
