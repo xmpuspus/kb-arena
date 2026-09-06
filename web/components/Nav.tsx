@@ -7,8 +7,10 @@ import { clearApiToken, getApiToken, setApiToken } from "@/lib/auth";
 
 const links = [
   { href: "/", label: "Home" },
+  { href: "/decide", label: "Decide" },
   { href: "/demo", label: "Demo" },
   { href: "/benchmark", label: "Benchmark" },
+  { href: "/leaderboard", label: "Leaderboard" },
   { href: "/retriever-lab", label: "Retriever Lab" },
   { href: "/graph", label: "Graph" },
   { href: "/arena", label: "Arena" },
