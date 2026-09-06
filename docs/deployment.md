@@ -55,6 +55,44 @@ checks that, with nothing started yet.
 docker compose config
 ```
 
+## The hosted Space serves the demo corpus only
+
+A read-only demo runs at <https://xmpuspus-kb-arena.hf.space>. Its files live
+in `deploy/hf-space/`: a `README.md` that carries the Hugging Face Space front
+matter, a `Dockerfile`, and `push.sh`. The Dockerfile installs
+`kb-arena==0.11.0` from PyPI, so the Space builds no source from this
+repository.
+
+The Dockerfile copies the packaged `aws-compute_*.json` results out of the
+wheel, and nothing else. The datasets directory inside the image stays empty,
+so the Space holds no corpus documents at all. The `nist-800-171-r3` corpus
+never reaches the Space. Its question set is a machine-generated draft that
+waits on a qualified reviewer, so it stays off a public page.
+
+The Dockerfile sets `KB_ARENA_DEMO_MODE=true`, and that one flag decides two
+things. Chat, arena, and tool routes answer 503, so a public page spends no
+model credits. The content read gate treats the corpus as published, so the
+benchmark route serves the recorded results to any reader. Demo mode that the
+app turns on for itself, for lack of a model key, does not open those reads.
+The Space carries no model key and no `KB_ARENA_API_TOKEN`.
+
+Redeploy after you change either file:
+
+```bash
+deploy/hf-space/push.sh
+```
+
+The script reads the token from `HF_TOKEN`, or from
+`~/.cache/huggingface/token`. It clones the Space, copies the two files, and
+pushes. Hugging Face rebuilds the image on that push. These two commands
+report the build stage and then the running app.
+
+```bash
+curl -s https://huggingface.co/api/spaces/xmpuspus/kb-arena \
+  | python3 -c "import json, sys; print(json.load(sys.stdin)['runtime']['stage'])"
+curl -s https://xmpuspus-kb-arena.hf.space/health
+```
+
 ## Environment variables that change deployment behavior
 
 The full list lives in [the environment reference](reference-environment.md),
