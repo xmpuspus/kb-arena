@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { API_URL, STRATEGY_LABELS, type Strategy } from "@/lib/api";
+import { API_URL, STRATEGY_LABELS, readFailureMessage, type Strategy } from "@/lib/api";
 import { apiFetch } from "@/lib/auth";
 import { useTokenEpoch } from "@/lib/useTokenEpoch";
 import StateBanner from "@/components/StateBanner";
@@ -187,7 +187,7 @@ export default function RetrieverLabPage() {
         setRuns([]);
         setSelectedRun("");
         setData(null);
-        setError(e instanceof Error ? e.message : "The run list did not load.");
+        setError(readFailureMessage(e, "The run list did not load."));
       });
   }, [attempt]);
 
@@ -215,7 +215,7 @@ export default function RetrieverLabPage() {
           // Leaving the old run on screen puts one run's numbers under
           // another run's name. Clear it and say what happened.
           if (active) setData(null);
-          setError(e instanceof Error ? e.message : "The run did not load.");
+          setError(readFailureMessage(e, "The run did not load."));
         }
       })
       .finally(() => {
@@ -281,14 +281,19 @@ export default function RetrieverLabPage() {
           <select
             value={selectedRun}
             onChange={(e) => setSelectedRun(e.target.value)}
-            className="px-3 py-1.5 rounded-lg border text-sm"
+            disabled={Boolean(error)}
+            className="px-3 py-1.5 rounded-lg border text-sm disabled:opacity-50"
             style={{
               background: "var(--card)",
               borderColor: "var(--border)",
               color: "var(--foreground)",
             }}
           >
-            {runs.length === 0 && <option value="">No runs yet</option>}
+            {/* "No runs yet" is a claim about the deployment, and a failed read
+                supports no such claim. */}
+            {runs.length === 0 && (
+              <option value="">{error ? "Run list unavailable" : "No runs yet"}</option>
+            )}
             {runs.map((r) => (
               <option key={r.run_id} value={r.run_id}>
                 {r.run_id} | top-{r.top_k} | {r.timestamp.slice(0, 19)}

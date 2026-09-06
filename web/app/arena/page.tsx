@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { apiFetch } from "@/lib/auth";
-import { CORPORA, fetchCorpora } from "@/lib/api";
+import { CORPORA, fetchCorpora, readFailureMessage } from "@/lib/api";
 import StateBanner from "@/components/StateBanner";
 import FetchError from "@/components/FetchError";
 
@@ -150,7 +150,7 @@ export default function ArenaPage() {
       if (ticket !== boardRequest.current) return;
       setLeaderboard([]);
       setTotalVotes(0);
-      setBoardError(err instanceof Error ? err.message : "Leaderboard unavailable");
+      setBoardError(readFailureMessage(err, "The leaderboard did not load."));
     }
   }
 
@@ -172,7 +172,7 @@ export default function ArenaPage() {
       if (!isMatchResult(data)) throw new Error("Server returned an invalid match response");
       setMatch(data);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to create match");
+      setError(readFailureMessage(err, "The match did not start."));
     } finally {
       setLoading(false);
     }
@@ -197,7 +197,7 @@ export default function ArenaPage() {
       // The vote moved the match's own scope, so refresh that board.
       fetchLeaderboard(data.corpus ?? corpus);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Vote failed");
+      setError(readFailureMessage(err, "The vote did not reach the server."));
     } finally {
       setVoting(false);
     }

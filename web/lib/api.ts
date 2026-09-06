@@ -16,6 +16,17 @@ export const BENCHMARK_UNAVAILABLE =
 export const BENCHMARK_UNAUTHORIZED =
   "The benchmark results need an API token. Enter one to read them.";
 
+export const NETWORK_UNREACHABLE = "The browser could not reach the API.";
+
+// `fetch` rejects with a TypeError, and the browser writes its own message
+// there: "Failed to fetch", "Load failed", "NetworkError when attempting to
+// fetch resource". All three are developer strings with no action in them, so
+// every page says the one sentence a reader can act on instead.
+export function readFailureMessage(err: unknown, fallback: string): string {
+  if (err instanceof TypeError) return NETWORK_UNREACHABLE;
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 // Known built-in names. Runtime availability comes from GET /strategies.

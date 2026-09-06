@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { streamChat, STRATEGY_LABELS, type Message, type Strategy } from "@/lib/api";
+import {
+  streamChat,
+  readFailureMessage,
+  STRATEGY_LABELS,
+  type Message,
+  type Strategy,
+} from "@/lib/api";
 
 type PanelState = "idle" | "loading" | "streaming" | "complete" | "error";
 
@@ -95,7 +101,7 @@ export default function ChatPanel({
         onOutcome?.(strategy, "complete");
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
-        const message = (err as Error).message ?? "Unknown error";
+        const message = readFailureMessage(err, "The answer did not arrive.");
         setError(message);
         setState("error");
         onOutcome?.(strategy, "error", message);

@@ -141,6 +141,10 @@ def test_a_failed_run_list_never_reads_as_a_lab_nobody_ran():
     assert "if (!r.ok) throw new Error" in page, "the run list must check the status"
     assert "setRuns([]);" in page, "and drop the runs it cannot vouch for"
     assert "!loading && !error && !corpusSummary" in page, "no runs yet is not a failed read"
+    # The Run control sat under the error and read "No runs yet", which is the
+    # claim the error above it says the page does not make.
+    assert 'error ? "Run list unavailable" : "No runs yet"' in page
+    assert "disabled={Boolean(error)}" in page, "a failed read leaves nothing to pick"
 
 
 def test_a_failed_arena_read_retries_the_read_that_failed():
@@ -159,6 +163,31 @@ def test_the_tools_never_act_on_a_corpus_from_a_failed_read():
     assert "fetchCorporaResult" in api, "the client must report the failed read"
     assert "fetchCorporaResult()" in page
     assert "{corpus && !failed && (" in page, "the tabs stay off after a failed read"
+    # The three tab buttons and the corpus select stayed live beside an empty
+    # list, so a reader could start an audit with no corpus.
+    assert page.count("disabled={failed}") == 2
+    assert "Corpus list unavailable" in page
+
+
+def test_no_route_prints_the_browser_string_for_a_dead_api():
+    """A dead API reached the reader as the TypeError message from `fetch`.
+
+    The browser writes that message, and it names no action. Four surfaces
+    printed it: the arena, the leaderboard, the retriever lab and the demo
+    panels.
+    """
+    api = (WEB / "lib" / "api.ts").read_text()
+
+    assert "The browser could not reach the API." in api
+    assert "err instanceof TypeError" in api, "a network failure is a TypeError"
+
+    for name in (
+        "app/arena/page.tsx",
+        "app/leaderboard/page.tsx",
+        "app/retriever-lab/page.tsx",
+        "components/ChatPanel.tsx",
+    ):
+        assert "readFailureMessage" in (WEB / name).read_text(), f"{name} shows the raw string"
 
 
 def test_a_failed_graph_read_shows_no_example_map():

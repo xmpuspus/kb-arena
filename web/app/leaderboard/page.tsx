@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import StateBanner from "@/components/StateBanner";
 import FetchError from "@/components/FetchError";
+import { readFailureMessage } from "@/lib/api";
 
 type LeaderRow = {
   corpus: string;
@@ -58,7 +59,7 @@ export default function LeaderboardPage() {
         // Rows from the last filter under the new corpus name read as that
         // corpus's runs, so the table goes with the failed read.
         setData(null);
-        setError(e instanceof Error ? e.message : "The leaderboard did not load.");
+        setError(readFailureMessage(e, "The leaderboard did not load."));
       });
     return () => controller.abort();
   }, [filter, attempt]);

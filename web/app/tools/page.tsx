@@ -66,9 +66,13 @@ export default function ToolsPage() {
           <select
             value={corpus}
             onChange={(e) => setCorpus(e.target.value)}
-            className="px-3 py-1.5 rounded-lg border text-sm"
+            disabled={failed}
+            className="px-3 py-1.5 rounded-lg border text-sm disabled:opacity-50"
             style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
           >
+            {/* Every tool acts on this corpus, so a failed read leaves nothing
+                to pick and nothing to start. */}
+            {failed && <option value="">Corpus list unavailable</option>}
             {corpora.map((c) => (
               <option key={c.value} value={c.value}>{c.label}</option>
             ))}
@@ -80,7 +84,9 @@ export default function ToolsPage() {
             <button
               key={t}
               onClick={() => setTab(t)}
-              className="px-3 py-1.5 text-xs font-medium transition-colors"
+              disabled={failed}
+              title={failed ? "The corpus list did not load, so the tools stay off" : undefined}
+              className="px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-40"
               style={{
                 background: tab === t ? "var(--accent)" : "transparent",
                 color: tab === t ? "#fff" : "var(--muted)",
