@@ -73,7 +73,7 @@ export default function StateBanner({ sample }: Props) {
           type="button"
           onClick={refresh}
           className="rounded border px-2 py-0.5 font-medium transition-opacity hover:opacity-70"
-          style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+          style={{ borderColor: "var(--border-strong)", color: "var(--foreground)" }}
         >
           Check again
         </button>

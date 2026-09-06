@@ -185,6 +185,7 @@ def test_every_public_read_route_carries_the_rate_limit():
         "/api/retriever-lab/runs",
         "/api/arena/leaderboard",
         "/strategies",
+        "/api/evidence",
     }
     seen = set()
     for route in api.app.routes:

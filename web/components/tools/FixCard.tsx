@@ -49,7 +49,7 @@ export default function FixCard({ recommendation: rec }: Props) {
       <div className="relative">
         <div className="flex items-center justify-between mb-1">
           <span className="text-xs font-medium" style={{ color: "var(--muted)" }}>Suggested content</span>
-          <button onClick={handleCopy} className="text-xs px-2 py-0.5 rounded border transition-colors hover:opacity-70" style={{ borderColor: "var(--border)", color: "var(--accent)" }}>
+          <button onClick={handleCopy} className="text-xs px-2 py-0.5 rounded border transition-colors hover:opacity-70" style={{ borderColor: "var(--border-strong)", color: "var(--accent)" }}>
             {copied ? "Copied!" : "Copy"}
           </button>
         </div>

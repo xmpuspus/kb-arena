@@ -8,6 +8,7 @@ import {
   type Strategy,
 } from "@/lib/api";
 import InfoTip from "@/components/InfoTip";
+import MetricNote, { type MetricKey } from "@/components/MetricNote";
 
 interface Row {
   strategy: Strategy;
@@ -29,6 +30,8 @@ interface SortableHeaderProps {
   sortKey: SortKey;
   sortDirection: SortDirection;
   onSort: (key: SortKey) => void;
+  /** The metric this column reports, when the column reports one. */
+  note?: MetricKey;
 }
 
 function SortableHeader({
@@ -37,16 +40,26 @@ function SortableHeader({
   sortKey,
   sortDirection,
   onSort,
+  note,
 }: SortableHeaderProps) {
   const active = sortKey === column;
   return (
     <th
-      onClick={() => onSort(column)}
-      className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap"
+      className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider select-none whitespace-nowrap"
       style={{ color: active ? "var(--accent)" : "var(--muted)" }}
       aria-sort={active ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}
     >
-      {label} {active ? (sortDirection === "asc" ? "^" : "v") : ""}
+      <span className="inline-flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => onSort(column)}
+          className="cursor-pointer uppercase tracking-wider"
+          style={{ color: "inherit" }}
+        >
+          {label} {active ? (sortDirection === "asc" ? "^" : "v") : ""}
+        </button>
+        {note && <MetricNote metric={note} align="left" />}
+      </span>
     </th>
   );
 }
@@ -66,17 +79,18 @@ function TierHeader({
   const info = TIER_INFO[tierNumber];
   return (
     <th
-      onClick={() => onSort(column)}
-      className="px-3 py-2 text-center cursor-pointer select-none"
+      className="px-3 py-2 text-center select-none"
       style={{ color: active ? "var(--accent)" : "var(--muted)" }}
       aria-sort={active ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}
     >
-      <div
-        className="text-[10px] font-medium uppercase tracking-wider"
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        className="text-[10px] font-medium uppercase tracking-wider cursor-pointer"
         style={{ color: "var(--muted)", opacity: 0.7 }}
       >
         Tier {tierNumber} {active ? (sortDirection === "asc" ? "^" : "v") : ""}
-      </div>
+      </button>
       <div className="text-xs font-semibold flex items-center justify-center gap-0.5">
         {info?.label ?? `T${tierNumber}`}
         {info && <InfoTip text={info.description} />}
@@ -143,9 +157,9 @@ export default function BenchmarkTable({ rows }: Props) {
             {Array.from({ length: tierCount }, (_, i) => (
               <TierHeader key={i} tierNumber={i + 1} sortKey={sortKey} sortDirection={sortDir} onSort={handleSort} />
             ))}
-            <SortableHeader column="avg" label="Avg %" sortKey={sortKey} sortDirection={sortDir} onSort={handleSort} />
-            <SortableHeader column="latencyMs" label="Latency" sortKey={sortKey} sortDirection={sortDir} onSort={handleSort} />
-            <SortableHeader column="costUsd" label="Cost/Q" sortKey={sortKey} sortDirection={sortDir} onSort={handleSort} />
+            <SortableHeader column="avg" label="Avg %" sortKey={sortKey} sortDirection={sortDir} onSort={handleSort} note="accuracy" />
+            <SortableHeader column="latencyMs" label="Latency" sortKey={sortKey} sortDirection={sortDir} onSort={handleSort} note="latency" />
+            <SortableHeader column="costUsd" label="Cost/Q" sortKey={sortKey} sortDirection={sortDir} onSort={handleSort} note="cost_per_query" />
           </tr>
         </thead>
         <tbody>

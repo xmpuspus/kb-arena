@@ -11,24 +11,27 @@ import importlib.resources as _pkg_resources
 import json
 import logging
 import math
+import os as _os
 import re as _re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path as _Path
 from uuid import uuid4
 
+import yaml
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ValidationError, field_validator
 from sse_starlette.sse import EventSourceResponse
 
 from kb_arena import __version__
 from kb_arena.arena.engine import ArenaEngine, scope_key
-from kb_arena.benchmark.compare import compare_result_files, resolve_result_path
+from kb_arena.benchmark.compare import SAFE_ID, compare_result_files, resolve_result_path
 from kb_arena.benchmark.manifest import build_identity, compatibility_key, manifest_summary
-from kb_arena.benchmark.review import REVIEWED, STATUSES, review_summary
+from kb_arena.benchmark.questions import EXPECTED_CHUNKS_FILE
+from kb_arena.benchmark.review import DRAFT, REVIEWED, STATUSES, review_summary
 from kb_arena.chatbot.auth import check_rate_limit, require_auth, require_read_auth
 from kb_arena.chatbot.session import SessionStore
 from kb_arena.chatbot.tools_api import router as tools_router
@@ -42,6 +45,7 @@ from kb_arena.models.api import (
     ErrorDetail,
     ErrorResponse,
 )
+from kb_arena.models.benchmark import Question
 from kb_arena.settings import settings
 
 _REQUEST_ID_HEADER = "X-Request-ID"
@@ -55,6 +59,17 @@ _GRAPH_BUILD_QUEUE_MAX_EVENTS = 1000
 _GRAPH_BUILD_QUEUE_TTL_SECONDS = 300.0
 _GRAPH_BUILD_MAX_ACTIVE = 4
 _GRAPH_BUILD_TIMEOUT_SECONDS = 1800.0
+
+# How many run directories `/api/evidence` opens per request. A results
+# directory grows one directory per run forever, and the route reads files on
+# the event loop, so an uncapped walk gets slower for every run ever made.
+EVIDENCE_SCAN_LIMIT = 50
+# How many directory entries the listing examines before it stops. The scan
+# limit alone bounded the answer while the walk still touched every run.
+EVIDENCE_LIST_LIMIT = 500
+# An evidence bundle records a command, a seed, a fingerprint and review
+# counts. The largest one this repository holds is under 4 KB.
+EVIDENCE_MAX_BYTES = 1_000_000
 
 
 def _enqueue_graph_build_event(queue: _asyncio.Queue, event: dict | None) -> None:
@@ -596,12 +611,61 @@ async def list_corpora() -> dict:
                 continue
             has_processed = (d / "processed").is_dir() and any((d / "processed").glob("*.jsonl"))
             total_questions = 0
+            # A machine-drafted question set is a development signal, not
+            # evidence. A page that offers a corpus without saying which kind it
+            # holds invites a reader to cite a draft.
+            #
+            # These counts were text searches over the whole file, so an answer
+            # that quoted "review_status: human-reviewed" raised the reviewed
+            # count without any question being reviewed. A draft corpus could
+            # then report reviewed >= total, which is exactly the condition the
+            # decision flow and the diagnostics page read as "safe to cite".
+            # One status per question is the only honest count, so parse it.
+            reviewed_questions = 0
+            draft_questions = 0
+            # A file this route cannot parse leaves its questions out of both
+            # counts, and a reader who sees reviewed equal to total takes that
+            # as a full review. So the count of unreadable files travels with
+            # the numbers, and a corpus with any of them claims nothing.
+            unreadable_question_files = 0
             if (d / "questions").is_dir():
-                for qf in (d / "questions").glob("*.yaml"):
+                for qf in sorted((d / "questions").glob("*.yaml")):
+                    if qf.name == EXPECTED_CHUNKS_FILE:
+                        continue
                     try:
-                        total_questions += qf.read_text().count("- id:")
-                    except OSError:
-                        pass
+                        entries = yaml.safe_load(qf.read_text())
+                    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+                        # A file holding a byte that is not UTF-8 raised out of
+                        # the route and answered 500. It is one more way a
+                        # question file fails to describe its corpus.
+                        unreadable_question_files += 1
+                        continue
+                    if not isinstance(entries, list):
+                        unreadable_question_files += 1
+                        continue
+                    malformed = False
+                    for entry in entries:
+                        # The same model `load_questions` builds. A hand-written
+                        # field list here drifted from it: an entry with an id
+                        # and nothing else counted as a reviewed question while
+                        # the loader raised on it, so an unrunnable corpus read
+                        # as citable.
+                        try:
+                            Question.model_validate(entry)
+                        except (ValidationError, TypeError):
+                            malformed = True
+                            continue
+                        if not isinstance(entry, dict):
+                            malformed = True
+                            continue
+                        total_questions += 1
+                        status = entry.get("review_status")
+                        if status == REVIEWED:
+                            reviewed_questions += 1
+                        elif status == DRAFT:
+                            draft_questions += 1
+                    if malformed:
+                        unreadable_question_files += 1
             has_results = results_dir.exists() and any(results_dir.glob(f"{d.name}_*.json"))
             qa_path = d / "qa-pairs" / "qa_pairs.jsonl"
             has_qa_pairs = qa_path.exists()
@@ -618,6 +682,9 @@ async def list_corpora() -> dict:
                     "value": d.name,
                     "label": d.name.replace("-", " ").title(),
                     "questionCount": total_questions,
+                    "reviewedQuestionCount": reviewed_questions,
+                    "draftQuestionCount": draft_questions,
+                    "unreadableQuestionFiles": unreadable_question_files,
                     "hasProcessed": has_processed,
                     "hasResults": has_results,
                     "hasQaPairs": has_qa_pairs,
@@ -1156,6 +1223,175 @@ def _pair_from(path: _Path, data: dict) -> tuple[str, str]:
     if not isinstance(corpus, str) or not isinstance(strategy, str):
         return "", ""
     return corpus, strategy
+
+
+def _entry_recency(entry: _os.DirEntry) -> tuple[float, str]:
+    """How recent a run directory is, for the evidence scan order.
+
+    The directory name holds a random hex run id, so sorting by name orders
+    the runs arbitrarily. This uses the directory's own modification time,
+    which is one `stat` per directory rather than a parse of every bundle.
+    Sorting on the bundle's `created_at` would mean reading every bundle
+    first, which is the walk the scan limit exists to avoid.
+
+    The name breaks ties so the order stays stable. A tree that was copied
+    without timestamps carries one mtime for everything, and the order then
+    falls back to the name, which is the behaviour this replaced.
+    """
+    try:
+        return (entry.stat().st_mtime, entry.name)
+    except OSError:
+        return (0.0, entry.name)
+
+
+def _recent_run_dirs(base: _Path) -> tuple[list[_Path], bool]:
+    """The newest run directories, from a listing that stops at a fixed size.
+
+    `EVIDENCE_SCAN_LIMIT` bounded the answer, not the work. A glob listed and
+    stat-ed every run directory before the slice threw most of them away, so
+    the cost still grew with every run anybody had ever made.
+
+    This stops after `EVIDENCE_LIST_LIMIT` run directories. Past that point
+    the ones examined are whichever the filesystem returned first, so the
+    newest run on disk can go unseen. The caller reports `truncated` for
+    exactly that reason, and a truncated answer is never proof of absence.
+
+    A listing that fails raises. Answering with an empty list would say this
+    deployment holds no run, which is a claim about the deployment that a
+    permission error and a directory removed mid-request do not support.
+    """
+    entries: list[tuple[float, str, _Path]] = []
+    overflow = False
+    examined = 0
+    try:
+        with _os.scandir(base) as listing:
+            for entry in listing:
+                # The cap counted the run directories it kept, so a results
+                # folder holding a million ordinary files was still walked to
+                # the end on the event loop. It counts every entry it looks at.
+                if examined >= EVIDENCE_LIST_LIMIT:
+                    overflow = True
+                    break
+                examined += 1
+                # `is_dir()` follows a symlink, so `results/run_leak` pointing
+                # anywhere the server account can read became a bundle on an
+                # endpoint that needs no token. Only real directories here.
+                if not entry.name.startswith("run_") or not entry.is_dir(follow_symlinks=False):
+                    continue
+                mtime, name = _entry_recency(entry)
+                entries.append((mtime, name, _Path(entry.path)))
+    except OSError as exc:
+        raise HTTPException(
+            status_code=503, detail="the results directory could not be listed"
+        ) from exc
+    entries.sort(reverse=True)
+    kept = entries[:EVIDENCE_SCAN_LIMIT]
+    return [path for _, _, path in kept], overflow or len(entries) > len(kept)
+
+
+@app.get("/api/evidence", dependencies=[Depends(check_rate_limit)])
+async def evidence_bundles(corpus: str = "") -> dict:
+    """The newest evidence bundles this deployment holds, at most 50 run directories read.
+
+    The bundle is served as it was written. A reader who cites a number needs
+    the record the run wrote: the command, the commit, the seed, the review
+    verdict, and whether the bundle calls itself citable. Recomputing any of
+    those here would let a page claim more than the run recorded.
+
+    A results directory grows one directory per run and never shrinks. Reading
+    every one of them is a blocking file walk on the event loop that gets
+    slower for every run anybody has made. The listing itself stops at
+    `EVIDENCE_LIST_LIMIT` entries, and the newest `EVIDENCE_SCAN_LIMIT` of
+    those, by directory modification time, get opened. Both bounds are on the
+    work, not only on the answer. `truncated` says when directories went
+    unread, because a short list and a capped list are two different answers.
+
+    `unreadable` names the runs whose `evidence.json` could not be parsed. A
+    broken bundle is not a missing one, and dropping it answered 200 with an
+    empty list while the run sat on disk. A listing that fails answers 503 for
+    the same reason, rather than reporting an empty deployment.
+
+    `check_bundle` is not called. It shells out to git, and a route that runs
+    git per request answers slowly and differently on a wheel install. That
+    check belongs to `kb-arena evidence --check`.
+    """
+    if corpus and not SAFE_ID.fullmatch(corpus):
+        raise HTTPException(status_code=400, detail="invalid corpus")
+    base = _Path(settings.results_path)
+    # `Path.exists()` swallows a permission error and answers False, so a
+    # directory this process cannot reach read as a deployment with no runs.
+    # `os.stat` says which of the two happened.
+    try:
+        _os.stat(base)
+    except FileNotFoundError:
+        return {
+            "bundles": [],
+            "unreadable": [],
+            "truncated": False,
+            "scan_limit": EVIDENCE_SCAN_LIMIT,
+        }
+    except OSError as exc:
+        raise HTTPException(
+            status_code=503, detail="the results directory could not be listed"
+        ) from exc
+    scanned, truncated = _recent_run_dirs(base)
+    bundles: list[dict] = []
+    unreadable: list[str] = []
+    for run_dir in scanned:
+        # The run id names the directory, not a bundle field. A page that links
+        # a bundle back to its run needs it, and reading it out of the result
+        # paths breaks the moment one bundle names two files.
+        run_id = run_dir.name.removeprefix("run_")
+        path = run_dir / "evidence.json"
+        # One open, not a check and then a read. `O_NOFOLLOW` refuses a symlink
+        # in the same syscall that opens the file, so nothing can swap the name
+        # between the two. A separate `is_symlink()` test left exactly that gap,
+        # on a route that takes no token. The run directory is already required
+        # to be a real directory, which covers the parent.
+        try:
+            fd = _os.open(path, _os.O_RDONLY | _os.O_NOFOLLOW)
+        except FileNotFoundError:
+            continue
+        except OSError:
+            # A symlink, or a file this process cannot reach. Both are
+            # unreadable, and neither is absent.
+            unreadable.append(run_id)
+            continue
+        try:
+            with _os.fdopen(fd, encoding="utf-8") as handle:
+                # The directory caps bound how many files this route opens and
+                # nothing bounded how many bytes it read. A bundle records a
+                # command, a seed and review counts, so it is kilobytes. A file
+                # past the cap is a file this route will not answer with.
+                # Reading one byte past the cap is the bound. An fstat and then
+                # an unbounded read is a check-then-act, and a file another
+                # process keeps appending to grows between the two.
+                raw = handle.read(EVIDENCE_MAX_BYTES + 1)
+                if len(raw) > EVIDENCE_MAX_BYTES:
+                    unreadable.append(run_id)
+                    continue
+                bundle = json.loads(raw)
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            # A bundle that cannot be parsed is not a bundle that is absent.
+            # Dropping it answered 200 with an empty list, and the page then
+            # said the deployment holds no recorded run. The run is there.
+            unreadable.append(run_id)
+            continue
+        if not isinstance(bundle, dict):
+            unreadable.append(run_id)
+            continue
+        # An unreadable bundle names no corpus, so the filter runs after the
+        # parse and a broken file is reported whichever corpus was asked for.
+        if corpus and bundle.get("corpus") != corpus:
+            continue
+        bundle["run_id"] = run_id
+        bundles.append(bundle)
+    return {
+        "bundles": bundles,
+        "unreadable": unreadable,
+        "truncated": truncated,
+        "scan_limit": EVIDENCE_SCAN_LIMIT,
+    }
 
 
 @app.get("/api/leaderboard", dependencies=[Depends(check_rate_limit)])

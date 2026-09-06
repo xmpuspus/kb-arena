@@ -89,12 +89,13 @@ export default function StrategyCompare({ rows }: Props) {
           <div key={label} className="space-y-1">
             <label className="text-xs font-medium" style={{ color: "var(--muted)" }}>{label}</label>
             <select
+              aria-label={label}
               value={val}
               onChange={(e) => set(e.target.value as Strategy)}
               className="w-full px-3 py-1.5 rounded-lg border text-sm"
               style={{
                 background: "var(--card)",
-                borderColor: "var(--border)",
+                borderColor: "var(--border-strong)",
                 color: "var(--foreground)",
               }}
             >

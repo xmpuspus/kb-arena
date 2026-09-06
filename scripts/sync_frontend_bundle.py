@@ -15,7 +15,22 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from kb_arena.frontend_bundle import write_stamp  # noqa: E402
+from kb_arena.frontend_bundle import _source_paths, write_stamp  # noqa: E402
+
+
+def _newest_source_time(web: Path) -> float:
+    return max((p.stat().st_mtime for p in _source_paths(web)), default=0.0)
+
+
+def _build_time(out: Path) -> float:
+    """The OLDEST file in the build, not the newest.
+
+    A max over the outputs said the build was fresh whenever any single file
+    was newer than the sources. Next writes some outputs on every run and
+    leaves others alone, so one touched file hid a stale page. A build is fresh
+    only when every file in it is newer than every source.
+    """
+    return min((p.stat().st_mtime for p in out.rglob("*") if p.is_file()), default=0.0)
 
 
 def main() -> int:
@@ -23,6 +38,18 @@ def main() -> int:
     web, out, static = root / "web", root / "web" / "out", root / "kb_arena" / "static"
     if not out.is_dir():
         print("web/out is missing. Run `npx next build` in web/ first.", file=sys.stderr)
+        return 1
+    # The stamp records the source digest at sync time, not at build time. So a
+    # sync without a rebuild wrote a fresh digest over a stale build, and the
+    # digest test passed while the packaged pages held the old code. A reviewer
+    # found exactly that on the decision-flow branch.
+    newest_source, built = _newest_source_time(web), _build_time(out)
+    if newest_source > built:
+        print(
+            "web/out is older than the frontend sources, so this sync would stamp a "
+            "stale build as fresh. Run `npx next build` in web/ first.",
+            file=sys.stderr,
+        )
         return 1
     if static.exists():
         shutil.rmtree(static)

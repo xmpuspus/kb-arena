@@ -78,12 +78,13 @@ export default function BenchmarkPage() {
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
-          <label className="text-xs font-medium" style={{ color: "var(--muted)" }}>Corpus</label>
+          <label htmlFor="benchmark-corpus" className="text-xs font-medium" style={{ color: "var(--muted)" }}>Corpus</label>
           <select
+            id="benchmark-corpus"
             value={corpus}
             onChange={(e) => setCorpus(e.target.value)}
             className="px-3 py-1.5 rounded-lg border text-sm"
-            style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
+            style={{ background: "var(--card)", borderColor: "var(--border-strong)", color: "var(--foreground)" }}
           >
             <option value="all">All corpora</option>
             {corpora.map((c) => (
@@ -92,11 +93,20 @@ export default function BenchmarkPage() {
           </select>
         </div>
 
-        <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+        <div
+          className="flex rounded-lg border overflow-hidden"
+          style={{ borderColor: "var(--border-strong)" }}
+          role="group"
+          aria-label="Result view"
+        >
           {(["table", "chart", "both", "compare"] as ViewMode[]).map((v) => (
             <button
               key={v}
+              type="button"
               onClick={() => setView(v)}
+              // The pressed state carried colour alone, which a reader who
+              // cannot tell the two apart never sees.
+              aria-pressed={view === v}
               className="px-3 py-1.5 text-xs font-medium capitalize transition-colors"
               style={{
                 background: view === v ? "var(--accent)" : "transparent",

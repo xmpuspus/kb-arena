@@ -67,15 +67,33 @@ export default function SectionTable({ sections }: Props) {
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: "var(--background)" }}>
-              <th className="text-left px-3 py-2 text-xs font-medium cursor-pointer" style={{ color: "var(--muted)" }} onClick={() => handleSort("title")}>
-                Section {sortKey === "title" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+              <th
+                className="text-left px-3 py-2 text-xs font-medium"
+                style={{ color: "var(--muted)" }}
+                aria-sort={sortKey === "title" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+              >
+                <button type="button" onClick={() => handleSort("title")} className="cursor-pointer">
+                  Section {sortKey === "title" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+                </button>
               </th>
               <th className="text-left px-3 py-2 text-xs font-medium" style={{ color: "var(--muted)" }}>Doc</th>
-              <th className="text-right px-3 py-2 text-xs font-medium cursor-pointer" style={{ color: "var(--muted)" }} onClick={() => handleSort("accuracy")}>
-                Accuracy {sortKey === "accuracy" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+              <th
+                className="text-right px-3 py-2 text-xs font-medium"
+                style={{ color: "var(--muted)" }}
+                aria-sort={sortKey === "accuracy" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+              >
+                <button type="button" onClick={() => handleSort("accuracy")} className="cursor-pointer">
+                  Accuracy {sortKey === "accuracy" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+                </button>
               </th>
-              <th className="text-right px-3 py-2 text-xs font-medium cursor-pointer" style={{ color: "var(--muted)" }} onClick={() => handleSort("questions")}>
-                Questions {sortKey === "questions" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+              <th
+                className="text-right px-3 py-2 text-xs font-medium"
+                style={{ color: "var(--muted)" }}
+                aria-sort={sortKey === "questions" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+              >
+                <button type="button" onClick={() => handleSort("questions")} className="cursor-pointer">
+                  Questions {sortKey === "questions" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+                </button>
               </th>
               <th className="text-center px-3 py-2 text-xs font-medium" style={{ color: "var(--muted)" }}>Status</th>
             </tr>
@@ -91,7 +109,20 @@ export default function SectionTable({ sections }: Props) {
                     style={{ borderColor: "var(--border)", background: cls.bg }}
                     onClick={() => setExpandedId(isExpanded ? null : s.section_id)}
                   >
-                    <td className="px-3 py-2" style={{ color: "var(--foreground)" }}>{s.section_title}</td>
+                    <td className="px-3 py-2" style={{ color: "var(--foreground)" }}>
+                      <button
+                        type="button"
+                        aria-expanded={isExpanded}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedId(isExpanded ? null : s.section_id);
+                        }}
+                        className="w-full text-left cursor-pointer"
+                        style={{ color: "inherit" }}
+                      >
+                        {s.section_title}
+                      </button>
+                    </td>
                     <td className="px-3 py-2 text-xs" style={{ color: "var(--muted)" }}>{s.doc_id}</td>
                     <td className="px-3 py-2 text-right mono" style={{ color: cls.text }}>
                       {Math.round(s.avg_accuracy * 100)}%

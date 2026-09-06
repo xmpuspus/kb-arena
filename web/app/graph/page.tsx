@@ -318,11 +318,12 @@ export default function GraphPage() {
         </div>
         <div className="flex items-center gap-2 sm:shrink-0">
           <select
+            aria-label="Corpus"
             value={corpus}
             onChange={(e) => handleCorpusChange(e.target.value)}
             disabled={buildStatus === "building"}
             className="px-3 py-1.5 rounded-lg border text-sm"
-            style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
+            style={{ background: "var(--card)", borderColor: "var(--border-strong)", color: "var(--foreground)" }}
           >
             {corpora.map((c) => (
               <option key={c.value} value={c.value}>{c.label}</option>

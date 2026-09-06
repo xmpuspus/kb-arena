@@ -140,6 +140,7 @@ export default function GenerateTab({ corpus }: Props) {
         <div className="space-y-3">
           <input
             type="text"
+            aria-label="Search questions and answers"
             placeholder="Search questions and answers..."
             value={search}
             onChange={(e) => {
@@ -149,7 +150,7 @@ export default function GenerateTab({ corpus }: Props) {
             className="w-full px-3 py-2 rounded-lg border text-sm"
             style={{
               background: "var(--card)",
-              borderColor: "var(--border)",
+              borderColor: "var(--border-strong)",
               color: "var(--foreground)",
             }}
           />
@@ -217,7 +218,7 @@ export default function GenerateTab({ corpus }: Props) {
                   onClick={() => setPage((p) => Math.max(0, p - 1))}
                   disabled={page === 0}
                   className="px-2 py-1 text-xs rounded border transition-colors disabled:opacity-30"
-                  style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+                  style={{ borderColor: "var(--border-strong)", color: "var(--muted)" }}
                 >
                   Prev
                 </button>

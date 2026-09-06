@@ -7,12 +7,15 @@ import { clearApiToken, getApiToken, setApiToken } from "@/lib/auth";
 
 const links = [
   { href: "/", label: "Home" },
+  { href: "/decide", label: "Decide" },
   { href: "/demo", label: "Demo" },
   { href: "/benchmark", label: "Benchmark" },
+  { href: "/leaderboard", label: "Leaderboard" },
   { href: "/retriever-lab", label: "Retriever Lab" },
   { href: "/graph", label: "Graph" },
   { href: "/arena", label: "Arena" },
   { href: "/tools", label: "Tools" },
+  { href: "/diagnostics", label: "Diagnostics" },
 ];
 
 export default function Nav() {
@@ -96,7 +99,7 @@ export default function Nav() {
               className="relative flex min-h-11 min-w-11 items-center justify-center rounded border transition-colors"
               style={{
                 color: hasToken ? "var(--success)" : "var(--muted)",
-                borderColor: "var(--border)",
+                borderColor: "var(--border-strong)",
               }}
               onClick={openTokenDialog}
               aria-label="API access"
@@ -230,7 +233,7 @@ export default function Nav() {
               className="mt-2 w-full rounded border px-3 py-2 text-sm outline-none"
               style={{
                 background: "var(--background)",
-                borderColor: "var(--border)",
+                borderColor: "var(--border-strong)",
                 color: "var(--foreground)",
               }}
             />
@@ -249,7 +252,7 @@ export default function Nav() {
                   type="button"
                   onClick={() => setTokenOpen(false)}
                   className="rounded border px-3 py-2 text-sm font-medium"
-                  style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+                  style={{ borderColor: "var(--border-strong)", color: "var(--foreground)" }}
                 >
                   Cancel
                 </button>

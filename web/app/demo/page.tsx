@@ -208,7 +208,7 @@ export default function DemoPage() {
                 onClick={() => toggleStrategy(s)}
                 className="text-xs px-3 py-1.5 rounded-lg border transition-all"
                 style={{
-                  borderColor: active ? "var(--accent)" : "var(--border)",
+                  borderColor: active ? "var(--accent)" : "var(--border-strong)",
                   background: active ? "var(--accent)" : "transparent",
                   color: active ? "#fff" : "var(--muted)",
                   opacity: active ? 1 : 0.6,
@@ -222,23 +222,33 @@ export default function DemoPage() {
 
         {/* Query input */}
         <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3 sm:flex">
+          <label htmlFor="demo-corpus" className="sr-only">
+            Corpus
+          </label>
           <select
+            id="demo-corpus"
             value={corpus}
             onChange={(e) => setCorpus(e.target.value)}
             className="col-span-2 px-3 py-2 rounded-lg border text-sm sm:shrink-0"
-            style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
+            style={{ background: "var(--card)", borderColor: "var(--border-strong)", color: "var(--foreground)" }}
           >
             {corpora.map((c) => (
               <option key={c.value} value={c.value}>{c.label}</option>
             ))}
           </select>
+          {/* A placeholder disappears the moment a reader types, so it is not
+              a label. The label stays. */}
+          <label htmlFor="demo-question" className="sr-only">
+            Question for the selected strategies
+          </label>
           <input
+            id="demo-question"
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Ask a question about your documentation..."
             className="col-span-2 min-w-0 px-4 py-2 rounded-lg border text-sm outline-none sm:flex-1"
-            style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
+            style={{ background: "var(--card)", borderColor: "var(--border-strong)", color: "var(--foreground)" }}
           />
           <button
             type="submit"
@@ -259,7 +269,7 @@ export default function DemoPage() {
             type="button"
             onClick={handleClear}
             className="px-3 py-2 rounded-lg border text-sm transition-opacity hover:opacity-70"
-            style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+            style={{ borderColor: "var(--border-strong)", color: "var(--muted)" }}
           >
             Clear
           </button>
@@ -278,7 +288,7 @@ export default function DemoPage() {
               key={q}
               onClick={() => { setQuery(q); inputRef.current?.focus(); }}
               className="text-xs px-2.5 py-1 rounded-lg border transition-opacity hover:opacity-70 text-left"
-              style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+              style={{ borderColor: "var(--border-strong)", color: "var(--muted)" }}
             >
               {q.length > 50 ? q.slice(0, 50) + "..." : q}
             </button>
@@ -310,14 +320,14 @@ export default function DemoPage() {
               }}
               disabled={readOnly || checking}
               className="text-xs px-2 py-1 rounded border transition-colors hover:opacity-70 disabled:opacity-30"
-              style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+              style={{ borderColor: "var(--border-strong)", color: "var(--foreground)" }}
             >
               Try again
             </button>
             <button
               onClick={handleBackToSample}
               className="text-xs px-2 py-1 rounded border transition-colors hover:opacity-70"
-              style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+              style={{ borderColor: "var(--border-strong)", color: "var(--muted)" }}
             >
               Back to sample output
             </button>

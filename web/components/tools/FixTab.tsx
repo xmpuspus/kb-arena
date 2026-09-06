@@ -89,17 +89,18 @@ export default function FixTab({ corpus }: Props) {
       {/* Action bar */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
-          <label className="text-xs" style={{ color: "var(--muted)" }}>
+          <label htmlFor="fix-max-sections" className="text-xs" style={{ color: "var(--muted)" }}>
             Max sections
           </label>
           <input
+            id="fix-max-sections"
             type="number"
             value={maxSections}
             onChange={(e) => setMaxSections(Math.max(1, Math.min(500, Number(e.target.value))))}
             className="w-20 px-2 py-1.5 rounded-lg border text-sm"
             style={{
               background: "var(--card)",
-              borderColor: "var(--border)",
+              borderColor: "var(--border-strong)",
               color: "var(--foreground)",
             }}
             min={1}
@@ -107,17 +108,18 @@ export default function FixTab({ corpus }: Props) {
           />
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-xs" style={{ color: "var(--muted)" }}>
+          <label htmlFor="fix-max-fixes" className="text-xs" style={{ color: "var(--muted)" }}>
             Max fixes
           </label>
           <input
+            id="fix-max-fixes"
             type="number"
             value={maxFixes}
             onChange={(e) => setMaxFixes(Math.max(1, Math.min(50, Number(e.target.value))))}
             className="w-20 px-2 py-1.5 rounded-lg border text-sm"
             style={{
               background: "var(--card)",
-              borderColor: "var(--border)",
+              borderColor: "var(--border-strong)",
               color: "var(--foreground)",
             }}
             min={1}
