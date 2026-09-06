@@ -48,5 +48,11 @@ image states the published one.
 The OpenAPI page stays closed, because `KB_ARENA_API_DOCS_ENABLED` follows the
 debug setting, and this image leaves both off.
 
-Each caller gets 60 requests a minute. The platform proxy reports one address
-for its traffic, so readers share that allowance.
+Each caller gets 60 requests a minute on every read route, the gated ones and
+the open aggregates alike. The platform proxy reports one address for its
+traffic, so readers share that allowance.
+
+That claim was false when this file first said it. `/api/leaderboard`,
+`/api/corpora`, `/api/retriever-lab/runs` and `/api/arena/leaderboard` answered
+without a limiter, and the leaderboard reads and parses every result file on
+every call. `tests/test_auth.py` fails now when an open read route loses it.
