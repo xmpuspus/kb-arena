@@ -41,12 +41,29 @@ the same dashboard as a static site. No server runs behind it, so every strategy
 "Runtime status unavailable" and no route returns live data. It shows what the interface looks
 like. Run `kb-arena demo` for numbers.
 
-A static Space serves exact file paths, so the top navigation does not move the page. Reach a
-route through its own path, for example `/benchmark/index.html`.
+A static Space serves exact file paths, so the deploy points every link at one. The navigation
+works, and each route reads `/benchmark/index.html` rather than `/benchmark/`.
 
 The Retriever Lab and the spread across repeated runs are empty until you produce them. They
 read run directories, and the package bundles none. Run `kb-arena retriever-lab` and
 `kb-arena benchmark --runs 3` against a corpus to fill them.
+
+### Six steps take you from a question to a decision
+
+`/decide` walks the path in order: pick the corpus, pick what you are optimising for, read which
+strategies the catalog offers, copy the commands that run them, read the comparison, and take a
+record that repeats what the run recorded and nothing more.
+
+![The decision flow, from corpus to a record with its caveats](https://raw.githubusercontent.com/xmpuspus/kb-arena/main/docs/demo-decide.gif)
+
+Every number in that recording comes from the committed run. The record names the corpus, the
+question count, the metric, both means, the paired delta, the confidence interval and the
+Wilcoxon p. It also carries what the comparison refused to claim: the difference is not
+significant, and neither result file carries a manifest, so the question set, the judge and the
+top-k went unchecked.
+
+Regenerate it with `kb-arena demo` running, then `python3 docs/tapes/record-decide.py`.
+The script reads `KB_ARENA_DEMO_BASE` when the demo is on another address.
 
 ## Point it at your own documents
 

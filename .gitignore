@@ -77,6 +77,9 @@ datasets/*/qa-pairs/
 
 # Benchmark results (user-generated results are not committed)
 results/*.json
+# `kb-arena report` writes report.md beside summary.json, and only the
+# JSON was ignored, so an ordinary report left the tree dirty.
+results/report.md
 results/run_*/
 # One named run is committed on purpose, as the reproducible example a reader
 # checks instead of trusting. Everything else a user generates stays ignored.
