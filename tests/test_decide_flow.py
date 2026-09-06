@@ -480,6 +480,27 @@ def test_the_listing_itself_stops_rather_than_walking_every_run(tmp_path, monkey
     assert answer["truncated"] is True
 
 
+def test_a_listing_that_fails_never_answers_as_an_empty_deployment(tmp_path, monkeypatch):
+    """The bounded listing swallowed OSError and returned no runs, which the page read as none.
+
+    That is the same shape as the dropped corrupt bundle: a failed read turning
+    into a claim the deployment holds nothing.
+    """
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    _write_bundle(tmp_path, "aaa", _bundle())
+
+    def _refuse(_path):
+        raise PermissionError("no")
+
+    monkeypatch.setattr(api._os, "scandir", _refuse)
+
+    with pytest.raises(HTTPException) as refused:
+        asyncio.run(api.evidence_bundles())
+
+    assert refused.value.status_code == 503
+    assert "could not be listed" in refused.value.detail
+
+
 def test_a_corrupt_bundle_is_reported_rather_than_dropped(tmp_path, monkeypatch):
     """Dropping it answered 200 with an empty list, and step 4 then claimed no run exists."""
     monkeypatch.setattr(settings, "results_path", str(tmp_path))

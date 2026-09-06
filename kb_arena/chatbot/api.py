@@ -1204,10 +1204,14 @@ def _recent_run_dirs(base: _Path) -> tuple[list[_Path], bool]:
     stat-ed every run directory before the slice threw most of them away, so
     the cost still grew with every run anybody had ever made.
 
-    This stops the listing at `EVIDENCE_LIST_LIMIT` entries. Past that point
-    the entries examined are whichever ones the filesystem returned first, so
-    the newest run on disk can go unseen. The caller reports `truncated` for
+    This stops after `EVIDENCE_LIST_LIMIT` run directories. Past that point
+    the ones examined are whichever the filesystem returned first, so the
+    newest run on disk can go unseen. The caller reports `truncated` for
     exactly that reason, and a truncated answer is never proof of absence.
+
+    A listing that fails raises. Answering with an empty list would say this
+    deployment holds no run, which is a claim about the deployment that a
+    permission error and a directory removed mid-request do not support.
     """
     entries: list[tuple[float, str, _Path]] = []
     overflow = False
@@ -1221,8 +1225,10 @@ def _recent_run_dirs(base: _Path) -> tuple[list[_Path], bool]:
                     break
                 mtime, name = _entry_recency(entry)
                 entries.append((mtime, name, _Path(entry.path)))
-    except OSError:
-        return [], False
+    except OSError as exc:
+        raise HTTPException(
+            status_code=503, detail="the results directory could not be listed"
+        ) from exc
     entries.sort(reverse=True)
     kept = entries[:EVIDENCE_SCAN_LIMIT]
     return [path for _, _, path in kept], overflow or len(entries) > len(kept)
@@ -1247,7 +1253,8 @@ async def evidence_bundles(corpus: str = "") -> dict:
 
     `unreadable` names the runs whose `evidence.json` could not be parsed. A
     broken bundle is not a missing one, and dropping it answered 200 with an
-    empty list while the run sat on disk.
+    empty list while the run sat on disk. A listing that fails answers 503 for
+    the same reason, rather than reporting an empty deployment.
 
     `check_bundle` is not called. It shells out to git, and a route that runs
     git per request answers slowly and differently on a wheel install. That
