@@ -34,6 +34,16 @@ Open the URL printed by the command. The demo ships 8 benchmark result files for
 `aws-compute` corpus, one per strategy, so the benchmark table, the per-tier breakdown, the
 source drill-down and the strategy comparison all have real numbers behind them.
 
+### The hosted dashboard has no server behind it
+
+[xmpuspus-kb-arena.static.hf.space](https://xmpuspus-kb-arena.static.hf.space/index.html) serves
+the same dashboard as a static site. No server runs behind it, so every strategy card reads
+"Runtime status unavailable" and no route returns live data. It shows what the interface looks
+like. Run `kb-arena demo` for numbers.
+
+A static Space serves exact file paths, so the top navigation does not move the page. Reach a
+route through its own path, for example `/benchmark/index.html`.
+
 The Retriever Lab and the spread across repeated runs are empty until you produce them. They
 read run directories, and the package bundles none. Run `kb-arena retriever-lab` and
 `kb-arena benchmark --runs 3` against a corpus to fill them.
