@@ -294,10 +294,11 @@ export default function RetrieverLabPage() {
 
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
-          <label className="text-xs font-medium" style={{ color: "var(--muted)" }}>
+          <label htmlFor="lab-run" className="text-xs font-medium" style={{ color: "var(--muted)" }}>
             Run
           </label>
           <select
+            id="lab-run"
             value={selectedRun}
             onChange={(e) => setSelectedRun(e.target.value)}
             disabled={Boolean(error) || listPending}
@@ -328,10 +329,11 @@ export default function RetrieverLabPage() {
         </div>
         {data && (
           <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-            <label className="text-xs font-medium" style={{ color: "var(--muted)" }}>
+            <label htmlFor="lab-corpus" className="text-xs font-medium" style={{ color: "var(--muted)" }}>
               Corpus
             </label>
             <select
+              id="lab-corpus"
               value={selectedCorpus}
               onChange={(e) => {
                 setSelectedCorpus(e.target.value);
@@ -384,10 +386,11 @@ export default function RetrieverLabPage() {
             Per-question drill-down
           </h2>
           <div className="flex items-center gap-2">
-            <label className="text-xs font-medium" style={{ color: "var(--muted)" }}>
+            <label htmlFor="lab-question" className="text-xs font-medium" style={{ color: "var(--muted)" }}>
               Question
             </label>
             <select
+              id="lab-question"
               value={selectedQid}
               onChange={(e) => setSelectedQid(e.target.value)}
               className="w-full min-w-0 px-3 py-1.5 rounded-lg border text-sm sm:flex-1 sm:max-w-2xl"

@@ -269,7 +269,7 @@ export default function DemoPage() {
             type="button"
             onClick={handleClear}
             className="px-3 py-2 rounded-lg border text-sm transition-opacity hover:opacity-70"
-            style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+            style={{ borderColor: "var(--border-strong)", color: "var(--muted)" }}
           >
             Clear
           </button>
@@ -327,7 +327,7 @@ export default function DemoPage() {
             <button
               onClick={handleBackToSample}
               className="text-xs px-2 py-1 rounded border transition-colors hover:opacity-70"
-              style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+              style={{ borderColor: "var(--border-strong)", color: "var(--muted)" }}
             >
               Back to sample output
             </button>

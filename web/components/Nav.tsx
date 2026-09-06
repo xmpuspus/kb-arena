@@ -15,6 +15,7 @@ const links = [
   { href: "/graph", label: "Graph" },
   { href: "/arena", label: "Arena" },
   { href: "/tools", label: "Tools" },
+  { href: "/diagnostics", label: "Diagnostics" },
 ];
 
 export default function Nav() {
@@ -98,7 +99,7 @@ export default function Nav() {
               className="relative flex min-h-11 min-w-11 items-center justify-center rounded border transition-colors"
               style={{
                 color: hasToken ? "var(--success)" : "var(--muted)",
-                borderColor: "var(--border)",
+                borderColor: "var(--border-strong)",
               }}
               onClick={openTokenDialog}
               aria-label="API access"

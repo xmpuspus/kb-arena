@@ -34,7 +34,7 @@ export default function FetchError({ title, message, hint, onRetry }: Props) {
         type="button"
         onClick={onRetry}
         className="rounded border px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-70"
-        style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+        style={{ borderColor: "var(--border-strong)", color: "var(--foreground)" }}
       >
         Try again
       </button>

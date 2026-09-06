@@ -318,6 +318,7 @@ export default function GraphPage() {
         </div>
         <div className="flex items-center gap-2 sm:shrink-0">
           <select
+            aria-label="Corpus"
             value={corpus}
             onChange={(e) => handleCorpusChange(e.target.value)}
             disabled={buildStatus === "building"}

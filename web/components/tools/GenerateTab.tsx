@@ -140,6 +140,7 @@ export default function GenerateTab({ corpus }: Props) {
         <div className="space-y-3">
           <input
             type="text"
+            aria-label="Search questions and answers"
             placeholder="Search questions and answers..."
             value={search}
             onChange={(e) => {

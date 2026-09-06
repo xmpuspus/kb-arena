@@ -680,6 +680,7 @@ export default function DecidePage() {
                     {side.label}
                   </label>
                   <select
+                    aria-label={side.label}
                     value={side.value}
                     onChange={(e) => side.set(e.target.value)}
                     className="w-full px-3 py-1.5 rounded-lg border text-sm"
@@ -695,10 +696,11 @@ export default function DecidePage() {
                 </div>
               ))}
               <div className="space-y-1">
-                <label className="text-xs font-medium block" style={{ color: "var(--muted)" }}>
+                <label htmlFor="decide-metric" className="text-xs font-medium block" style={{ color: "var(--muted)" }}>
                   Metric
                 </label>
                 <select
+                  id="decide-metric"
                   value={metric}
                   onChange={(e) => setMetric(e.target.value)}
                   className="w-full px-3 py-1.5 rounded-lg border text-sm"

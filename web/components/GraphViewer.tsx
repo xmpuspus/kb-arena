@@ -772,6 +772,7 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
     <div className="flex flex-col h-full gap-3">
       <div className="flex items-center gap-3">
         <input
+          aria-label="Search nodes"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search nodes..."
@@ -820,7 +821,7 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
             <button
               onClick={handleZoomOut}
               className="px-2.5 py-1.5 text-xs font-medium transition-colors hover:opacity-70 border-l border-r"
-              style={{ color: "var(--foreground)", borderColor: "var(--border)" }}
+              style={{ color: "var(--foreground)", borderColor: "var(--border-strong)" }}
             >
               &minus;
             </button>

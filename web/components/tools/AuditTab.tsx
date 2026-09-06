@@ -89,10 +89,11 @@ export default function AuditTab({ corpus }: Props) {
       {/* Action bar */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
-          <label className="text-xs" style={{ color: "var(--muted)" }}>
+          <label htmlFor="audit-max-sections" className="text-xs" style={{ color: "var(--muted)" }}>
             Max sections
           </label>
           <input
+            id="audit-max-sections"
             type="number"
             value={maxSections}
             onChange={(e) => setMaxSections(Math.max(1, Math.min(500, Number(e.target.value))))}
