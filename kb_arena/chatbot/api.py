@@ -1337,24 +1337,24 @@ async def evidence_bundles(corpus: str = "") -> dict:
         # paths breaks the moment one bundle names two files.
         run_id = run_dir.name.removeprefix("run_")
         path = run_dir / "evidence.json"
+        # One open, not a check and then a read. `O_NOFOLLOW` refuses a symlink
+        # in the same syscall that opens the file, so nothing can swap the name
+        # between the two. A separate `is_symlink()` test left exactly that gap,
+        # on a route that takes no token. The run directory is already required
+        # to be a real directory, which covers the parent.
         try:
-            _os.stat(path)
+            fd = _os.open(path, _os.O_RDONLY | _os.O_NOFOLLOW)
         except FileNotFoundError:
             continue
         except OSError:
-            # `Path.exists()` answers False here, so a run this process cannot
-            # reach vanished from both lists. It is unreadable, not absent.
-            unreadable.append(run_id)
-            continue
-        # Skipping a symlinked directory left the file itself. A real run
-        # directory holding a symlinked evidence.json read whatever it pointed
-        # at, on a route that needs no token.
-        if path.is_symlink():
+            # A symlink, or a file this process cannot reach. Both are
+            # unreadable, and neither is absent.
             unreadable.append(run_id)
             continue
         try:
-            bundle = json.loads(path.read_text())
-        except (json.JSONDecodeError, OSError):
+            with _os.fdopen(fd, encoding="utf-8") as handle:
+                bundle = json.loads(handle.read())
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
             # A bundle that cannot be parsed is not a bundle that is absent.
             # Dropping it answered 200 with an empty list, and the page then
             # said the deployment holds no recorded run. The run is there.

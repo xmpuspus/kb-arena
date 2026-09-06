@@ -474,11 +474,14 @@ def test_the_evidence_scan_does_not_follow_a_symlink_out_of_the_results_director
 def test_a_symlinked_bundle_file_is_refused_the_way_a_symlinked_directory_is():
     """Skipping the directory left the file, and the route still needs no token."""
     api = (ROOT / "kb_arena" / "chatbot" / "api.py").read_text()
-    assert "if path.is_symlink():" in api
     start = api.index('path = run_dir / "evidence.json"')
-    end = api.index("bundle = json.loads(path.read_text())", start)
+    end = api.index("bundles.append(bundle)", start)
     read = api[start:end]
-    assert "if path.is_symlink():" in read, "the check must run before the read"
+    # One open refuses the symlink, so nothing can swap the name between a
+    # check and a read.
+    assert "_os.O_NOFOLLOW" in read
+    assert "is_symlink()" not in read, "a separate check leaves a race"
+    assert "path.read_text()" not in read
 
 
 def test_a_review_count_it_cannot_read_drops_the_whole_review_block():
