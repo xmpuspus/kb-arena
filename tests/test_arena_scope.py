@@ -433,3 +433,39 @@ def test_the_page_refuses_a_leaderboard_reply_of_the_wrong_shape():
         'typeof board.votes_in_history === "number"' in page
         or "counted(board.votes_in_history)" in page
     )
+
+
+def test_the_sync_refuses_to_stamp_a_build_older_than_its_sources(tmp_path):
+    """The stamp records the source digest at sync time, not at build time.
+
+    A sync without a rebuild wrote a fresh digest over a stale build, so
+    `test_the_packaged_bundle_matches_its_sources` passed while the packaged
+    pages held the old code. A reviewer found exactly that on the decision-flow
+    branch, and only a grep of the built chunks showed it.
+    """
+    import importlib.util
+    import os
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "sync_bundle", root / "scripts" / "sync_frontend_bundle.py"
+    )
+    sync = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sync)
+
+    web = tmp_path / "web"
+    (web / "app").mkdir(parents=True)
+    page = web / "app" / "page.tsx"
+    page.write_text("export default function Page() { return null; }\n")
+    out = web / "out"
+    out.mkdir()
+    built = out / "index.html"
+    built.write_text("<html></html>")
+
+    os.utime(built, (1000, 1000))
+    os.utime(page, (2000, 2000))
+    assert sync._newest_source_time(web) > sync._build_time(out)
+
+    os.utime(built, (3000, 3000))
+    assert sync._newest_source_time(web) < sync._build_time(out)
