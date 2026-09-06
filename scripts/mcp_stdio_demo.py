@@ -125,12 +125,13 @@ def show(name: str, tool_result: dict) -> None:
 
 
 def main() -> int:
+    # No `stderr` argument on purpose: the server logs there by design, and this
+    # script never reads it. A pipe nobody drains fills up and deadlocks the run,
+    # so stderr stays inherited and lands on the terminal.
     proc = subprocess.Popen(
         [sys.executable, "-m", "kb_arena.mcp.server"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        # The server logs to stderr by design. A pipe nobody drains fills and
-        # deadlocks the run, so this goes to the terminal instead.
         text=True,
         bufsize=1,
     )
