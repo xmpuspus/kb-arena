@@ -223,10 +223,22 @@ export async function fetchCompare(
   // measured absence rather than a reply this page could not use.
   const ci = data.delta_ci_95;
   const meta = data.meta as { reasons?: unknown } | undefined;
+  // Every row is dereferenced while the table renders, so an array alone is not
+  // enough. A 200 carrying `per_question: [null]` passed this guard and then
+  // crashed on `row.question_id`.
+  const rowsAreShaped =
+    Array.isArray(data.per_question) &&
+    data.per_question.every(
+      (row) =>
+        row !== null &&
+        typeof row === "object" &&
+        typeof (row as Record<string, unknown>).question_id === "string" &&
+        typeof (row as Record<string, unknown>).delta === "number"
+    );
   const shaped =
     typeof data.n_paired === "number" &&
     typeof data.mean_delta === "number" &&
-    Array.isArray(data.per_question) &&
+    rowsAreShaped &&
     Array.isArray(ci) &&
     ci.length === 2 &&
     typeof meta === "object" &&

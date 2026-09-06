@@ -98,12 +98,17 @@ export function parseStrategies(body: unknown): Read<StrategyStatus[]> {
   if (!Array.isArray(data.catalog)) return { ok: false, reason: WRONG_SHAPE };
   const records: StrategyStatus[] = [];
   for (const entry of data.catalog) {
-    if (!entry || typeof entry !== "object") continue;
+    // A dropped entry used to leave the count short and the answer successful,
+    // so a catalog this page cannot read showed as "0 of 0 strategies loaded".
+    // That states a fact about the deployment. An unreadable body says so.
+    if (!entry || typeof entry !== "object") return { ok: false, reason: WRONG_SHAPE };
     const record = entry as Record<string, unknown>;
-    if (typeof record.name !== "string") continue;
+    if (typeof record.name !== "string") return { ok: false, reason: WRONG_SHAPE };
     // A record with no status says nothing about this deployment. Filling it
     // with "unknown" here would invent the one fact the page is asked for.
-    if (record.status !== "loaded" && record.status !== "unavailable") continue;
+    if (record.status !== "loaded" && record.status !== "unavailable") {
+      return { ok: false, reason: WRONG_SHAPE };
+    }
     records.push({
       name: record.name,
       label: typeof record.label === "string" ? record.label : record.name,

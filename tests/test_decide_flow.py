@@ -233,7 +233,7 @@ def test_a_capped_or_broken_evidence_read_never_reads_as_no_run_exists():
     ), "a bundle that failed to parse is the more definite fact, so it reports first"
     page = DECIDE_PAGE.read_text()
     assert (
-        "noBundleReason(bundlesTruncated, bundlesUnreadable, corpus)" in page
+        "noBundleReason(bundlesTruncated, bundlesUnreadable, activeCorpus)" in page
     ), "the empty state must read the truncation and the parse failures the route reported"
 
 

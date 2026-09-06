@@ -210,8 +210,30 @@ def test_the_decision_flow_carries_one_corpus_name_from_step_one():
         "fetchEvidenceBundles(activeCorpus)",
         "fetchCompare(activeCorpus, stratA, stratB, metric)",
         'corpus: activeCorpus || "none chosen",',
+        'benchmarkCommand(activeCorpus || "my-docs", picked)',
+        'labCommand(activeCorpus || "my-docs", picked)',
+        'compareCommand(activeCorpus || "my-docs", stratA || "a", stratB || "b", metric)',
     ):
         assert call in page, f"this step still reads the built-in pick: {call}"
+
+
+def test_a_reader_that_cannot_parse_a_body_says_so_instead_of_thinning_it():
+    """A dropped row is a failed read, not a smaller answer.
+
+    `parseStrategies` skipped entries it could not read and still answered ok,
+    so a catalog nobody can parse showed as "0 of 0 strategies loaded". The
+    comparison guard checked that per_question was an array and nothing about
+    its rows, so a 200 carrying [null] crashed the table.
+    """
+    diagnostics = (WEB / "lib" / "diagnostics.ts").read_text()
+    parser = diagnostics[diagnostics.index("export function parseStrategies") :]
+    parser = parser[: parser.index("export async function readStrategies")]
+    assert "continue;" not in parser, "a skipped entry hides an unreadable body"
+    assert parser.count("return { ok: false, reason: WRONG_SHAPE };") >= 4
+
+    decide = (WEB / "lib" / "decide.ts").read_text()
+    assert "const rowsAreShaped =" in decide
+    assert 'typeof (row as Record<string, unknown>).question_id === "string"' in decide
 
 
 def test_the_diagnostics_page_calls_a_missing_flag_unknown():

@@ -589,11 +589,11 @@ export default function DecidePage() {
               <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--muted)" }}>
                 Feeds step 5. Judged answers, written to a result file per strategy
               </span>
-              <Command text={benchmarkCommand(corpus || "my-docs", picked)} />
+              <Command text={benchmarkCommand(activeCorpus || "my-docs", picked)} />
               <span className="text-xs font-semibold uppercase tracking-wide block pt-2" style={{ color: "var(--muted)" }}>
                 Cheaper, retrieval metrics only. It writes one lab file, which step 5 cannot read
               </span>
-              <Command text={labCommand(corpus || "my-docs", picked)} />
+              <Command text={labCommand(activeCorpus || "my-docs", picked)} />
               <p className="text-xs" style={{ color: "var(--muted)" }}>
                 Pair two strategies inside a lab file on the command line instead. Step 5 compares
                 result files, and the lab file holds both strategies in one file.
@@ -605,7 +605,7 @@ export default function DecidePage() {
 
             <div className="space-y-2 border-t pt-4" style={{ borderColor: "var(--border)" }}>
               <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--muted)" }}>
-                Recorded runs for {corpus || "no corpus"}
+                Recorded runs for {activeCorpus || "no corpus"}
               </span>
               {bundlesError && <Refusal text={bundlesError} />}
               {bundlesTruncated > 0 && (
@@ -623,7 +623,7 @@ export default function DecidePage() {
               )}
               {!bundlesError && bundles.length === 0 && (
                 <p className="text-sm" style={{ color: "var(--muted)" }}>
-                  {noBundleReason(bundlesTruncated, bundlesUnreadable, corpus)}
+                  {noBundleReason(bundlesTruncated, bundlesUnreadable, activeCorpus)}
                 </p>
               )}
               {bundles.map((b) => (
@@ -732,7 +732,7 @@ export default function DecidePage() {
               </div>
             </div>
 
-            <Command text={compareCommand(corpus || "my-docs", stratA || "a", stratB || "b", metric)} />
+            <Command text={compareCommand(activeCorpus || "my-docs", stratA || "a", stratB || "b", metric)} />
 
             {comparisonError && <Refusal text={comparisonError} />}
 
