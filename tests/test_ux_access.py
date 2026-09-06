@@ -595,6 +595,44 @@ def test_an_absent_question_total_never_renders_as_a_denominator():
     reader = decide[decide.index("function reviewCounts") : caveats_at]
     assert 'typeof count === "number" && Number.isFinite(count) && count >= 0' in reader
     assert "unreadable = true;" in reader
-    # A count nobody can read must not render as a clean review.
+    # `Object.entries(5)` answers with an empty list rather than raising, so a
+    # number here read as a bundle that recorded no statuses at all.
+    assert 'typeof raw !== "object" || raw === null || Array.isArray(raw)' in reader
+    # A count nobody can read must not draw a clean review.
     assert "const { counts, unreadable } = reviewCounts(review.counts);" in body
     assert "counted && !unreadable && total > 0" in body
+
+
+def test_the_full_review_claim_needs_a_reviewed_count_that_reaches_the_total():
+    """The strongest sentence in the list takes the strongest test.
+
+    "All 10 scored questions are marked human-reviewed" used to need only "no
+    drafts and no unspecified", which a block recording 5 reviewed out of 10
+    satisfies by saying nothing about the other 5. A reader cites that line.
+    """
+    decide = (WEB / "lib" / "decide.ts").read_text()
+    body = decide[decide.index("export function bundleCaveats") :]
+    body = body[: body.index("\n}\n", body.index("const { counts, unreadable }"))]
+    claim = body.index("scored questions are marked human-reviewed")
+    guard = body[body.rindex("if (", 0, claim) : claim]
+    assert "reviewed === total" in guard, "the claim does not check the reviewed count"
+    assert "!unreadable" in guard
+    # And the partial case says so rather than staying silent.
+    assert "so the rest are unaccounted for" in body
+
+
+def test_the_catalog_guard_refuses_a_strategy_nothing_implements():
+    """The decide page builds a CLI command out of this name.
+
+    A record naming `bogus` passed every type check and reached the command
+    builder, which wrote `kb-arena benchmark --strategy bogus`. The backend
+    rejects that, so the page handed the reader a command that cannot run.
+    """
+    api = (WEB / "lib" / "api.ts").read_text()
+    guard = api[
+        api.index("function isCatalogRecord") : api.index(
+            "export async function fetchStrategyCatalog"
+        )
+    ]
+    assert "KNOWN_STRATEGIES.has(record.name)" in guard
+    assert "const KNOWN_STRATEGIES = new Set<string>(STRATEGIES);" in api

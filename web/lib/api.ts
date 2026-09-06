@@ -298,12 +298,18 @@ const CATALOG_STATUSES = new Set(["loaded", "unavailable", "unknown"]);
 // server answer, and `candidatesFor` then reads `default_benchmark` as
 // undefined and returns no candidate. A guard shallower than its reader hands
 // the reader a hole in the shape of the missing field.
+const KNOWN_STRATEGIES = new Set<string>(STRATEGIES);
+
 function isCatalogRecord(entry: unknown): entry is StrategyCatalogRecord {
   if (!entry || typeof entry !== "object") return false;
   const record = entry as Record<string, unknown>;
   const nullableString = (value: unknown) => value === null || typeof value === "string";
   return (
     typeof record.name === "string" &&
+    // `Strategy` is a closed union, and the decide page builds a CLI command
+    // out of this name. A name nothing implements produced
+    // `kb-arena benchmark --strategy bogus`, which the backend rejects.
+    KNOWN_STRATEGIES.has(record.name) &&
     typeof record.label === "string" &&
     typeof record.architecture === "string" &&
     typeof record.default_benchmark === "boolean" &&

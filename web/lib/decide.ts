@@ -6,7 +6,13 @@
 // `tests/test_decide_parity.py` fails when the two lists disagree.
 
 import { apiFetch } from "./auth";
-import { API_URL, type CorpusInfo, type StrategyCatalogRecord, type Strategy } from "./api";
+import {
+  API_URL,
+  REVIEW_REVIEWED,
+  type CorpusInfo,
+  type StrategyCatalogRecord,
+  type Strategy,
+} from "./api";
 
 export const PROFILE_NAMES = [
   "accuracy-first",
@@ -608,6 +614,12 @@ function reviewCounts(raw: Record<string, number> | undefined): {
 } {
   const counts: Record<string, number> = {};
   let unreadable = false;
+  // `Object.entries(5)` answers with an empty list rather than throwing, so a
+  // number here read as a bundle that recorded no statuses, and the caveat
+  // then called every question human-reviewed.
+  if (raw !== undefined && (typeof raw !== "object" || raw === null || Array.isArray(raw))) {
+    return { counts, unreadable: true };
+  }
   for (const [status, count] of Object.entries(raw ?? {})) {
     if (typeof count === "number" && Number.isFinite(count) && count >= 0) {
       counts[status] = count;
@@ -679,10 +691,17 @@ export function bundleCaveats(bundle: EvidenceBundle | null): string[] {
         : "The bundle records no question total, so these counts have no denominator."
     );
   }
-  // The clean claim is the one that must not be said on a partial read, so it
-  // takes the unreadable flag too.
-  if (drafts === 0 && unspecified === 0 && counted && !unreadable && total > 0) {
+  // The strongest sentence in this list, so it takes the strongest test. It
+  // used to need only "no drafts and no unspecified", which a block recording
+  // 5 reviewed out of 10 satisfies by saying nothing about the other 5. State
+  // it when the reviewed count reaches the total, and never otherwise.
+  const reviewed = counts[REVIEW_REVIEWED] ?? 0;
+  if (counted && !unreadable && total > 0 && reviewed === total) {
     lines.push(`All ${total} scored questions are marked human-reviewed.`);
+  } else if (counted && !unreadable && total > 0 && reviewed + drafts + unspecified < total) {
+    lines.push(
+      `The bundle records a status for ${reviewed + drafts + unspecified} of ${total} questions, so the rest are unaccounted for.`
+    );
   }
   if (review.note) lines.push(review.note);
   if (
