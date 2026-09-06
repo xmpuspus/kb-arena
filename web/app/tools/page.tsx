@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { fetchCorpora, type CorpusInfo } from "@/lib/api";
+import { fetchCorporaResult, type CorpusInfo } from "@/lib/api";
 import GenerateTab from "@/components/tools/GenerateTab";
 import AuditTab from "@/components/tools/AuditTab";
 import FixTab from "@/components/tools/FixTab";
+import StateBanner from "@/components/StateBanner";
+import FetchError from "@/components/FetchError";
 
 type Tab = "generate" | "audit" | "fix";
 
@@ -18,16 +20,26 @@ export default function ToolsPage() {
   const [tab, setTab] = useState<Tab>("generate");
   const [corpus, setCorpus] = useState("");
   const [corpora, setCorpora] = useState<CorpusInfo[]>([]);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    fetchCorpora().then((data) => {
-      setCorpora(data);
-      if (data.length > 0) setCorpus((prev) => prev || data[0].value);
+    fetchCorporaResult().then((result) => {
+      // Every tool here acts on the corpus this list names. The built-in
+      // default under a failed read would send a fix or an audit at a corpus
+      // this deployment may not hold.
+      setFailed(result.failed);
+      setCorpora(result.failed ? [] : result.corpora);
+      if (!result.failed && result.corpora.length > 0) {
+        setCorpus((prev) => prev || result.corpora[0].value);
+      }
     });
-  }, []);
+  }, [attempt]);
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+      <StateBanner />
+
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--foreground)" }}>
@@ -37,6 +49,15 @@ export default function ToolsPage() {
           Generate Q&A pairs, audit documentation quality, and get fix recommendations.
         </p>
       </div>
+
+      {failed && (
+        <FetchError
+          title="The corpus list did not load"
+          message="The API did not answer with the corpora this deployment holds."
+          hint="The built-in list would send an audit or a fix at a corpus this server may not hold, so the tools stay off. Start the API, then try again."
+          onRetry={() => setAttempt((n) => n + 1)}
+        />
+      )}
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-4">
@@ -72,7 +93,7 @@ export default function ToolsPage() {
       </div>
 
       {/* Active tab */}
-      {corpus && (
+      {corpus && !failed && (
         <>
           {tab === "generate" && <GenerateTab corpus={corpus} />}
           {tab === "audit" && <AuditTab corpus={corpus} />}

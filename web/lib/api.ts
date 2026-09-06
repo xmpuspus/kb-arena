@@ -282,15 +282,29 @@ export async function fetchStrategyCatalog(): Promise<StrategyCatalogRecord[]> {
   }
 }
 
-export async function fetchCorpora(): Promise<CorpusInfo[]> {
+// The built-in list names what KB Arena ships, not what this deployment holds.
+// A page that acts on a corpus, rather than only naming one, needs to know
+// which of the two it received, so this reports the failure and `fetchCorpora`
+// keeps the fallback for the pages that only list names.
+export async function fetchCorporaResult(): Promise<{
+  corpora: CorpusInfo[];
+  failed: boolean;
+}> {
   try {
     const res = await fetch(`${API_URL}/api/corpora`);
-    if (!res.ok) return DEFAULT_CORPORA;
+    if (!res.ok) return { corpora: DEFAULT_CORPORA, failed: true };
     const data = await res.json();
-    return data.corpora?.length ? data.corpora : DEFAULT_CORPORA;
+    return {
+      corpora: data.corpora?.length ? data.corpora : DEFAULT_CORPORA,
+      failed: false,
+    };
   } catch {
-    return DEFAULT_CORPORA;
+    return { corpora: DEFAULT_CORPORA, failed: true };
   }
+}
+
+export async function fetchCorpora(): Promise<CorpusInfo[]> {
+  return (await fetchCorporaResult()).corpora;
 }
 
 export interface ServerStatus {

@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo } from "react";
 import { API_URL, STRATEGY_LABELS, type Strategy } from "@/lib/api";
 import { apiFetch } from "@/lib/auth";
 import { useTokenEpoch } from "@/lib/useTokenEpoch";
+import StateBanner from "@/components/StateBanner";
+import FetchError from "@/components/FetchError";
 
 type StrategySummary = {
   mean_recall_at_k: number;
@@ -165,17 +167,29 @@ export default function RetrieverLabPage() {
   const [selectedQid, setSelectedQid] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    setError("");
     fetch(`${API_URL}/api/retriever-lab/runs`)
-      .then((r) => r.json())
+      .then((r) => {
+        // An empty run list reads as a deployment that never ran the lab, so a
+        // failed read must not arrive as one.
+        if (!r.ok) throw new Error(`The server answered ${r.status}.`);
+        return r.json();
+      })
       .then((j) => {
         const entries: RunListEntry[] = j.runs ?? [];
         setRuns(entries);
         if (entries.length > 0) setSelectedRun(entries[0].run_id);
       })
-      .catch((e) => setError(`Failed to load runs: ${e}`));
-  }, []);
+      .catch((e: unknown) => {
+        setRuns([]);
+        setSelectedRun("");
+        setData(null);
+        setError(e instanceof Error ? e.message : "The run list did not load.");
+      });
+  }, [attempt]);
 
   useEffect(() => {
     if (!selectedRun) return;
@@ -186,7 +200,7 @@ export default function RetrieverLabPage() {
     // Question-level records, so this read carries the API token when set.
     apiFetch(`${API_URL}/api/retriever-lab/${selectedRun}`, { signal: controller.signal })
       .then((r) => {
-        if (!r.ok) throw new Error(`status ${r.status}`);
+        if (!r.ok) throw new Error(`The server answered ${r.status}.`);
         return r.json();
       })
       .then((j: RunData) => {
@@ -201,7 +215,7 @@ export default function RetrieverLabPage() {
           // Leaving the old run on screen puts one run's numbers under
           // another run's name. Clear it and say what happened.
           if (active) setData(null);
-          setError(`Failed to load run: ${e}`);
+          setError(e instanceof Error ? e.message : "The run did not load.");
         }
       })
       .finally(() => {
@@ -211,7 +225,7 @@ export default function RetrieverLabPage() {
       active = false;
       controller.abort();
     };
-  }, [selectedRun, tokenEpoch]);
+  }, [selectedRun, attempt, tokenEpoch]);
 
   const corpusSummary = useMemo(() => {
     if (!data || !selectedCorpus) return null;
@@ -238,6 +252,8 @@ export default function RetrieverLabPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+      <StateBanner />
+
       <div>
         <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--foreground)" }}>
           Retriever Lab
@@ -249,12 +265,12 @@ export default function RetrieverLabPage() {
       </div>
 
       {error && (
-        <div
-          className="border rounded-lg px-3 py-2 text-sm"
-          style={{ borderColor: "rgba(220, 38, 38, 0.4)", color: "rgb(185, 28, 28)" }}
-        >
-          {error}
-        </div>
+        <FetchError
+          title="The retriever-lab runs did not load"
+          message={error}
+          hint="An empty run list would read as a deployment that never ran the lab, so this page shows none. Start the API, or enter an API token with the key button, then try again."
+          onRetry={() => setAttempt((n) => n + 1)}
+        />
       )}
 
       <div className="flex flex-wrap items-center gap-4">
@@ -408,7 +424,8 @@ export default function RetrieverLabPage() {
         </section>
       )}
 
-      {!loading && !corpusSummary && runs.length === 0 && (
+      {/* A failed read empties the list too, and "no runs yet" is a claim. */}
+      {!loading && !error && !corpusSummary && runs.length === 0 && (
         <div
           className="border border-dashed rounded-lg p-6 text-sm"
           style={{ borderColor: "var(--border)", color: "var(--muted)" }}

@@ -77,13 +77,42 @@ def test_the_banner_reads_both_flags_from_the_api():
     assert "demo_mode_auto" in api, "the client must read the flag the API reports"
 
 
-@pytest.mark.parametrize(
-    "route", ["page.tsx", "demo/page.tsx", "benchmark/page.tsx", "graph/page.tsx"]
-)
+ROUTES = [
+    "page.tsx",
+    "demo/page.tsx",
+    "benchmark/page.tsx",
+    "graph/page.tsx",
+    "arena/page.tsx",
+    "leaderboard/page.tsx",
+    "retriever-lab/page.tsx",
+    "tools/page.tsx",
+]
+
+
+@pytest.mark.parametrize("route", ROUTES)
 def test_the_route_names_the_state_it_is_in(route):
     page = (WEB / "app" / route).read_text()
 
     assert "StateBanner" in page, f"{route} shows no state to its reader"
+
+
+def test_every_route_sits_inside_the_one_state_provider():
+    """Two providers would fetch twice and could name two different states."""
+    layout = (WEB / "app" / "layout.tsx").read_text()
+
+    assert "<ServerStateProvider>" in layout
+
+
+@pytest.mark.parametrize("route", ROUTES[1:])
+def test_a_failed_read_offers_a_way_back(route):
+    """A read that fails says what failed and what the reader can do next.
+
+    The home route reads only the two catalogs it can name from the built-in
+    defaults, and its banner says so, so it carries no error block.
+    """
+    page = (WEB / "app" / route).read_text()
+
+    assert "FetchError" in page or "Try again" in page, f"{route} offers no retry"
 
 
 def test_no_sample_rows_stand_in_for_a_failed_benchmark_read():
@@ -95,6 +124,41 @@ def test_no_sample_rows_stand_in_for_a_failed_benchmark_read():
     assert "MOCK_BENCHMARK_DATA" not in page
     assert "BENCHMARK_UNAVAILABLE" in api, "a failed read throws instead"
     assert "FetchError" in page, "and the page says so, with a way to try again"
+
+
+def test_a_failed_leaderboard_read_drops_the_rows_it_had():
+    """Rows from the last filter under a new corpus name read as that corpus."""
+    page = (WEB / "app" / "leaderboard" / "page.tsx").read_text()
+
+    assert "setData(null);" in page
+    assert "FetchError" in page
+
+
+def test_a_failed_run_list_never_reads_as_a_lab_nobody_ran():
+    """An empty list in place of a failed read is a claim about the deployment."""
+    page = (WEB / "app" / "retriever-lab" / "page.tsx").read_text()
+
+    assert "if (!r.ok) throw new Error" in page, "the run list must check the status"
+    assert "setRuns([]);" in page, "and drop the runs it cannot vouch for"
+    assert "!loading && !error && !corpusSummary" in page, "no runs yet is not a failed read"
+
+
+def test_a_failed_arena_read_retries_the_read_that_failed():
+    """A vote retry that starts a new match loses the vote the reader cast."""
+    page = (WEB / "app" / "arena" / "page.tsx").read_text()
+
+    assert "errorKind" in page
+    assert "vote(lastWinner.current) : createMatch()" in page
+
+
+def test_the_tools_never_act_on_a_corpus_from_a_failed_read():
+    """The built-in list would send an audit at a corpus nobody holds."""
+    api = (WEB / "lib" / "api.ts").read_text()
+    page = (WEB / "app" / "tools" / "page.tsx").read_text()
+
+    assert "fetchCorporaResult" in api, "the client must report the failed read"
+    assert "fetchCorporaResult()" in page
+    assert "{corpus && !failed && (" in page, "the tabs stay off after a failed read"
 
 
 def test_a_failed_graph_read_shows_no_example_map():

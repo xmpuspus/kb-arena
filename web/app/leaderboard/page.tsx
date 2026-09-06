@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import StateBanner from "@/components/StateBanner";
+import FetchError from "@/components/FetchError";
 
 type LeaderRow = {
   corpus: string;
@@ -37,13 +39,14 @@ export default function LeaderboardPage() {
   const [data, setData] = useState<LeaderboardResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("all");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
     const url = `${apiBase}/api/leaderboard?corpus=${encodeURIComponent(filter)}`;
     fetch(url, { signal: controller.signal })
       .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        if (!r.ok) throw new Error(`The server answered ${r.status}.`);
         return r.json();
       })
       .then((d: LeaderboardResponse) => {
@@ -51,15 +54,21 @@ export default function LeaderboardPage() {
         setError(null);
       })
       .catch((e) => {
-        if (e instanceof Error && e.name !== "AbortError") setError(String(e));
+        if (e instanceof Error && e.name === "AbortError") return;
+        // Rows from the last filter under the new corpus name read as that
+        // corpus's runs, so the table goes with the failed read.
+        setData(null);
+        setError(e instanceof Error ? e.message : "The leaderboard did not load.");
       });
     return () => controller.abort();
-  }, [filter]);
+  }, [filter, attempt]);
 
   const corpora = useMemo(() => ["all", ...(data?.corpora ?? [])], [data?.corpora]);
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+      <StateBanner />
+
       <header>
         <h1 className="text-2xl font-bold tracking-tight">
           KB Arena Leaderboard
@@ -91,9 +100,12 @@ export default function LeaderboardPage() {
       </div>
 
       {error && (
-        <div className="border border-red-300 bg-red-50 text-red-900 p-4 rounded">
-          Failed to load leaderboard: {error}
-        </div>
+        <FetchError
+          title="The leaderboard did not load"
+          message={error}
+          hint="A table from an earlier read would name the wrong corpus, so the rows stay off screen. Start the API, then try again."
+          onRetry={() => setAttempt((n) => n + 1)}
+        />
       )}
 
       {!data && !error && <p>Loading...</p>}

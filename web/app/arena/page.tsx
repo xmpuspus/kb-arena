@@ -3,6 +3,8 @@
 import { useEffect, useState, useRef } from "react";
 import { apiFetch } from "@/lib/auth";
 import { CORPORA, fetchCorpora } from "@/lib/api";
+import StateBanner from "@/components/StateBanner";
+import FetchError from "@/components/FetchError";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -112,6 +114,9 @@ export default function ArenaPage() {
   const [voting, setVoting] = useState(false);
   const [totalVotes, setTotalVotes] = useState(0);
   const [error, setError] = useState("");
+  // A vote failure and a match failure need different retries, so the page
+  // records which read failed instead of retrying the wrong one.
+  const [errorKind, setErrorKind] = useState<"match" | "vote">("match");
   const [corpus, setCorpus] = useState("all");
   const [corpora, setCorpora] = useState(CORPORA);
   const [boardError, setBoardError] = useState("");
@@ -121,6 +126,8 @@ export default function ArenaPage() {
   // Only the newest request writes the board. A quick run of corpus changes
   // otherwise lands out of order and shows another corpus's numbers.
   const boardRequest = useRef(0);
+  // The winner the reader picked, so a failed vote retries that same vote.
+  const lastWinner = useRef<"a" | "b" | "tie">("tie");
 
   async function fetchLeaderboard(scope: string = corpus) {
     const ticket = ++boardRequest.current;
@@ -153,6 +160,7 @@ export default function ArenaPage() {
     setMatch(null);
     setVoteResult(null);
     setError("");
+    setErrorKind("match");
     try {
       const res = await apiFetch(`${API}/api/arena/match`, {
         method: "POST",
@@ -174,6 +182,8 @@ export default function ArenaPage() {
     if (!match) return;
     setVoting(true);
     setError("");
+    setErrorKind("vote");
+    lastWinner.current = winner;
     try {
       const res = await apiFetch(`${API}/api/arena/vote`, {
         method: "POST",
@@ -205,6 +215,8 @@ export default function ArenaPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
+      <StateBanner />
+
       {/* Header */}
       <div className="text-center">
         <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--foreground)" }}>
@@ -274,13 +286,16 @@ export default function ArenaPage() {
           ))}
         </div>
         {error && (
-          <p
-            role="alert"
-            className="px-3 py-2 rounded-lg text-sm"
-            style={{ background: "#fef2f2", color: "#dc2626" }}
-          >
-            {error}
-          </p>
+          <FetchError
+            title={errorKind === "vote" ? "The vote did not reach the server" : "The match did not start"}
+            message={error}
+            hint={
+              errorKind === "vote"
+                ? "The ELO ratings stay as they were, because an unrecorded vote must not move them."
+                : "The arena needs a live server with a model key. Start one, or enter an API token with the key button, then try again."
+            }
+            onRetry={() => (errorKind === "vote" ? vote(lastWinner.current) : createMatch())}
+          />
         )}
       </div>
 
@@ -411,14 +426,12 @@ export default function ArenaPage() {
       {/* Leaderboard */}
       {boardError && (
         <div className="max-w-2xl mx-auto">
-          <div
-            className="rounded-lg border px-4 py-3 text-sm"
-            style={{ borderColor: "var(--border)", color: "var(--muted)" }}
-            role="status"
-          >
-            The leaderboard did not load: {boardError}. The ratings below are hidden, because a
-            board from an earlier read would name the wrong corpus.
-          </div>
+          <FetchError
+            title="The ELO leaderboard did not load"
+            message={boardError}
+            hint="A board from an earlier read would name the wrong corpus, so the ratings stay off screen."
+            onRetry={() => fetchLeaderboard(corpus)}
+          />
         </div>
       )}
 
