@@ -341,6 +341,18 @@ export default function DecidePage() {
                       <span className="block text-xs" style={{ color: "var(--muted)" }}>
                         {c.questionCount} questions
                         {c.hasResults ? ", results on disk" : ", no results yet"}
+                        {/* A machine-drafted question set is a development
+                            signal, not evidence. Offering a corpus without
+                            saying which kind it holds invites a reader to cite
+                            a draft. */}
+                        {(c.draftQuestionCount ?? 0) > 0 && (
+                          <>
+                            <br />
+                            {(c.reviewedQuestionCount ?? 0) === 0
+                              ? "Machine-drafted, so no decision here is citable"
+                              : `${c.draftQuestionCount} of them machine-drafted`}
+                          </>
+                        )}
                       </span>
                     </button>
                   ))}

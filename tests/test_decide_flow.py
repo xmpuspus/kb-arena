@@ -249,3 +249,31 @@ def test_the_committed_run_reaches_the_route(monkeypatch):
 
     assert bundles, "results/run_*/evidence.json is the flow's only recorded run"
     assert any(b["citable"] for b in bundles)
+
+
+def test_the_corpus_card_says_when_a_question_set_is_machine_drafted():
+    """A draft question set is a development signal, not evidence.
+
+    The card offered `nist-800-171-r3` as "80 questions, no results yet" and
+    said nothing about their status. All 80 are machine-assisted drafts, which
+    `AGENTS.md` and `datasets/nist-800-171-r3/README.md` both state. A reader
+    could pick it and take the decision record for evidence.
+    """
+    import asyncio
+
+    from kb_arena.chatbot import api
+
+    body = asyncio.run(api.list_corpora())
+    by_name = {c["value"]: c for c in body["corpora"]}
+
+    nist = by_name["nist-800-171-r3"]
+    assert nist["draftQuestionCount"] == nist["questionCount"]
+    assert nist["reviewedQuestionCount"] == 0
+
+    aws = by_name["aws-compute"]
+    assert aws["reviewedQuestionCount"] == aws["questionCount"]
+    assert aws["draftQuestionCount"] == 0
+
+    page = (ROOT / "web" / "app" / "decide" / "page.tsx").read_text()
+    assert "Machine-drafted, so no decision here is citable" in page
+    assert "draftQuestionCount" in page

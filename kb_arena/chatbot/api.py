@@ -28,7 +28,7 @@ from kb_arena import __version__
 from kb_arena.arena.engine import ArenaEngine, scope_key
 from kb_arena.benchmark.compare import SAFE_ID, compare_result_files, resolve_result_path
 from kb_arena.benchmark.manifest import build_identity, compatibility_key, manifest_summary
-from kb_arena.benchmark.review import REVIEWED, STATUSES, review_summary
+from kb_arena.benchmark.review import DRAFT, REVIEWED, STATUSES, review_summary
 from kb_arena.chatbot.auth import require_auth, require_read_auth
 from kb_arena.chatbot.session import SessionStore
 from kb_arena.chatbot.tools_api import router as tools_router
@@ -596,12 +596,21 @@ async def list_corpora() -> dict:
                 continue
             has_processed = (d / "processed").is_dir() and any((d / "processed").glob("*.jsonl"))
             total_questions = 0
+            # A machine-drafted question set is a development signal, not
+            # evidence. A page that offers a corpus without saying which kind it
+            # holds invites a reader to cite a draft. Counted the same cheap way
+            # as the questions themselves, by reading the text.
+            reviewed_questions = 0
+            draft_questions = 0
             if (d / "questions").is_dir():
                 for qf in (d / "questions").glob("*.yaml"):
                     try:
-                        total_questions += qf.read_text().count("- id:")
+                        text = qf.read_text()
                     except OSError:
-                        pass
+                        continue
+                    total_questions += text.count("- id:")
+                    reviewed_questions += text.count(f"review_status: {REVIEWED}")
+                    draft_questions += text.count(f"review_status: {DRAFT}")
             has_results = results_dir.exists() and any(results_dir.glob(f"{d.name}_*.json"))
             qa_path = d / "qa-pairs" / "qa_pairs.jsonl"
             has_qa_pairs = qa_path.exists()
@@ -618,6 +627,8 @@ async def list_corpora() -> dict:
                     "value": d.name,
                     "label": d.name.replace("-", " ").title(),
                     "questionCount": total_questions,
+                    "reviewedQuestionCount": reviewed_questions,
+                    "draftQuestionCount": draft_questions,
                     "hasProcessed": has_processed,
                     "hasResults": has_results,
                     "hasQaPairs": has_qa_pairs,

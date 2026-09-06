@@ -269,6 +269,8 @@ export interface CorpusInfo {
   value: string;
   label: string;
   questionCount?: number;
+  reviewedQuestionCount?: number;
+  draftQuestionCount?: number;
   hasProcessed?: boolean;
   hasResults?: boolean;
   hasQaPairs?: boolean;
