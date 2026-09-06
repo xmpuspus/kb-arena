@@ -62,7 +62,8 @@ Wilcoxon p. It also carries what the comparison refused to claim: the difference
 significant, and neither result file carries a manifest, so the question set, the judge and the
 top-k went unchecked.
 
-Regenerate it with `python3 docs/tapes/record-decide.py`, against `kb-arena demo`.
+Regenerate it with `kb-arena demo` running, then `python3 docs/tapes/record-decide.py`.
+The script reads `KB_ARENA_DEMO_BASE` when the demo is on another address.
 
 ## Point it at your own documents
 

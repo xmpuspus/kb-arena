@@ -6,7 +6,7 @@ commands, read the comparison, read the record. Every number on screen comes
 from the deployment behind it, so run this against a server that holds a
 recorded run.
 
-Usage, with the dashboard on http://127.0.0.1:9911:
+Usage, with `kb-arena demo` running on its default port:
 
     python3 docs/tapes/record-decide.py
 
@@ -25,7 +25,8 @@ from pathlib import Path
 
 from playwright.async_api import async_playwright
 
-BASE = os.environ.get("KB_ARENA_DEMO_BASE", "http://127.0.0.1:9911")
+# `kb-arena demo` listens on 8000 unless you pass --port.
+BASE = os.environ.get("KB_ARENA_DEMO_BASE", "http://127.0.0.1:8000")
 OUT_DIR = Path(__file__).resolve().parents[1]  # docs/
 
 # Each beat is the step the reader lands on and how long it holds. The pauses
