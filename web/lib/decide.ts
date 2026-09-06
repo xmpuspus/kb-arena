@@ -8,7 +8,9 @@
 import { apiFetch } from "./auth";
 import {
   API_URL,
+  REVIEW_DRAFT,
   REVIEW_REVIEWED,
+  REVIEW_UNSPECIFIED,
   type CorpusInfo,
   type StrategyCatalogRecord,
   type Strategy,
@@ -224,8 +226,14 @@ export async function fetchEvidenceBundles(corpus: string): Promise<EvidenceAnsw
       const numbersAreNumbers = ["bundle_version", "seed"].every(
         (key) => fields[key] === undefined || typeof fields[key] === "number"
       );
+      // `typeof [] === "object"`, so an array passed here and then read as a
+      // block holding no statuses, which reached the page as a clean bundle.
       const nestedAreObjects = ["review", "environment"].every(
-        (key) => fields[key] === undefined || (fields[key] !== null && typeof fields[key] === "object")
+        (key) =>
+          fields[key] === undefined ||
+          (fields[key] !== null &&
+            typeof fields[key] === "object" &&
+            !Array.isArray(fields[key]))
       );
       // The page renders these two as React children, and React throws on an
       // object there. So an object check on the parent is not enough.
@@ -621,7 +629,7 @@ function reviewCounts(raw: Record<string, number> | undefined): {
     return { counts, unreadable: true };
   }
   for (const [status, count] of Object.entries(raw ?? {})) {
-    if (typeof count === "number" && Number.isFinite(count) && count >= 0) {
+    if (Number.isInteger(count) && (count as number) >= 0) {
       counts[status] = count;
       continue;
     }
@@ -673,8 +681,11 @@ export function bundleCaveats(bundle: EvidenceBundle | null): string[] {
   // a recorded nothing. A total that cannot hold the statuses under it is no
   // better, so the test is whether the number fits, not whether it exists.
   const recorded = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  // A count of questions is a whole number. `questions: 0.5` rendered as
+  // "All 0.5 scored questions are marked human-reviewed", which is the same
+  // impossible measurement as "5 of 0" in a different shape.
   const total = review.questions;
-  const counted = typeof total === "number" && Number.isFinite(total) && total >= recorded;
+  const counted = typeof total === "number" && Number.isInteger(total) && total >= recorded;
   const outOf = counted ? ` of ${total}` : "";
   if (drafts > 0) {
     lines.push(
@@ -698,12 +709,27 @@ export function bundleCaveats(bundle: EvidenceBundle | null): string[] {
   // used to need only "no drafts and no unspecified", which a block recording
   // 5 reviewed out of 10 satisfies by saying nothing about the other 5. State
   // it when the reviewed count reaches the total, and never otherwise.
+  // A status this page does not name still classified its questions, so the
+  // three named counts do not add up and neither branch below fires. Silence
+  // there reads as a bundle that needs no warning.
+  const named = new Set([REVIEW_REVIEWED, REVIEW_DRAFT, REVIEW_UNSPECIFIED]);
+  const unnamed = Object.entries(counts)
+    .filter(([status]) => !named.has(status))
+    .reduce((sum, [, count]) => sum + count, 0);
+  if (unnamed > 0) {
+    lines.push(
+      `${unnamed} questions carry a review status this page does not know, so their review is unread here.`
+    );
+  }
   const reviewed = counts[REVIEW_REVIEWED] ?? 0;
   if (counted && !unreadable && total > 0 && reviewed === total) {
     lines.push(`All ${total} scored questions are marked human-reviewed.`);
-  } else if (counted && !unreadable && total > 0 && reviewed + drafts + unspecified < total) {
+  } else if (counted && !unreadable && total > 0 && recorded < total) {
+    // `recorded`, not the three statuses this function names. A bundle
+    // carrying a status nobody here knows still classified its questions, and
+    // summing the known three reported it as unaccounted for.
     lines.push(
-      `The bundle records a status for ${reviewed + drafts + unspecified} of ${total} questions, so the rest are unaccounted for.`
+      `The bundle records a status for ${recorded} of ${total} questions, so the rest are unaccounted for.`
     );
   }
   // The bundle is arbitrary JSON, and React throws on an object child. An

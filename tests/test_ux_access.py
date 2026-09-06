@@ -593,7 +593,8 @@ def test_an_absent_question_total_never_renders_as_a_denominator():
     # being `"5"` as a string, which `> 0` accepts. The block is read once,
     # into numbers, so no caller below has to know that.
     reader = decide[decide.index("function reviewCounts") : caveats_at]
-    assert 'typeof count === "number" && Number.isFinite(count) && count >= 0' in reader
+    # A count is a whole number. `counts: {"human-reviewed": 0.5}` is not a count.
+    assert "Number.isInteger(count) && (count as number) >= 0" in reader
     assert "unreadable = true;" in reader
     # `Object.entries(5)` answers with an empty list rather than raising, so a
     # number here read as a bundle that recorded no statuses at all.
@@ -613,8 +614,9 @@ def test_the_full_review_claim_needs_a_reviewed_count_that_reaches_the_total():
     decide = (WEB / "lib" / "decide.ts").read_text()
     body = decide[decide.index("export function bundleCaveats") :]
     body = body[: body.index("\n}\n", body.index("const { counts, unreadable }"))]
-    claim = body.index("scored questions are marked human-reviewed")
-    guard = body[body.rindex("if (", 0, claim) : claim]
+    # Pin the code form. A comment in the same function quotes this sentence.
+    claim = body.index("lines.push(`All ${total} scored questions")
+    guard = body[body.rindex("const reviewed =", 0, claim) : claim]
     assert "reviewed === total" in guard, "the claim does not check the reviewed count"
     assert "!unreadable" in guard
     # And the partial case says so rather than staying silent.
@@ -625,6 +627,28 @@ def test_the_full_review_claim_needs_a_reviewed_count_that_reaches_the_total():
     # The bundle is arbitrary JSON, and React throws on an object child.
     assert 'typeof review.note === "string" && review.note' in body
     assert "The bundle records a review note this page cannot read." in body
+    # A count of questions is a whole number, and `questions: 0.5` rendered as
+    # "All 0.5 scored questions are marked human-reviewed".
+    assert "Number.isInteger(total)" in body
+    # The unaccounted line sums every status, not the three this file names.
+    assert "recorded < total" in body
+    assert "reviewed + drafts + unspecified < total" not in body
+    # A status this page does not name still classified its questions.
+    assert "a review status this page does not know" in body
+
+
+def test_the_evidence_guard_refuses_an_array_where_it_reads_an_object():
+    """`typeof [] === "object"`, so an array passed the nested-object check.
+
+    `review: []` then read as a block holding no statuses, and the bundle
+    reached the page as clean evidence with no warning on it.
+    """
+    decide = (WEB / "lib" / "decide.ts").read_text()
+    guard = decide[decide.index("const nestedAreObjects") :]
+    guard = guard[: guard.index(");")]
+    assert "!Array.isArray(fields[key])" in guard
+    for key in ("review", "environment"):
+        assert f'"{key}"' in guard
 
 
 def test_the_catalog_guard_refuses_a_strategy_nothing_implements():
