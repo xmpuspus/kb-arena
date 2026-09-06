@@ -245,6 +245,10 @@ export default function ArenaPage() {
       // The vote moved the match's own scope, so refresh that board.
       fetchLeaderboard(votedCorpus);
     } catch (err: unknown) {
+      // The success path drops a stale reply, and this one has to match it.
+      // Without the check, a vote that failed for the corpus the reader left
+      // wrote its error under the corpus now on screen.
+      if (corpus !== selectedCorpus.current) return;
       setError(readFailureMessage(err, "The vote got no answer."));
       // The request can fail after the server records the vote, so the client
       // cannot read the outcome from a transport failure. Re-read the board

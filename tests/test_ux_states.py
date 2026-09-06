@@ -462,3 +462,20 @@ def test_a_failed_graph_read_shows_no_example_map():
     assert page.count("setNodes(SAMPLE_NODES)") == 1
     assert "{!readError && !loading && (" in page, "a failed read hides the map and the counts"
     assert "FetchError" in page
+
+
+def test_a_stale_vote_failure_does_not_write_under_the_corpus_now_on_screen():
+    """The success path dropped a stale reply and the failure path did not.
+
+    A vote for the corpus the reader left could fail after the reader moved on,
+    and its error line then sat under the new corpus name. Both paths compare
+    the vote's own corpus against the selected one now.
+    """
+    source = (ROOT / "web" / "app" / "arena" / "page.tsx").read_text()
+
+    assert (
+        "if (corpus !== selectedCorpus.current) return;" in source
+    ), "the vote failure path must drop a reply for a corpus the reader left"
+    assert (
+        "if (votedCorpus !== selectedCorpus.current) return;" in source
+    ), "the vote success path must drop a reply for a corpus the reader left"
