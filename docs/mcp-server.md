@@ -218,9 +218,12 @@ console script. The entry passes `mcp` as a package argument for that reason,
 so the client runs `uvx kb-arena mcp` and reaches the server instead of the
 ordinary CLI.
 
-`uvx` installs the package without its optional extras, so `uvx kb-arena mcp`
-prints the install line for the `mcp` extra and exits 1. A client that needs
-the extra installed in one step runs `uvx --from 'kb-arena[mcp]' kb-arena mcp`.
+`uvx` installs the package without its optional extras, so a bare
+`uvx kb-arena mcp` prints the install line for the `mcp` extra and exits 1.
+`server.json` therefore carries a `runtimeArguments` entry that passes
+`--from kb-arena[mcp]` to `uvx`, so a registry client runs
+`uvx --from 'kb-arena[mcp]' kb-arena mcp` and gets the extra in one step.
+Run that command by hand to reproduce what a client does.
 
 The registry proves ownership of the PyPI package through the marker
 `<!-- mcp-name: io.github.xmpuspus/kb-arena -->` near the top of `README.md`,

@@ -39,6 +39,13 @@
           "isSecret": false,
           "format": "filepath"
         }
+      ],
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "--from",
+          "value": "kb-arena[mcp]"
+        }
       ]
     }
   ]

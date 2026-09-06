@@ -94,3 +94,22 @@ def test_every_package_argument_names_a_command_the_cli_has():
     assert positional, "the entry must name the command that starts the server"
     for value in positional:
         assert value in commands, f"server.json names {value!r}, and the CLI has no such command"
+
+
+def test_the_runtime_arguments_install_the_optional_extra():
+    """A bare `uvx kb-arena` installs no extras, and the server needs one.
+
+    Without this entry a registry client ran `uvx kb-arena mcp`, which printed
+    the install line for the `mcp` extra and exited 1. The client never reached
+    the server, and the entry looked correct because the schema accepted it.
+    """
+    entry = json.loads((ROOT / "server.json").read_text())
+    package = entry["packages"][0]
+
+    runtime = package.get("runtimeArguments") or []
+    passed = {(a.get("name"), a.get("value")) for a in runtime}
+
+    assert (
+        "--from",
+        "kb-arena[mcp]",
+    ) in passed, "uvx installs no extras, so the registry entry must pass --from kb-arena[mcp]"
