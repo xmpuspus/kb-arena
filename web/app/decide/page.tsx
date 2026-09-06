@@ -26,8 +26,12 @@ import {
   fetchCorporaOrFail,
   fetchEvidenceBundles,
   ingestCommand,
+  initCommand,
+  isSafeId,
   labCommand,
+  labCompareCommand,
   noBundleReason,
+  reviewWarning,
   type CompareResult,
   type DecideCatalogRecord,
   type EvidenceBundle,
@@ -92,6 +96,9 @@ export default function DecidePage() {
   const [corporaError, setCorporaError] = useState<string | null>(null);
   const [corpus, setCorpus] = useState("");
   const [ownDocs, setOwnDocs] = useState(false);
+  // The own-documents path names its own corpus. Reusing the built-in name
+  // told a reader to ingest their files into the example corpus.
+  const [ownCorpus, setOwnCorpus] = useState("my-docs");
   const [catalog, setCatalog] = useState<DecideCatalogRecord[]>(DEFAULT_STRATEGY_CATALOG);
   const [profile, setProfile] = useState<ProfileName>("accuracy-first");
   const [picked, setPicked] = useState<Strategy[]>([]);
@@ -152,16 +159,24 @@ export default function DecidePage() {
     if (!corpus && usable.length > 0) setCorpus(usable[0].value);
   }, [corpus, usable]);
 
+  // The evidence read needs the same ticket the comparison read has. A reply
+  // for the corpus the reader left still lands, and it would list another
+  // corpus's runs under this corpus's heading.
+  const evidenceTicket = useRef(0);
   useEffect(() => {
     if (!corpus) return;
+    const ticket = ++evidenceTicket.current;
+    const isCurrentRead = () => ticket === evidenceTicket.current;
     fetchEvidenceBundles(corpus)
       .then((answer) => {
+        if (!isCurrentRead()) return;
         setBundles(answer.bundles);
         setBundlesTruncated(answer.truncated ? answer.scanLimit : 0);
         setBundlesUnreadable(answer.unreadable);
         setBundlesError(null);
       })
       .catch(() => {
+        if (!isCurrentRead()) return;
         setBundles([]);
         setBundlesTruncated(0);
         setBundlesUnreadable([]);
@@ -391,16 +406,14 @@ export default function DecidePage() {
                       <span className="block text-xs" style={{ color: "var(--muted)" }}>
                         {c.questionCount} questions
                         {c.hasResults ? ", results on disk" : ", no results yet"}
-                        {/* A machine-drafted question set is a development
-                            signal, not evidence. Offering a corpus without
-                            saying which kind it holds invites a reader to cite
-                            a draft. */}
-                        {(c.draftQuestionCount ?? 0) > 0 && (
+                        {/* A question set nobody reviewed is a development
+                            signal, not evidence. The publication gate refuses
+                            on an unspecified status exactly as it refuses on a
+                            draft, so the card warns on both. */}
+                        {reviewWarning(c) && (
                           <>
                             <br />
-                            {(c.reviewedQuestionCount ?? 0) === 0
-                              ? "Machine-drafted, so no decision here is citable"
-                              : `${c.draftQuestionCount} of them machine-drafted`}
+                            {reviewWarning(c)}
                           </>
                         )}
                       </span>
@@ -423,8 +436,26 @@ export default function DecidePage() {
                   walkthrough runs every command against a real corpus and prints what each one
                   answered.
                 </p>
-                <Command text={`kb-arena init-corpus ${corpus || "my-docs"}`} />
-                <Command text={ingestCommand(corpus || "my-docs")} />
+                <div className="space-y-1">
+                  <label htmlFor="own-corpus" className="text-xs font-medium block" style={{ color: "var(--muted)" }}>
+                    Name your corpus. The commands below use this name, not the built-in one.
+                  </label>
+                  <input
+                    id="own-corpus"
+                    value={ownCorpus}
+                    onChange={(e) => setOwnCorpus(e.target.value)}
+                    className="w-full max-w-xs px-3 py-1.5 rounded-lg border text-sm mono"
+                    style={inputStyle}
+                  />
+                  {!isSafeId(ownCorpus) && (
+                    <p className="text-xs" style={{ color: "var(--danger-text)" }}>
+                      A corpus name takes letters, digits, dot, dash and underscore only. The tool
+                      refuses anything else, so this page will not build a command from it.
+                    </p>
+                  )}
+                </div>
+                <Command text={initCommand(ownCorpus)} />
+                <Command text={ingestCommand(ownCorpus)} />
                 <a
                   href={WALKTHROUGH_URL}
                   target="_blank"
@@ -562,9 +593,7 @@ export default function DecidePage() {
                 result files, and the lab file holds both strategies in one file.
               </p>
               <Command
-                text={`kb-arena compare --lab results/run_<id>/retriever_lab.json --a ${
-                  picked[0] ?? "a"
-                } --b ${picked[1] ?? "b"} --metric ndcg_at_k`}
+                text={labCompareCommand(picked[0] ?? "a", picked[1] ?? "b", "ndcg_at_k")}
               />
             </div>
 

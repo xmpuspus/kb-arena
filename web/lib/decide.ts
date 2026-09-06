@@ -133,8 +133,12 @@ export const CORPORA_UNREADABLE =
 export async function fetchCorporaOrFail(): Promise<CorpusInfo[]> {
   const res = await fetch(`${API_URL}/api/corpora`);
   if (!res.ok) throw new Error(CORPORA_UNREADABLE);
-  const data = await res.json();
-  return Array.isArray(data.corpora) ? data.corpora : [];
+  const data = await readJson(res, CORPORA_UNREADABLE);
+  // A body this page cannot parse is a failed read. Falling back to an empty
+  // array turned it into "this deployment holds no corpus", which is a claim
+  // about the deployment that nothing supports.
+  if (!Array.isArray(data.corpora)) throw new Error(CORPORA_UNREADABLE);
+  return data.corpora;
 }
 
 export interface EvidenceAnswer {
@@ -148,14 +152,33 @@ export interface EvidenceAnswer {
   scanLimit: number;
 }
 
+// A 200 with a body this page cannot read is a failed read, not an empty
+// result. Every reader below raises rather than answering with a domain value
+// nothing supports.
+async function readJson(res: Response, failure: string): Promise<Record<string, unknown>> {
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(failure);
+  }
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    throw new Error(failure);
+  }
+  return data as Record<string, unknown>;
+}
+
 export async function fetchEvidenceBundles(corpus: string): Promise<EvidenceAnswer> {
   const query = corpus ? `?corpus=${encodeURIComponent(corpus)}` : "";
   const res = await fetch(`${API_URL}/api/evidence${query}`);
   if (!res.ok) throw new Error(EVIDENCE_UNREADABLE);
-  const data = await res.json();
+  const data = await readJson(res, EVIDENCE_UNREADABLE);
+  if (!Array.isArray(data.bundles) || !Array.isArray(data.unreadable)) {
+    throw new Error(EVIDENCE_UNREADABLE);
+  }
   return {
-    bundles: Array.isArray(data.bundles) ? data.bundles : [],
-    unreadable: Array.isArray(data.unreadable) ? data.unreadable : [],
+    bundles: data.bundles,
+    unreadable: data.unreadable,
     truncated: Boolean(data.truncated),
     scanLimit: typeof data.scan_limit === "number" ? data.scan_limit : 0,
   };
@@ -194,7 +217,23 @@ export async function fetchCompare(
   if (res.status === 401) throw new Error(COMPARE_UNAUTHORIZED);
   if (res.status === 404) throw new Error(COMPARE_MISSING);
   if (!res.ok) throw new Error(COMPARE_UNREADABLE);
-  return res.json();
+  const data = await readJson(res, COMPARE_UNREADABLE);
+  // The record prints these fields as measurements. An answer missing any of
+  // them would render "not recorded" beside real numbers, which reads as a
+  // measured absence rather than a reply this page could not use.
+  const ci = data.delta_ci_95;
+  const meta = data.meta as { reasons?: unknown } | undefined;
+  const shaped =
+    typeof data.n_paired === "number" &&
+    typeof data.mean_delta === "number" &&
+    Array.isArray(data.per_question) &&
+    Array.isArray(ci) &&
+    ci.length === 2 &&
+    typeof meta === "object" &&
+    meta !== null &&
+    Array.isArray(meta.reasons);
+  if (!shaped) throw new Error(COMPARE_UNREADABLE);
+  return data as unknown as CompareResult;
 }
 
 // `/strategies` serves `needs_embeddings`, the offline fallback in `lib/api.ts`
@@ -274,22 +313,111 @@ export function candidatesFor(
   });
 }
 
+// The same pattern `SAFE_ID` holds in `kb_arena/benchmark/compare.py`, which
+// the API applies to every id it accepts. A page that builds a command line a
+// reader pastes into a terminal must refuse what the API would refuse. The
+// corpus and both strategy names arrive from the URL, so `?corpus=x;rm -rf ~`
+// reached a copy button before this.
+export const SAFE_ID = /^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}$/;
+
+export const UNSAFE_COMMAND =
+  "One of these values carries a character the tool refuses, so this page will not build a command from it.";
+
+export function isSafeId(value: string): boolean {
+  return SAFE_ID.test(value);
+}
+
+/**
+ * A command line, or the refusal, when any value would not survive a shell.
+ *
+ * Quoting alone is not the fix. A reader edits the line before running it, and
+ * a value that the API itself refuses has no business on the clipboard.
+ */
+function command(parts: string[], values: string[]): string {
+  return values.every(isSafeId) ? parts.join(" ") : UNSAFE_COMMAND;
+}
+
+function selectionOf(names: string[]): string {
+  return names.length ? names.join(",") : "all";
+}
+
 export function benchmarkCommand(corpus: string, names: string[]): string {
-  const selection = names.length ? names.join(",") : "all";
-  return `kb-arena benchmark --corpus ${corpus} --strategy ${selection}`;
+  const selection = selectionOf(names);
+  return command(
+    ["kb-arena", "benchmark", "--corpus", corpus, "--strategy", selection],
+    [corpus, ...names]
+  );
 }
 
 export function labCommand(corpus: string, names: string[]): string {
-  const selection = names.length ? names.join(",") : "all";
-  return `kb-arena retriever-lab --corpus ${corpus} --strategies ${selection}`;
+  const selection = selectionOf(names);
+  return command(
+    ["kb-arena", "retriever-lab", "--corpus", corpus, "--strategies", selection],
+    [corpus, ...names]
+  );
 }
 
 export function compareCommand(corpus: string, a: string, b: string, metric: string): string {
-  return `kb-arena compare --corpus ${corpus} --a ${a} --b ${b} --metric ${metric}`;
+  return command(
+    ["kb-arena", "compare", "--corpus", corpus, "--a", a, "--b", b, "--metric", metric],
+    [corpus, a, b, metric]
+  );
+}
+
+export function labCompareCommand(a: string, b: string, metric: string): string {
+  return command(
+    [
+      "kb-arena",
+      "compare",
+      "--lab",
+      "results/run_<id>/retriever_lab.json",
+      "--a",
+      a,
+      "--b",
+      b,
+      "--metric",
+      metric,
+    ],
+    [a, b, metric]
+  );
+}
+
+export function initCommand(corpus: string): string {
+  return command(["kb-arena", "init-corpus", corpus], [corpus]);
 }
 
 export function ingestCommand(corpus: string): string {
-  return `kb-arena ingest ./datasets/${corpus}/raw/ --corpus ${corpus}`;
+  return command(
+    ["kb-arena", "ingest", `./datasets/${corpus}/raw/`, "--corpus", corpus],
+    [corpus]
+  );
+}
+
+/**
+ * Why a corpus cannot support a citable decision, or null when it can.
+ *
+ * A question with no `review_status` counts as `unspecified`, and
+ * `review_summary` refuses to publish on unspecified exactly as it refuses on
+ * a draft. Warning on the draft count alone left a corpus of unspecified
+ * questions looking clean, which is the case the publication gate blocks.
+ */
+export function reviewWarning(corpus: CorpusInfo): string | null {
+  const total = corpus.questionCount ?? 0;
+  const reviewed = corpus.reviewedQuestionCount ?? 0;
+  const drafts = corpus.draftQuestionCount ?? 0;
+  if (total === 0 || reviewed >= total) return null;
+  const unspecified = Math.max(0, total - reviewed - drafts);
+  if (reviewed === 0) {
+    if (unspecified === 0) return "Machine-drafted, so no decision here is citable";
+    if (drafts === 0) {
+      return `No question carries a review status, so no decision here is citable`;
+    }
+    return `${drafts} machine-drafted and ${unspecified} with no review status, so no decision here is citable`;
+  }
+  const parts: string[] = [];
+  if (drafts > 0) parts.push(`${drafts} machine-drafted`);
+  if (unspecified > 0) parts.push(`${unspecified} with no review status`);
+  return `${parts.join(", ")} of ${total}, so a decision here is not citable`;
 }
 
 function fixed(value: number | null | undefined, places: number): string {

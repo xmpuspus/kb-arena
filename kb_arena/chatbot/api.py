@@ -11,6 +11,7 @@ import importlib.resources as _pkg_resources
 import json
 import logging
 import math
+import os as _os
 import re as _re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -60,6 +61,9 @@ _GRAPH_BUILD_TIMEOUT_SECONDS = 1800.0
 # directory grows one directory per run forever, and the route reads files on
 # the event loop, so an uncapped walk gets slower for every run ever made.
 EVIDENCE_SCAN_LIMIT = 50
+# How many directory entries the listing examines before it stops. The scan
+# limit alone bounded the answer while the walk still touched every run.
+EVIDENCE_LIST_LIMIT = 500
 
 
 def _enqueue_graph_build_event(queue: _asyncio.Queue, event: dict | None) -> None:
@@ -1174,7 +1178,7 @@ def _pair_from(path: _Path, data: dict) -> tuple[str, str]:
     return corpus, strategy
 
 
-def _run_dir_recency(path: _Path) -> tuple[float, str]:
+def _entry_recency(entry: _os.DirEntry) -> tuple[float, str]:
     """How recent a run directory is, for the evidence scan order.
 
     The directory name holds a random hex run id, so sorting by name orders
@@ -1188,9 +1192,40 @@ def _run_dir_recency(path: _Path) -> tuple[float, str]:
     falls back to the name, which is the behaviour this replaced.
     """
     try:
-        return (path.stat().st_mtime, path.name)
+        return (entry.stat().st_mtime, entry.name)
     except OSError:
-        return (0.0, path.name)
+        return (0.0, entry.name)
+
+
+def _recent_run_dirs(base: _Path) -> tuple[list[_Path], bool]:
+    """The newest run directories, from a listing that stops at a fixed size.
+
+    `EVIDENCE_SCAN_LIMIT` bounded the answer, not the work. A glob listed and
+    stat-ed every run directory before the slice threw most of them away, so
+    the cost still grew with every run anybody had ever made.
+
+    This stops the listing at `EVIDENCE_LIST_LIMIT` entries. Past that point
+    the entries examined are whichever ones the filesystem returned first, so
+    the newest run on disk can go unseen. The caller reports `truncated` for
+    exactly that reason, and a truncated answer is never proof of absence.
+    """
+    entries: list[tuple[float, str, _Path]] = []
+    overflow = False
+    try:
+        with _os.scandir(base) as listing:
+            for entry in listing:
+                if not entry.name.startswith("run_") or not entry.is_dir():
+                    continue
+                if len(entries) >= EVIDENCE_LIST_LIMIT:
+                    overflow = True
+                    break
+                mtime, name = _entry_recency(entry)
+                entries.append((mtime, name, _Path(entry.path)))
+    except OSError:
+        return [], False
+    entries.sort(reverse=True)
+    kept = entries[:EVIDENCE_SCAN_LIMIT]
+    return [path for _, _, path in kept], overflow or len(entries) > len(kept)
 
 
 @app.get("/api/evidence", dependencies=[Depends(check_rate_limit)])
@@ -1204,10 +1239,11 @@ async def evidence_bundles(corpus: str = "") -> dict:
 
     A results directory grows one directory per run and never shrinks. Reading
     every one of them is a blocking file walk on the event loop that gets
-    slower for every run anybody has made. So this reads the newest
-    `EVIDENCE_SCAN_LIMIT` directories, ordered by directory modification time,
-    and stops. `truncated` says when older directories went unread, because a
-    short list and a capped list are two different answers.
+    slower for every run anybody has made. The listing itself stops at
+    `EVIDENCE_LIST_LIMIT` entries, and the newest `EVIDENCE_SCAN_LIMIT` of
+    those, by directory modification time, get opened. Both bounds are on the
+    work, not only on the answer. `truncated` says when directories went
+    unread, because a short list and a capped list are two different answers.
 
     `unreadable` names the runs whose `evidence.json` could not be parsed. A
     broken bundle is not a missing one, and dropping it answered 200 with an
@@ -1227,8 +1263,7 @@ async def evidence_bundles(corpus: str = "") -> dict:
             "truncated": False,
             "scan_limit": EVIDENCE_SCAN_LIMIT,
         }
-    run_dirs = sorted(base.glob("run_*"), key=_run_dir_recency, reverse=True)
-    scanned = run_dirs[:EVIDENCE_SCAN_LIMIT]
+    scanned, truncated = _recent_run_dirs(base)
     bundles: list[dict] = []
     unreadable: list[str] = []
     for run_dir in scanned:
@@ -1259,7 +1294,7 @@ async def evidence_bundles(corpus: str = "") -> dict:
     return {
         "bundles": bundles,
         "unreadable": unreadable,
-        "truncated": len(run_dirs) > len(scanned),
+        "truncated": truncated,
         "scan_limit": EVIDENCE_SCAN_LIMIT,
     }
 

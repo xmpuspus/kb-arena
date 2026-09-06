@@ -22,6 +22,7 @@ import pytest
 from fastapi import HTTPException
 
 from kb_arena.benchmark import reporter
+from kb_arena.benchmark.compare import SAFE_ID
 from kb_arena.chatbot import api
 from kb_arena.settings import settings
 from kb_arena.strategies.catalog import STRATEGY_CATALOG, default_strategy_names
@@ -234,6 +235,90 @@ def test_a_capped_or_broken_evidence_read_never_reads_as_no_run_exists():
     ), "the empty state must read the truncation and the parse failures the route reported"
 
 
+def test_the_evidence_read_is_ordered_the_way_the_comparison_read_is():
+    """A reply for the corpus the reader left would list its runs under this one."""
+    page = DECIDE_PAGE.read_text()
+    read = re.search(r"const evidenceTicket = useRef\(0\);.*?\n  \}, \[corpus\]\);", page, re.S)
+    assert read, "the evidence read must take a ticket, the way readComparison does"
+    body = read.group(0)
+
+    assert "++evidenceTicket.current" in body, "the ticket must be taken before the read starts"
+    assert (
+        body.count("isCurrentRead()") >= 2
+    ), "the success path and the failure path both write state, so both need the check"
+
+
+def test_the_own_documents_path_names_its_own_corpus():
+    """Reusing the built-in name told a reader to ingest their files into the example."""
+    page = DECIDE_PAGE.read_text()
+
+    assert "ownCorpus" in page, "the own-documents path must hold its own corpus name"
+    assert (
+        'ingestCommand(corpus || "my-docs")' not in page
+    ), "the ingest command must not fall back to the selected built-in corpus"
+    assert "ingestCommand(ownCorpus)" in page and "initCommand(ownCorpus)" in page
+    assert "isSafeId(ownCorpus)" in page, "a name the tool refuses must not reach a command"
+
+
+def test_a_malformed_success_never_becomes_an_empty_domain_answer():
+    """A 200 this page cannot read is a failed read, not "the deployment holds nothing"."""
+    source = DECIDE_TS.read_text()
+
+    assert "async function readJson(" in source, "every reader needs the same parse guard"
+    corpora = re.search(r"export async function fetchCorporaOrFail\(.*?\n\}", source, re.S)
+    assert corpora and "Array.isArray(data.corpora) ? data.corpora : []" not in corpora.group(
+        0
+    ), "an unreadable body became an empty corpus list, which claims the deployment is empty"
+    assert "if (!Array.isArray(data.corpora)) throw new Error(CORPORA_UNREADABLE);" in source
+
+    compare = re.search(r"export async function fetchCompare\(.*?\n\}", source, re.S)
+    assert compare, "web/lib/decide.ts must export fetchCompare"
+    body = compare.group(0)
+    assert "return res.json();" not in body, "the comparison reply reached the record unchecked"
+    for field in ("n_paired", "mean_delta", "per_question", "delta_ci_95", "reasons"):
+        assert field in body, f"the shape check ignores {field}, which the record prints"
+    assert "if (!shaped) throw new Error(COMPARE_UNREADABLE);" in body
+
+
+def test_a_command_a_reader_pastes_is_refused_before_it_carries_a_shell_character():
+    """`corpus`, `a` and `b` arrive from the URL and reach a copy button."""
+    source = DECIDE_TS.read_text()
+
+    pattern = re.search(r"export const SAFE_ID = /(\^.*\$)/;", source)
+    assert pattern, "web/lib/decide.ts must hold the id pattern"
+    # The same pattern the API applies. A page that builds a command line must
+    # refuse what the route would refuse.
+    # The page copy must track the backend pattern, not a hand-written guess.
+    assert pattern.group(1) == f"^{SAFE_ID.pattern}$"
+
+    for name in ("benchmarkCommand", "labCommand", "compareCommand", "ingestCommand"):
+        body = re.search(rf"export function {name}\(.*?\n\}}", source, re.S)
+        assert body, f"web/lib/decide.ts must export {name}"
+        assert "command(" in body.group(0), f"{name} must build through the validating helper"
+    builder = re.search(r"function command\(.*?\n\}", source, re.S)
+    assert builder and "values.every(isSafeId)" in builder.group(0)
+    assert "UNSAFE_COMMAND" in builder.group(
+        0
+    ), "a refused value must produce the refusal, never a command line"
+
+
+def test_an_unreviewed_question_warns_even_when_no_draft_is_counted():
+    """`review_summary` refuses to publish on unspecified exactly as it does on a draft."""
+    source = DECIDE_TS.read_text()
+    body = re.search(r"export function reviewWarning\(.*?\n\}", source, re.S)
+    assert body, "web/lib/decide.ts must export reviewWarning"
+    warning = body.group(0)
+
+    assert (
+        "reviewed >= total" in warning
+    ), "the warning must fire whenever a question is not human-reviewed, not only on a draft"
+    assert "(corpus.draftQuestionCount ?? 0) > 0" not in warning
+    # The two cases read differently, because a draft has a wrong answer key
+    # nobody checked and an unspecified question has no status at all.
+    assert "no review status" in warning and "Machine-drafted" in warning
+    assert "unspecified" in warning
+
+
 def test_step_four_never_advertises_a_path_step_five_cannot_read():
     """`/api/compare` reads result files. A retriever-lab run writes one lab file instead."""
     page = DECIDE_PAGE.read_text()
@@ -244,8 +329,9 @@ def test_step_four_never_advertises_a_path_step_five_cannot_read():
     assert "Feeds step 5" in page, "the page must name the path that does feed the comparison"
     assert "which step 5 cannot read" in page
     assert (
-        "kb-arena compare --lab" in page
+        "labCompareCommand(" in page
     ), "the lab path needs the command that does pair two strategies inside a lab file"
+    assert '"--lab"' in DECIDE_TS.read_text(), "and that command must pass --lab"
 
 
 def test_the_navigation_points_at_the_leaderboard_and_the_flow():
@@ -260,12 +346,20 @@ def test_the_navigation_points_at_the_leaderboard_and_the_flow():
 def test_the_flow_offers_the_commands_the_cli_accepts():
     source = DECIDE_TS.read_text()
 
-    assert "--strategy " in source and "--strategies " in source, (
-        "benchmark takes --strategy and retriever-lab takes --strategies. One name for "
-        "both produces a command that fails."
-    )
-    assert "kb-arena compare --corpus" in source
-    assert "kb-arena ingest ./datasets/" in source
+    def _parts(fn: str) -> str:
+        body = re.search(rf"export function {fn}\(.*?\n\}}", source, re.S)
+        assert body, f"web/lib/decide.ts must export {fn}"
+        return body.group(0)
+
+    # benchmark takes --strategy and retriever-lab takes --strategies. One name
+    # for both produces a command that fails the moment a reader runs it.
+    assert '"--strategy"' in _parts("benchmarkCommand")
+    assert '"--strategies"' in _parts("labCommand")
+    assert '"--strategies"' not in _parts("benchmarkCommand")
+    for flag in ('"kb-arena"', '"compare"', '"--corpus"', '"--a"', '"--b"'):
+        assert flag in _parts("compareCommand"), f"compareCommand drops {flag}"
+    assert "./datasets/${corpus}/raw/" in _parts("ingestCommand")
+    assert '"init-corpus"' in _parts("initCommand")
 
 
 def test_the_candidates_are_the_default_benchmark_set():
@@ -363,6 +457,29 @@ def test_the_scan_drops_the_oldest_runs_not_an_arbitrary_set(tmp_path, monkeypat
     assert answer["truncated"] is True
 
 
+def test_the_listing_itself_stops_rather_than_walking_every_run(tmp_path, monkeypatch):
+    """The scan limit bounded the answer while the glob still listed and stat-ed everything."""
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    monkeypatch.setattr(api, "EVIDENCE_LIST_LIMIT", 4)
+    monkeypatch.setattr(api, "EVIDENCE_SCAN_LIMIT", 2)
+    for index in range(20):
+        _write_bundle(tmp_path, f"r{index:04d}", _bundle())
+
+    listed: list[str] = []
+    real_stat = api._entry_recency
+    monkeypatch.setattr(
+        api, "_entry_recency", lambda entry: (listed.append(entry.name), real_stat(entry))[1]
+    )
+    answer = asyncio.run(api.evidence_bundles())
+
+    assert len(listed) == 4, (
+        f"the listing examined {len(listed)} of 20 run directories. The bound is on the "
+        "walk, so it must stop rather than rank everything and slice."
+    )
+    assert len(answer["bundles"]) == 2
+    assert answer["truncated"] is True
+
+
 def test_a_corrupt_bundle_is_reported_rather_than_dropped(tmp_path, monkeypatch):
     """Dropping it answered 200 with an empty list, and step 4 then claimed no run exists."""
     monkeypatch.setattr(settings, "results_path", str(tmp_path))
@@ -437,6 +554,10 @@ def test_the_corpus_card_says_when_a_question_set_is_machine_drafted():
     assert aws["reviewedQuestionCount"] == aws["questionCount"]
     assert aws["draftQuestionCount"] == 0
 
+    # The wording moved into `reviewWarning`, which the card renders, so the
+    # question set's status still reaches a reader before they pick the corpus.
     page = (ROOT / "web" / "app" / "decide" / "page.tsx").read_text()
-    assert "Machine-drafted, so no decision here is citable" in page
-    assert "draftQuestionCount" in page
+    assert "reviewWarning(c)" in page
+    source = DECIDE_TS.read_text()
+    assert "Machine-drafted, so no decision here is citable" in source
+    assert "draftQuestionCount" in source
