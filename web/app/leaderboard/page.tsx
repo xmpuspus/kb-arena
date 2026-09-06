@@ -1,65 +1,65 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-
-type LeaderRow = {
-  corpus: string;
-  strategy: string;
-  // Runs that differ in question set, qrels, judge, or top_k never share a
-  // row. The key names the experiment, and mixed_with lists the other keys
-  // seen for the same corpus and strategy.
-  compatibility_key: string;
-  // Which build produced these runs. The API groups by it, so the page shows it.
-  build?: string;
-  manifest: {
-    question_split?: string | null;
-    judge_model?: string | null;
-    top_k?: number | null;
-  };
-  mixed_with: string[];
-  runs: number;
-  mean_accuracy: number | null;
-  mean_recall_at_5: number | null;
-  mean_ndcg_at_5: number | null;
-  mean_cost_usd: number | null;
-  mean_latency_ms: number | null;
-};
-
-type LeaderboardResponse = {
-  corpora: string[];
-  leaderboard: LeaderRow[];
-  filter: string;
-};
+import StateBanner from "@/components/StateBanner";
+import FetchError from "@/components/FetchError";
+import {
+  parseLeaderboard,
+  readFailureMessage,
+  type LeaderboardPage,
+} from "@/lib/api";
+import { useScopeReset } from "@/lib/useScopeReset";
 
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 
 export default function LeaderboardPage() {
-  const [data, setData] = useState<LeaderboardResponse | null>(null);
+  const [data, setData] = useState<LeaderboardPage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("all");
+  const [attempt, setAttempt] = useState(0);
+  const [corpusNames, setCorpusNames] = useState<string[]>([]);
+
+  // The filter names the corpus over the table, so the rows for the last one
+  // go before the new read starts.
+  useScopeReset(filter, () => {
+    setData(null);
+    setError(null);
+  });
 
   useEffect(() => {
     const controller = new AbortController();
     const url = `${apiBase}/api/leaderboard?corpus=${encodeURIComponent(filter)}`;
     fetch(url, { signal: controller.signal })
       .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        if (!r.ok) throw new Error(`The server answered ${r.status}.`);
         return r.json();
       })
-      .then((d: LeaderboardResponse) => {
+      // Every field the table reads comes back checked, so a 200 with the
+      // wrong body is a failed read rather than a rendered one.
+      .then((body: unknown) => parseLeaderboard(body))
+      .then((d) => {
         setData(d);
+        setCorpusNames(d.corpora ?? []);
         setError(null);
       })
       .catch((e) => {
-        if (e instanceof Error && e.name !== "AbortError") setError(String(e));
+        if (e instanceof Error && e.name === "AbortError") return;
+        // Rows from the last filter under the new corpus name read as that
+        // corpus's runs, so the table goes with the failed read.
+        setData(null);
+        setError(readFailureMessage(e, "The leaderboard did not load."));
       });
     return () => controller.abort();
-  }, [filter]);
+  }, [filter, attempt]);
 
-  const corpora = useMemo(() => ["all", ...(data?.corpora ?? [])], [data?.corpora]);
+  // The picker lists every corpus this deployment holds, whatever the filter
+  // is, so it survives a filter change while the rows do not.
+  const corpora = useMemo(() => ["all", ...corpusNames], [corpusNames]);
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+      <StateBanner />
+
       <header>
         <h1 className="text-2xl font-bold tracking-tight">
           KB Arena Leaderboard
@@ -91,9 +91,12 @@ export default function LeaderboardPage() {
       </div>
 
       {error && (
-        <div className="border border-red-300 bg-red-50 text-red-900 p-4 rounded">
-          Failed to load leaderboard: {error}
-        </div>
+        <FetchError
+          title="The leaderboard did not load"
+          message={error}
+          hint="A table from an earlier read would name the wrong corpus, so the rows stay off screen. Start the API, then try again."
+          onRetry={() => setAttempt((n) => n + 1)}
+        />
       )}
 
       {!data && !error && <p>Loading...</p>}

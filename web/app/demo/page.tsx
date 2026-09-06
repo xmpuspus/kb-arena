@@ -2,12 +2,13 @@
 
 import { useCallback, useState, useRef, useEffect } from "react";
 import ChatPanel, { type DemoResult, type PanelOutcome } from "@/components/ChatPanel";
+import StateBanner from "@/components/StateBanner";
+import { useServerState } from "@/components/ServerStateProvider";
+import { useScopeReset } from "@/lib/useScopeReset";
 import {
   STRATEGY_LABELS,
   CORPORA,
   fetchCorpora,
-  fetchServerStatus,
-  type ServerStatus,
   type Strategy,
   type Message,
 } from "@/lib/api";
@@ -81,18 +82,28 @@ export default function DemoPage() {
   const [selectedStrategies, setSelectedStrategies] = useState<Strategy[]>([...DEMO_STRATEGIES]);
   const [trigger, setTrigger] = useState(0);
   const [history, setHistory] = useState<Message[]>([]);
-  // undefined until /health answers. null means it never did, which reads as live.
-  const [serverStatus, setServerStatus] = useState<ServerStatus | null | undefined>(undefined);
+  // The shared state the banner names, so this page and the banner never
+  // disagree about which server answered.
+  const { state, writesOff } = useServerState();
   const [outcomes, setOutcomes] = useState<
     Partial<Record<Strategy, { outcome: PanelOutcome; message?: string }>>
   >({});
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { fetchCorpora().then(setCorpora); }, []);
-  useEffect(() => { fetchServerStatus().then(setServerStatus); }, []);
 
-  const checking = serverStatus === undefined;
-  const readOnly = serverStatus?.demoMode === true;
+  // The answers on screen came from the corpus the picker named a moment ago.
+  // Setting the trigger back to zero remounts each panel, which aborts a read
+  // still running and puts the sample answers back.
+  useScopeReset(corpus, () => {
+    setOutcomes({});
+    setHistory([]);
+    setTrigger(0);
+  });
+
+  const checking = state === "checking";
+  // Chat answers 503 whenever demo mode is on, whoever turned it on.
+  const readOnly = writesOff;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -122,9 +133,11 @@ export default function DemoPage() {
   const allFailed = consolidated && failed.length === selectedStrategies.length;
   const failureMessage = consolidated ? outcomes[failed[0]]?.message ?? "request failed" : "";
   const failureHint =
-    consolidated && readOnly
-      ? "The server runs in read-only demo mode with no model key, so live questions cannot run. " +
-        KEY_HINT
+    consolidated && state === "hosted-read-only"
+      ? "An operator published this server read-only, so live questions cannot run. " +
+        "Run KB Arena on your own machine to ask them."
+      : consolidated && readOnly
+      ? "This server has no model key, so live questions cannot run. " + KEY_HINT
       : consolidated && failureMessage.includes("503")
       ? "The server answered 503 for these strategies, so it is not ready to serve live questions."
       : "";
@@ -165,6 +178,14 @@ export default function DemoPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+      <StateBanner
+        sample={
+          trigger === 0 && selectedStrategies.length > 0
+            ? "The panels below hold precomputed sample answers, not live ones."
+            : undefined
+        }
+      />
+
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--foreground)" }}>
@@ -265,35 +286,6 @@ export default function DemoPage() {
         </div>
       </div>
 
-      {/* One banner before submit: read-only demo, or precomputed sample */}
-      {trigger === 0 && selectedStrategies.length > 0 && readOnly && (
-        <div
-          role="status"
-          className="px-3 py-2 rounded-lg text-xs border"
-          style={{ borderColor: "var(--accent)", background: "var(--card)", color: "var(--foreground)" }}
-        >
-          <span className="font-semibold">Read-only demo.</span> The server has no model key, so live
-          questions are off and the panels below show precomputed sample output. {KEY_HINT}
-        </div>
-      )}
-      {trigger === 0 && selectedStrategies.length > 0 && checking && (
-        <div
-          role="status"
-          className="px-3 py-2 rounded-lg text-xs"
-          style={{ background: "var(--border)", color: "var(--muted)" }}
-        >
-          Showing precomputed sample output. Checking whether the server accepts live questions.
-        </div>
-      )}
-      {trigger === 0 && selectedStrategies.length > 0 && !readOnly && !checking && (
-        <div
-          className="px-3 py-2 rounded-lg text-xs"
-          style={{ background: "var(--border)", color: "var(--muted)" }}
-        >
-          Showing precomputed sample output. Live queries use your configured API.
-        </div>
-      )}
-
       {/* One consolidated failure after submit */}
       {consolidated && (
         <div
@@ -310,13 +302,26 @@ export default function DemoPage() {
             </span>{" "}
             {failureHint}
           </p>
-          <button
-            onClick={handleBackToSample}
-            className="text-xs px-2 py-1 rounded border transition-colors hover:opacity-70"
-            style={{ borderColor: "var(--border)", color: "var(--muted)" }}
-          >
-            Back to sample output
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setOutcomes({});
+                setTrigger((t) => t + 1);
+              }}
+              disabled={readOnly || checking}
+              className="text-xs px-2 py-1 rounded border transition-colors hover:opacity-70 disabled:opacity-30"
+              style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+            >
+              Try again
+            </button>
+            <button
+              onClick={handleBackToSample}
+              className="text-xs px-2 py-1 rounded border transition-colors hover:opacity-70"
+              style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+            >
+              Back to sample output
+            </button>
+          </div>
         </div>
       )}
 
