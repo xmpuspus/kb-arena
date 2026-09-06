@@ -46,6 +46,23 @@ def rewrite(text: str, known: set[str] | None = None) -> tuple[str, int, list[st
     return ROUTE_LINK.sub(swap, text), count, unknown
 
 
+def rewrite_routes(text: str, known: set[str]) -> tuple[str, int]:
+    """Point every quoted route string at the file the Space serves.
+
+    A chunk holds the navigation list, so the anchor React draws after hydration
+    comes from here and not from the HTML the deploy rewrote.
+    """
+    count = 0
+    for route in sorted(known, key=len, reverse=True):
+        for quote in ('"', "'"):
+            needle = f"{quote}{route}{quote}"
+            found = text.count(needle)
+            if found:
+                text = text.replace(needle, f"{quote}{route}index.html{quote}")
+                count += found
+    return text, count
+
+
 def routes(root: Path) -> list[str]:
     """Every path the export writes as a directory holding an index.html."""
     found = []
@@ -100,6 +117,19 @@ def main(root: Path) -> int:
             page.write_text(changed, encoding="utf-8")
             files += 1
             links += count
+
+    # The navigation list is a data array, so the bundler writes each route into
+    # a chunk as well. React re-renders the anchor from that copy when the page
+    # hydrates, which would put the directory path back over the rewrite. The
+    # check below caught exactly that, so the chunks are rewritten too.
+    for chunk in sorted(root.rglob("*.js")):
+        text = chunk.read_text(encoding="utf-8", errors="replace")
+        changed, count = rewrite_routes(text, known)
+        if count:
+            chunk.write_text(changed, encoding="utf-8")
+            files += 1
+            links += count
+
     print(f"exact paths written: {links} links across {files} files")
 
     if unknown:

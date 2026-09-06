@@ -83,14 +83,16 @@ def test_the_deploy_fails_when_a_route_survives_anywhere_it_is_served(tmp_path, 
     (space / "benchmark").mkdir(parents=True)
     (space / "index.html").write_text('<a href="/benchmark/">B</a>')
     (space / "benchmark" / "index.html").write_text("<p>b</p>")
-    chunk = space / "app.js"
-    chunk.write_text('const nav = [{href:"/benchmark/"}];')
+    # A payload file, which the rewrite does not touch. The check is the
+    # backstop for every file type the rewrite leaves alone.
+    payload = space / "index.txt"
+    payload.write_text('1:{"href":"/benchmark/"}')
 
     module = _module()
     assert module.main(space) == 1
     assert "still written as a directory" in capsys.readouterr().err
 
-    chunk.write_text('const nav = [{href:"/benchmark/index.html"}];')
+    payload.write_text('1:{"href":"/benchmark/index.html"}')
     assert module.main(space) == 0
 
 
@@ -135,3 +137,37 @@ def test_the_navigation_uses_plain_anchors():
         source = (ROOT / name).read_text()
         assert 'import Link from "next/link"' not in source, f"{name} intercepts its own links"
         assert "<a" in source, f"{name} must hand the click to the browser"
+
+
+def test_a_route_inside_a_chunk_is_rewritten_too(tmp_path):
+    """React redraws the anchor from the chunk, over the rewritten HTML.
+
+    The navigation list is a data array, so the bundler writes each route into a
+    chunk. Rewriting the HTML alone put the directory path back at hydration,
+    which the deploy check caught on a real push.
+    """
+    space = tmp_path / "space"
+    (space / "benchmark").mkdir(parents=True)
+    (space / "index.html").write_text('<a href="/benchmark/">B</a>')
+    (space / "benchmark" / "index.html").write_text("<p>b</p>")
+    chunk = space / "_next" / "static" / "chunks"
+    chunk.mkdir(parents=True)
+    (chunk / "nav.js").write_text('const links=[{href:"/benchmark/",label:"Benchmark"}];')
+
+    assert _module().main(space) == 0
+    assert '"/benchmark/index.html"' in (chunk / "nav.js").read_text()
+
+
+def test_a_route_that_is_not_a_route_stays_untouched_in_a_chunk(tmp_path):
+    """Only a path the build wrote as a page is rewritten."""
+    space = tmp_path / "space"
+    (space / "benchmark").mkdir(parents=True)
+    (space / "index.html").write_text("<p>home</p>")
+    (space / "benchmark" / "index.html").write_text("<p>b</p>")
+    chunk = space / "app.js"
+    chunk.write_text('fetch("/api/corpora");const q="/other/";')
+
+    assert _module().main(space) == 0
+    body = chunk.read_text()
+    assert '"/api/corpora"' in body
+    assert '"/other/"' in body
