@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_STRATEGY_CATALOG,
   STRATEGY_DESCRIPTIONS,
@@ -17,6 +17,7 @@ import {
   PROFILE_WEIGHTS,
   benchmarkCommand,
   bundleCaveats,
+  bundleForComparison,
   candidatesFor,
   catalogIsLive,
   compareCommand,
@@ -31,6 +32,7 @@ import {
   type EvidenceBundle,
   type ProfileName,
 } from "@/lib/decide";
+import { useScopeReset } from "@/lib/useScopeReset";
 
 const WALKTHROUGH_URL =
   "https://github.com/xmpuspus/kb-arena/blob/main/docs/own-corpus-walkthrough.md";
@@ -99,6 +101,8 @@ export default function DecidePage() {
   const [comparisonError, setComparisonError] = useState<string | null>(null);
   const [comparing, setComparing] = useState(false);
   const [bundles, setBundles] = useState<EvidenceBundle[]>([]);
+  // The scan limit when the route capped the walk, zero when it read everything.
+  const [bundlesTruncated, setBundlesTruncated] = useState(0);
   const [bundlesError, setBundlesError] = useState<string | null>(null);
   const [createdAt, setCreatedAt] = useState("");
 
@@ -149,12 +153,14 @@ export default function DecidePage() {
   useEffect(() => {
     if (!corpus) return;
     fetchEvidenceBundles(corpus)
-      .then((found) => {
-        setBundles(found);
+      .then((answer) => {
+        setBundles(answer.bundles);
+        setBundlesTruncated(answer.truncated ? answer.scanLimit : 0);
         setBundlesError(null);
       })
       .catch(() => {
         setBundles([]);
+        setBundlesTruncated(0);
         setBundlesError(EVIDENCE_UNREADABLE);
       });
   }, [corpus]);
@@ -201,16 +207,28 @@ export default function DecidePage() {
       .finally(() => setComparing(false));
   }, [corpus, stratA, stratB, metric]);
 
+  // The numbers belong to one corpus, one pair of strategies and one metric.
+  // Change any of the three and the old numbers describe something the header
+  // no longer names, so they go before the next read starts.
+  useScopeReset(`${corpus}|${stratA}|${stratB}|${metric}`, () => {
+    setComparison(null);
+    setComparisonError(null);
+  });
+
   // A link that names both strategies asks for the comparison, so the page
   // reads it once rather than waiting for a click the linker already made.
+  // It fires once. Re-firing would undo the reset above and refill the record
+  // with numbers the reader did not ask for.
+  const autoRead = useRef(false);
   useEffect(() => {
+    if (autoRead.current || step < 5 || !corpus) return;
     const params = new URLSearchParams(window.location.search);
-    if (step >= 5 && params.get("a") && params.get("b") && corpus && !comparison && !comparisonError) {
-      readComparison();
-    }
-  }, [step, corpus, comparison, comparisonError, readComparison]);
+    if (!params.get("a") || !params.get("b")) return;
+    autoRead.current = true;
+    readComparison();
+  }, [step, corpus, readComparison]);
 
-  const bundle = bundles[0] ?? null;
+  const { bundle, describesComparison } = bundleForComparison(bundles, comparison);
   const corpusQuestions =
     corpora === null || corporaError
       ? null
@@ -226,11 +244,24 @@ export default function DecidePage() {
         comparison,
         comparisonError,
         bundle,
+        bundleDescribesComparison: describesComparison,
         bundleError: bundlesError,
         metric,
         createdAt: createdAt || "not yet stamped",
       }),
-    [corpus, corpusQuestions, profile, picked, comparison, comparisonError, bundle, bundlesError, metric, createdAt]
+    [
+      corpus,
+      corpusQuestions,
+      profile,
+      picked,
+      comparison,
+      comparisonError,
+      bundle,
+      describesComparison,
+      bundlesError,
+      metric,
+      createdAt,
+    ]
   );
 
   function download() {
@@ -495,18 +526,27 @@ export default function DecidePage() {
         {step === 4 && (
           <div className="space-y-4">
             <p className="text-sm" style={{ color: "var(--muted)" }}>
-              Run the candidates yourself, or read a run this deployment already recorded. Both
-              paths end at the same comparison.
+              Run the candidates yourself, or read a run this deployment already recorded. Step 5
+              reads benchmark result files, so the benchmark command below is the one that feeds it.
             </p>
             <div className="space-y-2">
               <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--muted)" }}>
-                Run it, with judged answers
+                Feeds step 5. Judged answers, written to a result file per strategy
               </span>
               <Command text={benchmarkCommand(corpus || "my-docs", picked)} />
               <span className="text-xs font-semibold uppercase tracking-wide block pt-2" style={{ color: "var(--muted)" }}>
-                Run it cheaper, retrieval metrics only
+                Cheaper, retrieval metrics only. It writes one lab file, which step 5 cannot read
               </span>
               <Command text={labCommand(corpus || "my-docs", picked)} />
+              <p className="text-xs" style={{ color: "var(--muted)" }}>
+                Pair two strategies inside a lab file on the command line instead. Step 5 compares
+                result files, and the lab file holds both strategies in one file.
+              </p>
+              <Command
+                text={`kb-arena compare --lab results/run_<id>/retriever_lab.json --a ${
+                  picked[0] ?? "a"
+                } --b ${picked[1] ?? "b"} --metric ndcg_at_k`}
+              />
             </div>
 
             <div className="space-y-2 border-t pt-4" style={{ borderColor: "var(--border)" }}>
@@ -514,6 +554,12 @@ export default function DecidePage() {
                 Recorded runs for {corpus || "no corpus"}
               </span>
               {bundlesError && <Refusal text={bundlesError} />}
+              {bundlesTruncated > 0 && (
+                <p className="text-xs" style={{ color: "var(--muted)" }}>
+                  This list holds the newest {bundlesTruncated} run directories only. Older runs
+                  exist and this page did not read them.
+                </p>
+              )}
               {!bundlesError && bundles.length === 0 && (
                 <p className="text-sm" style={{ color: "var(--muted)" }}>
                   This deployment holds no evidence bundle for {corpus || "this corpus"}, so there

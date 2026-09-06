@@ -148,6 +148,63 @@ def test_the_page_renders_every_step_it_advertises():
         assert heading and heading != tab, f"the {tab} step heading names a topic, not a finding"
 
 
+def test_the_record_attaches_only_a_bundle_that_produced_the_compared_numbers():
+    """The committed bundle covers a lab run of bm25, and the comparison reads two result files.
+
+    Taking the newest bundle on the corpus made the record quote a review
+    verdict over numbers that verdict never covered.
+    """
+    source = DECIDE_TS.read_text()
+    match = re.search(r"export function bundleForComparison\(.*?\n\}", source, re.S)
+    assert match, "web/lib/decide.ts must export bundleForComparison"
+    body = match.group(0)
+
+    assert "meta?.a?.run_id" in body and "meta?.b?.run_id" in body, (
+        "the match must read the run id of both compared sides. One side alone "
+        "attaches a bundle to a pairing it only half describes."
+    )
+    assert "describesComparison: true" in body and "describesComparison: false" in body
+
+    page = DECIDE_PAGE.read_text()
+    assert (
+        "bundles[0] ?? null" not in page
+    ), "the newest bundle on the corpus is not the run behind the comparison"
+    assert "bundleDescribesComparison" in page and "bundleDescribesComparison" in source
+    assert (
+        "listed for context only" in source
+    ), "an unmatched bundle must be labelled as another run, never as the run behind the numbers"
+
+
+def test_changing_the_scope_drops_the_earlier_comparison():
+    """The header would name one corpus and pair while the numbers described another."""
+    page = DECIDE_PAGE.read_text()
+
+    assert "useScopeReset" in page, "the merged hook already clears scoped data"
+    scope = re.search(r"useScopeReset\(\s*`([^`]+)`", page)
+    assert scope, "the reset must key on a scope string"
+    for field in ("corpus", "stratA", "stratB", "metric"):
+        assert f"${{{field}}}" in scope.group(
+            1
+        ), f"{field} changes the meaning of the numbers, so it belongs in the reset scope"
+    assert (
+        "autoRead" in page
+    ), "the URL-linked read must fire once, or it refills the record the reset just cleared"
+
+
+def test_step_four_never_advertises_a_path_step_five_cannot_read():
+    """`/api/compare` reads result files. A retriever-lab run writes one lab file instead."""
+    page = DECIDE_PAGE.read_text()
+
+    assert (
+        "Both paths end at the same comparison" not in page
+    ), "the lab command does not feed step 5, so this sentence was untrue"
+    assert "Feeds step 5" in page, "the page must name the path that does feed the comparison"
+    assert "which step 5 cannot read" in page
+    assert (
+        "kb-arena compare --lab" in page
+    ), "the lab path needs the command that does pair two strategies inside a lab file"
+
+
 def test_the_navigation_points_at_the_leaderboard_and_the_flow():
     """M-22 and UX-07: a route with no navigation entry is a route nobody finds."""
     links = re.findall(r'\{ href: "([^"]+)", label: "([^"]+)" \}', NAV.read_text())
@@ -223,6 +280,30 @@ def test_the_evidence_route_filters_by_corpus_and_refuses_a_bad_name(tmp_path, m
         assert refused.value.status_code == 400
 
 
+def test_the_evidence_route_caps_the_walk_and_says_when_it_truncated(tmp_path, monkeypatch):
+    """A results directory grows one run directory forever, and this route reads files."""
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    for index in range(api.EVIDENCE_SCAN_LIMIT + 5):
+        _write_bundle(tmp_path, f"r{index:04d}", _bundle())
+
+    answer = asyncio.run(api.evidence_bundles())
+
+    assert len(answer["bundles"]) == api.EVIDENCE_SCAN_LIMIT
+    assert answer["truncated"] is True
+    assert answer["scan_limit"] == api.EVIDENCE_SCAN_LIMIT
+    # Sorted newest first before the slice, so the cap keeps the newest runs.
+    assert answer["bundles"][0]["run_id"] == f"r{api.EVIDENCE_SCAN_LIMIT + 4:04d}"
+
+
+def test_a_full_read_never_reports_a_truncation(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    _write_bundle(tmp_path, "aaa", _bundle())
+
+    assert asyncio.run(api.evidence_bundles())["truncated"] is False
+    monkeypatch.setattr(settings, "results_path", str(tmp_path / "missing"))
+    assert asyncio.run(api.evidence_bundles())["truncated"] is False
+
+
 def test_a_corrupt_bundle_never_stops_the_others(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "results_path", str(tmp_path))
     _write_bundle(tmp_path, "aaa", _bundle())
@@ -238,7 +319,11 @@ def test_a_corrupt_bundle_never_stops_the_others(tmp_path, monkeypatch):
 def test_no_results_directory_reads_as_no_bundles(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "results_path", str(tmp_path / "missing"))
 
-    assert asyncio.run(api.evidence_bundles()) == {"bundles": []}
+    assert asyncio.run(api.evidence_bundles()) == {
+        "bundles": [],
+        "truncated": False,
+        "scan_limit": api.EVIDENCE_SCAN_LIMIT,
+    }
 
 
 def test_the_committed_run_reaches_the_route(monkeypatch):

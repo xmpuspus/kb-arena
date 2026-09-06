@@ -137,12 +137,24 @@ export async function fetchCorporaOrFail(): Promise<CorpusInfo[]> {
   return Array.isArray(data.corpora) ? data.corpora : [];
 }
 
-export async function fetchEvidenceBundles(corpus: string): Promise<EvidenceBundle[]> {
+export interface EvidenceAnswer {
+  bundles: EvidenceBundle[];
+  // The route reads a fixed number of run directories. A capped list and a
+  // short list are two different answers, so the page repeats which it got.
+  truncated: boolean;
+  scanLimit: number;
+}
+
+export async function fetchEvidenceBundles(corpus: string): Promise<EvidenceAnswer> {
   const query = corpus ? `?corpus=${encodeURIComponent(corpus)}` : "";
   const res = await fetch(`${API_URL}/api/evidence${query}`);
   if (!res.ok) throw new Error(EVIDENCE_UNREADABLE);
   const data = await res.json();
-  return Array.isArray(data.bundles) ? data.bundles : [];
+  return {
+    bundles: Array.isArray(data.bundles) ? data.bundles : [],
+    truncated: Boolean(data.truncated),
+    scanLimit: typeof data.scan_limit === "number" ? data.scan_limit : 0,
+  };
 }
 
 export async function fetchCompare(
@@ -307,6 +319,35 @@ export function bundleCaveats(bundle: EvidenceBundle | null): string[] {
   return lines;
 }
 
+export interface BundleMatch {
+  bundle: EvidenceBundle | null;
+  describesComparison: boolean;
+}
+
+/**
+ * The bundle that produced the compared numbers, or the newest one labelled as another run.
+ *
+ * A corpus can hold many runs. The newest bundle on the corpus is not the run
+ * behind a comparison, and quoting its review verdict over another run's
+ * numbers is the record claiming more than its evidence. The committed
+ * `aws-compute` bundle covers a `retriever-lab` run of bm25 alone, while the
+ * comparison reads two benchmark result files, so the two never matched.
+ *
+ * A bundle attaches only when both compared sides name the run it records.
+ */
+export function bundleForComparison(
+  bundles: EvidenceBundle[],
+  comparison: CompareResult | null
+): BundleMatch {
+  const runA = comparison?.meta?.a?.run_id ?? "";
+  const runB = comparison?.meta?.b?.run_id ?? "";
+  if (runA && runB && runA === runB) {
+    const matched = bundles.find((b) => b.run_id && b.run_id === runA);
+    if (matched) return { bundle: matched, describesComparison: true };
+  }
+  return { bundle: bundles[0] ?? null, describesComparison: false };
+}
+
 export interface RecordInput {
   corpus: string;
   corpusQuestions: number | null;
@@ -315,6 +356,9 @@ export interface RecordInput {
   comparison: CompareResult | null;
   comparisonError: string | null;
   bundle: EvidenceBundle | null;
+  // False when the bundle records another run on the same corpus. Its review
+  // verdict then says nothing about the numbers above it.
+  bundleDescribesComparison: boolean;
   bundleError: string | null;
   metric: string;
   createdAt: string;
@@ -419,14 +463,29 @@ export function decisionRecord(input: RecordInput): string {
     lines.push("");
   }
 
+  // A bundle from another run carries no verdict on the numbers above, so the
+  // caveats fall back to the no-bundle set and the mismatch is stated.
+  const attached = input.bundleDescribesComparison ? input.bundle : null;
+
   lines.push("## What this record may not be used for");
   lines.push("");
   if (input.bundleError) lines.push(`- ${input.bundleError}`);
-  for (const caveat of bundleCaveats(input.bundle)) lines.push(`- ${caveat}`);
+  if (input.bundle && !input.bundleDescribesComparison) {
+    lines.push(
+      `- The bundle below records run ${
+        input.bundle.run_id ?? "with no id"
+      }, which did not produce the numbers above. Its review verdict does not cover them.`
+    );
+  }
+  for (const caveat of bundleCaveats(attached)) lines.push(`- ${caveat}`);
   lines.push("");
 
   if (input.bundle) {
-    lines.push("## The run behind these numbers");
+    lines.push(
+      input.bundleDescribesComparison
+        ? "## The run behind these numbers"
+        : "## A different run on this corpus, listed for context only"
+    );
     lines.push("");
     lines.push(`- Run id: ${input.bundle.run_id ?? "not recorded"}`);
     lines.push(`- Command: ${(input.bundle.command ?? []).join(" ") || "none recorded"}`);

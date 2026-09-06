@@ -56,6 +56,11 @@ _GRAPH_BUILD_QUEUE_TTL_SECONDS = 300.0
 _GRAPH_BUILD_MAX_ACTIVE = 4
 _GRAPH_BUILD_TIMEOUT_SECONDS = 1800.0
 
+# How many run directories `/api/evidence` opens per request. A results
+# directory grows one directory per run forever, and the route reads files on
+# the event loop, so an uncapped walk gets slower for every run ever made.
+EVIDENCE_SCAN_LIMIT = 50
+
 
 def _enqueue_graph_build_event(queue: _asyncio.Queue, event: dict | None) -> None:
     """Add an event without allowing an unattended build queue to grow forever."""
@@ -1171,12 +1176,19 @@ def _pair_from(path: _Path, data: dict) -> tuple[str, str]:
 
 @app.get("/api/evidence")
 async def evidence_bundles(corpus: str = "") -> dict:
-    """Every committed evidence bundle this deployment holds, newest first.
+    """The newest evidence bundles this deployment holds, at most 50 run directories read.
 
     The bundle is served as it was written. A reader who cites a number needs
     the record the run wrote: the command, the commit, the seed, the review
     verdict, and whether the bundle calls itself citable. Recomputing any of
     those here would let a page claim more than the run recorded.
+
+    A results directory grows one directory per run and never shrinks. Reading
+    every one of them is a blocking file walk on the event loop that gets
+    slower for every run anybody has made. So this reads the newest
+    `EVIDENCE_SCAN_LIMIT` directories and stops. `truncated` says when older
+    directories went unread, because a short list and a capped list are two
+    different answers.
 
     `check_bundle` is not called. It shells out to git, and a route that runs
     git per request answers slowly and differently on a wheel install. That
@@ -1186,9 +1198,13 @@ async def evidence_bundles(corpus: str = "") -> dict:
         raise HTTPException(status_code=400, detail="invalid corpus")
     base = _Path(settings.results_path)
     if not base.exists():
-        return {"bundles": []}
+        return {"bundles": [], "truncated": False, "scan_limit": EVIDENCE_SCAN_LIMIT}
+    # The glob is sorted before the slice, so the cap keeps the newest run
+    # directories rather than whichever ones the filesystem listed first.
+    run_dirs = sorted(base.glob("run_*"), reverse=True)
+    scanned = run_dirs[:EVIDENCE_SCAN_LIMIT]
     bundles: list[dict] = []
-    for run_dir in sorted(base.glob("run_*"), reverse=True):
+    for run_dir in scanned:
         path = run_dir / "evidence.json"
         if not path.exists():
             continue
@@ -1205,7 +1221,11 @@ async def evidence_bundles(corpus: str = "") -> dict:
         # paths breaks the moment one bundle names two files.
         bundle["run_id"] = run_dir.name.removeprefix("run_")
         bundles.append(bundle)
-    return {"bundles": bundles}
+    return {
+        "bundles": bundles,
+        "truncated": len(run_dirs) > len(scanned),
+        "scan_limit": EVIDENCE_SCAN_LIMIT,
+    }
 
 
 @app.get("/api/leaderboard")
