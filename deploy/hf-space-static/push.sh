@@ -31,6 +31,13 @@ find "$WORK_DIR/space" -mindepth 1 -maxdepth 1 -not -name .git -exec rm -rf {} +
 cp -R "$BUNDLE"/. "$WORK_DIR/space"/
 cp "$SOURCE_DIR/README.md" "$WORK_DIR/space/README.md"
 
+# A static Space serves exact file paths. `/benchmark/` answered a redirect off
+# the Space while `/benchmark/index.html` sat there answering 200, so the top
+# navigation took a reader to huggingface.co. This rewrites the links in the
+# copy. The packaged bundle keeps directory links, because the API serves it
+# through StaticFiles, which does resolve a directory.
+python3 "$SOURCE_DIR/link_exact_paths.py" "$WORK_DIR/space"
+
 cd "$WORK_DIR/space"
 git add -u
 git add -- README.md

@@ -293,7 +293,10 @@ export default function RetrieverLabPage() {
       )}
 
       <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
+        {/* A run label reads `9beeb4aa | top-5 | 2026-04-26T13:35:43`, and a
+            select sizes to its widest option. At 375 that pushed one pixel past
+            the viewport, so both the row and the control may shrink. */}
+        <div className="flex min-w-0 items-center gap-2">
           <label htmlFor="lab-run" className="text-xs font-medium" style={{ color: "var(--muted)" }}>
             Run
           </label>
@@ -302,7 +305,7 @@ export default function RetrieverLabPage() {
             value={selectedRun}
             onChange={(e) => setSelectedRun(e.target.value)}
             disabled={Boolean(error) || listPending}
-            className="px-3 py-1.5 rounded-lg border text-sm disabled:opacity-50"
+            className="min-w-0 px-3 py-1.5 rounded-lg border text-sm disabled:opacity-50"
             style={{
               background: "var(--card)",
               borderColor: "var(--border-strong)",

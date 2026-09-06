@@ -38,6 +38,7 @@ import {
   type ProfileName,
 } from "@/lib/decide";
 import { useScopeReset } from "@/lib/useScopeReset";
+import StateBanner from "@/components/StateBanner";
 
 const WALKTHROUGH_URL =
   "https://github.com/xmpuspus/kb-arena/blob/main/docs/own-corpus-walkthrough.md";
@@ -334,6 +335,10 @@ export default function DecidePage() {
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+      {/* Nine routes named the deployment's state and this one did not, so a
+          reader on a read-only or sample deployment read six steps with no
+          word about what the server behind them can do. */}
+      <StateBanner />
       <header className="space-y-2">
         <h1 className="text-2xl font-bold tracking-tight">
           Six steps take you from a question to a retrieval decision you can defend
