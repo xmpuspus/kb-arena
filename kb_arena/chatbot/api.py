@@ -634,7 +634,10 @@ async def list_corpora() -> dict:
                         continue
                     try:
                         entries = yaml.safe_load(qf.read_text())
-                    except (OSError, yaml.YAMLError):
+                    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+                        # A file holding a byte that is not UTF-8 raised out of
+                        # the route and answered 500. It is one more way a
+                        # question file fails to describe its corpus.
                         unreadable_question_files += 1
                         continue
                     if not isinstance(entries, list):

@@ -514,3 +514,16 @@ def test_the_record_claims_no_winner_when_the_runs_are_not_comparable():
     verdict = verdict[: verdict.index("lines.push(c.note);")]
     assert verdict.index("!c.meta.comparable") < verdict.index("c.significant")
     assert "claims no winner and no significance" in verdict
+
+
+def test_a_question_file_that_is_not_utf8_is_reported_rather_than_raised():
+    """The handler caught OSError and YAMLError, and a bad byte answered 500."""
+    api = (ROOT / "kb_arena" / "chatbot" / "api.py").read_text()
+    assert "except (OSError, UnicodeDecodeError, yaml.YAMLError):" in api
+
+
+def test_the_environment_block_is_checked_field_by_field():
+    """The page renders git_sha as a React child, and React throws on an object."""
+    lib = (WEB / "lib" / "decide.ts").read_text()
+    assert "const environmentTextIsText =" in lib
+    assert '["kb_arena", "git_sha", "platform"]' in lib

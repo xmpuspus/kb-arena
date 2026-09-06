@@ -221,8 +221,22 @@ export async function fetchEvidenceBundles(corpus: string): Promise<EvidenceAnsw
       const nestedAreObjects = ["review", "environment"].every(
         (key) => fields[key] === undefined || (fields[key] !== null && typeof fields[key] === "object")
       );
+      // The page renders these two as React children, and React throws on an
+      // object there. So an object check on the parent is not enough.
+      const environment = (fields.environment ?? {}) as Record<string, unknown>;
+      const environmentTextIsText = ["kb_arena", "git_sha", "platform"].every(
+        (key) =>
+          environment[key] === undefined ||
+          environment[key] === null ||
+          typeof environment[key] === "string"
+      );
       return (
-        listsAreLists && textIsText && flagsAreFlags && numbersAreNumbers && nestedAreObjects
+        listsAreLists &&
+        textIsText &&
+        flagsAreFlags &&
+        numbersAreNumbers &&
+        nestedAreObjects &&
+        environmentTextIsText
       );
     });
   const unreadableIsShaped =
