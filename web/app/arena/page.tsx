@@ -346,7 +346,7 @@ export default function ArenaPage() {
               key={q}
               onClick={() => setQuestion(q)}
               className="text-xs px-2.5 py-1 rounded-lg border transition-opacity hover:opacity-70 text-left"
-              style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+              style={{ borderColor: "var(--border-strong)", color: "var(--muted)" }}
             >
               {q.length > 50 ? q.slice(0, 50) + "..." : q}
             </button>
@@ -459,7 +459,7 @@ export default function ArenaPage() {
                 onClick={() => vote("tie")}
                 disabled={voting}
                 className="px-5 py-2 rounded-lg border text-sm font-medium transition-opacity disabled:opacity-50 hover:opacity-70"
-                style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+                style={{ borderColor: "var(--border-strong)", color: "var(--muted)" }}
               >
                 Tie
               </button>

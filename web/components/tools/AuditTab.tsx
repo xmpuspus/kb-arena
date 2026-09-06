@@ -100,7 +100,7 @@ export default function AuditTab({ corpus }: Props) {
             className="w-20 px-2 py-1.5 rounded-lg border text-sm"
             style={{
               background: "var(--card)",
-              borderColor: "var(--border)",
+              borderColor: "var(--border-strong)",
               color: "var(--foreground)",
             }}
             min={1}

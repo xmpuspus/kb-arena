@@ -95,7 +95,7 @@ export default function StrategyCompare({ rows }: Props) {
               className="w-full px-3 py-1.5 rounded-lg border text-sm"
               style={{
                 background: "var(--card)",
-                borderColor: "var(--border)",
+                borderColor: "var(--border-strong)",
                 color: "var(--foreground)",
               }}
             >

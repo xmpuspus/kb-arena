@@ -233,7 +233,7 @@ export default function Nav() {
               className="mt-2 w-full rounded border px-3 py-2 text-sm outline-none"
               style={{
                 background: "var(--background)",
-                borderColor: "var(--border)",
+                borderColor: "var(--border-strong)",
                 color: "var(--foreground)",
               }}
             />
@@ -252,7 +252,7 @@ export default function Nav() {
                   type="button"
                   onClick={() => setTokenOpen(false)}
                   className="rounded border px-3 py-2 text-sm font-medium"
-                  style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+                  style={{ borderColor: "var(--border-strong)", color: "var(--foreground)" }}
                 >
                   Cancel
                 </button>

@@ -305,7 +305,7 @@ export default function RetrieverLabPage() {
             className="px-3 py-1.5 rounded-lg border text-sm disabled:opacity-50"
             style={{
               background: "var(--card)",
-              borderColor: "var(--border)",
+              borderColor: "var(--border-strong)",
               color: "var(--foreground)",
             }}
           >
@@ -342,7 +342,7 @@ export default function RetrieverLabPage() {
               className="px-3 py-1.5 rounded-lg border text-sm"
               style={{
                 background: "var(--card)",
-                borderColor: "var(--border)",
+                borderColor: "var(--border-strong)",
                 color: "var(--foreground)",
               }}
             >
@@ -396,7 +396,7 @@ export default function RetrieverLabPage() {
               className="w-full min-w-0 px-3 py-1.5 rounded-lg border text-sm sm:flex-1 sm:max-w-2xl"
               style={{
                 background: "var(--card)",
-                borderColor: "var(--border)",
+                borderColor: "var(--border-strong)",
                 color: "var(--foreground)",
               }}
             >

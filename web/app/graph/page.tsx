@@ -323,7 +323,7 @@ export default function GraphPage() {
             onChange={(e) => handleCorpusChange(e.target.value)}
             disabled={buildStatus === "building"}
             className="px-3 py-1.5 rounded-lg border text-sm"
-            style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
+            style={{ background: "var(--card)", borderColor: "var(--border-strong)", color: "var(--foreground)" }}
           >
             {corpora.map((c) => (
               <option key={c.value} value={c.value}>{c.label}</option>

@@ -830,7 +830,7 @@ export default function DecidePage() {
           onClick={() => goto(Math.max(1, step - 1))}
           disabled={step === 1}
           className="rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-40"
-          style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+          style={{ borderColor: "var(--border-strong)", color: "var(--foreground)" }}
         >
           Back
         </button>

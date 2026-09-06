@@ -779,7 +779,7 @@ export default function GraphViewer({ nodes, edges, onNodeClick }: Props) {
           className="flex-1 px-3 py-1.5 rounded border text-sm outline-none"
           style={{
             background: "var(--card)",
-            borderColor: "var(--border)",
+            borderColor: "var(--border-strong)",
             color: "var(--foreground)",
           }}
         />

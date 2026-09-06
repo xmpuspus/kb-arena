@@ -34,7 +34,11 @@ function defaultSelection(catalog: StrategyCatalogRecord[]): Set<Strategy> {
   return new Set(catalog.filter((r) => r.default_benchmark).map((r) => r.name));
 }
 
+import { isSafeId, UNSAFE_COMMAND } from "@/lib/decide";
+
 const NOTHING_PICKED = "Pick at least one strategy. An empty pick is not a run.";
+const NO_CORPUS =
+  "This deployment reported no corpus, so there is no name to put in a command.";
 
 export default function StrategyRunPanel({ corpora }: Props) {
   const [catalog, setCatalog] = useState<StrategyCatalogRecord[]>(DEFAULT_STRATEGY_CATALOG);
@@ -96,7 +100,12 @@ export default function StrategyRunPanel({ corpora }: Props) {
   const strategyArg = selectedNames.join(",");
 
   const benchmarkCommand = useMemo(() => {
+    if (corpora.length === 0) return NO_CORPUS;
     if (!strategyArg) return NOTHING_PICKED;
+    // The corpus and every strategy name reach a line a reader pastes into a
+    // terminal, so this panel refuses what the API refuses. decide.ts holds the
+    // same check, and compare.py holds the pattern both read from.
+    if (![corpus, ...selectedNames].every(isSafeId)) return UNSAFE_COMMAND;
     const parts = ["kb-arena", "benchmark", "--corpus", corpus, "--strategy", strategyArg];
     if (topK !== 5) parts.push("--top-k", String(topK));
     if (tier !== 0) parts.push("--tier", String(tier));
@@ -104,16 +113,18 @@ export default function StrategyRunPanel({ corpora }: Props) {
     if (seed.trim()) parts.push("--seed", seed.trim());
     if (referenceFree) parts.push("--reference-free");
     return parts.join(" ");
-  }, [corpus, strategyArg, topK, tier, split, seed, referenceFree]);
+  }, [corpora, corpus, selectedNames, strategyArg, topK, tier, split, seed, referenceFree]);
 
   const retrieverLabCommand = useMemo(() => {
+    if (corpora.length === 0) return NO_CORPUS;
     if (!strategyArg) return NOTHING_PICKED;
+    if (![corpus, ...selectedNames].every(isSafeId)) return UNSAFE_COMMAND;
     const parts = ["kb-arena", "retriever-lab", "--corpus", corpus, "--strategies", strategyArg];
     if (topK !== 5) parts.push("--top-k", String(topK));
     if (split) parts.push("--split", split);
     if (ceilingK.trim()) parts.push("--ceiling-k", ceilingK.trim());
     return parts.join(" ");
-  }, [corpus, strategyArg, topK, split, ceilingK]);
+  }, [corpora, corpus, selectedNames, strategyArg, topK, split, ceilingK]);
 
   async function copyCommand(command: string, which: "benchmark" | "lab") {
     try {
@@ -203,7 +214,7 @@ export default function StrategyRunPanel({ corpora }: Props) {
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
-            disabled={nothingPicked}
+            disabled={nothingPicked || corpora.length === 0}
             onClick={() => copyCommand(benchmarkCommand, "benchmark")}
             className="px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
             style={{ background: "var(--accent)", color: "#fff" }}
@@ -350,9 +361,10 @@ export default function StrategyRunPanel({ corpora }: Props) {
               </span>
               <button
                 type="button"
+                disabled={nothingPicked || corpora.length === 0}
                 onClick={() => copyCommand(retrieverLabCommand, "lab")}
-                className="text-xs px-2 py-1 rounded border"
-                style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+                className="text-xs px-2 py-1 rounded border disabled:opacity-50"
+                style={{ borderColor: "var(--border-strong)", color: "var(--foreground)" }}
               >
                 {copied === "lab" ? "Copied" : "Copy command"}
               </button>

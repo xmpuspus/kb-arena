@@ -27,8 +27,23 @@ def _pages() -> list[Path]:
 
 
 def _opening_tag(lines: list[str], index: int) -> str:
-    """The text of one JSX opening tag, which can run over several lines."""
-    return " ".join(lines[index : index + 14]).split(">")[0] + ">"
+    """The text of one JSX opening tag, which can run over several lines.
+
+    Splitting on the first ">" cuts the tag at an arrow function, so a style
+    written after an onClick handler stayed invisible to these checks. The scan
+    below steps over "=>" and stops at the real tag end.
+    """
+    text = " ".join(lines[index : index + 14])
+    position = 0
+    while position < len(text):
+        found = text.find(">", position)
+        if found == -1:
+            return text
+        if found > 0 and text[found - 1] == "=":
+            position = found + 1
+            continue
+        return text[: found + 1]
+    return text
 
 
 def _token(name: str) -> str:
@@ -163,4 +178,20 @@ def test_an_empty_strategy_pick_refuses_instead_of_running_everything():
     ), "an empty pick must not fall back to every strategy"
     assert "NOTHING_PICKED" in panel
     assert panel.count("if (!strategyArg) return NOTHING_PICKED;") == 2
-    assert "disabled={nothingPicked}" in panel
+    assert "disabled={nothingPicked || corpora.length === 0}" in panel
+
+
+def test_the_run_panel_refuses_a_value_the_tool_would_refuse():
+    """The panel builds a line a reader pastes into a shell, so it validates.
+
+    decide.ts closed this for the values that arrive from the URL. The run panel
+    takes its corpus from the API and its strategy names from the catalog, and
+    both reached the command with no check.
+    """
+    panel = (WEB / "components" / "StrategyRunPanel.tsx").read_text()
+    assert 'from "@/lib/decide"' in panel, "reuse the one validator, do not copy the pattern"
+    guard = "if (![corpus, ...selectedNames].every(isSafeId)) return UNSAFE_COMMAND;"
+    assert panel.count(guard) == 2
+    # An empty corpus list left the built-in default in place, so the panel
+    # offered a command for a corpus the deployment never reported.
+    assert panel.count("if (corpora.length === 0) return NO_CORPUS;") == 2

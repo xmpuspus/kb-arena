@@ -288,7 +288,7 @@ export default function DemoPage() {
               key={q}
               onClick={() => { setQuery(q); inputRef.current?.focus(); }}
               className="text-xs px-2.5 py-1 rounded-lg border transition-opacity hover:opacity-70 text-left"
-              style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+              style={{ borderColor: "var(--border-strong)", color: "var(--muted)" }}
             >
               {q.length > 50 ? q.slice(0, 50) + "..." : q}
             </button>
@@ -320,7 +320,7 @@ export default function DemoPage() {
               }}
               disabled={readOnly || checking}
               className="text-xs px-2 py-1 rounded border transition-colors hover:opacity-70 disabled:opacity-30"
-              style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+              style={{ borderColor: "var(--border-strong)", color: "var(--foreground)" }}
             >
               Try again
             </button>
