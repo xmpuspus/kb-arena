@@ -491,9 +491,15 @@ def test_a_live_graph_build_retires_the_read_that_it_replaces():
     source = (ROOT / "web" / "app" / "graph" / "page.tsx").read_text()
     build = source.split("async function handleLiveBuild()")[1]
 
+    head = build.split("try {")[0]
     assert (
-        "readTicket.current += 1;" in build.split("try {")[0]
+        "readTicket.current += 1;" in head
     ), "handleLiveBuild must retire the in-flight read before it starts"
+    # Retiring the ticket alone left the page loading for ever, because only
+    # the read's own handler cleared that state.
+    assert (
+        "setLoading(false);" in head
+    ), "handleLiveBuild must take over the pending state it retires"
 
 
 def test_every_vote_outcome_drops_a_reply_for_a_corpus_the_reader_left():

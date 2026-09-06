@@ -150,7 +150,12 @@ export default function GraphPage() {
     // A read still in flight when the build starts describes the graph the
     // build is replacing. Retiring the ticket here stops its failure from
     // writing an error over a build that is already streaming entities.
+    //
+    // The read owned the pending state, and only its own handler cleared it.
+    // Retiring the ticket alone left the page loading for ever, so the build
+    // takes that state over here. `buildStatus` is the indicator from now on.
     readTicket.current += 1;
+    setLoading(false);
     // A build streams its own entities, so the earlier read failure no longer
     // describes what is on screen.
     setReadError("");
