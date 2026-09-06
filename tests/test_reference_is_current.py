@@ -175,5 +175,5 @@ def test_every_strategy_appears_in_the_strategy_catalog_reference():
 def test_the_readme_links_every_reference():
     readme = (ROOT / "README.md").read_text()
 
-    for name in ("reference-cli", "reference-http", "reference-environment"):
+    for name in ("reference-cli", "reference-http", "reference-environment", "strategy-catalog"):
         assert name in readme, f"the README does not link docs/{name}.md"

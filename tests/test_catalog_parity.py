@@ -178,3 +178,21 @@ def test_the_benchmark_help_names_every_strategy():
     # It also says which ones `all` leaves out, so a user is not surprised.
     for name in set(CATALOG_NAMES) - set(default_strategy_names()):
         assert name in help_text.split("Not in 'all':")[-1]
+
+
+def test_the_readme_prose_names_every_strategy_the_default_set_leaves_out():
+    """The prose above the table said two different things, and both were wrong.
+
+    One paragraph named four excluded strategies and the next named a different
+    four. The table's Default column was right the whole time, and the test that
+    read it passed. A reader reads the sentence first.
+    """
+    readme = (ROOT / "README.md").read_text()
+    intro = readme.split("| Strategy | Architecture |")[0]
+
+    for spec in STRATEGY_CATALOG:
+        if spec.default_benchmark:
+            continue
+        assert (
+            spec.label in intro
+        ), f"the README does not say {spec.label} is out of the default set"
