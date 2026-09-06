@@ -24,7 +24,7 @@ export default function BenchmarkPage() {
   const [corpus, setCorpus] = useState("all");
   const [view, setView] = useState<ViewMode>("both");
   const [rows, setRows] = useState<Row[]>([]);
-  const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "ok" | "refused">("loading");
   const [failure, setFailure] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [corpora, setCorpora] = useState(CORPORA);
@@ -49,12 +49,12 @@ export default function BenchmarkPage() {
         if (!active) return;
         setRows([]);
         setFailure(err instanceof Error ? err.message : BENCHMARK_UNAVAILABLE);
-        setStatus("error");
+        setStatus("refused");
       });
     return () => {
       active = false;
     };
-  }, [corpus, tokenEpoch, attempt]);
+  }, [corpus, attempt, tokenEpoch]);
 
   const corpusLabel = corpora.find((c) => c.value === corpus)?.label ?? "all corpora";
   const runCommand = `kb-arena benchmark --corpus ${corpus === "all" ? "aws-compute" : corpus}`;
@@ -116,7 +116,7 @@ export default function BenchmarkPage() {
       </div>
 
       {/* Content */}
-      {status === "error" && (
+      {status === "refused" && (
         <FetchError
           title="The benchmark results did not load"
           message={failure}

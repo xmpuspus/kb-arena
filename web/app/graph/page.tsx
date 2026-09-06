@@ -248,7 +248,7 @@ export default function GraphPage() {
     return () => {
       active = false;
     };
-  }, [corpus, tokenEpoch, attempt]);
+  }, [corpus, attempt, tokenEpoch]);
 
 
 

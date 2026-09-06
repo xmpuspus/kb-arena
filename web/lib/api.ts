@@ -332,9 +332,11 @@ export async function fetchGraphData(corpus: string = "all"): Promise<GraphData>
   });
   if (res.status === 401) throw new Error(GRAPH_UNAUTHORIZED);
   // `connected: false` reads as "the graph database is down", which is a claim
-  // about the deployment. Every failed read is a failure to read, and none of
-  // them is that claim.
-  if (!res.ok) throw new Error(GRAPH_UNAVAILABLE);
+  // about the deployment. A rate limit, a server error and every other failed
+  // read are failures to read, and none of them is that claim.
+  if (res.status === 429 || res.status >= 500 || !res.ok) {
+    throw new Error(GRAPH_UNAVAILABLE);
+  }
   return await res.json().catch(() => {
     throw new Error(GRAPH_UNAVAILABLE);
   });
@@ -459,7 +461,10 @@ export async function fetchBenchmarkResults(
     throw new Error(BENCHMARK_UNAVAILABLE);
   });
   if (res.status === 401) throw new Error(BENCHMARK_UNAUTHORIZED);
-  if (!res.ok) throw new Error(BENCHMARK_UNAVAILABLE);
+  // A rate limit and a server error are failures to read, not results.
+  if (res.status === 429 || res.status >= 500 || !res.ok) {
+    throw new Error(BENCHMARK_UNAVAILABLE);
+  }
   const data = await res.json().catch(() => {
     throw new Error(BENCHMARK_UNAVAILABLE);
   });
