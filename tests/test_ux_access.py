@@ -325,3 +325,48 @@ def test_the_truncation_notice_describes_the_scan_that_ran():
     assert "sits in the newest" not in reason, "the scan does not pick the newest entries"
     assert "Older directories went unread" not in reason
     assert "whichever directories the filesystem lists first" in reason
+
+
+def test_the_run_panel_keeps_top_k_inside_what_retrieval_accepts():
+    """A command the panel offers must be a command the tool will run.
+
+    `kb_arena/strategies/base.py` refuses a top-k outside 1 to 1000, and the
+    controls carried a minimum only.
+    """
+    base = (ROOT / "kb_arena" / "strategies" / "base.py").read_text()
+    limit = re.search(r"^MAX_RETRIEVAL_CANDIDATES = (\d+)$", base, re.MULTILINE)
+    assert limit, "kb_arena/strategies/base.py must declare the retrieval bound"
+
+    panel = (WEB / "components" / "StrategyRunPanel.tsx").read_text()
+    declared = re.search(r"^const MAX_RETRIEVAL_CANDIDATES = (\d+);$", panel, re.MULTILINE)
+    assert declared, "the panel must declare the same bound"
+    assert declared.group(1) == limit.group(1), "the panel copy drifted from the tool"
+    assert panel.count("if (!kValuesFit) return OUT_OF_RANGE;") == 2
+    assert panel.count("max={MAX_RETRIEVAL_CANDIDATES}") == 2
+
+
+def test_neither_truncation_notice_claims_the_newest_runs():
+    """The claim lived in two places, and one fix reached only one of them."""
+    lib = (WEB / "lib" / "decide.ts").read_text()
+    page = (WEB / "app" / "decide" / "page.tsx").read_text()
+    for name, source in (("decide.ts", lib), ("decide/page.tsx", page)):
+        assert (
+            "newest" not in source or "the newest run can be one it never opened" in source
+        ), f"{name} still describes the scanned set as the newest"
+    assert "holds the newest {bundlesTruncated}" not in page
+
+
+def test_the_corpus_reader_checks_its_entries():
+    """`corpora: [null]` reached the page and crashed on c.questionCount."""
+    lib = (WEB / "lib" / "decide.ts").read_text()
+    reader = lib[lib.index("export async function fetchCorporaOrFail") :]
+    reader = reader[: reader.index("\n}")]
+    assert 'typeof fields.value !== "string"' in reader
+    assert "questionCount" in reader
+
+
+def test_the_evidence_reader_checks_the_types_the_table_reads():
+    """`command: "..."` passed an object check and crashed on join()."""
+    lib = (WEB / "lib" / "decide.ts").read_text()
+    assert "const listsAreLists =" in lib
+    assert '["command", "results"]' in lib

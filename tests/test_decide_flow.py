@@ -272,7 +272,10 @@ def test_a_malformed_success_never_becomes_an_empty_domain_answer():
     assert corpora and "Array.isArray(data.corpora) ? data.corpora : []" not in corpora.group(
         0
     ), "an unreadable body became an empty corpus list, which claims the deployment is empty"
-    assert "if (!Array.isArray(data.corpora)) throw new Error(CORPORA_UNREADABLE);" in source
+    # The array check grew into a per-entry check, because `corpora: [null]`
+    # passed the array test and crashed the page on `c.questionCount`.
+    assert "Array.isArray(data.corpora) &&" in source
+    assert "if (!shaped) throw new Error(CORPORA_UNREADABLE);" in source
 
     compare = re.search(r"export async function fetchCompare\(.*?\n\}", source, re.S)
     assert compare, "web/lib/decide.ts must export fetchCompare"

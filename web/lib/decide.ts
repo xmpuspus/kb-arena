@@ -137,8 +137,21 @@ export async function fetchCorporaOrFail(): Promise<CorpusInfo[]> {
   // A body this page cannot parse is a failed read. Falling back to an empty
   // array turned it into "this deployment holds no corpus", which is a claim
   // about the deployment that nothing supports.
-  if (!Array.isArray(data.corpora)) throw new Error(CORPORA_UNREADABLE);
-  return data.corpora;
+  // The array alone was the check, so `corpora: [null]` reached the page and
+  // crashed on `c.questionCount`. Every entry needs the name the page reads and
+  // a number where it reads a number.
+  const shaped =
+    Array.isArray(data.corpora) &&
+    data.corpora.every((entry) => {
+      if (entry === null || typeof entry !== "object") return false;
+      const fields = entry as Record<string, unknown>;
+      if (typeof fields.value !== "string") return false;
+      return ["questionCount", "reviewedQuestionCount", "draftQuestionCount"].every(
+        (key) => fields[key] === undefined || typeof fields[key] === "number"
+      );
+    });
+  if (!shaped) throw new Error(CORPORA_UNREADABLE);
+  return data.corpora as CorpusInfo[];
 }
 
 export interface EvidenceAnswer {
@@ -179,7 +192,26 @@ export async function fetchEvidenceBundles(corpus: string): Promise<EvidenceAnsw
   // that each unreadable entry is a name the page can print.
   const bundlesAreShaped =
     Array.isArray(data.bundles) &&
-    data.bundles.every((bundle) => bundle !== null && typeof bundle === "object");
+    data.bundles.every((bundle) => {
+      if (bundle === null || typeof bundle !== "object") return false;
+      const fields = bundle as Record<string, unknown>;
+      // Every field is optional, so absent is fine. Present with the wrong type
+      // is not: the table calls `command.join(" ")`, which a string answers with
+      // a TypeError rather than a value.
+      const listsAreLists = ["command", "results"].every(
+        (key) => fields[key] === undefined || Array.isArray(fields[key])
+      );
+      const textIsText = [
+        "run_id",
+        "corpus",
+        "created_at",
+        "why_not_citable",
+        "question_set_fingerprint",
+        "review_question_set",
+        "review_split",
+      ].every((key) => fields[key] === undefined || typeof fields[key] === "string");
+      return listsAreLists && textIsText;
+    });
   const unreadableIsShaped =
     Array.isArray(data.unreadable) && data.unreadable.every((name) => typeof name === "string");
   if (!bundlesAreShaped || !unreadableIsShaped) {

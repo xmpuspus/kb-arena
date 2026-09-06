@@ -620,8 +620,9 @@ export default function DecidePage() {
               {bundlesError && <Refusal text={bundlesError} />}
               {bundlesTruncated > 0 && (
                 <p className="text-xs" style={{ color: "var(--muted)" }}>
-                  This list holds the newest {bundlesTruncated} run directories only. Older runs
-                  exist and this page did not read them.
+                  This list covers the {bundlesTruncated} run directories the scan reached. It
+                  stops at a fixed count and reads whichever directories the filesystem lists
+                  first, so the newest run can be one it never opened.
                 </p>
               )}
               {bundlesUnreadable.length > 0 && (
