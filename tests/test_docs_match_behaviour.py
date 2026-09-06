@@ -134,7 +134,10 @@ def test_the_cli_help_says_what_label_chunks_really_does():
 def test_the_leaderboard_shows_the_build_its_copy_names():
     """The copy said rows are distinguished by build and the table never showed one."""
     page = (ROOT / "web" / "app" / "leaderboard" / "page.tsx").read_text()
-    assert "build?: string;" in page, "the row type must carry what the API returns"
+    # The row shape moved into the one parser that turns the answer into rows,
+    # so the field is asserted where it now lives.
+    client = (ROOT / "web" / "lib" / "api.ts").read_text()
+    assert "build?: string;" in client, "the row type must carry what the API returns"
     assert "row.build" in page, "and the table must render it"
     assert "build unrecorded" in page, "a run with no version or commit says so"
 

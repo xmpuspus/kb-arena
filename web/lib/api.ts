@@ -361,6 +361,98 @@ export async function fetchServerStatus(): Promise<ServerStatus | null> {
   }
 }
 
+export const LEADERBOARD_MALFORMED =
+  "The leaderboard answer did not carry the rows this page reads.";
+
+export interface LeaderboardRow {
+  corpus: string;
+  strategy: string;
+  // Runs that differ in question set, qrels, judge or top_k never share a row.
+  compatibility_key: string;
+  build?: string;
+  manifest: {
+    question_split?: string | null;
+    judge_model?: string | null;
+    top_k?: number | null;
+  };
+  mixed_with: string[];
+  runs: number;
+  mean_accuracy: number | null;
+  mean_recall_at_5: number | null;
+  mean_ndcg_at_5: number | null;
+  mean_cost_usd: number | null;
+  mean_latency_ms: number | null;
+}
+
+export interface LeaderboardPage {
+  corpora: string[];
+  leaderboard: LeaderboardRow[];
+  filter: string;
+}
+
+const strings = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
+// A metric the answer did not carry is unknown, and the table prints "n/a" for
+// it. Reading a missing metric as zero would put a measurement on screen.
+const metric = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
+
+/**
+ * The one place the leaderboard answer becomes rows.
+ *
+ * A page that reads fields off an unchecked body renders whatever a wrong
+ * answer carries, and a check added at the call site guards one field and
+ * misses the next. `kb_arena/benchmark/result_schema.py` learned this on the
+ * Python side: one validated read made a class of defects unreachable instead
+ * of guarded.
+ *
+ * A body that is not an object, or that carries no `leaderboard` array, is a
+ * failed read. A row with no corpus or no strategy names no measurement, so it
+ * is dropped rather than rendered.
+ */
+export function parseLeaderboard(body: unknown): LeaderboardPage {
+  if (!body || typeof body !== "object") throw new Error(LEADERBOARD_MALFORMED);
+  const answer = body as Record<string, unknown>;
+  if (!Array.isArray(answer.leaderboard)) throw new Error(LEADERBOARD_MALFORMED);
+
+  const rows: LeaderboardRow[] = [];
+  for (const entry of answer.leaderboard) {
+    if (!entry || typeof entry !== "object") continue;
+    const row = entry as Record<string, unknown>;
+    if (typeof row.corpus !== "string" || typeof row.strategy !== "string") continue;
+    const manifest = (
+      row.manifest && typeof row.manifest === "object" ? row.manifest : {}
+    ) as Record<string, unknown>;
+    rows.push({
+      corpus: row.corpus,
+      strategy: row.strategy,
+      compatibility_key:
+        typeof row.compatibility_key === "string" ? row.compatibility_key : "legacy",
+      build: typeof row.build === "string" ? row.build : undefined,
+      manifest: {
+        question_split:
+          typeof manifest.question_split === "string" ? manifest.question_split : null,
+        judge_model: typeof manifest.judge_model === "string" ? manifest.judge_model : null,
+        top_k: metric(manifest.top_k),
+      },
+      mixed_with: strings(row.mixed_with),
+      runs: typeof row.runs === "number" && Number.isFinite(row.runs) ? row.runs : 0,
+      mean_accuracy: metric(row.mean_accuracy),
+      mean_recall_at_5: metric(row.mean_recall_at_5),
+      mean_ndcg_at_5: metric(row.mean_ndcg_at_5),
+      mean_cost_usd: metric(row.mean_cost_usd),
+      mean_latency_ms: metric(row.mean_latency_ms),
+    });
+  }
+
+  return {
+    corpora: strings(answer.corpora),
+    leaderboard: rows,
+    filter: typeof answer.filter === "string" ? answer.filter : "all",
+  };
+}
+
 export interface GraphData {
   nodes: { id: string; name: string; type: string; description?: string }[];
   edges: { source: string; target: string; type: string }[];

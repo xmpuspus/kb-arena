@@ -133,6 +133,13 @@ export default function ArenaPage() {
   const boardRequest = useRef(0);
   // The winner the reader picked, so a failed vote retries that same vote.
   const lastWinner = useRef<"a" | "b" | "tie">("tie");
+  // The corpus on screen right now. A vote reply lands later, and the state
+  // it closed over names the corpus the reader has already left.
+  const selectedCorpus = useRef(corpus);
+
+  useEffect(() => {
+    selectedCorpus.current = corpus;
+  }, [corpus]);
 
   // The corpus over the board changed, so the ratings under the old one go
   // before the new read starts. The match goes with them: its answers came
@@ -223,21 +230,26 @@ export default function ArenaPage() {
         // lost. Calling that a failed vote is the wrong claim.
         if (message.toLowerCase().includes("already voted")) {
           setVoteNotice("This match already carries a vote, so the retry changed nothing.");
-          fetchLeaderboard(corpus);
+          fetchLeaderboard(selectedCorpus.current);
           return;
         }
         throw new Error(message);
       }
       if (!isVoteResult(data)) throw new Error("Server returned an invalid vote response");
+      const votedCorpus = data.corpus ?? corpus;
+      // The reader moved to another corpus while this vote was in flight. The
+      // reply carries the voted match's corpus, and reading it in would put
+      // that corpus's ratings under the name now on screen.
+      if (votedCorpus !== selectedCorpus.current) return;
       setVoteResult(data);
       // The vote moved the match's own scope, so refresh that board.
-      fetchLeaderboard(data.corpus ?? corpus);
+      fetchLeaderboard(votedCorpus);
     } catch (err: unknown) {
       setError(readFailureMessage(err, "The vote got no answer."));
       // The request can fail after the server records the vote, so the client
       // cannot read the outcome from a transport failure. Re-read the board
       // rather than tell the reader the ratings held still.
-      fetchLeaderboard(corpus);
+      fetchLeaderboard(selectedCorpus.current);
     } finally {
       setVoting(false);
     }

@@ -248,7 +248,11 @@ def test_the_page_refreshes_the_matchs_own_board_after_a_vote():
     from pathlib import Path
 
     page = Path("web/app/arena/page.tsx").read_text()
-    assert "fetchLeaderboard(data.corpus ?? corpus)" in page
+    # The refreshed board is the match's own scope. The reply now carries that
+    # scope in a name, because a reply landing after a corpus change is
+    # dropped rather than read into the corpus now on screen.
+    assert "const votedCorpus = data.corpus ?? corpus;" in page
+    assert "fetchLeaderboard(votedCorpus)" in page
 
 
 @pytest.mark.asyncio
