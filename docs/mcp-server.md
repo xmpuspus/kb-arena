@@ -197,3 +197,26 @@ JSON-RPC over its stdin and stdout.
 Point the client's working directory, or its `KB_ARENA_DATASETS_PATH` and
 `KB_ARENA_RESULTS_PATH` settings, at the checkout or corpus root you want the
 tools to read.
+
+## The registry entry lives in `server.json`
+
+`server.json` in the repository root is the entry the MCP registry reads. It
+names the PyPI package, the stdio transport, and the two settings the server
+reads for its corpus and result paths.
+
+Check it before a release:
+
+```
+mcp-publisher validate
+```
+
+Publish it after the PyPI release for that version exists:
+
+```
+mcp-publisher login github
+mcp-publisher publish
+```
+
+The version in `server.json` must match the version on PyPI. The registry
+resolves the package from PyPI, so a version PyPI does not hold fails there
+rather than here.

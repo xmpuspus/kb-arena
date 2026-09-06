@@ -1,0 +1,40 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.xmpuspus/kb-arena",
+  "description": "Compare retrieval architectures on your own docs, over eight typed tools.",
+  "version": "0.11.0",
+  "repository": {
+    "url": "https://github.com/xmpuspus/kb-arena",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/xmpuspus/kb-arena/blob/main/docs/mcp-server.md",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "kb-arena",
+      "version": "0.11.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeHint": "uvx",
+      "packageArguments": [],
+      "environmentVariables": [
+        {
+          "name": "KB_ARENA_DATASETS_PATH",
+          "description": "Directory that holds the corpora the server reads. Defaults to ./datasets.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "filepath"
+        },
+        {
+          "name": "KB_ARENA_RESULTS_PATH",
+          "description": "Directory that holds run results. Defaults to ./results.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "filepath"
+        }
+      ]
+    }
+  ]
+}
