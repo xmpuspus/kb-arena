@@ -684,7 +684,10 @@ export function bundleCaveats(bundle: EvidenceBundle | null): string[] {
   if (unspecified > 0) {
     lines.push(`${unspecified}${outOf} questions carry no review status.`);
   }
-  if (!counted && (drafts > 0 || unspecified > 0)) {
+  // Any recorded status needs a denominator, not just the two shown above. A
+  // block holding five human-reviewed and no total said nothing at all, and
+  // silence reads as a bundle that needs no warning.
+  if (!counted && recorded > 0) {
     lines.push(
       typeof total === "number"
         ? `The bundle records ${total} questions and more review statuses than that, so these counts have no denominator.`
@@ -703,7 +706,12 @@ export function bundleCaveats(bundle: EvidenceBundle | null): string[] {
       `The bundle records a status for ${reviewed + drafts + unspecified} of ${total} questions, so the rest are unaccounted for.`
     );
   }
-  if (review.note) lines.push(review.note);
+  // The bundle is arbitrary JSON, and React throws on an object child. An
+  // object here took the whole step-4 panel down rather than adding a line.
+  if (typeof review.note === "string" && review.note) lines.push(review.note);
+  else if (review.note !== undefined && typeof review.note !== "string") {
+    lines.push("The bundle records a review note this page cannot read.");
+  }
   if (
     bundle.question_set_fingerprint &&
     bundle.review_question_set &&

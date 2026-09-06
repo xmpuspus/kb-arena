@@ -619,6 +619,12 @@ def test_the_full_review_claim_needs_a_reviewed_count_that_reaches_the_total():
     assert "!unreadable" in guard
     # And the partial case says so rather than staying silent.
     assert "so the rest are unaccounted for" in body
+    # Any recorded status needs a denominator, not just the two shown above. A
+    # block holding five human-reviewed and no total used to say nothing.
+    assert "if (!counted && recorded > 0) {" in body
+    # The bundle is arbitrary JSON, and React throws on an object child.
+    assert 'typeof review.note === "string" && review.note' in body
+    assert "The bundle records a review note this page cannot read." in body
 
 
 def test_the_catalog_guard_refuses_a_strategy_nothing_implements():
