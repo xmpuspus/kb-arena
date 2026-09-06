@@ -207,15 +207,21 @@ synthetic question sets.
 
 ## Strategy catalog
 
-The catalog includes the strategies below. The default `all` benchmark excludes Rerank Vector,
-SQR, Late Interaction, and SPLADE. Rerank Vector needs the dependency for its selected backend,
-SQR needs the optional `quantum` dependency group, Late Interaction needs `late-interaction`, and
-SPLADE needs `splade`. The API reports loaded and unavailable strategies at `GET /strategies`.
-The catalog includes the strategies below. The default `all` benchmark excludes Rerank Vector, SQR,
-LightRAG, and Agentic. Rerank Vector needs the dependency for its selected backend, SQR needs the
-optional `quantum` dependency group, LightRAG needs a reachable Neo4j (a degraded result would fail
-the benchmark run rather than the strategy), and Agentic costs several LLM calls per question. The
-API reports loaded and unavailable strategies at `GET /strategies`.
+<!-- default-set-exclusions -->
+The catalog holds 19 strategies. The default `all` benchmark runs 9 of them and leaves
+out 10: LightRAG, Metadata Filtered, Temporal, Rerank Vector, SQR, HyDE, Multi-Query, Late
+Interaction, SPLADE and Agentic. Each one is out for one of two reasons the catalog records.
+
+Four need an optional dependency group a plain install does not carry: Rerank Vector,
+SQR, Late Interaction and SPLADE. Rerank Vector installs per backend, so read its entry
+in the strategy catalog rather than one command.
+
+Seven are marked experimental, which means they run but carry no general performance
+claim: LightRAG, Metadata Filtered, Temporal, SQR, HyDE, Multi-Query and Agentic. SQR is
+in both lists.
+
+The API reports loaded and unavailable strategies at `GET /strategies`.
+<!-- /default-set-exclusions -->
 
 | Strategy | Architecture | Default | Notes |
 |---|---|:---:|---|
@@ -266,6 +272,7 @@ The [method guide](https://github.com/xmpuspus/kb-arena/blob/main/docs/methodolo
 - [Command reference](https://github.com/xmpuspus/kb-arena/blob/main/docs/reference-cli.md), generated from the code
 - [HTTP reference](https://github.com/xmpuspus/kb-arena/blob/main/docs/reference-http.md), every route and what it asks of a caller
 - [Environment reference](https://github.com/xmpuspus/kb-arena/blob/main/docs/reference-environment.md), every setting
+- [Release rollback](https://github.com/xmpuspus/kb-arena/blob/main/docs/release-rollback.md), how each published surface comes back
 - [Dataset adapters](https://github.com/xmpuspus/kb-arena/blob/main/docs/datasets.md)
 - [Changelog](https://github.com/xmpuspus/kb-arena/blob/main/CHANGELOG.md)
 - [Security policy](https://github.com/xmpuspus/kb-arena/blob/main/SECURITY.md)
