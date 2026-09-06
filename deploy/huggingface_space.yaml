@@ -1,22 +1,7 @@
-title: KB Arena
-emoji: 📚
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-app_port: 8000
-pinned: true
-
-# This is the HuggingFace Space metadata file. To deploy:
-#   1. Create a new HF Space (Docker SDK)
-#   2. Push this repo into the Space's git remote
-#   3. The Dockerfile in this repo runs uvicorn on port 8000
-#   4. The Space will start in DEMO MODE automatically because no API keys are
-#      set in the Space environment — the dashboard, /api/leaderboard,
-#      /api/benchmark/results work read-only; chat/arena/tools return 503.
+# The Space files moved. deploy/hf-space-static/ holds the free static deploy,
+# and deploy/hf-space-docker/ holds the API deploy, which needs a PRO account.
+# Read docs/deployment.md for what each one serves and how to push it.
 #
-# To enable live chat on a private Space, set these as secrets in the Space settings:
-#   KB_ARENA_ANTHROPIC_API_KEY  (or KB_ARENA_OPENAI_API_KEY)
-#   KB_ARENA_API_TOKEN          (then visitors must include Authorization header)
-#   KB_ARENA_DEMO_MODE=false
-#
-# Public Spaces SHOULD keep KB_ARENA_DEMO_MODE=true to avoid credit drainage.
+# The note this file used to carry is wrong now. It said a Space with no API
+# key enters demo mode by itself. The app still does that, and the content read
+# gate refuses that exact case, so the Space sets KB_ARENA_DEMO_MODE on purpose.

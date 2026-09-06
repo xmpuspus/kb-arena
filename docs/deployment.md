@@ -55,6 +55,103 @@ checks that, with nothing started yet.
 docker compose config
 ```
 
+## The free Space serves the dashboard, with sample data
+
+A static Space costs nothing on Hugging Face, and it runs no process. The
+dashboard is a static Next.js export, so a static Space can serve it. That
+deploy runs at <https://xmpuspus-kb-arena.static.hf.space>, and its files sit
+in `deploy/hf-space-static/`.
+
+The Space serves `kb_arena/static/`, the same dashboard build that the Python
+package ships. No corpus file travels with it, and no key. Every `/api/...`
+call from those pages answers 404, because no server stands behind them.
+
+Read every number there as sample data. The benchmark page falls back to the
+sample rows inside the dashboard, and it marks that state: "Checked sample run.
+Use kb-arena benchmark to evaluate your corpus." The table footer under those
+rows still reads "Results from your benchmark runs", and no run stands behind
+this deploy. The graph page draws a sample graph and names a Neo4j outage as
+the cause, though this Space has no database to lose.
+
+The host answers exact file paths only. `/` redirects to `/index.html` and
+opens the dashboard. A second page needs its file, for example
+`/benchmark/index.html`. A request for `/benchmark/` redirects to
+`huggingface.co/benchmark`, so a click in the top navigation stays put. The
+export writes `benchmark/index.html`, and this host does not resolve a
+directory to that file.
+
+Create the Space once, then push the dashboard.
+
+```bash
+# The token goes to curl on stdin. A shell substitution in the argument list
+# puts it in the process table, where any local process reads it.
+printf 'Authorization: Bearer %s\n' "$(cat ~/.cache/huggingface/token)" |
+  curl -s -X POST https://huggingface.co/api/repos/create \
+    -H @- \
+    -H "Content-Type: application/json" \
+    -d '{"type":"space","name":"kb-arena","private":false,"sdk":"static"}'
+deploy/hf-space-static/push.sh
+```
+
+Run `python3 scripts/sync_frontend_bundle.py` before that push when you change
+the web sources. The script copies the bundle as it finds it, so a stale bundle
+deploys without a warning.
+
+## The API Space needs a paid Hugging Face account
+
+Hugging Face refuses to create a Docker Space on a free account, and answers
+this each time: "Static Spaces are free for everyone, but hosting Gradio and
+Docker Spaces on free cpu-basic requires a PRO subscription." Buy PRO for the
+`xmpuspus` account, or choose another container host. One name carries one
+Space, so this deploy replaces the static one, or it takes a new name.
+
+The files wait in `deploy/hf-space-docker/`: a `README.md` that carries the
+Hugging Face Space front matter, a `Dockerfile`, and `push.sh`. It installs
+`kb-arena==0.11.0` from PyPI, so the Space builds no source from this
+repository. A `docker build` on that directory, and a container run in demo
+mode, check the image with no Space at all.
+
+The Dockerfile copies the packaged `aws-compute_*.json` results out of the
+wheel, and nothing else. The datasets directory inside the image stays empty,
+so the Space holds no corpus documents at all. The `nist-800-171-r3` corpus
+never reaches the Space. Its question set is a machine-generated draft that
+waits on a qualified reviewer, so it stays off a public page.
+
+The Dockerfile sets `KB_ARENA_DEMO_MODE=true`, and that one flag decides two
+things. Chat, arena, and tool routes answer 503, so a public page spends no
+model credits. The content read gate treats the corpus as published, so the
+benchmark route serves the recorded results to any reader. Demo mode that the
+app turns on for itself, for lack of a model key, does not open those reads.
+The Space carries no model key and no `KB_ARENA_API_TOKEN`.
+
+Create the Space once. The script pushes to it, and it cannot create it.
+
+```bash
+# The token goes to curl on stdin, for the same reason as the static create.
+printf 'Authorization: Bearer %s\n' "$(cat ~/.cache/huggingface/token)" |
+  curl -s -X POST https://huggingface.co/api/repos/create \
+    -H @- \
+    -H "Content-Type: application/json" \
+    -d '{"type":"space","name":"kb-arena","private":false,"sdk":"docker"}'
+```
+
+Then push, for that first deploy and for every change after it:
+
+```bash
+deploy/hf-space-docker/push.sh
+```
+
+The script reads the token from `HF_TOKEN`, or from
+`~/.cache/huggingface/token`. It clones the Space, copies the two files, and
+pushes. Hugging Face rebuilds the image on that push. These two commands
+report the build stage and then the running app.
+
+```bash
+curl -s https://huggingface.co/api/spaces/xmpuspus/kb-arena \
+  | python3 -c "import json, sys; print(json.load(sys.stdin)['runtime']['stage'])"
+curl -s https://xmpuspus-kb-arena.hf.space/health
+```
+
 ## Environment variables that change deployment behavior
 
 The full list lives in [the environment reference](reference-environment.md),

@@ -162,3 +162,39 @@ def test_open_mode_rejects_spoofed_loopback_header_from_remote_peer(monkeypatch)
 
     assert exc_info.value.status_code == 401
     assert exc_info.value.detail == "api_token_required_for_remote_access"
+
+
+def test_every_public_read_route_carries_the_rate_limit():
+    """A route that walks the results tree on every call needs the limiter.
+
+    `require_read_auth` calls `check_rate_limit` itself, so a gated route is
+    covered. The open aggregate routes had no limiter at all, and the hosted
+    deployment note claimed 60 requests a minute for the whole API. A Codex pass
+    proved the claim false against `/api/leaderboard`.
+    """
+    from kb_arena.chatbot import api
+    from kb_arena.chatbot.auth import check_rate_limit, require_read_auth
+
+    # `/health` and `/ready` stay out on purpose. A platform polls a liveness
+    # probe, and a limiter there reports the deployment as down under its own
+    # health check. Everything else that reads the results or datasets tree is
+    # in this set.
+    open_reads = {
+        "/api/leaderboard",
+        "/api/corpora",
+        "/api/retriever-lab/runs",
+        "/api/arena/leaderboard",
+        "/strategies",
+    }
+    seen = set()
+    for route in api.app.routes:
+        path = getattr(route, "path", None)
+        if path not in open_reads:
+            continue
+        seen.add(path)
+        calls = {d.dependency for d in getattr(route, "dependencies", [])}
+        assert (
+            check_rate_limit in calls or require_read_auth in calls
+        ), f"{path} answers without a token and without a rate limit"
+
+    assert seen == open_reads, f"these routes are gone or renamed: {sorted(open_reads - seen)}"

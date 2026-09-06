@@ -29,7 +29,7 @@ from kb_arena.arena.engine import ArenaEngine, scope_key
 from kb_arena.benchmark.compare import compare_result_files, resolve_result_path
 from kb_arena.benchmark.manifest import build_identity, compatibility_key, manifest_summary
 from kb_arena.benchmark.review import REVIEWED, STATUSES, review_summary
-from kb_arena.chatbot.auth import require_auth, require_read_auth
+from kb_arena.chatbot.auth import check_rate_limit, require_auth, require_read_auth
 from kb_arena.chatbot.session import SessionStore
 from kb_arena.chatbot.tools_api import router as tools_router
 from kb_arena.exceptions import ArenaError, StrategyError
@@ -582,7 +582,7 @@ async def chat_stream(body: ChatRequest, request: Request) -> EventSourceRespons
     return EventSourceResponse(event_generator())
 
 
-@app.get("/api/corpora")
+@app.get("/api/corpora", dependencies=[Depends(check_rate_limit)])
 async def list_corpora() -> dict:
     """Discover available corpora with pipeline status from the datasets directory."""
     from pathlib import Path
@@ -627,7 +627,7 @@ async def list_corpora() -> dict:
     return {"corpora": corpora}
 
 
-@app.get("/api/retriever-lab/runs")
+@app.get("/api/retriever-lab/runs", dependencies=[Depends(check_rate_limit)])
 async def retriever_lab_runs() -> dict:
     """List available retriever-lab runs (most recent first)."""
     base = _Path(settings.results_path)
@@ -760,7 +760,7 @@ async def benchmark_results(corpus: str = "all") -> dict:
     return {"results": rows, "source": "file"}
 
 
-@app.get("/strategies")
+@app.get("/strategies", dependencies=[Depends(check_rate_limit)])
 async def list_strategies(request: Request) -> dict:
     """List loaded names and the status of every built-in strategy."""
     from kb_arena.strategies.catalog import public_catalog
@@ -1085,7 +1085,7 @@ async def arena_vote(body: ArenaVoteRequest, request: Request):
     return result
 
 
-@app.get("/api/arena/leaderboard")
+@app.get("/api/arena/leaderboard", dependencies=[Depends(check_rate_limit)])
 async def arena_leaderboard(request: Request, corpus: str = "", rubric: str = "default"):
     """The ELO leaderboard for one corpus and rubric. Votes from other scopes never count."""
     # The scope names must match what a match request accepts, or a typo
@@ -1158,7 +1158,7 @@ def _pair_from(path: _Path, data: dict) -> tuple[str, str]:
     return corpus, strategy
 
 
-@app.get("/api/leaderboard")
+@app.get("/api/leaderboard", dependencies=[Depends(check_rate_limit)])
 async def leaderboard(request: Request, corpus: str = "all") -> dict:
     """Public read-only leaderboard of all benchmark runs across all corpora.
 
