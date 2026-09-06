@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo } from "react";
 import StateBanner from "@/components/StateBanner";
 import FetchError from "@/components/FetchError";
+import MetricNote from "@/components/MetricNote";
+import RowProvenance from "@/components/RowProvenance";
 import {
   parseLeaderboard,
   readFailureMessage,
@@ -64,11 +66,12 @@ export default function LeaderboardPage() {
         <h1 className="text-2xl font-bold tracking-tight">
           KB Arena Leaderboard
         </h1>
-        <p className="text-sm text-gray-600 mt-2 max-w-2xl">
+        <p className="text-sm mt-2 max-w-2xl" style={{ color: "var(--muted)" }}>
           Runs stored in this deployment, grouped by corpus, strategy, experiment key
           and build. Higher accuracy, Recall@5 and NDCG@5 are better. Lower cost and
           latency are better. Two rows with a different key or a different build
           measured different things, so read them side by side, not as one ranking.
+          A row is citable only when a reviewer checked every question under it.
         </p>
       </header>
 
@@ -80,7 +83,8 @@ export default function LeaderboardPage() {
           id="corpus-filter"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="border rounded px-3 py-1 text-sm"
+          className="rounded border px-3 py-1 text-sm"
+          style={{ background: "var(--card)", borderColor: "var(--border-strong)", color: "var(--foreground)" }}
         >
           {corpora.map((c) => (
             <option key={c} value={c}>
@@ -102,24 +106,41 @@ export default function LeaderboardPage() {
       {!data && !error && <p>Loading...</p>}
 
       {data && data.leaderboard.length === 0 && (
-        <p className="text-sm text-gray-600">
+        <p className="text-sm" style={{ color: "var(--muted)" }}>
           No benchmark runs yet. Run <code>kb-arena benchmark --corpus aws-compute</code>.
         </p>
       )}
 
       {data && data.leaderboard.length > 0 && (
-        <div className="overflow-x-auto border rounded">
+        <div className="overflow-x-auto rounded border" style={{ borderColor: "var(--border)" }}>
           <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 text-left">
+            <thead className="text-left" style={{ background: "var(--subtle)" }}>
               <tr>
                 <th className="px-3 py-2 font-medium">Corpus</th>
                 <th className="px-3 py-2 font-medium">Strategy</th>
-                <th className="px-3 py-2 font-medium">Experiment</th>
-                <th className="px-3 py-2 font-medium text-right">Accuracy</th>
-                <th className="px-3 py-2 font-medium text-right">Recall@5</th>
-                <th className="px-3 py-2 font-medium text-right">NDCG@5</th>
-                <th className="px-3 py-2 font-medium text-right">Cost (USD)</th>
-                <th className="px-3 py-2 font-medium text-right">Latency (ms)</th>
+                <th className="px-3 py-2 font-medium">Where this row came from</th>
+                <th className="px-3 py-2 font-medium text-right whitespace-nowrap">
+                  Accuracy
+                  <MetricNote metric="accuracy" align="left" />
+                </th>
+                <th className="px-3 py-2 font-medium text-right whitespace-nowrap">
+                  Recall@5
+                  <MetricNote metric="recall_at_5" align="left" />
+                </th>
+                <th className="px-3 py-2 font-medium text-right whitespace-nowrap">
+                  NDCG@5
+                  <MetricNote metric="ndcg_at_5" align="left" />
+                </th>
+                {/* The API averages each run's whole cost, not its cost for one
+                    question, so the header names a run. */}
+                <th className="px-3 py-2 font-medium text-right whitespace-nowrap">
+                  Cost per run (USD)
+                  <MetricNote metric="cost_per_run" align="left" />
+                </th>
+                <th className="px-3 py-2 font-medium text-right whitespace-nowrap">
+                  Latency (ms)
+                  <MetricNote metric="latency" align="left" />
+                </th>
                 <th className="px-3 py-2 font-medium text-right">Runs</th>
               </tr>
             </thead>
@@ -128,34 +149,20 @@ export default function LeaderboardPage() {
                 <tr key={`${row.corpus}-${row.strategy}-${row.compatibility_key}-${i}`} className="border-t">
                   <td className="px-3 py-2 font-mono">{row.corpus}</td>
                   <td className="px-3 py-2 font-mono">{row.strategy}</td>
-                  <td className="px-3 py-2 text-xs">
-                    <span
-                      className="font-mono"
-                      title={
-                        row.compatibility_key === "legacy"
-                          ? "Result file without a manifest"
-                          : `judge ${row.manifest?.judge_model ?? "?"}, split ${
-                              row.manifest?.question_split ?? "?"
-                            }, top_k ${row.manifest?.top_k ?? "?"}`
+                  <td className="px-3 py-2 align-top" style={{ minWidth: 220 }}>
+                    <RowProvenance
+                      compatibilityKey={row.compatibility_key}
+                      buildLabel={
+                        row.build && row.build !== "unrecorded"
+                          ? `build ${
+                              row.build.length > 14 ? `${row.build.slice(0, 14)}...` : row.build
+                            }`
+                          : "build unrecorded"
                       }
-                    >
-                      {row.compatibility_key === "legacy" ? "legacy" : row.compatibility_key.slice(0, 6)}
-                    </span>
-                    {row.build && row.build !== "unrecorded" && (
-                      <div style={{ color: "var(--muted)" }} title="The build that produced these runs">
-                        {row.build.length > 14 ? `${row.build.slice(0, 14)}...` : row.build}
-                      </div>
-                    )}
-                    {row.build === "unrecorded" && (
-                      <div style={{ color: "var(--muted)" }} title="These runs recorded no version or commit">
-                        build unrecorded
-                      </div>
-                    )}
-                    {row.mixed_with?.length > 0 && (
-                      <div style={{ color: "var(--muted)" }}>
-                        {row.mixed_with.length} other experiment{row.mixed_with.length === 1 ? "" : "s"} for this pair, not comparable
-                      </div>
-                    )}
+                      review={row.review}
+                      manifest={row.manifest}
+                      mixedWith={row.mixed_with ?? []}
+                    />
                   </td>
                   <td className="px-3 py-2 text-right">
                     {row.mean_accuracy != null ? (row.mean_accuracy * 100).toFixed(1) + "%" : "n/a"}
