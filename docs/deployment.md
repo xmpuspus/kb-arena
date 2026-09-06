@@ -83,10 +83,13 @@ directory to that file.
 Create the Space once, then push the dashboard.
 
 ```bash
-curl -s -X POST https://huggingface.co/api/repos/create \
-  -H "Authorization: Bearer $(cat ~/.cache/huggingface/token)" \
-  -H "Content-Type: application/json" \
-  -d '{"type":"space","name":"kb-arena","private":false,"sdk":"static"}'
+# The token goes to curl on stdin. A shell substitution in the argument list
+# puts it in the process table, where any local process reads it.
+printf 'Authorization: Bearer %s\n' "$(cat ~/.cache/huggingface/token)" |
+  curl -s -X POST https://huggingface.co/api/repos/create \
+    -H @- \
+    -H "Content-Type: application/json" \
+    -d '{"type":"space","name":"kb-arena","private":false,"sdk":"static"}'
 deploy/hf-space-static/push.sh
 ```
 
@@ -124,10 +127,12 @@ The Space carries no model key and no `KB_ARENA_API_TOKEN`.
 Create the Space once. The script pushes to it, and it cannot create it.
 
 ```bash
-curl -s -X POST https://huggingface.co/api/repos/create \
-  -H "Authorization: Bearer $(cat ~/.cache/huggingface/token)" \
-  -H "Content-Type: application/json" \
-  -d '{"type":"space","name":"kb-arena","private":false,"sdk":"docker"}'
+# The token goes to curl on stdin, for the same reason as the static create.
+printf 'Authorization: Bearer %s\n' "$(cat ~/.cache/huggingface/token)" |
+  curl -s -X POST https://huggingface.co/api/repos/create \
+    -H @- \
+    -H "Content-Type: application/json" \
+    -d '{"type":"space","name":"kb-arena","private":false,"sdk":"docker"}'
 ```
 
 Then push, for that first deploy and for every change after it:
