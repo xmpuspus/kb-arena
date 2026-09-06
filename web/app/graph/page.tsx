@@ -113,6 +113,10 @@ export default function GraphPage() {
   const [buildProgress, setBuildProgress] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const buildEpochRef = useRef(0);
+  // Only the newest read writes the graph or clears the pending state. The
+  // reply for the corpus the reader left can land last, and it turned the
+  // pending state off for the corpus now on screen.
+  const readTicket = useRef(0);
 
   useEffect(() => { fetchCorpora().then(setCorpora); }, []);
 
@@ -218,6 +222,8 @@ export default function GraphPage() {
     // A live build advances the epoch. Without this check, a slow first response
     // lands after the build finishes and overwrites the graph it just produced.
     const fetchEpoch = buildEpochRef.current;
+    const ticket = ++readTicket.current;
+    const isCurrentRead = () => active && ticket === readTicket.current;
     setLoading(true);
     setReadError("");
     fetchGraphData(corpus)
@@ -225,7 +231,7 @@ export default function GraphPage() {
         // A refusal is not an outage of the graph database, so it must not
         // set `connected: false` and show an empty graph as a real answer.
         // The example map goes too, because it would read as this corpus.
-        if (active) {
+        if (isCurrentRead()) {
           setNodes([]);
           setEdges([]);
           setSampleMap(false);
@@ -235,7 +241,11 @@ export default function GraphPage() {
         return null;
       })
       .then((data) => {
-      if (!active || data === null) {
+      // A reply for the corpus the reader left says nothing about this one,
+      // and clearing the pending state on it names the new corpus over the
+      // last corpus's map.
+      if (!isCurrentRead()) return;
+      if (data === null) {
         setLoading(false);
         return;
       }
