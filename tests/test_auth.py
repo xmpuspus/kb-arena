@@ -175,11 +175,16 @@ def test_every_public_read_route_carries_the_rate_limit():
     from kb_arena.chatbot import api
     from kb_arena.chatbot.auth import check_rate_limit, require_read_auth
 
+    # `/health` and `/ready` stay out on purpose. A platform polls a liveness
+    # probe, and a limiter there reports the deployment as down under its own
+    # health check. Everything else that reads the results or datasets tree is
+    # in this set.
     open_reads = {
         "/api/leaderboard",
         "/api/corpora",
         "/api/retriever-lab/runs",
         "/api/arena/leaderboard",
+        "/strategies",
     }
     seen = set()
     for route in api.app.routes:

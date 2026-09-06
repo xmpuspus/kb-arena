@@ -760,7 +760,7 @@ async def benchmark_results(corpus: str = "all") -> dict:
     return {"results": rows, "source": "file"}
 
 
-@app.get("/strategies")
+@app.get("/strategies", dependencies=[Depends(check_rate_limit)])
 async def list_strategies(request: Request) -> dict:
     """List loaded names and the status of every built-in strategy."""
     from kb_arena.strategies.catalog import public_catalog

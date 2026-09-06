@@ -49,8 +49,10 @@ The OpenAPI page stays closed, because `KB_ARENA_API_DOCS_ENABLED` follows the
 debug setting, and this image leaves both off.
 
 Each caller gets 60 requests a minute on every read route, the gated ones and
-the open aggregates alike. The platform proxy reports one address for its
-traffic, so readers share that allowance.
+the open aggregates alike. `/health` and `/ready` are outside that count, on
+purpose: a platform polls a liveness probe, and a limiter there reports the
+deployment as down under its own health check. The platform proxy reports one
+address for its traffic, so readers share the allowance.
 
 That claim was false when this file first said it. `/api/leaderboard`,
 `/api/corpora`, `/api/retriever-lab/runs` and `/api/arena/leaderboard` answered
