@@ -1,13 +1,17 @@
 # Every change in 0.11.0 traces to a finding, and every finding names its check
 
-An eight-dimension audit on 2026-09-03 produced a ledger of 236 numbered
-findings. This document maps what shipped to what it closed, and says what it
-did not close. It is the record a reader checks instead of trusting the release
-notes.
+An eight-dimension audit on 2026-09-03 produced a ledger of numbered findings.
+This document maps what shipped to what it closed, and says what it did not
+close. It is the record a reader checks instead of trusting the release notes.
 
 ## The count, and what the count is not
 
-The 236 rows carry five statuses, and they add up:
+Every number in this section is a reading taken when 0.11.0 shipped, at
+2026-09-06T00:02:30Z. The ledger did not stop there. It carried 236 rows at the
+release and it grows as later work adds rows, so a reader who reruns the counter
+today gets a larger number. That is the counter working, not a contradiction.
+
+The 236 rows at the release carry five statuses, and they add up:
 
 | Status | Rows | What it means |
 |---|---|---|
@@ -19,11 +23,37 @@ The 236 rows carry five statuses, and they add up:
 
 The script is `verify_fixed.py` in the run directory. It greps the default
 branch for the name each fixed row quotes, because this repository squash-merges
-and a branch SHA proves nothing about main. All 166 pass.
+and a branch SHA proves nothing about main.
+
+The script answers in three buckets, not two, and the difference matters. A row
+is proved by a name that main holds, or it carries a name main does not hold, or
+it has no name a grep can test. Two rows sit in that third bucket: PUB-02 and
+PUB-05, which record work on PyPI and on the repository metadata. Neither lives
+in the source tree, so each was read back by hand against its own service.
+Calling those two passes would claim a check that never ran.
+
+Run the script yourself. Its output line on 2026-09-06, after this release:
+
+```
+Rows marked fixed: 185. Proved by a name in main: 183. With a name main does not hold: 0. With no testable name: 2.
+```
+
+Read that line as a floor, not a proof. A fresh check on 2026-09-06 measured what
+sits behind the 183, and the answer is three different things. 130 rows declare
+an anchor the script parses. 55 fall through to grepping every quoted word in the
+row, because the pattern needs a comma right after the closing quote and those
+rows write the anchor another way. A fallback like that can match a branch name
+or a command example, which proves nothing about a fix. 6 of the 130 anchor on a
+name the repository already held before this work started.
+
+So the script settles that a name exists on the default branch. It does not
+settle that the name is the right one. Every row states its own change in words,
+and that text, not the count, is what a reader checks. The ledger records the
+weakness as row N-109, with the two counter changes it needs.
 
 An earlier version of this document said 227 rows. The counter used a row-id
 pattern that missed four-letter prefixes, so it skipped every `DEMO` and `DIST`
-row. The count is now 236.
+row. Widening the pattern gave the 236 above.
 
 Three open rows are named in this document, because a reader deciding whether to
 trust a number needs them.
