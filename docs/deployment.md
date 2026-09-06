@@ -83,7 +83,16 @@ benchmark route serves the recorded results to any reader. Demo mode that the
 app turns on for itself, for lack of a model key, does not open those reads.
 The Space carries no model key and no `KB_ARENA_API_TOKEN`.
 
-Deploy the Space, and redeploy it after you change either file:
+Create the Space once. The script pushes to it, and it cannot create it.
+
+```bash
+curl -s -X POST https://huggingface.co/api/repos/create \
+  -H "Authorization: Bearer $(cat ~/.cache/huggingface/token)" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"space","name":"kb-arena","private":false,"sdk":"docker"}'
+```
+
+Then push, for that first deploy and for every change after it:
 
 ```bash
 deploy/hf-space/push.sh
