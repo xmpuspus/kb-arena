@@ -19,6 +19,7 @@ const CHIP: Record<string, { label: string; color: string }> = {
   unreachable: { label: "No server answer", color: "var(--danger)" },
   "hosted-read-only": { label: "Hosted read-only", color: "var(--warning)" },
   "live-local": { label: "Live local", color: "var(--success)" },
+  "live-remote": { label: "Live server", color: "var(--success)" },
   sample: { label: "Sample data", color: "var(--warning)" },
 };
 
@@ -37,8 +38,10 @@ export default function StateBanner({ sample }: Props) {
       "and live questions, arena matches and graph builds stay off.";
   } else if (writesOff) {
     sentence =
-      "This server runs on your machine with no model key, so live questions, " +
-      "arena matches and graph builds answer 503. Set a model key to turn them on.";
+      "This server has no model key, so live questions, arena matches and " +
+      "graph builds answer 503. Set a model key to turn them on.";
+  } else if (state === "live-remote") {
+    sentence = "This server accepts live runs, and it runs on another machine.";
   } else {
     sentence = "This server runs on your machine and accepts live runs.";
   }

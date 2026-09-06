@@ -1383,6 +1383,11 @@ async def health(request: Request) -> dict:
         # dashboard names one of three states from these two flags, so it must
         # see both or it calls a laptop a hosted demo.
         "demo_mode_auto": settings.demo_mode_auto,
+        # Neither flag says where the server runs, and the dashboard called
+        # every reachable deployment the reader's own machine. Only the server
+        # knows which address the caller arrived on, and the read gate already
+        # decides it the same way.
+        "caller_is_local": _auth_module._is_loopback_host(_auth_module._client_key(request)),
     }
 
 

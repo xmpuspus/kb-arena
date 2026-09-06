@@ -5,6 +5,7 @@ import { apiFetch } from "@/lib/auth";
 import { CORPORA, fetchCorpora, readFailureMessage } from "@/lib/api";
 import StateBanner from "@/components/StateBanner";
 import FetchError from "@/components/FetchError";
+import { useScopeReset } from "@/lib/useScopeReset";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -122,6 +123,8 @@ export default function ArenaPage() {
   const [corpus, setCorpus] = useState("all");
   const [corpora, setCorpora] = useState(CORPORA);
   const [boardError, setBoardError] = useState("");
+  // An empty board and a board nobody has read yet are two different answers.
+  const [boardPending, setBoardPending] = useState(true);
 
   // The board is per corpus, so a vote on one corpus never moves the numbers
   // a reader sees next to another.
@@ -131,8 +134,18 @@ export default function ArenaPage() {
   // The winner the reader picked, so a failed vote retries that same vote.
   const lastWinner = useRef<"a" | "b" | "tie">("tie");
 
+  // The corpus over the board changed, so the ratings under the old one go
+  // before the new read starts.
+  useScopeReset(corpus, () => {
+    setLeaderboard([]);
+    setTotalVotes(0);
+    setBoardError("");
+    setBoardPending(true);
+  });
+
   async function fetchLeaderboard(scope: string = corpus) {
     const ticket = ++boardRequest.current;
+    setBoardPending(true);
     try {
       const query = scope && scope !== "all" ? `?corpus=${encodeURIComponent(scope)}` : "";
       const res = await fetch(`${API}/api/arena/leaderboard${query}`);
@@ -146,6 +159,7 @@ export default function ArenaPage() {
       // The board is scoped, so the count next to it is the scope's own.
       setTotalVotes(data.votes_in_history ?? data.total_votes ?? 0);
       setBoardError("");
+      setBoardPending(false);
     } catch (err: unknown) {
       // A stale board next to a live corpus name reads as that corpus's
       // result, so drop it and say the read failed.
@@ -153,6 +167,7 @@ export default function ArenaPage() {
       setLeaderboard([]);
       setTotalVotes(0);
       setBoardError(readFailureMessage(err, "The leaderboard did not load."));
+      setBoardPending(false);
     }
   }
 
@@ -212,7 +227,11 @@ export default function ArenaPage() {
       // The vote moved the match's own scope, so refresh that board.
       fetchLeaderboard(data.corpus ?? corpus);
     } catch (err: unknown) {
-      setError(readFailureMessage(err, "The vote did not reach the server."));
+      setError(readFailureMessage(err, "The vote got no answer."));
+      // The request can fail after the server records the vote, so the client
+      // cannot read the outcome from a transport failure. Re-read the board
+      // rather than tell the reader the ratings held still.
+      fetchLeaderboard(corpus);
     } finally {
       setVoting(false);
     }
@@ -302,11 +321,11 @@ export default function ArenaPage() {
         </div>
         {error && (
           <FetchError
-            title={errorKind === "vote" ? "The vote did not reach the server" : "The match did not start"}
+            title={errorKind === "vote" ? "The vote got no answer" : "The match did not start"}
             message={error}
             hint={
               errorKind === "vote"
-                ? "The ELO ratings stay as they were, because an unrecorded vote must not move them."
+                ? "The server may have recorded this vote before the answer was lost, so the outcome is unknown. The board below is a fresh read, and one match carries one vote, so a retry cannot count twice."
                 : "The arena needs a live server with a model key. Start one, or enter an API token with the key button, then try again."
             }
             onRetry={() => (errorKind === "vote" ? vote(lastWinner.current) : createMatch())}
@@ -460,7 +479,13 @@ export default function ArenaPage() {
         </div>
       )}
 
-      {!boardError && leaderboard.length > 0 && (
+      {boardPending && !boardError && (
+        <p className="max-w-2xl mx-auto text-sm" style={{ color: "var(--muted)" }} role="status">
+          Reading the leaderboard for this corpus...
+        </p>
+      )}
+
+      {!boardPending && !boardError && leaderboard.length > 0 && (
         <div className="max-w-2xl mx-auto">
           <h2 className="text-base font-semibold mb-3" style={{ color: "var(--foreground)" }}>
             ELO Leaderboard

@@ -327,6 +327,9 @@ export interface ServerStatus {
   // The app sets demo mode for itself when no model key is configured. That
   // machine is not a hosted demo, and only this flag tells the two apart.
   demoModeAuto: boolean;
+  // Whether this browser reached the API over the loopback address. Neither
+  // demo flag says where the server runs, and the browser cannot tell.
+  callerIsLocal: boolean;
 }
 
 // null means the server did not answer, which is not the same as live mode.
@@ -339,6 +342,7 @@ export async function fetchServerStatus(): Promise<ServerStatus | null> {
     return {
       demoMode: Boolean(data.demo_mode),
       demoModeAuto: Boolean(data.demo_mode_auto),
+      callerIsLocal: Boolean(data.caller_is_local),
     };
   } catch {
     return null;
