@@ -58,6 +58,16 @@ function modelKey(health: HealthReport): { heading: string; body: string } {
       body: "The server holds a key and built no client from it, so live calls fail.",
     };
   }
+  // A missing field is not a yes. This branch used to fall through to the
+  // success answer, so a server that never reported availability read as one
+  // that can call the model. That is the built-in-list mistake this page exists
+  // to avoid.
+  if (health.llmAvailable === null) {
+    return {
+      heading: `A key is set for ${provider}, and the client state is unknown`,
+      body: NOT_REPORTED,
+    };
+  }
   return {
     heading: `A model key is configured for ${provider}`,
     body: "Live questions, arena matches and graph builds can call the model.",

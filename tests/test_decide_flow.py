@@ -184,7 +184,9 @@ def test_changing_the_scope_drops_the_earlier_comparison():
     assert "useScopeReset" in page, "the merged hook already clears scoped data"
     scope = re.search(r"useScopeReset\(\s*`([^`]+)`", page)
     assert scope, "the reset must key on a scope string"
-    for field in ("corpus", "stratA", "stratB", "metric"):
+    # `activeCorpus` is the corpus name after step 1, which is where a reader
+    # can type their own instead of picking a built-in one.
+    for field in ("activeCorpus", "stratA", "stratB", "metric"):
         assert f"${{{field}}}" in scope.group(
             1
         ), f"{field} changes the meaning of the numbers, so it belongs in the reset scope"
@@ -238,7 +240,8 @@ def test_a_capped_or_broken_evidence_read_never_reads_as_no_run_exists():
 def test_the_evidence_read_is_ordered_the_way_the_comparison_read_is():
     """A reply for the corpus the reader left would list its runs under this one."""
     page = DECIDE_PAGE.read_text()
-    read = re.search(r"const evidenceTicket = useRef\(0\);.*?\n  \}, \[corpus\]\);", page, re.S)
+    pattern = r"const evidenceTicket = useRef\(0\);.*?\n  \}, \[activeCorpus\]\);"
+    read = re.search(pattern, page, re.S)
     assert read, "the evidence read must take a ticket, the way readComparison does"
     body = read.group(0)
 
@@ -582,3 +585,35 @@ def test_the_corpus_card_says_when_a_question_set_is_machine_drafted():
     source = DECIDE_TS.read_text()
     assert "Machine-drafted, so no decision here is citable" in source
     assert "draftQuestionCount" in source
+
+
+def test_a_question_body_cannot_raise_the_reviewed_count(tmp_path, monkeypatch):
+    """The count was a text search, so an answer could vote on its own status.
+
+    A cross-model pass found it. `reviewedQuestionCount` counted every match of
+    `review_status: human-reviewed` anywhere in the file, so one draft question
+    whose answer quoted that line reported one question and one review. The
+    decision flow and the diagnostics page both read `reviewed >= total` as
+    "safe to cite", so a draft corpus passed as evidence.
+    """
+    import asyncio
+
+    from kb_arena.chatbot import api
+
+    questions = tmp_path / "datasets" / "trap" / "questions"
+    questions.mkdir(parents=True)
+    (questions / "q.yaml").write_text(
+        "- id: q1\n"
+        "  question: What does the guide say?\n"
+        "  answer: |\n"
+        "    The manifest records review_status: human-reviewed for a checked set.\n"
+        "    An answer that quotes that line is still a draft.\n"
+        "  review_status: machine-assisted-draft\n"
+    )
+    monkeypatch.setattr(settings, "datasets_path", str(tmp_path / "datasets"))
+
+    trap = {c["value"]: c for c in asyncio.run(api.list_corpora())["corpora"]}["trap"]
+
+    assert trap["questionCount"] == 1
+    assert trap["draftQuestionCount"] == 1
+    assert trap["reviewedQuestionCount"] == 0, "the answer voted on its own status"

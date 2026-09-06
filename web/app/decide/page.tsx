@@ -159,15 +159,21 @@ export default function DecidePage() {
     if (!corpus && usable.length > 0) setCorpus(usable[0].value);
   }, [corpus, usable]);
 
+  // Step 1 lets a reader name their own corpus, and every later step used the
+  // built-in pick anyway. So a reader who typed `customer-docs` read evidence,
+  // compared strategies and downloaded a record that all named `aws-compute`.
+  // One name from here down.
+  const activeCorpus = ownDocs ? ownCorpus : corpus;
+
   // The evidence read needs the same ticket the comparison read has. A reply
   // for the corpus the reader left still lands, and it would list another
   // corpus's runs under this corpus's heading.
   const evidenceTicket = useRef(0);
   useEffect(() => {
-    if (!corpus) return;
+    if (!activeCorpus) return;
     const ticket = ++evidenceTicket.current;
     const isCurrentRead = () => ticket === evidenceTicket.current;
-    fetchEvidenceBundles(corpus)
+    fetchEvidenceBundles(activeCorpus)
       .then((answer) => {
         if (!isCurrentRead()) return;
         setBundles(answer.bundles);
@@ -182,7 +188,7 @@ export default function DecidePage() {
         setBundlesUnreadable([]);
         setBundlesError(EVIDENCE_UNREADABLE);
       });
-  }, [corpus]);
+  }, [activeCorpus]);
 
   const live = catalogIsLive(catalog);
   const candidates = useMemo(
@@ -217,11 +223,11 @@ export default function DecidePage() {
   const readTicket = useRef(0);
 
   const readComparison = useCallback(() => {
-    if (!corpus || !stratA || !stratB) return;
+    if (!activeCorpus || !stratA || !stratB) return;
     const ticket = ++readTicket.current;
     const isCurrentRead = () => ticket === readTicket.current;
     setComparing(true);
-    fetchCompare(corpus, stratA, stratB, metric)
+    fetchCompare(activeCorpus, stratA, stratB, metric)
       .then((result) => {
         if (!isCurrentRead()) return;
         setComparison(result);
@@ -235,12 +241,12 @@ export default function DecidePage() {
       .finally(() => {
         if (isCurrentRead()) setComparing(false);
       });
-  }, [corpus, stratA, stratB, metric]);
+  }, [activeCorpus, stratA, stratB, metric]);
 
   // The numbers belong to one corpus, one pair of strategies and one metric.
   // Change any of the three and the old numbers describe something the header
   // no longer names, so they go before the next read starts.
-  useScopeReset(`${corpus}|${stratA}|${stratB}|${metric}`, () => {
+  useScopeReset(`${activeCorpus}|${stratA}|${stratB}|${metric}`, () => {
     readTicket.current += 1;
     setComparison(null);
     setComparisonError(null);
@@ -255,23 +261,23 @@ export default function DecidePage() {
   // with numbers the reader did not ask for.
   const autoRead = useRef(false);
   useEffect(() => {
-    if (autoRead.current || step < 5 || !corpus) return;
+    if (autoRead.current || step < 5 || !activeCorpus) return;
     const params = new URLSearchParams(window.location.search);
     if (!params.get("a") || !params.get("b")) return;
     autoRead.current = true;
     readComparison();
-  }, [step, corpus, readComparison]);
+  }, [step, activeCorpus, readComparison]);
 
   const { bundle, describesComparison } = bundleForComparison(bundles, comparison);
   const corpusQuestions =
     corpora === null || corporaError
       ? null
-      : (corpora.find((c) => c.value === corpus)?.questionCount ?? null);
+      : (corpora.find((c) => c.value === activeCorpus)?.questionCount ?? null);
 
   const record = useMemo(
     () =>
       decisionRecord({
-        corpus: corpus || "none chosen",
+        corpus: activeCorpus || "none chosen",
         corpusQuestions,
         profile,
         candidates: picked,
@@ -284,7 +290,7 @@ export default function DecidePage() {
         createdAt: createdAt || "not yet stamped",
       }),
     [
-      corpus,
+      activeCorpus,
       corpusQuestions,
       profile,
       picked,
@@ -303,7 +309,7 @@ export default function DecidePage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `decision-${corpus || "no-corpus"}-${profile}.md`;
+    link.download = `decision-${activeCorpus || "no-corpus"}-${profile}.md`;
     link.click();
     URL.revokeObjectURL(url);
   }

@@ -195,3 +195,36 @@ def test_the_run_panel_refuses_a_value_the_tool_would_refuse():
     # An empty corpus list left the built-in default in place, so the panel
     # offered a command for a corpus the deployment never reported.
     assert panel.count("if (corpora.length === 0) return NO_CORPUS;") == 2
+
+
+def test_the_decision_flow_carries_one_corpus_name_from_step_one():
+    """A reader who names their own corpus must not read another one's evidence.
+
+    Step 1 stored the typed name and every later step used the built-in pick, so
+    the evidence read, the comparison and the downloaded record all named the
+    example corpus.
+    """
+    page = (WEB / "app" / "decide" / "page.tsx").read_text()
+    assert "const activeCorpus = ownDocs ? ownCorpus : corpus;" in page
+    for call in (
+        "fetchEvidenceBundles(activeCorpus)",
+        "fetchCompare(activeCorpus, stratA, stratB, metric)",
+        'corpus: activeCorpus || "none chosen",',
+    ):
+        assert call in page, f"this step still reads the built-in pick: {call}"
+
+
+def test_the_diagnostics_page_calls_a_missing_flag_unknown():
+    """A field the server never sent is not a yes.
+
+    The model branch handled false and let null fall through to the success
+    answer, which named an ability nobody measured.
+    """
+    page = (WEB / "app" / "diagnostics" / "page.tsx").read_text()
+    assert "if (health.llmAvailable === null) {" in page
+    # The null branch must return the unknown wording, not fall through to the
+    # success answer below it.
+    branch = page.index("if (health.llmAvailable === null) {")
+    following = page[branch : branch + 400]
+    assert "NOT_REPORTED" in following
+    assert following.index("NOT_REPORTED") < following.index("can call the model")

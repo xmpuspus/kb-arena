@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path as _Path
 from uuid import uuid4
 
+import yaml
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -29,6 +30,7 @@ from kb_arena import __version__
 from kb_arena.arena.engine import ArenaEngine, scope_key
 from kb_arena.benchmark.compare import SAFE_ID, compare_result_files, resolve_result_path
 from kb_arena.benchmark.manifest import build_identity, compatibility_key, manifest_summary
+from kb_arena.benchmark.questions import EXPECTED_CHUNKS_FILE
 from kb_arena.benchmark.review import DRAFT, REVIEWED, STATUSES, review_summary
 from kb_arena.chatbot.auth import check_rate_limit, require_auth, require_read_auth
 from kb_arena.chatbot.session import SessionStore
@@ -607,19 +609,37 @@ async def list_corpora() -> dict:
             total_questions = 0
             # A machine-drafted question set is a development signal, not
             # evidence. A page that offers a corpus without saying which kind it
-            # holds invites a reader to cite a draft. Counted the same cheap way
-            # as the questions themselves, by reading the text.
+            # holds invites a reader to cite a draft.
+            #
+            # These counts were text searches over the whole file, so an answer
+            # that quoted "review_status: human-reviewed" raised the reviewed
+            # count without any question being reviewed. A draft corpus could
+            # then report reviewed >= total, which is exactly the condition the
+            # decision flow and the diagnostics page read as "safe to cite".
+            # One status per question is the only honest count, so parse it.
             reviewed_questions = 0
             draft_questions = 0
             if (d / "questions").is_dir():
-                for qf in (d / "questions").glob("*.yaml"):
-                    try:
-                        text = qf.read_text()
-                    except OSError:
+                for qf in sorted((d / "questions").glob("*.yaml")):
+                    if qf.name == EXPECTED_CHUNKS_FILE:
                         continue
-                    total_questions += text.count("- id:")
-                    reviewed_questions += text.count(f"review_status: {REVIEWED}")
-                    draft_questions += text.count(f"review_status: {DRAFT}")
+                    try:
+                        entries = yaml.safe_load(qf.read_text())
+                    except (OSError, yaml.YAMLError):
+                        # A file nobody can read contributes no count. Guessing
+                        # from it is what the text search did.
+                        continue
+                    if not isinstance(entries, list):
+                        continue
+                    for entry in entries:
+                        if not isinstance(entry, dict) or "id" not in entry:
+                            continue
+                        total_questions += 1
+                        status = entry.get("review_status")
+                        if status == REVIEWED:
+                            reviewed_questions += 1
+                        elif status == DRAFT:
+                            draft_questions += 1
             has_results = results_dir.exists() and any(results_dir.glob(f"{d.name}_*.json"))
             qa_path = d / "qa-pairs" / "qa_pairs.jsonl"
             has_qa_pairs = qa_path.exists()
