@@ -1,5 +1,7 @@
 # KB Arena
 
+<!-- mcp-name: io.github.xmpuspus/kb-arena -->
+
 Compare retrieval architectures on your own documentation and choose with evidence.
 
 [![PyPI](https://img.shields.io/pypi/v/kb-arena)](https://pypi.org/project/kb-arena/)
