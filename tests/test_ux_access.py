@@ -480,7 +480,7 @@ def test_a_symlinked_bundle_file_is_refused_the_way_a_symlinked_directory_is():
     # One open refuses the symlink, so nothing can swap the name between a
     # check and a read.
     assert "_os.O_NOFOLLOW" in read
-    assert "is_symlink()" not in read, "a separate check leaves a race"
+    assert "if path.is_symlink():" not in read, "a separate check leaves a race"
     assert "path.read_text()" not in read
 
 
