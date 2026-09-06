@@ -68,3 +68,35 @@ def test_the_deploy_runs_the_rewrite_on_the_copy():
     # It has to run after the copy and before the commit, or it rewrites nothing.
     assert push.index('cp -R "$BUNDLE"') < push.index("link_exact_paths.py")
     assert push.index("link_exact_paths.py") < push.index("git add -u")
+
+
+def test_the_deploy_fails_when_a_route_survives_anywhere_it_is_served(tmp_path, capsys):
+    """The anchors are not the only place a route can sit.
+
+    A reviewer asked whether the hydration payload keeps the directory route,
+    where the client router would read it after the page loads. Rather than
+    reason about the bundler, the deploy reads every file the browser can fetch
+    and refuses when one holds a route it just rewrote.
+    """
+    space = tmp_path / "space"
+    (space / "benchmark").mkdir(parents=True)
+    (space / "index.html").write_text('<a href="/benchmark/">B</a>')
+    (space / "benchmark" / "index.html").write_text("<p>b</p>")
+    chunk = space / "app.js"
+    chunk.write_text('const nav = [{href:"/benchmark/"}];')
+
+    module = _module()
+    assert module.main(space) == 1
+    assert "still written as a directory" in capsys.readouterr().err
+
+    chunk.write_text('const nav = [{href:"/benchmark/index.html"}];')
+    assert module.main(space) == 0
+
+
+def test_the_check_reads_the_routes_off_the_build():
+    """A hand-kept route list drifts. The directories holding an index name them."""
+    module = _module()
+    found = module.routes(ROOT / "kb_arena" / "static")
+    assert "/benchmark/" in found
+    assert "/decide/" in found
+    assert "/diagnostics/" in found

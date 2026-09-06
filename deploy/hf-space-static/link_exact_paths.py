@@ -35,12 +35,43 @@ def rewrite(text: str) -> tuple[str, int]:
     return ROUTE_LINK.sub(swap, text), count
 
 
+def routes(root: Path) -> list[str]:
+    """Every path the export writes as a directory holding an index.html."""
+    found = []
+    for page in sorted(root.rglob("index.html")):
+        rel = page.parent.relative_to(root).as_posix()
+        if rel != ".":
+            found.append(f"/{rel}/")
+    return found
+
+
+def remaining(root: Path, wanted: list[str]) -> list[str]:
+    """Route paths still written as a directory, in any file the Space serves.
+
+    The rewrite reaches the anchors. A reviewer asked whether a route also sits
+    in the hydration payload, where the client router would read it after the
+    page loads. This checks rather than reasons: every file the browser can
+    fetch is read, and a directory route left anywhere fails the deploy.
+    """
+    left = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.suffix not in {".html", ".js", ".txt", ".json"}:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for route in wanted:
+            if f'"{route}"' in text or f"'{route}'" in text:
+                left.append(f"{path.relative_to(root)} holds {route}")
+    return left
+
+
 def main(root: Path) -> int:
     if not (root / "index.html").is_file():
         print(f"No dashboard at {root}.", file=sys.stderr)
         return 1
     if root.name == "static" and root.parent.name == "kb_arena":
-        print("Refusing to rewrite the packaged bundle. Run this on the Space copy.", file=sys.stderr)
+        print(
+            "Refusing to rewrite the packaged bundle. Run this on the Space copy.", file=sys.stderr
+        )
         return 1
 
     files = 0
@@ -53,6 +84,15 @@ def main(root: Path) -> int:
             files += 1
             links += count
     print(f"exact paths written: {links} links across {files} files")
+
+    left = remaining(root, routes(root))
+    if left:
+        print(
+            "A route is still written as a directory, which this Space redirects:", file=sys.stderr
+        )
+        for line in left[:20]:
+            print(f"  {line}", file=sys.stderr)
+        return 1
     return 0
 
 
