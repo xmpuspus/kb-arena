@@ -176,6 +176,10 @@ Generate datasets/{corpus}/questions/expected_chunks.yaml with a graded judge.
 | `--force` | Re-label even if labels exist |
 | `--n-candidates` | Candidates per question, per retriever in the pool. Every candidate goes in the judge prompt, so this drives the cost of each call. |
 
+## `kb-arena mcp`
+
+Start the MCP server on stdio, which is what `uvx kb-arena mcp` runs.
+
 ## `kb-arena migrate-graph-schema`
 
 Replace pre-0.10 graph constraints after explicit operator confirmation.

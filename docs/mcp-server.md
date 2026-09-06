@@ -33,8 +33,17 @@ this reason, so the two requirements resolve to one version.
 ## Start the server
 
 ```bash
+kb-arena mcp
+```
+
+```bash
 python3 -m kb_arena.mcp.server
 ```
+
+Both forms call the same entry function, so they start the same server. A
+registry client runs the console script, which is why the CLI carries the
+`mcp` command. The command prints an install line and exits 1 when the `mcp`
+extra is absent.
 
 The server speaks JSON-RPC over stdin and stdout. An MCP client starts this
 command as a subprocess and sends requests on stdin. It does not open a
@@ -204,3 +213,48 @@ JSON-RPC over its stdin and stdout.
 Point the client's working directory, or its `KB_ARENA_DATASETS_PATH` and
 `KB_ARENA_RESULTS_PATH` settings, at the checkout or corpus root you want the
 tools to read.
+
+## The registry entry lives in `server.json`
+
+`server.json` in the repository root is the entry the MCP registry reads. It
+names the PyPI package, the stdio transport, and the two settings the server
+reads for its corpus and result paths.
+
+A registry client runs the package through `uvx`, which starts the `kb-arena`
+console script. The entry passes `mcp` as a package argument for that reason,
+so the client runs `uvx kb-arena mcp` and reaches the server instead of the
+ordinary CLI.
+
+`uvx` installs the package without its optional extras, so a bare
+`uvx kb-arena mcp` prints the install line for the `mcp` extra and exits 1.
+`server.json` therefore carries a `runtimeArguments` entry that passes
+`--from kb-arena[mcp]` to `uvx`, so a registry client runs
+`uvx --from 'kb-arena[mcp]' kb-arena mcp` and gets the extra in one step.
+Run that command by hand to reproduce what a client does.
+
+The registry proves ownership of the PyPI package through the marker
+`<!-- mcp-name: io.github.xmpuspus/kb-arena -->` near the top of `README.md`,
+which `pyproject.toml` names as the package long description and PyPI shows as
+the project description.
+
+The marker and the `mcp` command reach PyPI only in the next release. Version
+0.11.0 is already published without them, so `mcp-publisher publish` cannot
+succeed against 0.11.0. The entry becomes publishable when the release that
+carries them is on PyPI.
+
+Check it before a release:
+
+```
+mcp-publisher validate
+```
+
+Publish it after the PyPI release for that version exists:
+
+```
+mcp-publisher login github
+mcp-publisher publish
+```
+
+The version in `server.json` must match the version on PyPI. The registry
+resolves the package from PyPI, so a version PyPI does not hold fails there
+rather than here.

@@ -90,3 +90,13 @@ reads only the licence. `multihop-rag`, `frames`, `bright`, `beir-scifact`, `mir
 `longbench-v2` carry open licences, so that column prints "yes", while each adapter still sets
 `download_only = True` and its own `check_destination` refuses an in-repo destination. The column
 should read `download_only` instead of `redistributable`, or check both.
+
+## Open, found while adding the MCP registry entry
+
+### `kb-arena quantum-diagnostics` drops the extra name from its install line
+
+`cli.py` prints `"[red]The [quantum] extra is required.[/red] Install with: pip install
+'kb-arena[quantum]'"` through Rich. Rich reads `[quantum]` as markup and removes it, so the operator
+reads "The  extra is required. Install with: pip install 'kb-arena'", which names no extra and
+installs the wrong thing. The brackets need the Rich escape, the way the new `kb-arena mcp` command
+escapes them.
