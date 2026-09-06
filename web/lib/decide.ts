@@ -406,10 +406,20 @@ export function candidatesFor(
     }
 
     const runCost: string[] = [];
+    // `needs_embeddings` covers retrieval only. A benchmark run also generates
+    // an answer and judges it through the model provider, whatever the strategy
+    // retrieves with. So "costs nothing" was wrong for every strategy here.
     if (record.needs_embeddings === false) {
-      runCost.push("No API key. A run costs nothing.");
+      runCost.push(
+        "Retrieval needs no embedding provider. A benchmark run still answers and judges " +
+          "through the model provider, so it needs that key and costs money. " +
+          "`kb-arena retriever-lab` scores retrieval alone and calls no model."
+      );
     } else if (record.needs_embeddings === true) {
-      runCost.push("Needs the configured embedding provider and its key.");
+      runCost.push(
+        "Needs the configured embedding provider and its key, and a benchmark run also " +
+          "answers and judges through the model provider."
+      );
     } else {
       runCost.push("The deployment catalog could not be read, so the provider cost is unknown.");
     }

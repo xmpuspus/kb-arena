@@ -23,7 +23,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ValidationError, field_validator
 from sse_starlette.sse import EventSourceResponse
 
 from kb_arena import __version__
@@ -45,6 +45,7 @@ from kb_arena.models.api import (
     ErrorDetail,
     ErrorResponse,
 )
+from kb_arena.models.benchmark import Question
 from kb_arena.settings import settings
 
 _REQUEST_ID_HEADER = "X-Request-ID"
@@ -638,10 +639,17 @@ async def list_corpora() -> dict:
                         continue
                     malformed = False
                     for entry in entries:
-                        if not isinstance(entry, dict) or "id" not in entry:
-                            # `load_questions` raises on this entry, so the
-                            # corpus cannot run. Skipping it quietly let the
-                            # remaining questions report a full review.
+                        # The same model `load_questions` builds. A hand-written
+                        # field list here drifted from it: an entry with an id
+                        # and nothing else counted as a reviewed question while
+                        # the loader raised on it, so an unrunnable corpus read
+                        # as citable.
+                        try:
+                            Question.model_validate(entry)
+                        except (ValidationError, TypeError):
+                            malformed = True
+                            continue
+                        if not isinstance(entry, dict):
                             malformed = True
                             continue
                         total_questions += 1
@@ -1329,7 +1337,14 @@ async def evidence_bundles(corpus: str = "") -> dict:
         # paths breaks the moment one bundle names two files.
         run_id = run_dir.name.removeprefix("run_")
         path = run_dir / "evidence.json"
-        if not path.exists():
+        try:
+            _os.stat(path)
+        except FileNotFoundError:
+            continue
+        except OSError:
+            # `Path.exists()` answers False here, so a run this process cannot
+            # reach vanished from both lists. It is unreadable, not absent.
+            unreadable.append(run_id)
             continue
         # Skipping a symlinked directory left the file itself. A real run
         # directory holding a symlinked evidence.json read whatever it pointed

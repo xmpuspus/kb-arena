@@ -475,9 +475,10 @@ def test_a_symlinked_bundle_file_is_refused_the_way_a_symlinked_directory_is():
     """Skipping the directory left the file, and the route still needs no token."""
     api = (ROOT / "kb_arena" / "chatbot" / "api.py").read_text()
     assert "if path.is_symlink():" in api
-    read = api[api.index('path = run_dir / "evidence.json"') :]
-    read = read[: read.index("bundle = json.loads(path.read_text())")]
-    assert read.index("is_symlink") < read.index("try:")
+    start = api.index('path = run_dir / "evidence.json"')
+    end = api.index("bundle = json.loads(path.read_text())", start)
+    read = api[start:end]
+    assert "if path.is_symlink():" in read, "the check must run before the read"
 
 
 def test_a_review_count_it_cannot_read_drops_the_whole_review_block():

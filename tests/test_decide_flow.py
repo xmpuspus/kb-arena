@@ -616,10 +616,14 @@ def test_a_question_body_cannot_raise_the_reviewed_count(tmp_path, monkeypatch):
     questions.mkdir(parents=True)
     (questions / "q.yaml").write_text(
         "- id: q1\n"
+        "  tier: 1\n"
+        "  type: factoid\n"
+        "  hops: 1\n"
         "  question: What does the guide say?\n"
-        "  answer: |\n"
-        "    The manifest records review_status: human-reviewed for a checked set.\n"
-        "    An answer that quotes that line is still a draft.\n"
+        "  ground_truth:\n"
+        "    answer: |\n"
+        "      The manifest records review_status: human-reviewed for a checked set.\n"
+        "      An answer that quotes that line is still a draft.\n"
         "  review_status: machine-assisted-draft\n"
     )
     monkeypatch.setattr(settings, "datasets_path", str(tmp_path / "datasets"))
@@ -640,7 +644,14 @@ def test_a_broken_question_file_stops_the_corpus_claiming_a_full_review(tmp_path
     questions = tmp_path / "datasets" / "partial" / "questions"
     questions.mkdir(parents=True)
     (questions / "good.yaml").write_text(
-        "- id: q1\n  question: Which one?\n  answer: This one.\n  review_status: human-reviewed\n"
+        "- id: q1\n"
+        "  tier: 1\n"
+        "  type: factoid\n"
+        "  hops: 1\n"
+        "  question: Which one?\n"
+        "  ground_truth:\n"
+        "    answer: This one.\n"
+        "  review_status: human-reviewed\n"
     )
     (questions / "broken.yaml").write_text("- id: q2\n  question: [unclosed\n")
     monkeypatch.setattr(settings, "datasets_path", str(tmp_path / "datasets"))
