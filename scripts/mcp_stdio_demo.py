@@ -97,6 +97,11 @@ def read_reply(proc: subprocess.Popen, request_id: int) -> dict:
                     message = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                # A bare `null` or a number parses, and it is not a protocol
+                # message. Without this the demo crashed on it instead of
+                # skipping it, which the docstring above promises.
+                if not isinstance(message, dict):
+                    continue
                 if message.get("id") == request_id:
                     return message
             remaining = deadline - time.monotonic()
