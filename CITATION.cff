@@ -7,6 +7,13 @@ authors:
     given-names: Xavier
     affiliation: ""
     orcid: ""
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.20319678
+    description: The concept DOI. It always resolves to the newest release.
+  - type: doi
+    value: 10.5281/zenodo.22424803
+    description: The DOI of version 0.11.0.
 repository-code: "https://github.com/xmpuspus/kb-arena"
 url: "https://github.com/xmpuspus/kb-arena"
 license: MIT
