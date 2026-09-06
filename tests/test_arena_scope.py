@@ -469,3 +469,11 @@ def test_the_sync_refuses_to_stamp_a_build_older_than_its_sources(tmp_path):
 
     os.utime(built, (3000, 3000))
     assert sync._newest_source_time(web) < sync._build_time(out)
+
+    # One newer unrelated output must not vouch for the rest. Next rewrites
+    # some files on every run and leaves others alone, so a max over the
+    # outputs called a stale build fresh.
+    stale = out / "old-page.html"
+    stale.write_text("<html></html>")
+    os.utime(stale, (1000, 1000))
+    assert sync._newest_source_time(web) > sync._build_time(out)

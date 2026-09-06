@@ -23,7 +23,14 @@ def _newest_source_time(web: Path) -> float:
 
 
 def _build_time(out: Path) -> float:
-    return max((p.stat().st_mtime for p in out.rglob("*") if p.is_file()), default=0.0)
+    """The OLDEST file in the build, not the newest.
+
+    A max over the outputs said the build was fresh whenever any single file
+    was newer than the sources. Next writes some outputs on every run and
+    leaves others alone, so one touched file hid a stale page. A build is fresh
+    only when every file in it is newer than every source.
+    """
+    return min((p.stat().st_mtime for p in out.rglob("*") if p.is_file()), default=0.0)
 
 
 def main() -> int:
