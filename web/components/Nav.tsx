@@ -1,23 +1,35 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { clearApiToken, getApiToken, setApiToken } from "@/lib/auth";
 
 const links = [
   { href: "/", label: "Home" },
-  { href: "/decide", label: "Decide" },
-  { href: "/demo", label: "Demo" },
-  { href: "/benchmark", label: "Benchmark" },
-  { href: "/leaderboard", label: "Leaderboard" },
-  { href: "/retriever-lab", label: "Retriever Lab" },
-  { href: "/graph", label: "Graph" },
-  { href: "/arena", label: "Arena" },
-  { href: "/tools", label: "Tools" },
-  { href: "/diagnostics", label: "Diagnostics" },
+  { href: "/decide/", label: "Decide" },
+  { href: "/demo/", label: "Demo" },
+  { href: "/benchmark/", label: "Benchmark" },
+  { href: "/leaderboard/", label: "Leaderboard" },
+  { href: "/retriever-lab/", label: "Retriever Lab" },
+  { href: "/graph/", label: "Graph" },
+  { href: "/arena/", label: "Arena" },
+  { href: "/tools/", label: "Tools" },
+  { href: "/diagnostics/", label: "Diagnostics" },
 ];
 
+/* eslint-disable @next/next/no-html-link-for-pages -- see the note below */
+// Plain anchors, not `next/link`, on purpose.
+//
+// The hosted dashboard is a Hugging Face static Space, which serves exact file
+// paths. It answers `/benchmark/` with a redirect that leaves the Space, so the
+// deploy rewrites every route link to `/benchmark/index.html`. A `next/link`
+// then intercepts the click, asks for a route payload under that name, gets a
+// 404 and the page never moves. An anchor hands the click to the browser, which
+// loads the file that is there.
+//
+// The cost is a full page load per navigation. Ten small static pages share
+// their chunks through the browser cache, so that is the cheaper half of this
+// trade.
 export default function Nav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -70,14 +82,14 @@ export default function Nav() {
       >
         <div className="flex items-center justify-between">
           <div className="flex min-w-0 items-center gap-8">
-            <Link href="/" className="inline-flex min-h-11 shrink-0 items-center font-bold text-lg tracking-tight" style={{ color: "var(--foreground)" }}>
+            <a href="/" className="inline-flex min-h-11 shrink-0 items-center font-bold text-lg tracking-tight" style={{ color: "var(--foreground)" }}>
               KB Arena
-            </Link>
+            </a>
             <div className="hidden sm:flex items-center gap-1">
               {links.map((l) => {
                 const active = pathname === l.href;
                 return (
-                  <Link
+                  <a
                     key={l.href}
                     href={l.href}
                     className="text-sm px-3 py-1.5 transition-colors"
@@ -87,7 +99,7 @@ export default function Nav() {
                     }}
                   >
                     {l.label}
-                  </Link>
+                  </a>
                 );
               })}
             </div>
@@ -138,7 +150,7 @@ export default function Nav() {
             {links.map((l) => {
               const active = pathname === l.href;
               return (
-                <Link
+                <a
                   key={l.href}
                   href={l.href}
                   onClick={() => setOpen(false)}
@@ -149,7 +161,7 @@ export default function Nav() {
                   }}
                 >
                   {l.label}
-                </Link>
+                </a>
               );
             })}
           </div>
