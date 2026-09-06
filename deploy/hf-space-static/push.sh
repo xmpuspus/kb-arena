@@ -47,11 +47,17 @@ git commit -q -m "Deploy the KB Arena static dashboard
 
 Co-Authored-By: Xavier Puspus"
 
-# The token rides in the push URL and never lands in a config file. Any git
-# message goes through the redaction below before it reaches the terminal.
-if ! push_log=$(git push "https://user:${TOKEN}@huggingface.co/spaces/${SPACE}" HEAD:main 2>&1); then
+# The token stays out of the command line. A URL carrying it shows up in `ps`
+# for every user on the machine, and it lands in the shell history. Git reads it
+# from the environment through the credential helper below instead. Any git
+# message still goes through the redaction before it reaches the terminal.
+export HF_PUSH_TOKEN="$TOKEN"
+HELPER='!f() { echo username=hf; echo "password=${HF_PUSH_TOKEN}"; }; f'
+if ! push_log=$(git -c "credential.helper=${HELPER}" \
+    push "https://huggingface.co/spaces/${SPACE}" HEAD:main 2>&1); then
   echo "${push_log//${TOKEN}/REDACTED}" >&2
   exit 1
 fi
+unset HF_PUSH_TOKEN
 
 echo "Pushed the dashboard and README.md to ${SPACE}."

@@ -19,9 +19,14 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 # A missing Space answers 404, and the prompt setting turns that into a fast
 # failure instead of a wait on a credential prompt. Create the Space first.
 GIT_TERMINAL_PROMPT=0 git clone --depth 1 "https://huggingface.co/spaces/${SPACE}" "$WORK_DIR/space"
+# Clear the old tree first, so a file that left this directory also leaves the
+# Space. Copying the two files on top of an existing Space kept whatever else
+# was there, including a file an earlier deploy left behind.
+find "$WORK_DIR/space" -mindepth 1 -maxdepth 1 -not -name .git -exec rm -rf {} +
 cp "$SOURCE_DIR/README.md" "$SOURCE_DIR/Dockerfile" "$WORK_DIR/space/"
 cd "$WORK_DIR/space"
-git add README.md Dockerfile
+git add -u
+git add -- README.md Dockerfile
 
 if git diff --cached --quiet; then
   echo "The Space already matches deploy/hf-space-docker. Nothing to push."
@@ -32,11 +37,17 @@ git commit -q -m "Deploy the read-only KB Arena demo
 
 Co-Authored-By: Xavier Puspus"
 
-# The token rides in the push URL and never lands in a config file. Any git
-# message goes through the redaction below before it reaches the terminal.
-if ! push_log=$(git push "https://user:${TOKEN}@huggingface.co/spaces/${SPACE}" HEAD:main 2>&1); then
+# The token stays out of the command line. A URL carrying it shows up in `ps`
+# for every user on the machine, and it lands in the shell history. Git reads it
+# from the environment through the credential helper below instead. Any git
+# message still goes through the redaction before it reaches the terminal.
+export HF_PUSH_TOKEN="$TOKEN"
+HELPER='!f() { echo username=hf; echo "password=${HF_PUSH_TOKEN}"; }; f'
+if ! push_log=$(git -c "credential.helper=${HELPER}" \
+    push "https://huggingface.co/spaces/${SPACE}" HEAD:main 2>&1); then
   echo "${push_log//${TOKEN}/REDACTED}" >&2
   exit 1
 fi
+unset HF_PUSH_TOKEN
 
 echo "Pushed README.md and Dockerfile to ${SPACE}."
