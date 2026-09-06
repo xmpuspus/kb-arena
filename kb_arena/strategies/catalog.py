@@ -143,25 +143,27 @@ def default_strategy_names() -> tuple[str, ...]:
     return tuple(spec.name for spec in STRATEGY_CATALOG if spec.default_benchmark)
 
 
+# Rerank Vector picks its reranker at run time, so one module tuple on the spec
+# cannot describe it. Two helpers below and the reference generator all read this
+# table, so a fourth backend needs one edit rather than three.
+RERANK_BACKENDS: dict[str, tuple[tuple[str, ...], str]] = {
+    "bge": (("sentence_transformers",), "pip install 'kb-arena[rerank]'"),
+    "cohere": (("cohere",), "pip install cohere"),
+    "voyage": (("voyageai",), "pip install voyageai"),
+}
+
+
 def runtime_required_modules(spec: StrategySpec) -> tuple[str, ...]:
     """Return dependencies for the selected runtime backend."""
     if spec.name == "rerank_vector":
-        return {
-            "bge": ("sentence_transformers",),
-            "cohere": ("cohere",),
-            "voyage": ("voyageai",),
-        }[settings.reranker_backend]
+        return RERANK_BACKENDS[settings.reranker_backend][0]
     return spec.required_modules
 
 
 def optional_install_command(spec: StrategySpec) -> str:
     """Return the install command for an unavailable optional strategy."""
     if spec.name == "rerank_vector":
-        return {
-            "bge": "pip install 'kb-arena[rerank]'",
-            "cohere": "pip install cohere",
-            "voyage": "pip install voyageai",
-        }[settings.reranker_backend]
+        return RERANK_BACKENDS[settings.reranker_backend][1]
     return f"pip install 'kb-arena[{spec.optional_extra}]'"
 
 

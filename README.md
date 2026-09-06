@@ -210,12 +210,16 @@ synthetic question sets.
 <!-- default-set-exclusions -->
 The catalog holds 19 strategies. The default `all` benchmark runs 9 of them and leaves
 out 10: LightRAG, Metadata Filtered, Temporal, Rerank Vector, SQR, HyDE, Multi-Query, Late
-Interaction, SPLADE and Agentic. Each one is out for a reason a default run cannot meet.
-Rerank Vector needs the dependency for its selected backend. SQR needs the optional `quantum`
-dependency group. Late Interaction needs `late-interaction`, and SPLADE needs `splade`.
-LightRAG needs a reachable Neo4j, and a degraded result there fails the whole run rather
-than the strategy. Metadata Filtered needs a filter the caller passes. Temporal needs an
-as-of date. HyDE, Multi-Query and Agentic each cost one or more LLM calls per question.
+Interaction, SPLADE and Agentic. Each one is out for one of two reasons the catalog records.
+
+Four need an optional dependency group a plain install does not carry: Rerank Vector,
+SQR, Late Interaction and SPLADE. Rerank Vector installs per backend, so read its entry
+in the strategy catalog rather than one command.
+
+Seven are marked experimental, which means they run but carry no general performance
+claim: LightRAG, Metadata Filtered, Temporal, SQR, HyDE, Multi-Query and Agentic. SQR is
+in both lists.
+
 The API reports loaded and unavailable strategies at `GET /strategies`.
 <!-- /default-set-exclusions -->
 

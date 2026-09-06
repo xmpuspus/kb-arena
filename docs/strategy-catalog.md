@@ -120,8 +120,9 @@ Run the strategy explicitly after installing the selected backend.
 
 - Architecture: reranked dense
 - In the default benchmark: no
-- Needs `pip install 'kb-arena[rerank]'`
-- Imports `sentence_transformers` at run time
+- Backend `bge`: `pip install 'kb-arena[rerank]'`, imports `sentence_transformers`
+- Backend `cohere`: `pip install cohere`, imports `cohere`
+- Backend `voyage`: `pip install voyageai`, imports `voyageai`
 
 ## QISS
 
