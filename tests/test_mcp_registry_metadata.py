@@ -1,7 +1,7 @@
 """The registry entry agrees with the repository it describes, offline.
 
-Every check here reads a file in this repository: `server.json`,
-`pyproject.toml`, `README.md`, and the Typer app itself. Together they catch
+Every check here reads this repository: `server.json`, `pyproject.toml`,
+`README.md`, and the Typer app itself. Together they catch
 the publish-time failures this repository can see on its own: a version that
 disagrees with the package, a description the registry answers 422 for, a
 package argument that names no command, and a missing ownership marker.
