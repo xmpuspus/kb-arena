@@ -736,7 +736,16 @@ export function decisionRecord(input: RecordInput): string {
     lines.push("");
     lines.push("### What the pairing supports");
     lines.push("");
-    if (!c.enough_pairs_for_inference) {
+    if (!c.meta.comparable) {
+      // A significance flag on two runs the API calls incomparable is a
+      // defensible-sounding winner drawn from different question sets, judges
+      // or top-k settings. The record states the reasons instead.
+      lines.push(
+        `The comparison reports these two runs as not comparable, so this record claims no winner and no significance, whatever the flags below say. Reasons the comparison records: ${
+          c.meta.reasons.length ? c.meta.reasons.join("; ") : "none recorded"
+        }.`
+      );
+    } else if (!c.enough_pairs_for_inference) {
       lines.push(
         `The pairing holds ${c.n_paired} questions, which is below the floor for inference. No significance flag fired, and this record claims none.`
       );

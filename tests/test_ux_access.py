@@ -498,6 +498,19 @@ def test_the_evidence_route_bounds_the_bytes_it_reads():
     """Counting directories bounded the files opened, not the bytes read."""
     api = (ROOT / "kb_arena" / "chatbot" / "api.py").read_text()
     assert re.search(r"^EVIDENCE_MAX_BYTES = [\d_]+$", api, re.MULTILINE)
-    assert "_os.fstat(handle.fileno()).st_size > EVIDENCE_MAX_BYTES" in api
+    # The read itself carries the bound. An fstat and then an unbounded read
+    # is a check-then-act on a file another process can extend.
+    assert "raw = handle.read(EVIDENCE_MAX_BYTES + 1)" in api
+    assert "if len(raw) > EVIDENCE_MAX_BYTES:" in api
+    assert "_os.fstat(handle.fileno())" not in api
     largest = max((p.stat().st_size for p in (ROOT / "results").rglob("evidence.json")), default=0)
     assert largest < 1_000_000, f"a bundle in this repository is {largest} bytes"
+
+
+def test_the_record_claims_no_winner_when_the_runs_are_not_comparable():
+    """A significance flag on incomparable runs is a winner from two question sets."""
+    lib = (WEB / "lib" / "decide.ts").read_text()
+    verdict = lib[lib.index('lines.push("### What the pairing supports");') :]
+    verdict = verdict[: verdict.index("lines.push(c.note);")]
+    assert verdict.index("!c.meta.comparable") < verdict.index("c.significant")
+    assert "claims no winner and no significance" in verdict

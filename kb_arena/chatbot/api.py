@@ -1360,10 +1360,14 @@ async def evidence_bundles(corpus: str = "") -> dict:
                 # nothing bounded how many bytes it read. A bundle records a
                 # command, a seed and review counts, so it is kilobytes. A file
                 # past the cap is a file this route will not answer with.
-                if _os.fstat(handle.fileno()).st_size > EVIDENCE_MAX_BYTES:
+                # Reading one byte past the cap is the bound. An fstat and then
+                # an unbounded read is a check-then-act, and a file another
+                # process keeps appending to grows between the two.
+                raw = handle.read(EVIDENCE_MAX_BYTES + 1)
+                if len(raw) > EVIDENCE_MAX_BYTES:
                     unreadable.append(run_id)
                     continue
-                bundle = json.loads(handle.read())
+                bundle = json.loads(raw)
         except (json.JSONDecodeError, OSError, UnicodeDecodeError):
             # A bundle that cannot be parsed is not a bundle that is absent.
             # Dropping it answered 200 with an empty list, and the page then
