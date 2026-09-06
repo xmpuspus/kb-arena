@@ -1302,6 +1302,18 @@ def _finite_number(value: object, field: str) -> float:
 def _summarise_run(data: dict) -> dict:
     """Pull the leaderboard-relevant fields out of a benchmark JSON, tolerantly."""
 
+    # A missing key and an empty list are not the same thing. `data.get("records", [])`
+    # read them as one, so any JSON file under `results/` summarised to zeros and
+    # reached the board as a strategy. Dropping `evidence.json` by name fixed one
+    # file and left the class open: `question_coverage.json` splits cleanly and
+    # would have become the strategy `coverage`.
+    #
+    # The legacy single-run shape carries `overall_accuracy` and no `records`, so
+    # requiring `records` alone would drop a real measurement. A file that carries
+    # neither is not a run.
+    if "records" not in data and "overall_accuracy" not in data:
+        raise ValueError("no records and no overall_accuracy, so this is not a benchmark run")
+
     records = data.get("records", [])
     if not isinstance(records, list) or not all(isinstance(record, dict) for record in records):
         raise ValueError("records must be a list of objects")

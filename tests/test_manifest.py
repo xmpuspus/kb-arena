@@ -362,3 +362,22 @@ def test_an_evidence_bundle_is_not_a_strategy_on_the_leaderboard(tmp_path, monke
     board = asyncio.run(api.leaderboard(None, corpus="c"))["leaderboard"]
 
     assert [row["strategy"] for row in board] == ["bm25"]
+
+
+def test_a_named_side_file_is_not_a_strategy_on_the_leaderboard(tmp_path, monkeypatch):
+    """Dropping one filename left the class open.
+
+    `question_coverage.json` carries an underscore, so the name split cleanly and
+    gave the strategy `coverage`. The guard belongs on the document: a benchmark
+    run always carries `records`, and `data.get("records", [])` read a missing key
+    and an empty list as the same thing.
+    """
+    monkeypatch.setattr(settings, "results_path", str(tmp_path))
+    _write_run(tmp_path, "r1", "c", "bm25", 0.8, None)
+    (tmp_path / "run_r1" / "question_coverage.json").write_text(
+        json.dumps({"corpus": "c", "documents_reaching_the_prompt": 102})
+    )
+
+    board = asyncio.run(api.leaderboard(None, corpus="c"))["leaderboard"]
+
+    assert [row["strategy"] for row in board] == ["bm25"]
