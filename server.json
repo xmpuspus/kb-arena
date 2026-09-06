@@ -18,7 +18,12 @@
         "type": "stdio"
       },
       "runtimeHint": "uvx",
-      "packageArguments": [],
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ],
       "environmentVariables": [
         {
           "name": "KB_ARENA_DATASETS_PATH",

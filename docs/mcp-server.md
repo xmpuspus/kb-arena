@@ -26,8 +26,17 @@ this reason, so the two requirements resolve to one version.
 ## Start the server
 
 ```bash
+kb-arena mcp
+```
+
+```bash
 python3 -m kb_arena.mcp.server
 ```
+
+Both forms call the same entry function, so they start the same server. A
+registry client runs the console script, which is why the CLI carries the
+`mcp` command. The command prints an install line and exits 1 when the `mcp`
+extra is absent.
 
 The server speaks JSON-RPC over stdin and stdout. An MCP client starts this
 command as a subprocess and sends requests on stdin. It does not open a
@@ -203,6 +212,25 @@ tools to read.
 `server.json` in the repository root is the entry the MCP registry reads. It
 names the PyPI package, the stdio transport, and the two settings the server
 reads for its corpus and result paths.
+
+A registry client runs the package through `uvx`, which starts the `kb-arena`
+console script. The entry passes `mcp` as a package argument for that reason,
+so the client runs `uvx kb-arena mcp` and reaches the server instead of the
+ordinary CLI.
+
+`uvx` installs the package without its optional extras, so `uvx kb-arena mcp`
+prints the install line for the `mcp` extra and exits 1. A client that needs
+the extra installed in one step runs `uvx --from 'kb-arena[mcp]' kb-arena mcp`.
+
+The registry proves ownership of the PyPI package through the marker
+`<!-- mcp-name: io.github.xmpuspus/kb-arena -->` near the top of `README.md`,
+which `pyproject.toml` names as the package long description and PyPI shows as
+the project description.
+
+The marker and the `mcp` command reach PyPI only in the next release. Version
+0.11.0 is already published without them, so `mcp-publisher publish` cannot
+succeed against 0.11.0. The entry becomes publishable when the release that
+carries them is on PyPI.
 
 Check it before a release:
 

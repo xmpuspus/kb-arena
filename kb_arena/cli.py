@@ -641,6 +641,27 @@ def serve(
 
 
 @app.command()
+def mcp():
+    """Start the MCP server on stdio, which is what `uvx kb-arena mcp` runs.
+
+    Needs the optional [mcp] extra (pip install 'kb-arena[mcp]')."""
+    import importlib.util
+
+    if importlib.util.find_spec("mcp") is None:
+        # Rich reads an unescaped [mcp] as markup and drops it, so the brackets
+        # are escaped here. Without that, the line names no extra at all.
+        console.print(
+            r"[red]The \[mcp] extra is required.[/red] "
+            r"Install with: pip install 'kb-arena\[mcp]'"
+        )
+        raise typer.Exit(1)
+
+    from kb_arena.mcp.server import main
+
+    main()
+
+
+@app.command()
 def init_corpus(
     name: str = typer.Argument(..., help="Name for the new corpus (e.g. my-docs)"),
 ):
