@@ -266,6 +266,7 @@ The [method guide](https://github.com/xmpuspus/kb-arena/blob/main/docs/methodolo
 - [Command reference](https://github.com/xmpuspus/kb-arena/blob/main/docs/reference-cli.md), generated from the code
 - [HTTP reference](https://github.com/xmpuspus/kb-arena/blob/main/docs/reference-http.md), every route and what it asks of a caller
 - [Environment reference](https://github.com/xmpuspus/kb-arena/blob/main/docs/reference-environment.md), every setting
+- [Release rollback](https://github.com/xmpuspus/kb-arena/blob/main/docs/release-rollback.md), how each published surface comes back
 - [Dataset adapters](https://github.com/xmpuspus/kb-arena/blob/main/docs/datasets.md)
 - [Changelog](https://github.com/xmpuspus/kb-arena/blob/main/CHANGELOG.md)
 - [Security policy](https://github.com/xmpuspus/kb-arena/blob/main/SECURITY.md)
