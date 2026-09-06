@@ -26,7 +26,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from kb_arena import __version__
 from kb_arena.arena.engine import ArenaEngine, scope_key
-from kb_arena.benchmark.compare import compare_result_files, resolve_result_path
+from kb_arena.benchmark.compare import SAFE_ID, compare_result_files, resolve_result_path
 from kb_arena.benchmark.manifest import build_identity, compatibility_key, manifest_summary
 from kb_arena.benchmark.review import REVIEWED, STATUSES, review_summary
 from kb_arena.chatbot.auth import require_auth, require_read_auth
@@ -1156,6 +1156,45 @@ def _pair_from(path: _Path, data: dict) -> tuple[str, str]:
     if not isinstance(corpus, str) or not isinstance(strategy, str):
         return "", ""
     return corpus, strategy
+
+
+@app.get("/api/evidence")
+async def evidence_bundles(corpus: str = "") -> dict:
+    """Every committed evidence bundle this deployment holds, newest first.
+
+    The bundle is served as it was written. A reader who cites a number needs
+    the record the run wrote: the command, the commit, the seed, the review
+    verdict, and whether the bundle calls itself citable. Recomputing any of
+    those here would let a page claim more than the run recorded.
+
+    `check_bundle` is not called. It shells out to git, and a route that runs
+    git per request answers slowly and differently on a wheel install. That
+    check belongs to `kb-arena evidence --check`.
+    """
+    if corpus and not SAFE_ID.fullmatch(corpus):
+        raise HTTPException(status_code=400, detail="invalid corpus")
+    base = _Path(settings.results_path)
+    if not base.exists():
+        return {"bundles": []}
+    bundles: list[dict] = []
+    for run_dir in sorted(base.glob("run_*"), reverse=True):
+        path = run_dir / "evidence.json"
+        if not path.exists():
+            continue
+        try:
+            bundle = json.loads(path.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        if not isinstance(bundle, dict):
+            continue
+        if corpus and bundle.get("corpus") != corpus:
+            continue
+        # The run id names the directory, not a bundle field. A page that links
+        # a bundle back to its run needs it, and reading it out of the result
+        # paths breaks the moment one bundle names two files.
+        bundle["run_id"] = run_dir.name.removeprefix("run_")
+        bundles.append(bundle)
+    return {"bundles": bundles}
 
 
 @app.get("/api/leaderboard")

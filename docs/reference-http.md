@@ -18,6 +18,7 @@ operator published, and closed otherwise.
 | `/api/compare` | GET | token, unless local or a published demo |
 | `/api/corpora` | GET | open |
 | `/api/debug/explain` | POST | token |
+| `/api/evidence` | GET | open |
 | `/api/graph/build` | POST | token |
 | `/api/graph/build/stream/{build_id}` | GET | token |
 | `/api/graph/data` | GET | token, unless local or a published demo |
