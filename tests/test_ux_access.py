@@ -148,3 +148,19 @@ def test_every_metric_note_reaches_a_page():
 def test_the_theme_answers_a_reduced_motion_request():
     css = CSS.read_text()
     assert "prefers-reduced-motion" in css
+
+
+def test_an_empty_strategy_pick_refuses_instead_of_running_everything():
+    """A page that says 0 of 19 must not hand over a command that runs nine.
+
+    The panel used to fall back to `--strategy all` on an empty pick, so the
+    count on screen and the command below it said different things.
+    """
+    panel = (WEB / "components" / "StrategyRunPanel.tsx").read_text()
+    assert 'selectedNames.join(",")' in panel
+    assert (
+        'selectedNames.join(",") : "all"' not in panel
+    ), "an empty pick must not fall back to every strategy"
+    assert "NOTHING_PICKED" in panel
+    assert panel.count("if (!strategyArg) return NOTHING_PICKED;") == 2
+    assert "disabled={nothingPicked}" in panel

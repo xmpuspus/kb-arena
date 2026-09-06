@@ -34,6 +34,8 @@ function defaultSelection(catalog: StrategyCatalogRecord[]): Set<Strategy> {
   return new Set(catalog.filter((r) => r.default_benchmark).map((r) => r.name));
 }
 
+const NOTHING_PICKED = "Pick at least one strategy. An empty pick is not a run.";
+
 export default function StrategyRunPanel({ corpora }: Props) {
   const [catalog, setCatalog] = useState<StrategyCatalogRecord[]>(DEFAULT_STRATEGY_CATALOG);
   const [corpus, setCorpus] = useState(corpora[0]?.value ?? "aws-compute");
@@ -87,9 +89,14 @@ export default function StrategyRunPanel({ corpora }: Props) {
     });
   }
 
-  const strategyArg = selectedNames.length ? selectedNames.join(",") : "all";
+  // An empty pick used to read "all", so a reader who unchecked every box got a
+  // command that runs the nine default strategies while the page said 0 of 19.
+  // The panel refuses instead, because the command has to match what it shows.
+  const nothingPicked = selectedNames.length === 0;
+  const strategyArg = selectedNames.join(",");
 
   const benchmarkCommand = useMemo(() => {
+    if (!strategyArg) return NOTHING_PICKED;
     const parts = ["kb-arena", "benchmark", "--corpus", corpus, "--strategy", strategyArg];
     if (topK !== 5) parts.push("--top-k", String(topK));
     if (tier !== 0) parts.push("--tier", String(tier));
@@ -100,6 +107,7 @@ export default function StrategyRunPanel({ corpora }: Props) {
   }, [corpus, strategyArg, topK, tier, split, seed, referenceFree]);
 
   const retrieverLabCommand = useMemo(() => {
+    if (!strategyArg) return NOTHING_PICKED;
     const parts = ["kb-arena", "retriever-lab", "--corpus", corpus, "--strategies", strategyArg];
     if (topK !== 5) parts.push("--top-k", String(topK));
     if (split) parts.push("--split", split);
@@ -195,8 +203,9 @@ export default function StrategyRunPanel({ corpora }: Props) {
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
+            disabled={nothingPicked}
             onClick={() => copyCommand(benchmarkCommand, "benchmark")}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-80"
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
             style={{ background: "var(--accent)", color: "#fff" }}
           >
             {copied === "benchmark" ? "Command copied" : "Copy run command"}
