@@ -55,7 +55,7 @@ all-formats = ["PyMuPDF==1.25.3", "mammoth==1.8.0", "httpx==0.28.1"]
 # The default BGE cross-encoder pulls in PyTorch and model tooling, so keep it
 # outside the core decision-lab install. Cohere and Voyage backends require
 # their provider SDKs when selected.
-rerank = ["sentence-transformers>=5.0,<6"]
+rerank = ["sentence-transformers>=5.0,<7"]
 # Quantum strategies #10 (qiss is pure-NumPy and needs nothing here) and #11
 # (sqr, Qiskit Aer SWAP test + PCA reduction). Lazy-imported, so the core
 # install and CI stay light; install with `pip install 'kb-arena[quantum]'`.
