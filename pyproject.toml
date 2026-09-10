@@ -84,7 +84,7 @@ mcp = ["mcp==2.1.1"]
 # them until a corpus selects one. They are pinned exactly, the way every other
 # extra here is, so two installs of one release resolve to one set of versions.
 qdrant = ["qdrant-client==1.16.1"]
-pgvector = ["psycopg[binary]==3.2.10"]
+pgvector = ["psycopg[binary]==3.3.5"]
 lancedb = ["lancedb==0.26.0"]
 
 [project.scripts]
